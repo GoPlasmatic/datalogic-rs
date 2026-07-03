@@ -12,6 +12,26 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ### Changed
 
+- **BREAKING (C ABI — in-tree consumers only): ABI v2.** `bindings/c`
+  replaces the v1 contract wholesale: `(pointer, length)` UTF-8 inputs
+  (no NUL terminators anywhere), status-code returns with an optional
+  `datalogic_error **` out-param (the thread-local last-error block is
+  deleted, and with it Go's per-call `LockOSThread`), borrowed
+  session results, owned `datalogic_buf` one-shot results, and a
+  custom-operator callback protocol with no cross-boundary allocator
+  handoff. Wrappers assert `datalogic_abi_version() == 2` at load. The
+  ABI was never published as a standalone artifact; all four in-tree
+  consumers (Go, JVM, .NET, PHP) migrated in lockstep with their public
+  APIs unchanged. Migration table in
+  [`MIGRATION.md`](./MIGRATION.md#500--501-c-abi-v2-bindings-internal).
+- **BREAKING (JVM environment): FFM replaces JNA; JDK 22+ required.**
+  The Java binding now reaches the C ABI through `java.lang.foreign`
+  (add `--enable-native-access=ALL-UNNAMED` on JDK 24+); the JNA
+  dependency is deleted and with it the microseconds of reflective
+  dispatch per call. The Java-visible API is unchanged, and the JAR's
+  native-resource layout is identical. Also fixes by construction the
+  latent non-ASCII corruption: JNA marshalled *argument* strings with
+  the JVM default charset (results were already forced UTF-8).
 - **BREAKING (WASM — requires the next npm major): errors are real
   `Error` objects.** Through 5.0.x every `@goplasmatic/datalogic-wasm`
   API rejected with a plain JSON *string*, so `e instanceof Error` was
@@ -24,6 +44,18 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ### Performance
 
+- C-family bindings: session results serialize into a reusable
+  session-owned buffer and cross the boundary as borrowed bytes — the
+  per-result malloc and the `datalogic_string_free` crossing are gone;
+  session-less one-shots run over a pooled thread-local arena, so naive
+  callers get session-grade allocation behaviour.
+- Node: the object-typed entry points (`Rule.evaluate`, `Engine.eval`)
+  now route JSON-string data straight into the arena parser instead of
+  building an intermediate `serde_json::Value` tree (mirroring what
+  `evaluateStr` and the Session methods already did).
+- Python: wheels now build with fat LTO + a single codegen unit — the
+  binding's standalone workspace previously shipped with no release
+  profile at all, losing cross-crate inlining into the core.
 - Wide-object key lookup uses an optimistic ordered probe.
 - Identically-shaped ISO datetime strings compare on a byte-compare
   fast path.
@@ -38,6 +70,11 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ### Fixed
 
+- Docs honesty: the Python README's dict-conversion claim is qualified
+  by payload size (the `pythonize` path wins below roughly 1 KB and
+  reverses above), and the WASM README no longer claims zero-copy
+  strings across the JS↔WASM boundary (both directions copy; cost
+  scales with payload size).
 - WASM binding: the `now` operator trapped with "time not implemented on
   this platform" (and leaked that call's arena) in every JS host, because
   the v5 rewrite dropped the v4 `wasm` opt-in for `chrono/wasmbind`. The
@@ -55,6 +92,30 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ### Added
 
+- **`ParsedData` (core)** — self-contained parse-once data handle,
+  accepted by every arena-lifetime evaluation entry point at zero
+  per-call conversion cost. Parsing dominates the string contract
+  (70-90% of a parse-eval-serialize round trip), and this factors it
+  out. **`Engine::truthy`** exposes the engine's configured truthiness
+  coercion for binding use.
+- **Data handles, typed results, and batch evaluation across the
+  C-family bindings** (C, Go, JVM, .NET, PHP): parse a payload once
+  (`datalogic_data_parse` / `DataHandle`) and evaluate many rules
+  against it; typed scalar evaluations (`bool` / `i64` / `f64` /
+  truthiness); and one-crossing batch shapes — one rule × N payloads
+  (`evaluate_batch`) and N rules × one payload (`evaluate_many`, the
+  rule-set/feature-flag shape) — with per-item error reporting that
+  never fails the whole call.
+- **PHP FFI preload support** — an `FFI::load`-compatible header and
+  `preload.php` for `opcache.preload` + `ffi.enable=preload`
+  deployments; `FFI::cdef` remains the zero-config fallback.
+- **In-tree boundary benchmark harness**
+  (`tools/benchmark/boundary/`) — one runner per runtime (Rust core, C,
+  Go, JVM, .NET, PHP, Python, Node, WASM) reproducing the
+  BINDINGS-OVERHEAD methodology with byte-stable checked-in workloads,
+  a driver script, and a table renderer, so the per-binding overhead
+  numbers are reproducible with one command instead of living outside
+  the repo.
 - **`wasm-clock` feature** — opt-in JS-host clock for the `now` operator
   on `wasm32-unknown-unknown` (forwards to `chrono/wasmbind`; successor
   to the v4 `wasm` feature). Off by default so non-JS wasm runtimes

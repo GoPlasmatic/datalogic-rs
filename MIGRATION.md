@@ -9,6 +9,38 @@ cookbook.
 If you are still on v4 and not ready to migrate, stay on the latest
 4.x release. v5 does not support a side-by-side mode.
 
+## 5.0.0 → 5.0.1: C ABI v2 (bindings-internal)
+
+5.0.1 replaces the C ABI (`bindings/c`) wholesale — ABI v2. If you use
+any language binding through its package manager (npm, PyPI, NuGet, Go
+modules, Maven, Packagist), **nothing changes for you**: the wrapper
+APIs are source-compatible and only gain new surface (parse-once data
+handles, batch evaluation, typed results). Two environmental notes:
+
+- **JVM**: the binding now runs on `java.lang.foreign` (JDK **22+**
+  required; the JNA dependency is gone). On JDK 24+ add
+  `--enable-native-access=ALL-UNNAMED` to permit restricted native
+  access without warnings.
+- **PHP**: a preloadable FFI header is now available for
+  `opcache.preload` + `ffi.enable=preload` deployments; `FFI::cdef`
+  remains the zero-config default.
+
+If you built directly against `bindings/c` (in-tree only, never
+published as a standalone artifact), the v1 symbols are gone. Assert
+`datalogic_abi_version() == 2` at load, then migrate:
+
+| v1 | v2 |
+|---|---|
+| NUL-terminated `char*` inputs | `(const uint8_t *, size_t)` UTF-8 byte ranges |
+| `char*` returns + `datalogic_string_free` | sessions return borrowed `(ptr, len)` valid until the next call on that session; one-shots fill an owned `datalogic_buf`, released via `datalogic_buf_free` |
+| `NULL` return + thread-local `datalogic_last_error_*` block | `datalogic_status` return + optional `datalogic_error **` out-param; read `datalogic_error_status/_message/_tag/_operator/_path_json`, then `datalogic_error_free` |
+| `datalogic_last_error_clear` | deleted — there is no thread-local state |
+| operator callback returns a `malloc`'d string the binding frees | callback writes via `datalogic_op_result_set_json` / `_set_error` and returns `0`/non-zero — no allocator crosses the boundary |
+| — | new surface: `datalogic_abi_version`, `datalogic_data_parse/_free/_allocated_bytes`, `datalogic_rule_evaluate_data`, `datalogic_session_evaluate_data/_bool/_i64/_f64/_truthy/_batch/_many` |
+
+Full contract: [`bindings/c/README.md`](./bindings/c/README.md) and the
+generated [`bindings/c/include/datalogic.h`](./bindings/c/include/datalogic.h).
+
 ## v4 → v5 in 60 seconds
 
 Most call-site changes are mechanical 1:1 renames. The deep-dive is
@@ -50,6 +82,7 @@ If a v4 surface isn't covered here, search this document or
 
 ## Contents
 
+- [5.0.0 → 5.0.1: C ABI v2 (bindings-internal)](#500--501-c-abi-v2-bindings-internal)
 - [npm package rename (JS/TS consumers only)](#npm-package-rename-jsts-consumers-only)
 - [What changed at a glance](#what-changed-at-a-glance)
 - [Cargo.toml](#cargotoml)
