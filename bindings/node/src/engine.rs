@@ -15,7 +15,6 @@ use napi::sys;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::conv::unify_input;
 use crate::error::engine_error;
 use crate::session::Session;
 
@@ -371,11 +370,19 @@ pub(crate) fn evaluate_value(
     logic: &Arc<Logic>,
     data: Value,
 ) -> Result<Value> {
-    let value = unify_input(env, data)?;
+    // A JSON-string input parses straight into the arena via the engine's
+    // `&str` entry point (mirroring `evaluate_str` and the Session
+    // methods) instead of round-tripping through a second
+    // `serde_json::Value` tree.
     let arena = Bump::new();
-    let av = engine
-        .evaluate(logic, &value, &arena)
-        .map_err(|e| engine_error(env, &e, Some(logic)))?;
+    let av = match &data {
+        Value::String(s) => engine
+            .evaluate(logic, s.as_str(), &arena)
+            .map_err(|e| engine_error(env, &e, Some(logic)))?,
+        other => engine
+            .evaluate(logic, other, &arena)
+            .map_err(|e| engine_error(env, &e, Some(logic)))?,
+    };
     serde_json::to_value(av)
         .map_err(|e| engine_error(env, &datalogic_rs::Error::wrap(e), Some(logic)))
 }

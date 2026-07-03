@@ -7,7 +7,7 @@
 
 [package]
 name = "datalogic-node"
-version = "5.0.0"
+version = "5.0.1"
 edition = "2024"
 description = "Node.js native bindings for datalogic-rs JSONLogic engine"
 license = "Apache-2.0"
@@ -54,9 +54,10 @@ napi-build = "2"
 
 [profile.release]
 # Match the root workspace's release profile so the .node artifact gets
-# the same inlining propagation across crate boundaries. The Python and
-# WASM bindings each tune this differently (WASM goes for size; Python
-# inherits root); Node prioritises throughput, so `lto = "fat"` +
+# the same inlining propagation across crate boundaries. Each standalone
+# binding workspace must declare this itself (nothing inherits from the
+# root): WASM tunes for size, Python and C set this same throughput
+# profile. Node prioritises throughput, so `lto = "fat"` +
 # `codegen-units = 1` is the right tradeoff.
 lto = "fat"
 codegen-units = 1

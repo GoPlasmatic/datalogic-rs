@@ -1,6 +1,6 @@
 {
   "name": "@goplasmatic/datalogic-node",
-  "version": "5.0.0",
+  "version": "5.0.1",
   "description": "JSONLogic (json-logic) rules engine for Node.js — native Rust core via N-API, compile-once/evaluate-many. A fast alternative to json-logic-js with identical semantics across Node, browsers/WASM, Python, Go, Java, .NET, PHP, and Rust.",
   "main": "index.js",
   "types": "index.d.ts",

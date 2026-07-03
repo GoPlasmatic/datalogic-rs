@@ -394,9 +394,17 @@ Geomean across 50 operator benchmark suites (Apple M2 Pro, median of 3 runs; pai
 WASM-specific notes:
 
 - **Compiled rules** are significantly faster for repeated evaluations
-- **Zero-copy** between JS strings and WASM where possible
+- **Strings are copied across the JS↔WASM boundary in both directions**
+  (encode in, decode out), so per-call overhead scales with payload
+  size — budget for that on large data
 - **Self-contained module** — roughly 1.6 MB uncompressed, around 400 to 500 KB gzipped
 - Measured as `dlrs:wasm:compiled` in the benchmark report
+- If your data already lives as JS objects and your rules are small, a
+  pure-JS engine (e.g. `json-logic-engine`'s compiled mode) runs with
+  zero boundary cost and can be faster on raw ns/op for that shape.
+  This package earns its keep on full conformance (including the
+  extension operators), deterministic latency, sandboxed evaluation,
+  and identical behaviour across every runtime
 
 ## Building from source
 

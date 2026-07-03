@@ -7,7 +7,7 @@
 
 [package]
 name = "datalogic-wasm"
-version = "5.0.0"
+version = "5.0.1"
 edition = "2024"
 description = "WebAssembly bindings for datalogic-rs JSONLogic engine"
 license = "Apache-2.0"

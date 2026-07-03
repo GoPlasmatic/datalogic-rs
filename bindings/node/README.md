@@ -237,6 +237,19 @@ the core numbers; the measured per-call boundary overhead for this
 binding, per API tier, lives in
 [BINDINGS-OVERHEAD.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BINDINGS-OVERHEAD.md).
 
+**Pick the path by your data's shape.** Two rules of thumb: compile once
+and reuse the `Rule`, and when your data is already a JSON string, call
+`evaluateStr` — the string path parses directly into the engine and is
+the fastest way across the boundary at every payload size. If your data
+lives as plain JS objects and your rules are small, be aware that a
+well-optimized pure-JS engine (e.g. `json-logic-engine`'s compiled mode)
+runs with zero boundary cost and can beat any native binding on raw
+ns/op for that shape. Reach for this package when you need string
+payloads straight from the wire, full conformance including the
+extension operators, deterministic latency and bounded memory, parallel
+evaluation across worker threads, or the same engine behaving
+identically across languages.
+
 ## Building from source
 
 ```bash

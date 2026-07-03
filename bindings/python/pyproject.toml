@@ -11,7 +11,7 @@ build-backend = "maturin"
 # language binding (`datalogic-rs` on crates.io, `datalogic-py` on PyPI,
 # `@goplasmatic/datalogic-wasm` and `@goplasmatic/datalogic-node` on npm).
 name = "datalogic-py"
-version = "5.0.0"
+version = "5.0.1"
 description = "JSONLogic (json-logic) rules engine for Python — native Rust core, compile-once/evaluate-many, identical semantics across Python, Node.js, WASM, Go, Java, .NET, PHP, and Rust."
 readme = "README.md"
 requires-python = ">=3.10"

@@ -10,7 +10,6 @@
 #[macro_use]
 extern crate napi_derive;
 
-mod conv;
 mod engine;
 mod error;
 mod session;

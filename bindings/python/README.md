@@ -81,8 +81,14 @@ apply({"and": [{">": [{"var": "x"}, 0]}, True]}, {"x": 5}) # True
 ```
 
 Both arguments accept Python `dict` / `list` values (converted via
-[`pythonize`](https://crates.io/crates/pythonize), roughly 3–10× faster
-than a JSON-string round-trip). For payloads with types `pythonize`
+[`pythonize`](https://crates.io/crates/pythonize)). For small payloads
+(below roughly 1 KB) that conversion beats a JSON-string round-trip,
+because Python's `json` module carries ~1.5 µs of fixed per-call
+interpreter cost; for larger payloads the per-node conversion cost
+compounds and the advantage reverses — at ~8 KB the string path is
+measurably faster. If your data is already JSON text, skip the dict
+entirely and call the `*_str` entry points (`Rule.evaluate_str`,
+`Session.evaluate_str`). For payloads with types `pythonize`
 doesn't cover, see [Type conversion](#type-conversion) below.
 
 ### Engine — `Engine().eval(rule, data)`
