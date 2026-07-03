@@ -56,6 +56,18 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 - Python: wheels now build with fat LTO + a single codegen unit — the
   binding's standalone workspace previously shipped with no release
   profile at all, losing cross-crate inlining into the core.
+- Python: dict inputs and results convert via a direct walk between
+  Python objects and arena values instead of the pythonize double tree
+  (pythonize retained only as the exotic-shape fallback), with the
+  pre-change semantics pinned by a 549-case equivalence corpus:
+  2.5-3.4x faster at every payload size, and the 8 KB dict path drops
+  from ~82 µs to ~24 µs — now ~3x faster than a `json.dumps` /
+  `json.loads` round-trip. (The same direct-converter approach was
+  built, measured, and deliberately reverted for Node: 23-31% faster
+  than its serde bridge but still structurally slower than V8's
+  `JSON.stringify` + one string crossing; the string path remains
+  Node's fast lane, and the equivalence test stays in-tree as the gate
+  for future attempts.)
 - Wide-object key lookup uses an optimistic ordered probe.
 - Identically-shaped ISO datetime strings compare on a byte-compare
   fast path.
@@ -116,6 +128,22 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   a driver script, and a table renderer, so the per-binding overhead
   numbers are reproducible with one command instead of living outside
   the repo.
+- **ABI v2 mirrors for Node, Python, and WASM** — the direct-core
+  bindings gain the same tiers natively: `DataHandle` parse-once
+  handles, typed session evaluations (`evaluateBool` / number / truthy;
+  Python adds `evaluate_int`), and `Promise.allSettled`-shaped
+  `evaluateBatch` / `evaluateMany` with per-item errors that never fail
+  the call. The WASM handle keeps the payload resident in linear
+  memory, so the per-call JS↔WASM copy + parse disappears (the 8 KB
+  session path drops ~7.7x).
+- **Node async tier** — `Rule.evaluateStrAsync(dataJson)` evaluates on
+  the libuv thread pool and returns a `Promise<string>`; rejections
+  carry the same structured fields as synchronous throws. Not faster
+  per call — it exists for event-loop hygiene on large payloads.
+- **WASM speed-profile opt-in** — `WASM_PROFILE=speed ./build.sh`
+  builds `opt-level = 3` + `wasm-opt -O3`: measured 1.13-1.85x faster
+  across tiers at +8.1% raw size and 1.4% *smaller* gzipped. The
+  published default stays the size-optimized build.
 - **`wasm-clock` feature** — opt-in JS-host clock for the `now` operator
   on `wasm32-unknown-unknown` (forwards to `chrono/wasmbind`; successor
   to the v4 `wasm` feature). Off by default so non-JS wasm runtimes

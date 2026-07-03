@@ -97,14 +97,17 @@ new v2 tiers are additive:
 - **c-abi**: `session-evaluate`, `session-evaluate-data` (new: parsed
   data handle), `session-evaluate-many-100` (new: batch), `rule-evaluate`,
   `engine-apply-oneshot`.
-- **node**: `session-evaluateStr-str`, `rule-evaluateStr-str`,
+- **node**: `session-evaluateStr-str`, `session-evaluate-data`,
+  `session-evaluate-many-100`, `rule-evaluateStr-str`,
   `rule-evaluate-obj`, `stringify-str-parse-roundtrip`,
   `engine-eval-oneshot` (object rule + object data, matching the
   documented capture).
-- **python**: `session-evaluate-str`, `rule-evaluate-str`,
+- **python**: `session-evaluate-str`, `session-evaluate-data`,
+  `session-evaluate-many-100`, `rule-evaluate-str`,
   `rule-evaluate-dict`, `dumps-str-loads-roundtrip`,
   `engine-eval-oneshot` (dict rule + dict data).
-- **wasm**: `session-evaluate-str`, `compiledrule-evaluate-str`,
+- **wasm**: `session-evaluate-str`, `session-evaluate-data`,
+  `session-evaluate-many-100`, `compiledrule-evaluate-str`,
   `oneshot-evaluate`.
 - **go / dotnet / jvm / php**: `session-evaluate`,
   `session-evaluate-data`, `session-evaluate-many-100`,

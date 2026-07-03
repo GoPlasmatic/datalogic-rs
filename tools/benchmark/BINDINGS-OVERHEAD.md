@@ -25,10 +25,12 @@ as the historical baseline at the end of the appendix.
 > warmup. Same three workloads in every runtime; every runtime produced
 > byte-identical results before timing started.
 >
-> **Re-captured (ABI v2):** 2026-07-03, same host and discipline, after
-> the v2 rollthrough — JVM now OpenJDK 26 via FFM (JNA deleted), PHP now
-> 8.5.7. Current tables in section 2 and the appendix come from this
-> capture (`tools/benchmark/boundary/run.sh`).
+> **Re-captured (ABI v2 + mirror wave):** 2026-07-03, same host and
+> discipline, after the v2 rollthrough and the Node/Python/WASM mirror
+> wave — JVM now OpenJDK 26 via FFM (JNA deleted), PHP now 8.5.7, and
+> all nine runtimes expose the data-handle/typed/batch tiers. Current
+> tables in section 2 and the appendix come from one
+> `tools/benchmark/boundary/run.sh all` capture.
 
 ## Outcome: what shipped in 5.0.1
 
@@ -39,9 +41,24 @@ the C ABI v2 — C1 collapsing B1 data handles, B2 batch, B3 typed scalar
 results, B4 `(ptr,len)`, B5 status-code errors, B7 arena pooling, and
 B8 buffer-reuse results into one surface — with the JVM binding
 rewritten FFM-only (B10 + C2 in one step: JDK 22 floor, JNA deleted).
-A2 was superseded by the FFM rewrite. **Deferred:** A5 (WASM speed
-profile), B6 (object converters), B9 (Node async), and the
-Node/Python/WASM data-handle mirrors. C3 stays rejected.
+A2 was superseded by the FFM rewrite.
+
+The same release then closed the deferred list. The **Node/Python/WASM
+mirrors** expose data handles, typed results, and batch natively in
+each crate (they bind the core directly, so no C ABI detour). **B9**
+shipped as Node's `evaluateStrAsync` on the libuv pool. **A5** was
+measured and shipped as the opt-in `WASM_PROFILE=speed` build
+(1.13-1.85x faster across tiers, +8.1% raw size but 1.4% *smaller*
+gzipped; the published default stays size-optimized). **B6** ended with
+a split verdict, exactly as section 3's analysis anticipated: accepted
+for Python (a direct dict↔arena walk, 2.5-3.4x at every size, with
+pythonize kept as the exotic-shape fallback and pre-change semantics
+pinned by a 549-case equivalence corpus) and attempted-then-reverted
+for Node (built to full parity, measured 23-31% faster than the serde
+bridge, but still behind V8's `JSON.stringify` + one string crossing on
+all three workloads — the string path remains Node's fast lane, and the
+equivalence test stays in-tree as the gate for future attempts). C3
+stays rejected.
 
 Re-measured on the `simple` workload, ns per evaluation:
 
@@ -136,26 +153,34 @@ historical baseline.)** Compile-once + session, JSON string in/out:
 
 | Binding                     | simple | eligibility | array100 | Fixed overhead vs floor (simple) |
 |-----------------------------|-------:|------------:|---------:|---------------------------------:|
-| string-contract floor       |  132.8 |     1,004.6 | 11,979.0 | 0 |
-| C ABI, called from C        |  122.8 |       948.6 | 12,280.3 | -10 |
-| .NET (`Session.Evaluate`)   |  162.3 |     1,057.9 | 12,814.1 | +29 |
-| Go (cgo)                    |  205.5 |     1,055.9 | 12,506.0 | +73 |
-| JVM (FFM)                   |  270.0 |     1,181.2 | 13,260.6 | +137 |
-| Python (`evaluate_str`)     |  284.2 |     1,203.5 | 12,311.1 | +151 |
-| Node (`evaluateStr`)        |  330.7 |     1,378.8 | 13,277.8 | +198 |
-| WASM (session)              |  576.7 |     3,204.2 | 30,649.4 | +444 |
-| PHP (FFI)                   |  689.8 |     1,551.8 | 12,959.2 | +557 |
+| string-contract floor       |  140.3 |     1,013.4 | 12,016.6 | 0 |
+| C ABI, called from C        |  122.5 |       949.9 | 12,327.1 | -18 |
+| .NET (`Session.Evaluate`)   |  157.3 |     1,064.5 | 12,739.2 | +17 |
+| Go (cgo)                    |  204.9 |     1,059.6 | 12,723.5 | +65 |
+| JVM (FFM)                   |  261.4 |     1,182.5 | 12,973.8 | +121 |
+| Python (`evaluate_str`)     |  279.5 |     1,200.7 | 12,367.7 | +139 |
+| Node (`evaluateStr`)        |  341.4 |     1,366.0 | 13,289.9 | +201 |
+| WASM (session)              |  594.5 |     3,535.3 | 33,358.6 | +454 |
+| PHP (FFI)                   |  666.5 |     1,535.4 | 12,746.7 | +526 |
 
-And the same bindings on the v2 structural tier — parse the payload once
+And all nine bindings on the structural tier — parse the payload once
 (`datalogic_data_parse` / `DataHandle`), then evaluate:
 
 | Binding (data handle) | simple | eligibility | array100 | 100 rules × 1 payload (per eval, simple) |
 |-----------------------|-------:|------------:|---------:|------------------------------------------:|
-| C ABI                 |   39.1 |       158.9 |  1,000.5 | 39.3 |
-| .NET                  |   49.7 |       172.5 |  1,036.2 | 62.0 |
-| Go                    |  117.6 |       241.7 |  1,071.6 | 61.1 |
-| JVM                   |  133.3 |       284.5 |  1,149.5 | 70.9 |
-| PHP                   |  599.3 |       720.2 |  1,572.5 | 165.5 |
+| C ABI                 |   39.3 |       158.6 |  1,002.2 | 39.3 |
+| .NET                  |   50.4 |       173.9 |  1,027.5 | 62.6 |
+| Go                    |  118.8 |       243.3 |  1,075.4 | 60.7 |
+| JVM                   |  132.0 |       295.8 |  1,141.4 | 71.4 |
+| Python                |  170.7 |       378.2 |  1,359.9 | 90.3 |
+| Node                  |  212.8 |       434.1 |  1,525.7 | 618.4 |
+| WASM                  |  349.2 |       732.9 |  4,041.1 | 687.3 |
+| PHP                   |  575.0 |       706.7 |  1,530.5 | 164.8 |
+
+(Node's and WASM's batch column exceeds their single-handle column
+because each batch item materialises an allSettled-style result object
+across the JS boundary; the other bindings return leaner per-item
+shapes.)
 
 (Cross-process run-to-run variance is roughly ±5%; treat single-digit
 percent differences between adjacent rows as noise. On the string tier
@@ -177,14 +202,20 @@ Takeaways, per binding (post-v2):
 - **Python and Node string paths are unchanged by design** (they bind
   the Rust core directly, not the C ABI) and reproduce the baseline
   within noise. Node's object-typed entry points now take the same
-  string fast-path as `evaluateStr` when handed JSON text.
-- **WASM is unchanged** (2.8x the floor at 8 KB): its data-handle
-  mirror and the speed-profile experiment (A5) are the deferred items.
+  string fast-path as `evaluateStr` when handed JSON text, and
+  Python's object path converts via the direct walk (section 3).
+- **WASM's string path is unchanged, but the mirror changes its
+  story**: a resident `DataHandle` removes the per-call JS→WASM
+  payload copy + in-module parse, collapsing the 8 KB session path
+  8.3x (33,359 → 4,041 ns). The remaining gap to native handles is
+  eval speed inside the size-optimized module — which is what the
+  opt-in `WASM_PROFILE=speed` build buys back (up to 1.85x on handle
+  tiers).
 - **PHP traded ~130 ns on the string path for the structural wins**:
   PHP FFI dispatch costs per argument, and v2's hot call gained a
   length argument and two out-params (the capture also moved from PHP
-  8.4 to 8.5). Its hot lane is now the handle + batch tier — 165.5
-  ns/eval batched vs 689.8 single-call, and 8.2x at 8 KB.
+  8.4 to 8.5). Its hot lane is now the handle + batch tier — 164.8
+  ns/eval batched vs 666.5 single-call, and 8.3x at 8 KB.
 
 One-shot convenience tiers (compile per call: `apply`, `engine.eval`,
 free-function `evaluate`) still cost 5 to 15x the hot path at small
@@ -194,9 +225,15 @@ guidance loud.
 
 ## 3. The object paths: the largest self-inflicted cost
 
-*(Unchanged in v2 — the object paths don't route through the C ABI, and
-B6 remains deferred; the v2 capture reproduces these rows within
-noise.)*
+*(Updated post-B6. Python's dict path now converts via a direct
+Python↔arena walk — accepted on its bar: 337 / 2,007 / 25,119 ns
+versus 822 / 6,754 / 81,608 before (2.5-3.4x), faster than the
+dumps/loads round-trip at every size. Node's converter was built to
+full behavioral parity, measured 23-31% faster than the serde bridge —
+and reverted, because it still lost to the stringify round-trip on all
+three workloads; the table below therefore remains Node's current
+reality, and the stringify row is its fast lane. The pure-JS row and
+the strategic context around it are unchanged.)*
 
 Node and Python also accept native objects. Measured against routing the
 same object through the string path:
@@ -393,57 +430,71 @@ native column. The injectable-clock idea (deterministic `now` via
 
 ## Appendix: full result tables
 
-Current capture (ABI v2, 2026-07-03), ns/op, median of 5 — reproduce
-with `tools/benchmark/boundary/run.sh all`:
+Current capture (ABI v2 + mirror wave, 2026-07-03), ns/op, median of
+5 — reproduce with `tools/benchmark/boundary/run.sh all` (the
+`dumps-str-loads-roundtrip`/`array100` cell was re-measured once after
+a transient outlier in the batch run; every other cell is the single
+run):
 
 ```
 runtime    mode                                 simple  eligibility    array100
-rust-core  eval-preparsed                         29.5        132.4       649.8
-rust-core  parseddata-eval                        29.4        132.7       647.4
-rust-core  parse-eval                            111.6        902.4    11,360.5
-rust-core  parse-eval-serialize                  132.8      1,004.6    11,979.0
-rust-core  parse-eval-serialize-fresharena       160.7      1,096.3    12,493.2
-rust-core  serde-value-in-out                     76.0        561.7     6,035.2
-c-abi      session-evaluate                      122.8        948.6    12,280.3
-c-abi      session-evaluate-data                  39.1        158.9     1,000.5
-c-abi      session-evaluate-many-100              39.3        161.7     1,005.1
-c-abi      rule-evaluate                         141.8      1,054.1    12,458.5
-c-abi      engine-apply-oneshot                1,488.7      7,971.0    13,929.3
-dotnet     session-evaluate                      162.3      1,057.9    12,814.1
-dotnet     session-evaluate-data                  49.7        172.5     1,036.2
-dotnet     session-evaluate-many-100              62.0        186.9     1,049.8
-dotnet     rule-evaluate                         189.4      1,166.2    12,983.0
-dotnet     engine-apply-oneshot                1,562.4      8,191.3    14,445.9
-python     session-evaluate-str                  284.2      1,203.5    12,311.1
-python     rule-evaluate-str                     276.6      1,230.6    12,528.8
-python     rule-evaluate-dict                    822.1      6,753.8    81,608.4
-python     dumps-str-loads-roundtrip           1,913.2      6,802.3    70,590.3
-python     engine-eval-oneshot                 3,842.7     26,345.9    84,987.8
-node       session-evaluateStr-str               330.7      1,378.8    13,277.8
-node       rule-evaluateStr-str                  319.4      1,413.9    13,580.2
-node       rule-evaluate-obj                   1,301.1     12,648.5   159,658.3
-node       stringify-str-parse-roundtrip         521.4      2,673.0    27,462.0
-node       engine-eval-oneshot                 4,819.2     29,574.1   163,489.2
-go         session-evaluate                      205.5      1,055.9    12,506.0
-go         session-evaluate-data                 117.6        241.7     1,071.6
-go         session-evaluate-many-100              61.1        188.9     1,023.1
-go         rule-evaluate                         266.3      1,217.1    12,814.9
-go         engine-apply-oneshot                1,712.7      8,326.0    14,295.4
-jvm        session-evaluate                      270.0      1,181.2    13,260.6
-jvm        session-evaluate-data                 133.3        284.5     1,149.5
-jvm        session-evaluate-many-100              70.9        199.4     1,055.4
-jvm        rule-evaluate                         283.4      1,269.2    13,326.6
-jvm        engine-apply-oneshot                1,723.1      8,493.8    15,082.2
-php        session-evaluate                      689.8      1,551.8    12,959.2
-php        session-evaluate-data                 599.3        720.2     1,572.5
-php        session-evaluate-many-100             165.5        289.7     1,148.3
-php        rule-evaluate                         657.4      1,598.3    12,998.6
-php        encode-eval-decode-roundtrip          840.9      2,876.5    26,901.5
-php        engine-apply-oneshot                2,065.0      8,645.2    14,627.6
-wasm       session-evaluate-str                  576.7      3,204.2    30,649.4
-wasm       compiledrule-evaluate-str             599.9      3,321.3    31,165.4
-wasm       oneshot-evaluate                    3,273.0     18,601.0    73,568.3
+rust-core  eval-preparsed                         29.2        132.8       648.7
+rust-core  parseddata-eval                        29.2        132.2       648.1
+rust-core  parse-eval                            111.3        900.8    11,419.7
+rust-core  parse-eval-serialize                  140.3      1,013.4    12,016.6
+rust-core  parse-eval-serialize-fresharena       161.8      1,073.1    12,467.4
+rust-core  serde-value-in-out                     76.9        560.4     6,110.1
+c-abi      session-evaluate                      122.5        949.9    12,327.1
+c-abi      session-evaluate-data                  39.3        158.6     1,002.2
+c-abi      session-evaluate-many-100              39.3        161.3     1,008.0
+c-abi      rule-evaluate                         141.4      1,054.7    12,528.6
+c-abi      engine-apply-oneshot                1,510.9      8,064.1    13,984.8
+dotnet     session-evaluate                      157.3      1,064.5    12,739.2
+dotnet     session-evaluate-data                  50.4        173.9     1,027.5
+dotnet     session-evaluate-many-100              62.6        187.4     1,039.6
+dotnet     rule-evaluate                         190.2      1,170.0    12,967.7
+dotnet     engine-apply-oneshot                1,557.3      8,104.0    14,420.6
+python     session-evaluate-str                  279.5      1,200.7    12,367.7
+python     session-evaluate-data                 170.7        378.2     1,359.9
+python     session-evaluate-many-100              90.3        291.3     1,295.7
+python     rule-evaluate-str                     276.8      1,226.7    12,631.9
+python     rule-evaluate-dict                    337.4      2,006.7    25,119.2
+python     dumps-str-loads-roundtrip           1,902.0      6,782.4    69,855.5
+python     engine-eval-oneshot                 3,429.7     16,103.9    28,807.4
+node       session-evaluateStr-str               341.4      1,366.0    13,289.9
+node       session-evaluate-data                 212.8        434.1     1,525.7
+node       session-evaluate-many-100             618.4        834.6     1,936.6
+node       rule-evaluateStr-str                  332.5      1,395.2    13,650.3
+node       rule-evaluate-obj                   1,342.1     12,936.4   163,065.8
+node       stringify-str-parse-roundtrip         538.6      2,682.0    26,385.2
+node       engine-eval-oneshot                 4,912.1     29,982.1   166,562.6
+go         session-evaluate                      204.9      1,059.6    12,723.5
+go         session-evaluate-data                 118.8        243.3     1,075.4
+go         session-evaluate-many-100              60.7        185.8     1,022.0
+go         rule-evaluate                         266.5      1,212.2    12,987.2
+go         engine-apply-oneshot                1,685.7      8,376.9    14,530.4
+jvm        session-evaluate                      261.4      1,182.5    12,973.8
+jvm        session-evaluate-data                 132.0        295.8     1,141.4
+jvm        session-evaluate-many-100              71.4        195.6     1,047.3
+jvm        rule-evaluate                         289.2      1,251.5    13,260.3
+jvm        engine-apply-oneshot                1,754.8      8,335.0    14,809.5
+php        session-evaluate                      666.5      1,535.4    12,746.7
+php        session-evaluate-data                 575.0        706.7     1,530.5
+php        session-evaluate-many-100             164.8        290.2     1,131.9
+php        rule-evaluate                         642.7      1,578.8    12,889.2
+php        encode-eval-decode-roundtrip          795.2      2,856.7    26,755.6
+php        engine-apply-oneshot                2,053.8      8,600.8    14,353.9
+wasm       session-evaluate-str                  594.5      3,535.3    33,358.6
+wasm       session-evaluate-data                 349.2        732.9     4,041.1
+wasm       session-evaluate-many-100             687.3      1,113.0     4,500.2
+wasm       compiledrule-evaluate-str             606.1      3,312.9    31,578.7
+wasm       oneshot-evaluate                    3,378.5     18,865.8    76,235.1
 ```
+
+The Python object-path rows reflect the accepted B6 direct converter
+(`rule-evaluate-dict` was 822 / 6,754 / 81,608 in the pre-mirror v2
+capture; `engine-eval-oneshot` improves for the same reason). Node's
+object rows are unchanged — its converter was reverted (section 3).
 
 Historical baseline (pre-v2, captured earlier the same day — the
 numbers sections 1-6 were written against; JVM rows are the JNA

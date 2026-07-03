@@ -140,7 +140,7 @@ import { DataLogicEditor } from '@goplasmatic/datalogic-ui';
 
 ## One API shape, every binding
 
-Every binding exposes the same four patterns, so knowledge transfers across your stack:
+Every binding exposes the same seven patterns, so knowledge transfers across your stack:
 
 | Pattern | Shape | Use when |
 | :--- | :--- | :--- |
@@ -148,6 +148,9 @@ Every binding exposes the same four patterns, so knowledge transfers across your
 | **Engine** | construct with config / custom operators | non-default semantics, extensions |
 | **Compile once** | `engine.compile(rule)` → evaluate many | one rule, many payloads |
 | **Session** | `engine.session()` | hot loops; reuses the internal arena across evaluations |
+| **Parse once** | `DataHandle(json)` → evaluate many rules against it | one payload, many rules or repeat evaluations; skips the dominant per-call parse cost |
+| **Typed** | `session.evaluateBool/Number/Truthy(rule, handle)` | predicates and scalar results; no JSON decode on the way out |
+| **Batch** | `session.evaluateBatch(rule, handles)` / `evaluateMany(rules, handle)` | many evaluations in one call, per-item errors that never fail the set |
 
 Rust adds two more tiers: zero-copy evaluation into a caller-owned arena, and traced evaluation powering the visual debugger. See the [Rust crate deep-dive](./crates/datalogic-rs/README.md) for the full ladder.
 
