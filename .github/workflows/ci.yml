@@ -250,6 +250,19 @@ jobs:
         # never executes.
         run: cd bindings/wasm && wasm-pack test --node
 
+      - name: Guard non-JS wasm32 consumers (issue 47)
+        # `chrono/wasmbind` must stay opt-in (the `wasm-clock` feature): it
+        # links `__wbindgen_placeholder__` imports only a JS host satisfies,
+        # so a default wasm32 build of the core crate must never pull
+        # wasm-bindgen/js-sys. Regressing this breaks non-JS wasm runtimes
+        # (wasmtime, wazero, Chicory). Resolution-only: no wasm target needed.
+        run: |
+          cd crates/datalogic-rs
+          if cargo tree --target wasm32-unknown-unknown --features datetime -e normal | grep -qE 'wasm-bindgen|js-sys'; then
+            echo '::error::wasm-bindgen/js-sys leaked into the default wasm32 dependency graph (issue 47 regression)'
+            exit 1
+          fi
+
       # Execute the runnable examples against the just-built pkg/nodejs
       # target so they can't rot. Node comes preinstalled on the runner.
       - name: Run examples

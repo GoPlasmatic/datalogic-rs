@@ -304,7 +304,7 @@ whoever cuts the next tag should watch these once, then delete this list:
   aarch64-musl Node prebuild (docker run of the napi-rs `lts-alpine` image
   on ubuntu-24.04-arm). npm staging depends on the two new triples in
   `bindings/node/package.json` `napi.targets`.
-- **CI sanity:** `wasm-pack test --node` must report 21 tests (it silently
+- **CI sanity:** `wasm-pack test --node` must report 22 tests (it silently
   ran zero before `run_in_browser` was removed from the WASM test suite).
 - **NuGet signing** remains unimplemented: needs org certificates and a
   signing decision (README embedding, SourceLink, and snupkg already ship).

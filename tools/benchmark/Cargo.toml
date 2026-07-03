@@ -12,11 +12,13 @@ publish = false
 # Enable every operator-set feature so the dlrs:* columns in `bin/compare.rs`
 # can run every suite. Without these, suites exercising `try`, `length`,
 # `sort`, `datetime`, etc. fall through to ERR cells — the engine *can*
-# do them, the bench just hadn't opted in. The dlrs:wasm column
-# separately reflects whatever feature set is baked into the published
-# `@goplasmatic/datalogic-wasm` binary (currently `wasm = datetime + trace
-# + templating` per `bindings/wasm/Cargo.toml`), which is its own
-# distribution decision.
+# do them, the bench just hadn't opted in. When a new operator-family
+# feature lands in the core, add it HERE TOO or its suites will silently
+# ERR on the dlrs:engine column (that's exactly how `flagd` was missing
+# until 2026-07: flagd/*.json showed ERR for the native engine while the
+# WASM column ran them). The dlrs:wasm column separately reflects the
+# feature set baked into `bindings/wasm/Cargo.toml` (every family since
+# the 2026-05 flatten). No `wasm-clock` here: this crate is native-only.
 datalogic-rs = { path = "../../crates/datalogic-rs", features = [
     "serde_json",
     "templating",
@@ -26,6 +28,7 @@ datalogic-rs = { path = "../../crates/datalogic-rs", features = [
     "ext-array",
     "ext-control",
     "ext-math",
+    "flagd",
 ] }
 serde_json = "1.0"
 bumpalo = "3"

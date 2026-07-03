@@ -128,6 +128,23 @@ no typed serde input/output), drop the feature entirely:
 datalogic-rs = "5"
 ```
 
+The v4 `wasm` feature (JS-host clock for `now` when targeting
+`wasm32-unknown-unknown`) is called `wasm-clock` in v5, and the `now`
+operator itself now also needs `datetime`:
+
+```toml
+# v4
+datalogic-rs = { version = "4", features = ["wasm"] }
+
+# v5
+datalogic-rs = { version = "5", features = ["datetime", "wasm-clock"] }
+```
+
+As in v4, leave it off when the module runs in a non-JS wasm runtime
+(wasmtime, wazero, Chicory): the JS clock imports would fail to
+instantiate there
+([#47](https://github.com/GoPlasmatic/datalogic-rs/issues/47)).
+
 ## Method-by-method translation
 
 ### Engine construction

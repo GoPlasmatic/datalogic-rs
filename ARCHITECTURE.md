@@ -146,6 +146,7 @@ opt in via their dependency line.
 | `error-handling`  | `try` / `throw` operators                                         | WASM, Node, Python, C, `error_handling` example |
 | `ext-string`, `ext-array`, `ext-control`, `ext-math` | Optional operator families                 | WASM, Node, Python, C; opt-in per Rust consumer |
 | `flagd`           | `fractional` + `sem_ver` operators (OpenFeature flagd spec); pulls in `semver` | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit). See [flagd docs](https://flagd.dev/reference/custom-operations/) |
+| `wasm-clock`      | JS-host clock for `now` on `wasm32-unknown-unknown` (forwards to `chrono/wasmbind`). Deliberately opt-in: it links JS imports that non-JS wasm runtimes (wasmtime, wazero, Chicory) cannot satisfy — issue #47 | WASM only. Never enable when the module runs outside a JS host |
 
 The non-Rust bindings (Go, JVM, .NET, PHP) inherit whatever feature set
 `bindings/c` is compiled with — they don't have their own Cargo

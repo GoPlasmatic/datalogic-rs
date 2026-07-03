@@ -38,6 +38,14 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ### Fixed
 
+- WASM binding: the `now` operator trapped with "time not implemented on
+  this platform" (and leaked that call's arena) in every JS host, because
+  the v5 rewrite dropped the v4 `wasm` opt-in for `chrono/wasmbind`. The
+  binding now enables the new `wasm-clock` feature, and a
+  `wasm-bindgen` regression test covers the operator.
+- Benchmark harness: `datalogic-bench` was missing the `flagd` feature,
+  so `flagd/*.json` suites reported ERR for the native engine column
+  while the WASM column ran them.
 - Four conformance suites that existed on disk but were missing from
   `tests/suites/index.json` now run in the conformance runner;
   `type.json` array cases corrected.
@@ -47,6 +55,13 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ### Added
 
+- **`wasm-clock` feature** — opt-in JS-host clock for the `now` operator
+  on `wasm32-unknown-unknown` (forwards to `chrono/wasmbind`; successor
+  to the v4 `wasm` feature). Off by default so non-JS wasm runtimes
+  (wasmtime, wazero, Chicory) keep loading the module — the constraint
+  from [#47](https://github.com/GoPlasmatic/datalogic-rs/issues/47) —
+  with a CI guard asserting the default wasm32 dependency graph stays
+  free of `wasm-bindgen`/`js-sys`.
 - **`Logic::is_constant`** — reports whether compilation constant-folded
   the entire rule to a literal. Complements `Logic::is_static`
   (`is_static` asks whether a rule *could* be evaluated without a data

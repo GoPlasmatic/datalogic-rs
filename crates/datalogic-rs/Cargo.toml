@@ -66,6 +66,19 @@ ext-math = []
 #                    coerce numeric input, drop build metadata). Pulls
 #                    in the `semver` crate, kept optional via dep:.
 flagd = ["dep:semver"]
+# JS-host clock for the `now` operator on `wasm32-unknown-unknown`
+# (browsers, Node, Deno, Workers): forwards to `chrono/wasmbind`, which
+# reads time via `js_sys::Date`. Strictly opt-in — wasmbind links
+# `__wbindgen_placeholder__` imports only a JS host provides, so enabling
+# it unconditionally breaks non-JS wasm runtimes (wasmtime, wazero,
+# Chicory); that was issue #47, fixed in v4.0.19 as the opt-in `wasm`
+# feature and lost in the v5 rewrite. Weak dep (`chrono?`): a no-op
+# unless `datetime` also enables chrono, and inert on non-wasm targets
+# (chrono target-gates the js-sys/wasm-bindgen deps internally). Without
+# this feature, `now` on wasm32-unknown-unknown traps ("time not
+# implemented on this platform"); on WASI chrono uses the OS clock and
+# this feature is unnecessary.
+wasm-clock = ["chrono?/wasmbind"]
 
 [dependencies]
 # Floors below are the **minimum** versions we actually compile against.

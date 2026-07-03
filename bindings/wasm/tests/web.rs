@@ -79,6 +79,23 @@ fn test_invalid_data() {
     assert!(result.is_err());
 }
 
+// =============== Datetime clock tests ===============
+
+// `now` must read the clock through `js_sys::Date` (chrono's `wasmbind`
+// feature, target-gated in the core crate): wasm32-unknown-unknown has no
+// `SystemTime`, so without it this call traps with "time not implemented
+// on this platform" instead of returning a value or a catchable error.
+#[wasm_bindgen_test]
+fn test_now_operator_reads_clock() {
+    let result = evaluate(r#"{"now": []}"#, "{}", false).unwrap();
+    let iso = result.trim_matches('"');
+    let ms = js_sys::Date::parse(iso);
+    assert!(
+        ms.is_finite(),
+        "now() must return a parseable timestamp, got {result}"
+    );
+}
+
 // =============== Structured error tests ===============
 
 #[wasm_bindgen_test]

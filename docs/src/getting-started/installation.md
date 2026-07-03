@@ -78,6 +78,7 @@ v5 splits the surface into a small core plus opt-in features:
 | `error-handling` | off | `try` / `throw` operators. |
 | `ext-math` | off | Extended math operators. |
 | `flagd` | off | [OpenFeature flagd-compatible](https://flagd.dev/reference/custom-operations/) `fractional` (murmurhash3 percentage bucketing) and `sem_ver` (semantic-version comparison) operators. |
+| `wasm-clock` | off | JS-host clock for the `now` operator on `wasm32-unknown-unknown` (browsers, Node, Deno, Workers); combine with `datetime`. Opt-in on purpose: it forwards to `chrono/wasmbind`, whose JS imports fail to instantiate in non-JS wasm runtimes such as wasmtime, wazero, and Chicory — leave it off there (on WASI the OS clock works without it). |
 
 Example — opt into `serde_json::Value` interop plus templating:
 
