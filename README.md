@@ -3,151 +3,128 @@
 
 # datalogic-rs
 
-**Business rules as data. Decisions in nanoseconds.**
+**Business rules as data. One engine, every runtime.**
 
-A JSONLogic rules engine with one Rust core and official bindings for Node.js, Python, Go, Java, .NET, PHP, Rust, and the browser (WASM), plus an official React visual debugger. Store rules as JSON, change pricing, eligibility, and flag logic in production, and never redeploy to do it.
+Write a [JSONLogic](https://jsonlogic.com) rule once and evaluate it with the exact same engine in Rust, Node.js, the browser (WASM), Python, Go, Java, .NET, and PHP. Not eight reimplementations that drift apart: one Rust core under every binding, evaluating in nanoseconds. Store rules as JSON, change pricing, eligibility, and flag logic in production, and never redeploy to do it.
 
+  [![CI](https://github.com/GoPlasmatic/datalogic-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/GoPlasmatic/datalogic-rs/actions/workflows/ci.yml)
+  [![Release](https://img.shields.io/github/v/release/GoPlasmatic/datalogic-rs?label=release)](https://github.com/GoPlasmatic/datalogic-rs/releases)
+  [![Conformance](https://img.shields.io/badge/conformance-53_suites_%2F_1,532_cases-brightgreen)](./crates/datalogic-rs/tests/suites/)
   [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-  [![Rust](https://img.shields.io/badge/rust-1.85+-orange.svg)](https://www.rust-lang.org)
-  [![Crates.io](https://img.shields.io/crates/v/datalogic-rs.svg)](https://crates.io/crates/datalogic-rs)
-  [![Documentation](https://docs.rs/datalogic-rs/badge.svg)](https://docs.rs/datalogic-rs)
-  [![npm (node)](https://img.shields.io/npm/v/@goplasmatic/datalogic-node?label=npm%20%40datalogic-node)](https://www.npmjs.com/package/@goplasmatic/datalogic-node)
-  [![npm (wasm)](https://img.shields.io/npm/v/@goplasmatic/datalogic-wasm?label=npm%20%40datalogic-wasm)](https://www.npmjs.com/package/@goplasmatic/datalogic-wasm)
-  [![PyPI](https://img.shields.io/pypi/v/datalogic-py.svg)](https://pypi.org/project/datalogic-py/)
 
   [🚀 Try the Live Playground](https://goplasmatic.github.io/datalogic-rs/playground/) | [📖 Read the Documentation](https://goplasmatic.github.io/datalogic-rs/)
 </div>
 
 ---
 
-## What is datalogic-rs?
-
-`datalogic-rs` is a high-performance Rust implementation of [JSONLogic](http://jsonlogic.com), a standard way to express logic rules in JSON. 
-
-It functions as a safe, sandboxed expression evaluator and dynamic rules engine. While built as a native Rust crate, `datalogic-rs` provides official bindings that expose the exact same evaluation semantics and operators to **Node.js, WebAssembly, Python, Go, Java, .NET, and PHP**, alongside a **React-based companion debugger UI**.
-
 <div align="center">
   <a href="https://goplasmatic.github.io/datalogic-rs/playground/">
     <img src="https://raw.githubusercontent.com/GoPlasmatic/datalogic-rs/main/docs/src/assets/demo.gif" alt="JSONLogic Online Debugger Demo" width="800">
   </a>
-  <p><em>Try the online rule editor and debugger live in the <a href="https://goplasmatic.github.io/datalogic-rs/playground/">playground</a>.</em></p>
+  <p><em>Build, trace, and debug rules live in the <a href="https://goplasmatic.github.io/datalogic-rs/playground/">playground</a>.</em></p>
 </div>
 
 ---
 
 ## Why datalogic-rs?
 
-- 🔒 **100% Sandbox-Safe:** Evaluate user-submitted rules and formulas securely without arbitrary code execution (no dangerous `eval()` or scripting runtimes).
-- 🌐 **Single Source of Truth:** Author rules in JSON and evaluate them with 100% semantic parity across your backend services (Rust/Go/Node/Python) and frontend client (WASM).
-- ⚡ **Extreme Performance:** Compiles JSON logic into optimized bytecode. Evaluates rules in a hot loop using `bumpalo` arena allocation for zero-copy variables and minimal heap allocations.
-- 🛠️ **Ready-Made Rule Builder:** Ship a visual rule editor directly to your product dashboard using the companion React UI package, saving weeks of custom UI engineering.
-
----
-
-## Pick your package
-
-The core Rust engine handles compilation and execution. Choose the language binding matching your stack below to view its specific installation guide and API reference:
-
-| Language / Environment | Package / Dependency | Install Command | Deep-dive Guide |
-| :--- | :--- | :--- | :--- |
-| **Rust** application or library | [`datalogic-rs`](https://crates.io/crates/datalogic-rs) | `cargo add datalogic-rs` | [crates/README.md](./crates/datalogic-rs/README.md) |
-| **Node.js** (Native prebuilds) | [`@goplasmatic/datalogic-node`](https://www.npmjs.com/package/@goplasmatic/datalogic-node) | `npm i @goplasmatic/datalogic-node` | [bindings/node/README.md](./bindings/node/README.md) |
-| **Browser, Edge, Bun, Deno** | [`@goplasmatic/datalogic-wasm`](https://www.npmjs.com/package/@goplasmatic/datalogic-wasm) | `npm i @goplasmatic/datalogic-wasm` | [bindings/wasm/README.md](./bindings/wasm/README.md) |
-| **Python** application or pipeline | [`datalogic-py`](https://pypi.org/project/datalogic-py/) | `pip install datalogic-py` | [bindings/python/README.md](./bindings/python/README.md) |
-| **Go** microservice | `datalogic-go` | `go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5` | [bindings/go/README.md](./bindings/go/README.md) |
-| **React** Visual Editor / Debugger | [`@goplasmatic/datalogic-ui`](https://www.npmjs.com/package/@goplasmatic/datalogic-ui) | `npm i @goplasmatic/datalogic-ui` | [ui/README.md](./ui/README.md) |
-| **Java / JVM** (Kotlin, Scala) | `io.github.goplasmatic:datalogic` | Maven / Gradle Dependency | [bindings/jvm/README.md](./bindings/jvm/README.md) |
-| **.NET** (C#, F#) | `Goplasmatic.Datalogic` | `dotnet add package Goplasmatic.Datalogic` | [bindings/dotnet/README.md](./bindings/dotnet/README.md) |
-| **PHP** service | `goplasmatic/datalogic` | `composer require goplasmatic/datalogic` | [bindings/php/README.md](./bindings/php/README.md) |
-| **C / FFI** ABI | `datalogic-c` | Built locally | [bindings/c/README.md](./bindings/c/README.md) |
-
----
-
-## Three things you can build
-
-### 1. Dynamic Business Rules
-
-Encode pricing logic, fee schedules, eligibility and underwriting rules, transaction risk scoring, payment routing, access control, or form validation as JSON. Store them in databases or fetch them from APIs, changing logic dynamically without redeploying code.
-
-```rust
-let result = datalogic_rs::eval_str(
-    r#"{"and": [{">=": [{"var": "age"}, 18]}, {"==": [{"var": "status"}, "active"]}]}"#,
-    r#"{"age": 25, "status": "active"}"#,
-).unwrap();
-assert_eq!(result, "true");
-```
-
-### 2. JSON Response Templates
-
-Shape data payloads on the fly. Enable templating mode so JSON key-value structures flow directly through to the output, mapping template operators to computed fields.
-
-```rust
-// Cargo.toml: datalogic-rs = { version = "5", features = ["templating"] }
-use datalogic_rs::Engine;
-
-let engine = Engine::builder().with_templating(true).build();
-let result = engine.eval_str(
-    r#"{"greeting": {"cat": ["Hello ", {"var": "name"}]},
-        "isAdult": {">=": [{"var": "age"}, 18]}}"#,
-    r#"{"name": "Jane", "age": 25}"#,
-).unwrap();
-// Output: {"greeting":"Hello Jane","isAdult":true}
-```
-
-### 3. Safe User Expressions
-
-Allow power users or admins to write mathematical and conditional formulas (e.g. `subtotal + tax + shipping`). Evaluate them securely without standard scripting engines.
-
-```rust
-let result = datalogic_rs::eval_str(
-    r#"{"+": [{"var": "subtotal"}, {"var": "tax"}, {"var": "shipping"}]}"#,
-    r#"{"subtotal": 100, "tax": 8.5, "shipping": 5}"#,
-).unwrap();
-assert_eq!(result, "113.5");
-```
+- 🌐 **One rule, every runtime:** every binding runs the same compiled Rust core, so a rule evaluates with identical semantics on your backend, your edge workers, and your frontend. No cross-language drift, verified by a 1,532-case conformance battery in CI.
+- 🔒 **100% sandbox-safe:** evaluate user-submitted rules and formulas without arbitrary code execution. No `eval()`, no scripting runtime, no I/O; the core forbids unsafe code.
+- ⚡ **Nanosecond evaluation:** rules compile to OpCode-dispatched programs that run in a reusable memory arena: 9.7 ns geomean, 4.9× the fastest JS engine, 43.7× the reference implementation.
+- 🛠️ **Ready-made rule builder:** ship a visual editor and step-through debugger to your product dashboard with the companion React component, instead of building rule UI from scratch.
 
 ---
 
 ## One rule, every runtime
 
-Because all bindings run the same underlying Rust engine, a rule written in JSON evaluates with identical semantics across every tier of your architecture:
+Rules are plain JSON, so there is exactly one of them, no matter how many languages you run:
 
-**Rust (Backend Core):**
-```rust
-let result = datalogic_rs::eval_str(r#"{">": [{"var": "x"}, 10]}"#, r#"{"x": 42}"#).unwrap();
-// Returns "true"
+```json
+Rule:   {"and": [{">=": [{"var": "age"}, 18]}, {"==": [{"var": "status"}, "active"]}]}
+Data:   {"age": 25, "status": "active"}
+Result: true
 ```
 
-**Node.js (Native binding):**
-```javascript
-import { apply } from '@goplasmatic/datalogic-node';
-const result = apply({ '>': [{ var: 'x' }, 10] }, { x: 42 }); // true
-```
+The same evaluation, one line in each runtime:
 
-**Browser / WebAssembly:**
-```javascript
-import init, { evaluate } from '@goplasmatic/datalogic-wasm';
-await init();
-const result = evaluate('{">": [{"var": "x"}, 10]}', '{"x": 42}', false); // "true"
-```
+| Runtime | One-shot evaluation |
+| :--- | :--- |
+| **Rust** | `datalogic_rs::eval_str(rule, data)?` |
+| **Node.js** | `apply(rule, data)` — `@goplasmatic/datalogic-node` |
+| **Browser / Edge (WASM)** | `evaluate(rule, data, false)` — `@goplasmatic/datalogic-wasm` |
+| **Python** | `apply(rule, data)` — `datalogic_py` |
+| **Go** | `datalogic.Apply(rule, data)` |
+| **Java / Kotlin** | `engine.apply(rule, data)` |
+| **.NET (C#)** | `engine.Apply(rule, data)` |
+| **PHP** | `$engine->apply($rule, $data)` |
 
-**Python:**
-```python
-from datalogic_py import apply
-result = apply({">": [{"var": "x"}, 10]}, {"x": 42}) # True
-```
-
-**Go:**
-```go
-import datalogic "github.com/GoPlasmatic/datalogic-rs/bindings/go/v5"
-out, _ := datalogic.Apply(`{">": [{"var": "x"}, 10]}`, `{"x": 42}`) // "true"
-```
+Same bytes in, same bytes out: every binding wraps the same core and passes the same 53-suite conformance battery. Each package README has the full quickstart for its language, and every binding ships the same three runnable programs under its `examples/` folder — the folders themselves are the parity demo.
 
 ---
 
-## 🎨 Visual Rule Debugger Companion
+## Pick your package
 
-For building admin portals or dashboards where non-technical operators author rules, drop `@goplasmatic/datalogic-ui` into your React application. It uses the WASM core internally to compile and trace execution live.
+| Language / Environment | Version | Package | Install | Guide |
+| :--- | :--- | :--- | :--- | :--- |
+| **Rust** | [![Crates.io](https://img.shields.io/crates/v/datalogic-rs.svg)](https://crates.io/crates/datalogic-rs) | `datalogic-rs` | `cargo add datalogic-rs` | [crate README](./crates/datalogic-rs/README.md) |
+| **Node.js** (native prebuilds) | [![npm](https://img.shields.io/npm/v/@goplasmatic/datalogic-node)](https://www.npmjs.com/package/@goplasmatic/datalogic-node) | `@goplasmatic/datalogic-node` | `npm i @goplasmatic/datalogic-node` | [node README](./bindings/node/README.md) |
+| **Browser, Edge, Bun, Deno** | [![npm](https://img.shields.io/npm/v/@goplasmatic/datalogic-wasm)](https://www.npmjs.com/package/@goplasmatic/datalogic-wasm) | `@goplasmatic/datalogic-wasm` | `npm i @goplasmatic/datalogic-wasm` | [wasm README](./bindings/wasm/README.md) |
+| **Python** | [![PyPI](https://img.shields.io/pypi/v/datalogic-py.svg)](https://pypi.org/project/datalogic-py/) | `datalogic-py` | `pip install datalogic-py` | [python README](./bindings/python/README.md) |
+| **Go** | [![Go Reference](https://pkg.go.dev/badge/github.com/GoPlasmatic/datalogic-rs/bindings/go/v5.svg)](https://pkg.go.dev/github.com/GoPlasmatic/datalogic-rs/bindings/go/v5) | `datalogic-go` | `go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5` | [go README](./bindings/go/README.md) |
+| **Java / JVM** (Kotlin, Scala) | first Maven release pending<!-- swap for maven-central badge once published --> | `io.github.goplasmatic:datalogic` | Maven / Gradle dependency | [jvm README](./bindings/jvm/README.md) |
+| **.NET** (C#, F#) | [![NuGet](https://img.shields.io/nuget/v/Goplasmatic.Datalogic.svg)](https://www.nuget.org/packages/Goplasmatic.Datalogic) | `Goplasmatic.Datalogic` | `dotnet add package Goplasmatic.Datalogic` | [dotnet README](./bindings/dotnet/README.md) |
+| **PHP** | [![Packagist](https://img.shields.io/packagist/v/goplasmatic/datalogic.svg)](https://packagist.org/packages/goplasmatic/datalogic) | `goplasmatic/datalogic` | `composer require goplasmatic/datalogic` | [php README](./bindings/php/README.md) |
+| **C / FFI** (embed anywhere) | built in-tree | `datalogic-c` | built locally | [c README](./bindings/c/README.md) |
+| **React** visual editor | [![npm](https://img.shields.io/npm/v/@goplasmatic/datalogic-ui)](https://www.npmjs.com/package/@goplasmatic/datalogic-ui) | `@goplasmatic/datalogic-ui` | `npm i @goplasmatic/datalogic-ui` | [ui README](./ui/README.md) |
+
+---
+
+## Three things you can build
+
+### 1. Dynamic business rules
+
+Encode pricing logic, fee schedules, eligibility and underwriting rules, transaction risk scoring, payment routing, access control, or form validation as JSON. Store rules in a database column, fetch them from an API, review them in a diff: logic changes ship without a deploy.
+
+```json
+Rule:   {"if": [
+          {">": [{"var": "cart.total"}, 100]}, "free-shipping",
+          {">": [{"var": "cart.total"}, 50]},  "flat-rate",
+          "standard"
+        ]}
+Data:   {"cart": {"total": 127.5}}
+Result: "free-shipping"
+```
+
+### 2. JSON response templates
+
+Enable templating mode and JSON key-value structures flow through to the output, with operators computing fields in place:
+
+```json
+Template: {"greeting": {"cat": ["Hello ", {"var": "name"}]},
+           "isAdult":  {">=": [{"var": "age"}, 18]}}
+Data:     {"name": "Jane", "age": 25}
+Output:   {"greeting": "Hello Jane", "isAdult": true}
+```
+
+Templating is an engine option in every binding (in Rust: `Engine::builder().with_templating(true)`, behind the `templating` feature).
+
+### 3. Safe user expressions
+
+Let power users and admins write formulas without handing them a scripting engine:
+
+```json
+Rule:   {"+": [{"var": "subtotal"}, {"var": "tax"}, {"var": "shipping"}]}
+Data:   {"subtotal": 100, "tax": 8.5, "shipping": 5}
+Result: 113.5
+```
+
+Try any of these live in the [playground](https://goplasmatic.github.io/datalogic-rs/playground/), or browse the [use-case cookbook](https://goplasmatic.github.io/datalogic-rs/use-cases/examples.html) for feature flags, fraud scoring, and data transformation recipes.
+
+---
+
+## 🎨 Visual rule builder and debugger
+
+For admin portals and dashboards where non-engineers author rules, drop `@goplasmatic/datalogic-ui` into your React app. It runs the WASM core internally to compile and trace execution live, and it is the same component behind the online playground.
 
 ```tsx
 import { DataLogicEditor } from '@goplasmatic/datalogic-ui';
@@ -161,44 +138,25 @@ import { DataLogicEditor } from '@goplasmatic/datalogic-ui';
 
 ---
 
-## Choosing your API: five tiers, one engine
+## One API shape, every binding
 
-The Rust crate provides a fine-grained API ladder depending on your performance budget, allocation constraints, and trace requirements.
+Every binding exposes the same four patterns, so knowledge transfers across your stack:
 
-| Tier | API Entry Point | When to Use |
+| Pattern | Shape | Use when |
 | :--- | :--- | :--- |
-| **Tier 0** | `eval_str`, `eval`, `eval_into`, `compile` | Quick scripts, simple tasks, or lazy one-off execution. |
-| **Tier 1** | `Engine::eval*` | Using custom operators, non-default configs, or templating mode. |
-| **Tier 2** | `Engine::session()` + `Session::eval*` | Evaluating rules in a hot loop (APIs, message queues, bulk pipelines). Reuses internal bump arenas to limit allocations. |
-| **Tier 3** | `Engine::evaluate(&Logic, data, &Bump)` | Zero-copy evaluation using a caller-owned `bumpalo::Bump` arena. |
-| **Tier 4** | `Engine::trace()` | Generating full AST execution paths for debugging or visualizer tools. |
+| **One-shot** | `apply(rule, data)` | ad-hoc evaluation, scripts, low volume |
+| **Engine** | construct with config / custom operators | non-default semantics, extensions |
+| **Compile once** | `engine.compile(rule)` → evaluate many | one rule, many payloads |
+| **Session** | `engine.session()` | hot loops; reuses the internal arena across evaluations |
 
-Read the [Rust crate deep-dive](./crates/datalogic-rs/README.md) for detailed descriptions, performance profiles, and code snippets for each tier.
-
----
-
-## Highlights
-
-- **Cross-platform** — Native Rust engine wrapped for Node.js (napi), browsers + edge (WASM), Python, Go, Java, .NET, and PHP.
-- **59 built-in operators** — passes the full official JSONLogic test suite, plus opt-in flagd-compatible operators (see [OpenFeature / flagd](#openfeature--flagd) below).
-- **Thread-safe evaluation** — Compiled `Logic` is `Send + Sync`; share compiled logic across threads via `Arc`.
-- **Zero `unsafe`** — the core engine forbids unsafe code (`#![forbid(unsafe_code)]`).
-- **Zero-copy variables** — Employs `bumpalo`-backed evaluation; read-through operations like `var` borrow directly from the input representation.
-- **Serde-optional** — The default builder has no dependency on `serde_json`. Enable the `serde_json` feature only when you need direct interop or typed JSON deserialization.
-- **Highly Configurable** — Customize division-by-zero behaviors, NaN handling, truthiness rules, and numeric coercions.
-- **Extensible custom operators** — custom operators are authored per host language: implement a Rust trait in the core, or register native callbacks in each binding.
-
-### OpenFeature / flagd
-
-The opt-in `flagd` cargo feature (enabled in every language binding) ships the `fractional` and `sem_ver` operators used by [OpenFeature flagd](https://flagd.dev) flag definitions. `fractional` implements murmurhash3 bucketing that is byte-compatible with the canonical Go evaluator, so users land in the same variant buckets across implementations. That makes the engine usable as an OpenFeature-style feature-flag evaluator in all eight runtimes.
+Rust adds two more tiers: zero-copy evaluation into a caller-owned arena, and traced evaluation powering the visual debugger. See the [Rust crate deep-dive](./crates/datalogic-rs/README.md) for the full ladder.
 
 ---
 
 ## Performance
 
-`datalogic-rs` is optimized for nanosecond-scale hot-path execution: single-digit nanoseconds for folded/scalar rules, 10-120 ns for context-dependent rules. Compiled rules parse into a simple AST with OpCode dispatch (no runtime string matches) and execute inside a reusable memory arena.
-
-Geomean execution time across 44 benchmark suites (Apple M2 Pro, macOS 26.3, Rust 1.93, Node 24; median of 3 samples, see [`tools/benchmark/BENCHMARK.md`][bench] for methodology):
+<!-- canonical-bench v5.0 -->
+Geomean execution time across 44 benchmark suites (Apple M2 Pro; median of 3 samples; methodology in [`tools/benchmark/BENCHMARK.md`][bench]):
 
 ```text
 datalogic-rs (native Rust)              | 9.7 ns   (■) 1x
@@ -208,40 +166,62 @@ jsonlogic-rs (bestowinc Rust engine)    | 218.0 ns (■■■■■■■■■�
 json-logic-js (Reference JS library)    | 423.5 ns (■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■) 43.7x
 ```
 
-### Choosing between our two npm packages
+Rules compile to a simple AST with OpCode dispatch (no runtime string matching) and execute inside a reusable memory arena: single-digit nanoseconds for folded rules, 10-120 ns for context-dependent ones.
 
-In Node.js, the native `@goplasmatic/datalogic-node` package is the fast path: it calls the Rust core directly via N-API and runs close to native Rust performance. The WASM build (`@goplasmatic/datalogic-wasm`) trades speed for portability: the same geomean workload measures 855.6 ns (88.2x native Rust) when run inside Node, but it runs anywhere JavaScript does, including browsers, edge runtimes, and Deno. Use the native package on Node servers; use WASM where you cannot ship a native binary.
+In Node.js, the native `@goplasmatic/datalogic-node` package is the fast path and runs close to native Rust. The WASM build trades speed for portability (855.6 ns on the same workload under Node, but it runs anywhere JavaScript does). Use native on Node servers; use WASM in browsers, edge runtimes, Deno, and Bun.
+
+Reproduce it yourself: `cargo run --release -p datalogic-bench --bin compare` — full matrix and caveats in [`tools/benchmark/BENCHMARK.md`][bench].
 
 [bench]: ./tools/benchmark/BENCHMARK.md
 
 ---
 
+## Engine guarantees
+
+- **Conformance, enforced in CI** — passes the official JSONLogic suite plus an extended cross-binding battery: 1,532 cases across 53 suites, run against the same core every binding ships.
+- **59 built-in operators** — comparison, arithmetic, logic, strings, arrays, datetime, error handling; extensible with custom operators authored per host language.
+- **Thread-safe evaluation** — compiled `Logic` is `Send + Sync`; share it across threads via `Arc`.
+- **Zero `unsafe`** — the core engine forbids unsafe code (`#![forbid(unsafe_code)]`).
+- **Zero-copy variables** — `bumpalo`-backed evaluation; read-through operations like `var` borrow directly from the input.
+- **Serde-optional** — the default build has no `serde_json` dependency; enable the feature only for typed interop.
+- **Configurable semantics** — division-by-zero behavior, NaN handling, truthiness rules, and numeric coercions are all engine options.
+- **Verifiable supply chain** — npm packages publish from GitHub Actions with provenance attestation; check with `npm audit signatures`.
+
+### OpenFeature / flagd
+
+The opt-in `flagd` cargo feature (enabled in every language binding) ships the `fractional` and `sem_ver` operators used by [OpenFeature flagd](https://flagd.dev) flag definitions. `fractional` implements murmurhash3 bucketing byte-compatible with the canonical Go evaluator, so users land in the same variant buckets across implementations. That makes the engine usable as an in-process, flagd-compatible feature-flag evaluator in all eight runtimes.
+
+---
+
 ## Migrating from v4
 
-v5 contains breaking API updates: `DataLogic` is renamed to `Engine`, `CompiledLogic` to `Logic`, and `Operator` to `CustomOperator`. One-shot evaluation now uses `eval_str` (returning a `String`) or `eval_into::<T>` (for deserializing typed values). See the [MIGRATION.md](./MIGRATION.md) file for a detailed upgrade guide.
+v5 contains breaking API updates: `DataLogic` is renamed to `Engine`, `CompiledLogic` to `Logic`, and `Operator` to `CustomOperator`. One-shot evaluation now uses `eval_str` (returning a `String`) or `eval_into::<T>` (for typed values). The npm WASM package moved from `@goplasmatic/datalogic` to `@goplasmatic/datalogic-wasm`. See [MIGRATION.md](./MIGRATION.md) for the step-by-step guide.
 
 ---
 
 ## Resources
 
-- [Full Documentation](https://goplasmatic.github.io/datalogic-rs/) — Operator reference, config guides, and developer documentation
-- [Online Playground](https://goplasmatic.github.io/datalogic-rs/playground/) — Build and test rules in your browser
-- [Rust API Docs on docs.rs](https://docs.rs/datalogic-rs)
-- [JSONLogic Specification](https://jsonlogic.com)
-- [Architecture Overview](./ARCHITECTURE.md) — Module layout and binding structure
-- [Development Guide](./DEVELOPMENT.md) — Local builds, testing, and contribution setup
+- [Documentation site](https://goplasmatic.github.io/datalogic-rs/) — operator reference, per-language guides, configuration
+- [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/) — build and debug rules in your browser
+- [How it compares](https://goplasmatic.github.io/datalogic-rs/comparison.html) — vs json-logic-js, json-logic-engine, jsonlogic-rs, ZEN, CEL
+- [Rust API docs on docs.rs](https://docs.rs/datalogic-rs)
+- [JSONLogic specification](https://jsonlogic.com)
+- [Architecture overview](./ARCHITECTURE.md) · [Development guide](./DEVELOPMENT.md) · [Changelog](./CHANGELOG.md)
 
 ---
 
 ## Who is using datalogic-rs?
 
-If your team runs datalogic-rs in production, we would love to hear about it. Open a [pull request or issue](https://github.com/GoPlasmatic/datalogic-rs/issues) to get your company or project listed here.
+- **[dataflow-rs](https://github.com/GoPlasmatic/dataflow-rs)** (Plasmatic) — workflow/rules automation engine; every route condition is a compiled datalogic rule.
+- **[datafake-rs](https://github.com/GoPlasmatic/datafake-rs)** (Plasmatic) — mock JSON data generator configured with JSONLogic expressions.
+
+Running datalogic-rs in production? [Add your project](https://github.com/GoPlasmatic/datalogic-rs/issues/new?title=Who%27s%20using:%20) — a one-line PR or issue is enough.
 
 ---
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution rules, [DEVELOPMENT.md](./DEVELOPMENT.md) for environment setup, and [ARCHITECTURE.md](./ARCHITECTURE.md) for structural diagrams.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution rules, [DEVELOPMENT.md](./DEVELOPMENT.md) for environment setup, and [ARCHITECTURE.md](./ARCHITECTURE.md) for structural diagrams. Questions and ideas are welcome in [Discussions](https://github.com/GoPlasmatic/datalogic-rs/discussions).
 
 ## About Plasmatic
 
