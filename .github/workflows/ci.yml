@@ -468,7 +468,8 @@ jobs:
           dotnet run -c Release --project examples -- custom-operator
 
   # JVM binding smoke. Same rationale as dotnet-test — the binding is
-  # JNA over the C ABI's cdylib.
+  # java.lang.foreign (FFM) over the C ABI's cdylib. JDK 25 here (current
+  # LTS); the binding compiles at --release 22, its floor.
   jvm-test:
     name: JVM binding test
     runs-on: ubuntu-latest
@@ -478,7 +479,7 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: '25'
 
       - name: Cache Maven repository
         uses: actions/cache@v5
@@ -497,14 +498,14 @@ jobs:
       # programs; the JDK source-file launcher compiles + runs each in one
       # step) so they can't rot. `mvn test` above already compiled
       # target/classes; build-classpath just materialises the dependency
-      # classpath (JNA, Jackson) into target/cp.txt.
+      # classpath (Jackson) into target/cp.txt.
       - name: Run examples
         working-directory: bindings/jvm
         run: |
           mvn -B -q dependency:build-classpath -Dmdep.outputFile=target/cp.txt
-          java -cp "target/classes:$(cat target/cp.txt)" -Djna.library.path=../c/target/release examples/GettingStarted.java
-          java -cp "target/classes:$(cat target/cp.txt)" -Djna.library.path=../c/target/release examples/CompileOnceEvaluateMany.java
-          java -cp "target/classes:$(cat target/cp.txt)" -Djna.library.path=../c/target/release examples/CustomOperator.java
+          java --enable-native-access=ALL-UNNAMED -cp "target/classes:$(cat target/cp.txt)" -Ddatalogic.library.path=../c/target/release examples/GettingStarted.java
+          java --enable-native-access=ALL-UNNAMED -cp "target/classes:$(cat target/cp.txt)" -Ddatalogic.library.path=../c/target/release examples/CompileOnceEvaluateMany.java
+          java --enable-native-access=ALL-UNNAMED -cp "target/classes:$(cat target/cp.txt)" -Ddatalogic.library.path=../c/target/release examples/CustomOperator.java
 
   # PHP binding smoke. Same rationale — PHP FFI over the C ABI.
   php-test:

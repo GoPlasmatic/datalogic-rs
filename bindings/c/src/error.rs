@@ -1,81 +1,129 @@
-//! Thread-local last-error state.
+//! Status codes + owned error handles (ABI v2).
 //!
-//! Every fallible C ABI entry point calls [`clear_error_state`] on entry
-//! and, on failure, populates this block via [`set_error`] or
-//! [`set_error_message`]. C consumers query it via
-//! [`datalogic_last_error_message`] / `_type` / `_operator` / `_path_json`.
-//!
-//! The contract for the returned pointers is the same as POSIX `errno`:
-//! valid until the next call on the current thread that mutates this state.
+//! v1 kept a thread-local "last error" block that every entry point
+//! cleared on entry; that cost a TLS access per call and forced Go to
+//! pin the OS thread around every evaluation just to read the error
+//! afterwards. v2 deletes it: fallible entry points return a [`Status`]
+//! and, when the caller passes a non-NULL `datalogic_error **`, store a
+//! freshly-allocated error handle the caller releases with
+//! [`datalogic_error_free`]. Passing `NULL` skips capture entirely, so
+//! error-reporting cost sits wholly on the error path.
 
-use std::cell::RefCell;
-use std::ffi::{CString, c_char};
+use datalogic_rs::{Error as DlError, Logic};
 
-use datalogic_rs::{Error, Logic};
-
-struct LastError {
-    message: CString,
-    error_type: CString,
-    operator: Option<CString>,
-    path_json: Option<CString>,
-}
-
-thread_local! {
-    static LAST_ERROR: RefCell<Option<LastError>> = const { RefCell::new(None) };
-}
-
-/// Stash a `datalogic_rs::Error` into thread-local state.
+/// Coarse, branchable outcome of a fallible call.
 ///
-/// Passing `compiled` lets us resolve the error's node-id breadcrumb into
-/// a JSON-serialised path (matching the Python binding's `.path`). When
-/// the binding doesn't yet have a compiled `Logic` available (e.g. a
-/// rule-parse failure), pass `None` and `path_json` stays empty.
-pub(crate) fn set_error(err: &Error, compiled: Option<&Logic>) {
-    let message = to_cstring_or_empty(err.to_string());
-    let error_type = to_cstring_or_empty(err.tag().to_string());
-    let operator = err.operator().and_then(|s| CString::new(s).ok());
-    let path_json = compiled.and_then(|c| serialise_path(err, c));
-
-    LAST_ERROR.with(|cell| {
-        *cell.borrow_mut() = Some(LastError {
-            message,
-            error_type,
-            operator,
-            path_json,
-        });
-    });
+/// The fine-grained engine tag (e.g. `"Thrown"`, `"ArithmeticError"`,
+/// `"ConfigurationError"`) stays available via [`datalogic_error_tag`],
+/// so wrappers branch on the status and surface the tag.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Status {
+    /// Success.
+    Ok = 0,
+    /// A NULL handle, a NULL byte pointer with non-zero length, invalid
+    /// UTF-8 input, or a mismatched handle (e.g. a rule compiled by a
+    /// different engine than the session's).
+    InvalidArg = 1,
+    /// Rule / data / config JSON failed to parse.
+    Parse = 2,
+    /// Evaluation failed; the error tag carries the detail
+    /// (`"Thrown"`, `"ArithmeticError"`, `"TypeError"`, …).
+    Eval = 3,
+    /// A typed-result call evaluated successfully but the result is not
+    /// of the requested type.
+    TypeMismatch = 4,
+    /// A panic was caught at the FFI boundary (engine bug or a
+    /// panicking custom-operator callback).
+    Internal = 5,
 }
 
-/// Stash a synthetic error originating in the binding itself (e.g. a
-/// NULL pointer or invalid UTF-8 input). `error_type` should be one of
-/// the engine's stable tags ("ParseError", "InternalError", …) so C
-/// consumers can match on it the same way they would for engine errors.
-pub(crate) fn set_error_message(message: impl Into<String>, error_type: &'static str) {
-    LAST_ERROR.with(|cell| {
-        *cell.borrow_mut() = Some(LastError {
-            message: to_cstring_or_empty(message.into()),
-            error_type: to_cstring_or_empty(error_type.to_string()),
+/// Owned error detail behind `datalogic_error *`. Allocated only when
+/// the caller asked for capture; released via [`datalogic_error_free`].
+pub struct Error {
+    status: Status,
+    message: String,
+    tag: String,
+    operator: Option<String>,
+    path_json: Option<String>,
+}
+
+impl Error {
+    /// Wrap an engine error. Passing `compiled` lets us resolve the
+    /// error's node-id breadcrumb into a JSON-serialised path (matching
+    /// the Python binding's `.path`); pass `None` when no compiled
+    /// `Logic` is in scope (e.g. a rule-parse failure).
+    pub(crate) fn from_engine(err: &DlError, compiled: Option<&Logic>) -> Self {
+        let tag = err.tag().to_string();
+        let status = match tag.as_str() {
+            "ParseError" => Status::Parse,
+            "InternalError" => Status::Internal,
+            _ => Status::Eval,
+        };
+        Self {
+            status,
+            message: err.to_string(),
+            tag,
+            operator: err.operator().map(str::to_owned),
+            path_json: compiled.and_then(|c| serialize_path(err, c)),
+        }
+    }
+
+    pub(crate) fn invalid_arg(message: impl Into<String>) -> Self {
+        Self {
+            status: Status::InvalidArg,
+            message: message.into(),
+            tag: "InvalidArgument".to_string(),
             operator: None,
             path_json: None,
-        });
-    });
+        }
+    }
+
+    pub(crate) fn type_mismatch(message: impl Into<String>) -> Self {
+        Self {
+            status: Status::TypeMismatch,
+            message: message.into(),
+            tag: "TypeMismatch".to_string(),
+            operator: None,
+            path_json: None,
+        }
+    }
+
+    pub(crate) fn internal(message: impl Into<String>) -> Self {
+        Self {
+            status: Status::Internal,
+            message: message.into(),
+            tag: "InternalError".to_string(),
+            operator: None,
+            path_json: None,
+        }
+    }
+
+    pub(crate) fn status(&self) -> Status {
+        self.status
+    }
+
+    /// Item-level error rendering for the batch entry points: a small
+    /// JSON object written into the shared result buffer so per-item
+    /// failures don't need their own handles.
+    pub(crate) fn write_item_json_into(&self, out: &mut Vec<u8>) {
+        let obj = match &self.operator {
+            Some(op) => serde_json::json!({
+                "tag": self.tag,
+                "message": self.message,
+                "operator": op,
+            }),
+            None => serde_json::json!({
+                "tag": self.tag,
+                "message": self.message,
+            }),
+        };
+        // `to_string` on a json! literal cannot fail.
+        out.extend_from_slice(obj.to_string().as_bytes());
+    }
 }
 
-pub(crate) fn clear_error_state() {
-    LAST_ERROR.with(|cell| {
-        *cell.borrow_mut() = None;
-    });
-}
-
-fn to_cstring_or_empty(s: String) -> CString {
-    // Strip any interior NUL bytes so CString::new never fails — these
-    // shouldn't occur in engine error messages, but being defensive
-    // here keeps the FFI surface infallible.
-    let cleaned: String = s.chars().filter(|c| *c != '\0').collect();
-    CString::new(cleaned).unwrap_or_else(|_| CString::new("").expect("empty"))
-}
-
-fn serialise_path(err: &Error, compiled: &Logic) -> Option<CString> {
+fn serialize_path(err: &DlError, compiled: &Logic) -> Option<String> {
     let steps = err.resolve_path(compiled);
     let arr: Vec<serde_json::Value> = steps
         .iter()
@@ -88,72 +136,126 @@ fn serialise_path(err: &Error, compiled: &Logic) -> Option<CString> {
             })
         })
         .collect();
-    serde_json::to_string(&arr)
-        .ok()
-        .and_then(|j| CString::new(j).ok())
+    serde_json::to_string(&arr).ok()
+}
+
+/// Store `err` into the caller's out-param (if provided) and return its
+/// status. The single exit path every fallible entry point funnels
+/// failures through.
+///
+/// # Safety
+///
+/// `err_out` must be `NULL` or a valid, writable `datalogic_error *`
+/// slot. On non-NULL, any previous value is overwritten without being
+/// freed — callers own initialising the slot (conventionally to `NULL`)
+/// and releasing whatever lands in it.
+pub(crate) unsafe fn fail(err_out: *mut *mut Error, err: Error) -> Status {
+    let status = err.status;
+    if !err_out.is_null() {
+        unsafe { *err_out = Box::into_raw(Box::new(err)) };
+    }
+    status
 }
 
 // === Exported C ABI ===
 
-/// Reset thread-local last-error state. Safe to call when no error is set.
-#[unsafe(no_mangle)]
-pub extern "C" fn datalogic_last_error_clear() {
-    clear_error_state();
-}
-
-/// Return the last error's human-readable message, or `NULL` if no error.
+/// Release an error handle produced by any `datalogic_*` call. Safe to
+/// call with `NULL`.
 ///
-/// The returned pointer is owned by the library; do **not** free. It is
-/// valid only until the next call on this thread that mutates the
-/// last-error block (any fallible `datalogic_*` call, plus
-/// [`datalogic_last_error_clear`]).
-#[unsafe(no_mangle)]
-pub extern "C" fn datalogic_last_error_message() -> *const c_char {
-    LAST_ERROR.with(|cell| match &*cell.borrow() {
-        Some(e) => e.message.as_ptr(),
-        None => std::ptr::null(),
-    })
-}
-
-/// Return the last error's stable type tag (e.g. `"ParseError"`,
-/// `"Thrown"`, `"NaN"`, `"InternalError"`), or `NULL` if no error.
+/// # Safety
 ///
-/// Same lifetime caveat as [`datalogic_last_error_message`].
+/// `err` must either be `NULL` or a pointer stored into a
+/// `datalogic_error **` out-param by this library that has not been
+/// freed.
 #[unsafe(no_mangle)]
-pub extern "C" fn datalogic_last_error_type() -> *const c_char {
-    LAST_ERROR.with(|cell| match &*cell.borrow() {
-        Some(e) => e.error_type.as_ptr(),
-        None => std::ptr::null(),
-    })
+pub unsafe extern "C" fn datalogic_error_free(err: *mut Error) {
+    if err.is_null() {
+        return;
+    }
+    drop(unsafe { Box::from_raw(err) });
 }
 
-/// Return the outermost failing operator's name (e.g. `"+"`, `"var"`),
-/// or `NULL` if the last error didn't originate inside a named operator
-/// (or if no error is set).
+/// The error's [`Status`] (same value the failing call returned).
+/// Returns [`Status::Internal`] for a `NULL` handle.
+///
+/// # Safety
+///
+/// `err` must be `NULL` or a valid error handle.
 #[unsafe(no_mangle)]
-pub extern "C" fn datalogic_last_error_operator() -> *const c_char {
-    LAST_ERROR.with(|cell| match &*cell.borrow() {
-        Some(e) => e
-            .operator
-            .as_ref()
-            .map(|c| c.as_ptr())
-            .unwrap_or(std::ptr::null()),
-        None => std::ptr::null(),
-    })
+pub unsafe extern "C" fn datalogic_error_status(err: *const Error) -> Status {
+    match unsafe { err.as_ref() } {
+        Some(e) => e.status,
+        None => Status::Internal,
+    }
 }
 
-/// Return the resolved root-to-leaf error path as a JSON array string
-/// (matching the Python binding's `.path` attribute), or `NULL` if not
-/// available. Available when the failing call had a compiled `Rule` in
-/// scope at the time of failure.
+/// Write `s` through the (pointer, `*len_out`) accessor convention:
+/// borrowed UTF-8 bytes, not NUL-terminated, `NULL`/0 when absent.
+unsafe fn str_out(s: Option<&str>, len_out: *mut usize) -> *const u8 {
+    let (ptr, len) = match s {
+        Some(s) => (s.as_ptr(), s.len()),
+        None => (std::ptr::null(), 0),
+    };
+    if !len_out.is_null() {
+        unsafe { *len_out = len };
+    }
+    ptr
+}
+
+/// The error's human-readable message. Borrowed from the handle (valid
+/// until [`datalogic_error_free`]); not NUL-terminated — use `*len_out`.
+///
+/// # Safety
+///
+/// `err` must be `NULL` (returns `NULL`) or a valid error handle;
+/// `len_out` must be `NULL` or writable.
 #[unsafe(no_mangle)]
-pub extern "C" fn datalogic_last_error_path_json() -> *const c_char {
-    LAST_ERROR.with(|cell| match &*cell.borrow() {
-        Some(e) => e
-            .path_json
-            .as_ref()
-            .map(|c| c.as_ptr())
-            .unwrap_or(std::ptr::null()),
-        None => std::ptr::null(),
-    })
+pub unsafe extern "C" fn datalogic_error_message(err: *const Error, len_out: *mut usize) -> *const u8 {
+    unsafe { str_out(err.as_ref().map(|e| e.message.as_str()), len_out) }
+}
+
+/// The error's stable type tag — the engine's `Error::tag()` values
+/// (`"ParseError"`, `"Thrown"`, `"ArithmeticError"`, `"TypeError"`,
+/// `"ConfigurationError"`, …) plus this binding's own
+/// `"InvalidArgument"` / `"TypeMismatch"` / `"InternalError"`. Same
+/// lifetime and encoding contract as [`datalogic_error_message`].
+///
+/// # Safety
+///
+/// `err` must be `NULL` (returns `NULL`) or a valid error handle;
+/// `len_out` must be `NULL` or writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn datalogic_error_tag(err: *const Error, len_out: *mut usize) -> *const u8 {
+    unsafe { str_out(err.as_ref().map(|e| e.tag.as_str()), len_out) }
+}
+
+/// The outermost failing operator's name (e.g. `"+"`, `"var"`), or
+/// `NULL` if the error didn't originate inside a named operator.
+///
+/// # Safety
+///
+/// `err` must be `NULL` (returns `NULL`) or a valid error handle;
+/// `len_out` must be `NULL` or writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn datalogic_error_operator(
+    err: *const Error,
+    len_out: *mut usize,
+) -> *const u8 {
+    unsafe { str_out(err.as_ref().and_then(|e| e.operator.as_deref()), len_out) }
+}
+
+/// The resolved root-to-leaf error path as a JSON array string
+/// (matching the Python binding's `.path`), or `NULL` when the failing
+/// call had no compiled rule in scope.
+///
+/// # Safety
+///
+/// `err` must be `NULL` (returns `NULL`) or a valid error handle;
+/// `len_out` must be `NULL` or writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn datalogic_error_path_json(
+    err: *const Error,
+    len_out: *mut usize,
+) -> *const u8 {
+    unsafe { str_out(err.as_ref().and_then(|e| e.path_json.as_deref()), len_out) }
 }

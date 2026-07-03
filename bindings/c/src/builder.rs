@@ -1,11 +1,21 @@
-//! Engine builder + custom operator FFI.
+//! Engine builder + custom operator FFI (v2 callback contract).
 //!
 //! The Rust core's [`datalogic_rs::EngineBuilder`] is consume-on-method
 //! (each `with_*` returns the moved builder), so the C wrapper hides
-//! ownership transfer behind an opaque handle whose mutating entry points
-//! `take` and `replace` the inner builder in-place.
+//! ownership transfer behind an opaque handle whose mutating entry
+//! points `take` and `replace` the inner builder in-place.
+//!
+//! ## Callback contract (v2)
+//!
+//! v1 callbacks returned a freshly `malloc`'d NUL-terminated string the
+//! binding parsed and then `free`'d — one cross-allocator handoff and
+//! one extra boundary crossing per operator invocation. v2 callbacks
+//! receive a `datalogic_op_result *` and *write* their outcome through
+//! [`datalogic_op_result_set_json`] / [`datalogic_op_result_set_error`]
+//! (both copy immediately), then return `0` for success or non-zero for
+//! failure. No allocator crosses the boundary in either direction.
 
-use std::ffi::{CStr, CString, c_char, c_void};
+use std::ffi::c_void;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
 use datalogic_rs::bumpalo::Bump;
@@ -15,62 +25,110 @@ use datalogic_rs::{
     Result as DlResult,
 };
 
-use crate::cstr_to_str;
 use crate::engine::Engine;
-use crate::error::{clear_error_state, set_error, set_error_message};
+use crate::error::{Error, Status, fail};
+use crate::{ffi_guard, guard_status, str_from_raw};
 
-unsafe extern "C" {
-    /// `free(3)` from libc. The Rust default allocator on `cdylib` targets
-    /// is the system allocator (which is libc malloc on Linux/macOS/Windows),
-    /// so freeing user-supplied `malloc`'d strings via libc `free` is safe
-    /// across the FFI boundary.
-    fn free(ptr: *mut c_void);
+/// Outcome carrier handed to custom-operator callbacks (opaque
+/// `struct datalogic_op_result`). Only valid for the duration of the
+/// callback invocation — never store the pointer.
+pub struct OpResult {
+    json: Option<Vec<u8>>,
+    error: Option<Vec<u8>>,
+}
+
+/// Set the operator's result as UTF-8 JSON (copied immediately; the
+/// caller keeps ownership of `json`). Calling twice replaces the
+/// earlier value. A success return (`0`) with no JSON set evaluates to
+/// JSON `null`.
+///
+/// # Safety
+///
+/// `out` must be the pointer passed into the currently-running
+/// callback; `json` must reference `len` readable bytes (a `NULL`
+/// pointer reads as empty).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn datalogic_op_result_set_json(
+    out: *mut OpResult,
+    json: *const u8,
+    len: usize,
+) {
+    let Some(out) = (unsafe { out.as_mut() }) else {
+        return;
+    };
+    let bytes = if json.is_null() {
+        &[][..]
+    } else {
+        unsafe { std::slice::from_raw_parts(json, len) }
+    };
+    out.json = Some(bytes.to_vec());
+}
+
+/// Set the operator's error message (copied immediately). Read only
+/// when the callback returns non-zero; a non-zero return with no
+/// message set produces a generic error naming the operator.
+///
+/// # Safety
+///
+/// Same contract as [`datalogic_op_result_set_json`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn datalogic_op_result_set_error(
+    out: *mut OpResult,
+    msg: *const u8,
+    len: usize,
+) {
+    let Some(out) = (unsafe { out.as_mut() }) else {
+        return;
+    };
+    let bytes = if msg.is_null() {
+        &[][..]
+    } else {
+        unsafe { std::slice::from_raw_parts(msg, len) }
+    };
+    out.error = Some(bytes.to_vec());
 }
 
 /// Callback signature for user-defined operators.
 ///
-/// * `args_json` — borrowed, NUL-terminated UTF-8 JSON-array string of
-///   pre-evaluated arguments (e.g. `"[1, 2, \"x\"]"`). Do not free.
-/// * `user_data` — opaque pointer the caller registered via
-///   [`datalogic_engine_builder_add_operator`].
-/// * `error_out` — out-pointer. On error, set `*error_out` to a freshly
-///   `malloc`'d, NUL-terminated UTF-8 message (the binding will call
-///   `free` on it). May be left untouched / `NULL` for a generic error.
+/// * `args_json` / `args_len` — borrowed UTF-8 JSON-array of the
+///   pre-evaluated arguments (e.g. `[1, 2, "x"]`). Not NUL-terminated;
+///   valid only during the invocation.
+/// * `user_data` — opaque pointer registered alongside the callback.
+/// * `out` — write the outcome through the `datalogic_op_result_set_*`
+///   functions.
 ///
-/// Returns:
-/// - **success**: a freshly `malloc`'d, NUL-terminated UTF-8 JSON string
-///   (e.g. `"42"`, `"\"variant_a\""`, `"{\"a\":1}"`). The binding parses
-///   and then calls `free` on it.
-/// - **error**: `NULL`, optionally with `*error_out` filled.
-pub type DatalogicOpCallback = Option<
+/// Return `0` for success, non-zero for failure.
+pub type DatalogicOpFn = Option<
     unsafe extern "C" fn(
-        args_json: *const c_char,
+        args_json: *const u8,
+        args_len: usize,
         user_data: *mut c_void,
-        error_out: *mut *mut c_char,
-    ) -> *mut c_char,
+        out: *mut OpResult,
+    ) -> i32,
 >;
 
-/// Opaque builder handle. Internally holds an `Option<EngineBuilder>` so
-/// each `set_*` / `add_operator` entry point can take the inner by value
-/// (the Rust builder consumes `self` on every method) and put it back.
+/// Opaque builder handle (`struct datalogic_engine_builder`).
+/// Internally holds an `Option<EngineBuilder>` so each `set_*` /
+/// `add_operator` entry point can take the inner by value (the Rust
+/// builder consumes `self` on every method) and put it back.
 pub struct EngineBuilder {
     inner: Option<datalogic_rs::EngineBuilder>,
 }
 
-/// Construct a new engine builder. Caller must release the handle via
-/// [`datalogic_engine_builder_free`] (no-op after a successful
-/// [`datalogic_engine_builder_build`], which consumes the builder).
+/// Construct a new engine builder. Release the handle via
+/// [`datalogic_engine_builder_free`] (still required after a successful
+/// [`datalogic_engine_builder_build`], which only drains the inner
+/// builder).
 #[unsafe(no_mangle)]
 pub extern "C" fn datalogic_engine_builder_new() -> *mut EngineBuilder {
-    clear_error_state();
-    Box::into_raw(Box::new(EngineBuilder {
-        inner: Some(RsEngine::builder()),
-    }))
+    ffi_guard(std::ptr::null_mut(), || {
+        Box::into_raw(Box::new(EngineBuilder {
+            inner: Some(RsEngine::builder()),
+        }))
+    })
 }
 
-/// Free an engine builder handle. Safe with `NULL`. Idempotent after a
-/// successful `build()` (which already drops the inner builder; the
-/// outer handle still needs freeing).
+/// Free an engine builder handle. Safe with `NULL`.
 ///
 /// # Safety
 ///
@@ -84,20 +142,18 @@ pub unsafe extern "C" fn datalogic_engine_builder_free(builder: *mut EngineBuild
     drop(unsafe { Box::from_raw(builder) });
 }
 
-/// Toggle templating mode on the builder.
+/// Toggle templating mode on the builder. No-op on a `NULL` or
+/// already-built builder.
 ///
 /// # Safety
 ///
-/// `builder` must be a valid pointer returned by
-/// [`datalogic_engine_builder_new`].
+/// `builder` must be `NULL` or a valid builder handle.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn datalogic_engine_builder_set_templating(
     builder: *mut EngineBuilder,
     enabled: i32,
 ) {
-    clear_error_state();
     let Some(handle) = (unsafe { builder.as_mut() }) else {
-        set_error_message("engine builder pointer is null", "ParseError");
         return;
     };
     if let Some(b) = handle.inner.take() {
@@ -105,102 +161,80 @@ pub unsafe extern "C" fn datalogic_engine_builder_set_templating(
     }
 }
 
-/// Set the engine's evaluation configuration from a JSON object string.
+/// Set the engine's evaluation configuration from a JSON object.
 ///
-/// `config_json` is parsed by the core crate's shared config parser
+/// Parsed by the core crate's shared config parser
 /// ([`EvaluationConfig::from_json_str`]) — the same wire format every
-/// binding uses. All keys are optional; an optional `"preset"`
-/// (`"default"` | `"safe_arithmetic"` | `"strict"`) selects the starting
-/// point and the remaining keys override individual fields on top of it:
-///
-/// | Key | Value |
-/// |-----|-------|
-/// | `preset` | `"default"` \| `"safe_arithmetic"` \| `"strict"` |
-/// | `arithmetic_nan_handling` | `"throw_error"` \| `"ignore_value"` \| `"coerce_to_zero"` \| `"return_null"` |
-/// | `division_by_zero` | `"return_saturated"` \| `"throw_error"` \| `"return_null"` \| `"return_infinity"` |
-/// | `loose_equality_errors` | bool |
-/// | `truthy_evaluator` | `"javascript"` \| `"python"` \| `"strict_boolean"` |
-/// | `numeric_coercion` | object with bool keys `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
-/// | `max_recursion_depth` | integer ≥ 1 |
-///
-/// Unknown keys, unknown enum strings, and type mismatches are rejected
-/// (tag `"ConfigurationError"`) so typos fail loudly instead of being
-/// silently ignored. Each call replaces the builder's entire evaluation
-/// config; templating and registered operators are unaffected.
-///
-/// Returns `0` on success, `-1` on failure with the thread-local
-/// last-error block populated (query
-/// [`crate::datalogic_last_error_message`]).
+/// binding uses (`preset`, `arithmetic_nan_handling`,
+/// `division_by_zero`, `loose_equality_errors`, `truthy_evaluator`,
+/// `numeric_coercion`, `max_recursion_depth`). Unknown keys and enum
+/// strings are rejected (tag `"ConfigurationError"`) so typos fail
+/// loudly. Each call replaces the builder's entire evaluation config;
+/// templating and registered operators are unaffected. A failed call
+/// leaves the builder usable.
 ///
 /// # Safety
 ///
-/// `builder` must be a valid pointer returned by
-/// [`datalogic_engine_builder_new`]; `config_json` must be a valid
-/// NUL-terminated UTF-8 string.
+/// `builder` must be a valid builder handle; `config_json` must
+/// reference `config_len` readable bytes; `err` follows the crate-wide
+/// error out-param contract.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn datalogic_engine_builder_set_config_json(
     builder: *mut EngineBuilder,
-    config_json: *const c_char,
-) -> i32 {
-    crate::ffi_guard(-1, || {
-        clear_error_state();
+    config_json: *const u8,
+    config_len: usize,
+    err: *mut *mut Error,
+) -> Status {
+    guard_status(err, || {
         let Some(handle) = (unsafe { builder.as_mut() }) else {
-            set_error_message("engine builder pointer is null", "ParseError");
-            return -1;
+            return unsafe { fail(err, Error::invalid_arg("engine builder pointer is null")) };
         };
-        let Some(config_str) = cstr_to_str(config_json) else {
-            set_error_message("config_json is null or not valid UTF-8", "ParseError");
-            return -1;
+        let config_str = match unsafe { str_from_raw("config_json", config_json, config_len) } {
+            Ok(s) => s,
+            Err(e) => return unsafe { fail(err, e) },
         };
         let config = match EvaluationConfig::from_json_str(config_str) {
             Ok(c) => c,
-            Err(e) => {
-                set_error(&e, None);
-                return -1;
-            }
+            Err(e) => return unsafe { fail(err, Error::from_engine(&e, None)) },
         };
         if let Some(b) = handle.inner.take() {
             handle.inner = Some(b.with_config(config));
         }
-        0
+        Status::Ok
     })
 }
 
-/// Register a custom operator. The callback is invoked on every match of
-/// the operator name during evaluation. See [`DatalogicOpCallback`] for
-/// the contract.
-///
-/// **Built-ins win** — registering a name that collides with a built-in
-/// JSONLogic operator (`+`, `if`, `var`, …) silently does nothing at
-/// evaluation time; the built-in dispatches first.
+/// Register a custom operator. The callback runs on every match of the
+/// operator name during evaluation — see [`DatalogicOpFn`] for the
+/// contract. **Built-ins win**: registering a name that collides with a
+/// built-in JSONLogic operator silently never dispatches.
 ///
 /// # Safety
 ///
-/// `builder` must be valid; `name` must be NUL-terminated UTF-8;
-/// `callback` must be a valid C function pointer (or `NULL` to make this
-/// a no-op). `user_data` is opaque to the binding and passed back into
-/// every invocation.
+/// `builder` must be a valid builder handle; `name` must reference
+/// `name_len` readable bytes; `callback` must be a valid function
+/// pointer (a `NULL` callback is rejected as `InvalidArg`); `user_data`
+/// is opaque, passed back into every invocation, and must be
+/// thread-safe if the engine is shared across threads.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn datalogic_engine_builder_add_operator(
     builder: *mut EngineBuilder,
-    name: *const c_char,
-    callback: DatalogicOpCallback,
+    name: *const u8,
+    name_len: usize,
+    callback: DatalogicOpFn,
     user_data: *mut c_void,
-) -> i32 {
-    crate::ffi_guard(-1, || {
-        clear_error_state();
+    err: *mut *mut Error,
+) -> Status {
+    guard_status(err, || {
         let Some(handle) = (unsafe { builder.as_mut() }) else {
-            set_error_message("engine builder pointer is null", "ParseError");
-            return -1;
+            return unsafe { fail(err, Error::invalid_arg("engine builder pointer is null")) };
         };
         let Some(callback) = callback else {
-            // No-op: NULL callback. Could also error, but consistent with
-            // the "permissive" feel of the other set_* entry points.
-            return 0;
+            return unsafe { fail(err, Error::invalid_arg("operator callback is null")) };
         };
-        let Some(name_str) = cstr_to_str(name) else {
-            set_error_message("operator name is null or not valid UTF-8", "ParseError");
-            return -1;
+        let name_str = match unsafe { str_from_raw("name", name, name_len) } {
+            Ok(s) => s,
+            Err(e) => return unsafe { fail(err, e) },
         };
         let name_owned = name_str.to_string();
         if let Some(b) = handle.inner.take() {
@@ -213,32 +247,27 @@ pub unsafe extern "C" fn datalogic_engine_builder_add_operator(
                 },
             ));
         }
-        0
+        Status::Ok
     })
 }
 
 /// Finalise the builder into an [`Engine`]. The builder handle is left
-/// in a drained state — [`datalogic_engine_builder_free`] still needs to
-/// be called to release the outer allocation.
-///
-/// Returns `NULL` if the builder has already been built / is invalid.
+/// drained — [`datalogic_engine_builder_free`] still releases the outer
+/// allocation. Returns `NULL` if the builder is `NULL` or already
+/// built.
 ///
 /// # Safety
 ///
-/// `builder` must be a valid pointer returned by
-/// [`datalogic_engine_builder_new`].
+/// `builder` must be `NULL` or a valid builder handle.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn datalogic_engine_builder_build(
     builder: *mut EngineBuilder,
 ) -> *mut Engine {
-    crate::ffi_guard(std::ptr::null_mut(), || {
-        clear_error_state();
+    ffi_guard(std::ptr::null_mut(), || {
         let Some(handle) = (unsafe { builder.as_mut() }) else {
-            set_error_message("engine builder pointer is null", "ParseError");
             return std::ptr::null_mut();
         };
         let Some(b) = handle.inner.take() else {
-            set_error_message("engine builder already built", "ParseError");
             return std::ptr::null_mut();
         };
         Box::into_raw(Box::new(Engine {
@@ -252,18 +281,19 @@ pub unsafe extern "C" fn datalogic_engine_builder_build(
 struct CCustomOperator {
     name: String,
     callback: unsafe extern "C" fn(
-        args_json: *const c_char,
+        args_json: *const u8,
+        args_len: usize,
         user_data: *mut c_void,
-        error_out: *mut *mut c_char,
-    ) -> *mut c_char,
+        out: *mut OpResult,
+    ) -> i32,
     user_data: AtomicPtr<c_void>,
 }
 
-// SAFETY: the operator is shared with the engine's `Arc<Engine>` and may
-// be invoked from any thread. `user_data` is an opaque pointer the user
-// promises to make thread-safe themselves — the binding never dereferences
-// it. The callback function pointer is `extern "C" fn`, which is Send +
-// Sync by virtue of being a code address.
+// SAFETY: the operator is shared with the engine's `Arc<Engine>` and
+// may be invoked from any thread. `user_data` is an opaque pointer the
+// user promises to make thread-safe themselves — the binding never
+// dereferences it. The callback function pointer is `extern "C" fn`,
+// which is Send + Sync by virtue of being a code address.
 unsafe impl Send for CCustomOperator {}
 unsafe impl Sync for CCustomOperator {}
 
@@ -274,50 +304,49 @@ impl CustomOperator for CCustomOperator {
         _ctx: &mut EvalContext<'_, 'a>,
         arena: &'a Bump,
     ) -> DlResult<&'a DataValue<'a>> {
-        // 1. Serialize args as a JSON array.
-        let mut json = String::from("[");
+        // 1. Serialize args as one JSON array, straight into bytes.
+        let mut args_json: Vec<u8> = Vec::with_capacity(64);
+        args_json.push(b'[');
         for (i, a) in args.iter().enumerate() {
             if i > 0 {
-                json.push(',');
+                args_json.push(b',');
             }
-            json.push_str(&a.to_json_string());
+            a.write_json_into(&mut args_json);
         }
-        json.push(']');
-        let c_json = CString::new(json).map_err(|e| {
-            DlError::custom_message(format!(
-                "custom operator '{}': args contained NUL byte: {}",
-                self.name, e
-            ))
-        })?;
+        args_json.push(b']');
 
         // 2. Invoke the C callback.
         let user_data = self.user_data.load(Ordering::Relaxed);
-        let mut error_ptr: *mut c_char = std::ptr::null_mut();
-        let result_ptr =
-            unsafe { (self.callback)(c_json.as_ptr(), user_data, &mut error_ptr as *mut _) };
+        let mut out = OpResult {
+            json: None,
+            error: None,
+        };
+        let rc = unsafe {
+            (self.callback)(args_json.as_ptr(), args_json.len(), user_data, &mut out)
+        };
 
-        if result_ptr.is_null() {
-            // Error path. Read out the error message (if any) and `free` it.
-            let msg = if error_ptr.is_null() {
-                format!("custom operator '{}' returned null", self.name)
-            } else {
-                let s = unsafe { CStr::from_ptr(error_ptr) }
-                    .to_string_lossy()
-                    .into_owned();
-                unsafe { free(error_ptr as *mut c_void) };
-                format!("custom operator '{}': {}", self.name, s)
+        if rc != 0 {
+            let msg = match &out.error {
+                Some(bytes) if !bytes.is_empty() => format!(
+                    "custom operator '{}': {}",
+                    self.name,
+                    String::from_utf8_lossy(bytes)
+                ),
+                _ => format!("custom operator '{}' failed (rc={rc})", self.name),
             };
             return Err(DlError::custom_message(msg));
         }
 
-        // 3. Copy the result out and free the user's buffer.
-        let result_str = unsafe { CStr::from_ptr(result_ptr) }
-            .to_string_lossy()
-            .into_owned();
-        unsafe { free(result_ptr as *mut c_void) };
-
-        // 4. Parse into the evaluation arena.
-        let arena_str = arena.alloc_str(&result_str);
+        // 3. Parse the result into the evaluation arena. No JSON set on
+        //    a success return means JSON null.
+        let result_bytes = out.json.as_deref().unwrap_or(b"null");
+        let result_str = std::str::from_utf8(result_bytes).map_err(|_| {
+            DlError::custom_message(format!(
+                "custom operator '{}' returned invalid UTF-8",
+                self.name
+            ))
+        })?;
+        let arena_str = arena.alloc_str(result_str);
         let parsed = DataValue::from_str(arena_str, arena).map_err(|e| {
             DlError::custom_message(format!(
                 "custom operator '{}' returned invalid JSON: {}",

@@ -2,7 +2,7 @@
 // Go, backed by the datalogic-rs native Rust core.
 //
 // One engine, identical semantics across Go, Node.js, WASM, Python, Java,
-// .NET, PHP, and Rust: the binding routes through the shared C ABI in
+// .NET, PHP, and Rust: the binding routes through the shared C ABI (v2) in
 // bindings/c/ and links libdatalogic_c.a statically. Run `make build` once
 // after cloning to produce the static library that cgo links against.
 //
@@ -28,11 +28,18 @@
 //	    _ = out
 //	}
 //
+// # Parsed data handles (parse once, evaluate many)
+//
+//	data, err := datalogic.ParseData(`{"x":42}`)
+//	defer data.Close()
+//	out, _ := s.EvaluateData(rule, data)     // zero parse work per call
+//	ok, _ := s.EvaluateBool(boolRule, data)  // typed result, no JSON decode
+//
 // # Threading
 //
-// Engine and Rule are safe to share across goroutines. Session is NOT —
-// each goroutine that wants the hot-loop arena should open its own
-// Session via Engine.Session().
+// Engine, Rule, and DataHandle are safe to share across goroutines.
+// Session is NOT — each goroutine that wants the hot-loop arena should
+// open its own Session via Engine.Session().
 package datalogic
 
 // The cgo LDFLAGS for linking libdatalogic_c.a live in per-platform
@@ -49,9 +56,58 @@ package datalogic
 import "C"
 
 import (
+	"fmt"
 	"runtime"
 	"unsafe"
 )
+
+// init asserts that the linked native library speaks C ABI v2. A
+// mismatch means a stale libdatalogic_c.a was staged next to a newer
+// binding (or vice versa) — fail loudly at load time instead of
+// corrupting memory at call time.
+func init() {
+	if v := uint32(C.datalogic_abi_version()); v != uint32(C.DATALOGIC_ABI_VERSION) {
+		panic(fmt.Sprintf(
+			"datalogic: native libdatalogic_c reports ABI v%d, this binding requires v%d — restage the static library (run `make build` in bindings/go)",
+			v, uint32(C.DATALOGIC_ABI_VERSION)))
+	}
+}
+
+// =============== (ptr, len) marshalling helpers ===============
+
+// strBytes exposes a Go string's bytes to C as a (pointer, length) pair
+// — zero-copy. This is legal under the cgo pointer-passing rules: the
+// pointer is only ever handed to C as a call argument (the Go memory is
+// pinned for the duration of that call), and the v2 ABI never retains
+// input pointers past the call. Empty strings pass (nil, 0), which the
+// ABI documents as the empty string (unsafe.StringData is unspecified
+// for empty strings).
+func strBytes(s string) (*C.uint8_t, C.size_t) {
+	if len(s) == 0 {
+		return nil, 0
+	}
+	return (*C.uint8_t)(unsafe.Pointer(unsafe.StringData(s))), C.size_t(len(s))
+}
+
+// goStringN copies a borrowed (ptr, len) UTF-8 byte range from C into
+// an owned Go string. Callers must invoke it before the borrow dies
+// (for session results: before the next call touching that session).
+func goStringN(ptr *C.uint8_t, n C.size_t) string {
+	if n == 0 {
+		return ""
+	}
+	return string(unsafe.Slice((*byte)(unsafe.Pointer(ptr)), int(n)))
+}
+
+// takeBuf copies an owned datalogic_buf into a Go string and releases
+// the native allocation.
+func takeBuf(buf C.datalogic_buf) string {
+	s := goStringN(buf.ptr, buf.len)
+	C.datalogic_buf_free(buf)
+	return s
+}
+
+// =============== Engine ===============
 
 // Engine is a JSONLogic compile/evaluate engine.
 //
@@ -107,24 +163,15 @@ func (e *Engine) Close() {
 // Compile parses a JSONLogic rule (as a JSON string) into a reusable
 // Rule that can be evaluated against many data inputs without re-parsing.
 func (e *Engine) Compile(ruleJSON string) (*Rule, error) {
-	cRule := C.CString(ruleJSON)
-	defer C.free(unsafe.Pointer(cRule))
-	// Pin the goroutine to its OS thread across the call and the last-error
-	// read: the C ABI's last-error block is thread-local, so a reschedule
-	// between the NULL return and lastError() could read another thread's
-	// error (or none). See lastError().
-	runtime.LockOSThread()
-	ptr := C.datalogic_engine_compile(e.ptr, cRule)
-	var err error
-	if ptr == nil {
-		err = lastError()
-	}
-	runtime.UnlockOSThread()
+	rp, rl := strBytes(ruleJSON)
+	var rulePtr *C.datalogic_rule
+	var cerr *C.datalogic_error
+	rc := C.datalogic_engine_compile(e.ptr, rp, rl, &rulePtr, &cerr)
 	runtime.KeepAlive(e)
-	if ptr == nil {
-		return nil, err
+	if rc != C.DATALOGIC_STATUS_OK {
+		return nil, takeError(cerr)
 	}
-	r := &Rule{ptr: ptr}
+	r := &Rule{ptr: rulePtr}
 	runtime.SetFinalizer(r, (*Rule).Close)
 	return r, nil
 }
@@ -135,24 +182,16 @@ func (e *Engine) Compile(ruleJSON string) (*Rule, error) {
 // For repeated evaluations of the same rule, prefer Compile + Rule.Evaluate
 // — Apply re-parses the rule on every call.
 func (e *Engine) Apply(ruleJSON, dataJSON string) (string, error) {
-	cRule := C.CString(ruleJSON)
-	defer C.free(unsafe.Pointer(cRule))
-	cData := C.CString(dataJSON)
-	defer C.free(unsafe.Pointer(cData))
-	// Keep the call and the thread-local last-error read on one OS thread.
-	runtime.LockOSThread()
-	out := C.datalogic_engine_apply(e.ptr, cRule, cData)
-	var err error
-	if out == nil {
-		err = lastError()
-	}
-	runtime.UnlockOSThread()
+	rp, rl := strBytes(ruleJSON)
+	dp, dl := strBytes(dataJSON)
+	var out C.datalogic_buf
+	var cerr *C.datalogic_error
+	rc := C.datalogic_engine_apply(e.ptr, rp, rl, dp, dl, &out, &cerr)
 	runtime.KeepAlive(e)
-	if out == nil {
-		return "", err
+	if rc != C.DATALOGIC_STATUS_OK {
+		return "", takeError(cerr)
 	}
-	defer C.datalogic_string_free(out)
-	return C.GoString(out), nil
+	return takeBuf(out), nil
 }
 
 // Session opens a hot-loop session bound to this engine. The session
@@ -167,11 +206,17 @@ func (e *Engine) Session() *Session {
 	return s
 }
 
+// =============== Rule ===============
+
 // Rule is a compiled JSONLogic rule.
 //
 // Rules are safe to share across goroutines — each Evaluate call uses
 // its own short-lived arena. For tight loops, use a Session per
 // goroutine instead.
+//
+// A Rule can only be evaluated through a Session opened on the same
+// Engine that compiled it; mixing engines yields an InvalidArgument
+// error.
 type Rule struct {
 	ptr *C.datalogic_rule
 }
@@ -187,31 +232,26 @@ func (r *Rule) Close() {
 }
 
 // Evaluate runs the compiled rule against dataJSON and returns the
-// result as a JSON string.
+// result as a JSON string. Safe to call from multiple goroutines.
 func (r *Rule) Evaluate(dataJSON string) (string, error) {
-	cData := C.CString(dataJSON)
-	defer C.free(unsafe.Pointer(cData))
-	// Keep the call and the thread-local last-error read on one OS thread.
-	runtime.LockOSThread()
-	out := C.datalogic_rule_evaluate(r.ptr, cData)
-	var err error
-	if out == nil {
-		err = lastError()
-	}
-	runtime.UnlockOSThread()
+	dp, dl := strBytes(dataJSON)
+	var out C.datalogic_buf
+	var cerr *C.datalogic_error
+	rc := C.datalogic_rule_evaluate(r.ptr, dp, dl, &out, &cerr)
 	runtime.KeepAlive(r)
-	if out == nil {
-		return "", err
+	if rc != C.DATALOGIC_STATUS_OK {
+		return "", takeError(cerr)
 	}
-	defer C.datalogic_string_free(out)
-	return C.GoString(out), nil
+	return takeBuf(out), nil
 }
+
+// =============== Session ===============
 
 // Session is a hot-loop evaluation session bound to one Engine.
 //
 // Sessions reuse a single bumpalo arena across Evaluate calls; the
 // arena resets at the start of every call so peak memory stays bounded.
-// Sessions are NOT goroutine-safe.
+// Sessions are NOT goroutine-safe — open one per goroutine.
 type Session struct {
 	ptr *C.datalogic_session
 }
@@ -227,24 +267,26 @@ func (s *Session) Close() {
 }
 
 // Evaluate runs rule against dataJSON using this session's arena.
+//
+// The rule must have been compiled by the same Engine this session was
+// opened on.
 func (s *Session) Evaluate(rule *Rule, dataJSON string) (string, error) {
-	cData := C.CString(dataJSON)
-	defer C.free(unsafe.Pointer(cData))
-	// Keep the call and the thread-local last-error read on one OS thread.
-	runtime.LockOSThread()
-	out := C.datalogic_session_evaluate(s.ptr, rule.ptr, cData)
-	var err error
-	if out == nil {
-		err = lastError()
+	dp, dl := strBytes(dataJSON)
+	var outPtr *C.uint8_t
+	var outLen C.size_t
+	var cerr *C.datalogic_error
+	rc := C.datalogic_session_evaluate(s.ptr, rule.ptr, dp, dl, &outPtr, &outLen, &cerr)
+	if rc != C.DATALOGIC_STATUS_OK {
+		runtime.KeepAlive(s)
+		runtime.KeepAlive(rule)
+		return "", takeError(cerr)
 	}
-	runtime.UnlockOSThread()
+	// The result borrows the session's buffer (valid until the next
+	// call touching this session) — copy before anything else runs.
+	out := goStringN(outPtr, outLen)
 	runtime.KeepAlive(s)
 	runtime.KeepAlive(rule)
-	if out == nil {
-		return "", err
-	}
-	defer C.datalogic_string_free(out)
-	return C.GoString(out), nil
+	return out, nil
 }
 
 // Reset manually resets the session's arena. Optional — Evaluate already
@@ -262,6 +304,8 @@ func (s *Session) AllocatedBytes() uint64 {
 	runtime.KeepAlive(s)
 	return n
 }
+
+// =============== TracedSession ===============
 
 // TracedSession is a trace-enabled evaluation handle bound to one
 // Engine. Each Evaluate call compiles the rule internally with the
@@ -318,25 +362,19 @@ func (ts *TracedSession) Close() {
 // dataJSON, and returns the trace envelope documented on TracedSession
 // as a JSON string.
 func (ts *TracedSession) Evaluate(ruleJSON, dataJSON string) (string, error) {
-	cRule := C.CString(ruleJSON)
-	defer C.free(unsafe.Pointer(cRule))
-	cData := C.CString(dataJSON)
-	defer C.free(unsafe.Pointer(cData))
-	// Keep the call and the thread-local last-error read on one OS thread.
-	runtime.LockOSThread()
-	out := C.datalogic_traced_session_evaluate(ts.ptr, cRule, cData)
-	var err error
-	if out == nil {
-		err = lastError()
-	}
-	runtime.UnlockOSThread()
+	rp, rl := strBytes(ruleJSON)
+	dp, dl := strBytes(dataJSON)
+	var out C.datalogic_buf
+	var cerr *C.datalogic_error
+	rc := C.datalogic_traced_session_evaluate(ts.ptr, rp, rl, dp, dl, &out, &cerr)
 	runtime.KeepAlive(ts)
-	if out == nil {
-		return "", err
+	if rc != C.DATALOGIC_STATUS_OK {
+		return "", takeError(cerr)
 	}
-	defer C.datalogic_string_free(out)
-	return C.GoString(out), nil
+	return takeBuf(out), nil
 }
+
+// =============== package-level conveniences ===============
 
 // Apply is a top-level convenience equivalent to:
 //

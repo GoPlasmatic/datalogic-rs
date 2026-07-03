@@ -16,8 +16,9 @@ type Error struct {
 	// Message is the human-readable error string.
 	Message string
 	// Type is the engine's stable error tag — one of "ParseError",
-	// "Thrown", "NaN", "Custom", "InternalError", etc. Match on this
-	// for programmatic error handling; Message is for humans.
+	// "Thrown", "NaN", "Custom", "TypeMismatch", "InvalidArgument",
+	// "InternalError", etc. Match on this for programmatic error
+	// handling; Message is for humans.
 	Type string
 	// Operator is the outermost failing operator's name (e.g. "+" or
 	// "var"). Empty when the error didn't originate inside a named
@@ -37,25 +38,33 @@ func (e *Error) Error() string {
 	return "datalogic: " + e.Message
 }
 
-// lastError pulls the thread-local last-error state from the C ABI
-// into a Go `*Error`. Called from each binding entry point immediately
-// after a NULL return — the C ABI guarantees that NULL implies the
-// last-error block is populated on this thread.
-func lastError() *Error {
-	msg := C.datalogic_last_error_message()
-	if msg == nil {
-		// Defensive — shouldn't happen if the C ABI honours its contract.
-		return &Error{Message: "unknown error (no last-error set)"}
+// takeError converts an owned C error handle (stored by a failing call
+// into its `datalogic_error **` out-param) into a Go *Error and
+// releases the handle. The accessors return borrowed (ptr, len) bytes
+// that die with datalogic_error_free, so everything is copied first.
+//
+// Called with the handle a non-OK status left behind; a nil handle
+// (the C side could not allocate detail) degrades to a generic error.
+func takeError(cerr *C.datalogic_error) *Error {
+	if cerr == nil {
+		// Defensive — a non-OK status stores a handle whenever the
+		// caller asked for capture, which this binding always does.
+		return &Error{Message: "unknown error (no error detail captured)"}
 	}
-	e := &Error{Message: C.GoString(msg)}
-	if t := C.datalogic_last_error_type(); t != nil {
-		e.Type = C.GoString(t)
+	defer C.datalogic_error_free(cerr)
+	e := &Error{}
+	var n C.size_t
+	if p := C.datalogic_error_message(cerr, &n); p != nil {
+		e.Message = goStringN(p, n)
 	}
-	if o := C.datalogic_last_error_operator(); o != nil {
-		e.Operator = C.GoString(o)
+	if p := C.datalogic_error_tag(cerr, &n); p != nil {
+		e.Type = goStringN(p, n)
 	}
-	if p := C.datalogic_last_error_path_json(); p != nil {
-		e.PathJSON = C.GoString(p)
+	if p := C.datalogic_error_operator(cerr, &n); p != nil {
+		e.Operator = goStringN(p, n)
+	}
+	if p := C.datalogic_error_path_json(cerr, &n); p != nil {
+		e.PathJSON = goStringN(p, n)
 	}
 	return e
 }

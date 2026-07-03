@@ -35,11 +35,12 @@ implements, see the
 
 Gradle: `implementation("io.github.goplasmatic:datalogic:5.0.0")`
 
-The binding is a JNA wrapper over the engine's C ABI. The JAR ships the
-native library for every supported platform at the classpath root under
-`<jna-platform>/` (where JNA's `Native.load` auto-extracts them); the
-runtime picks and loads the right one for the host OS/arch. No Rust
-toolchain needed.
+The binding speaks to the engine's C ABI directly through the Java FFM
+API (`java.lang.foreign`) — no JNA, no JNI glue, zero runtime
+dependencies beyond Jackson. The JAR ships the native library for every
+supported platform at the classpath root under `<os-arch>/`
+(`darwin-aarch64/`, `linux-x86-64/`, …); the binding extracts and loads
+the right one for the host OS/arch. No Rust toolchain needed.
 
 | Platform | Architectures   |
 |----------|-----------------|
@@ -47,7 +48,29 @@ toolchain needed.
 | macOS    | x86_64, arm64   |
 | Windows  | x86_64, arm64   |
 
-JDK 11 or newer is required.
+**JDK 22 or newer is required** (the FFM API is final since 22).
+
+On JDK 24+ the JVM prints a restricted-method warning the first time a
+library uses FFM (and future JDKs will refuse by default). Grant native
+access explicitly when starting your application:
+
+```
+java --enable-native-access=ALL-UNNAMED ...
+```
+
+(That flag covers classpath applications, which is how this JAR is
+consumed; if you place it on the module path instead, grant native
+access to its module name.)
+
+The native library is resolved in this order:
+
+1. `-Ddatalogic.library.path=<dir>` — a directory containing
+   `libdatalogic_c.dylib` / `libdatalogic_c.so` / `datalogic_c.dll`
+   (useful for in-tree builds and overrides),
+2. the JAR's bundled `<os-arch>/` classpath resource (extracted to a
+   temp file), which is how the published artifact works out of the box,
+3. `System.loadLibrary("datalogic_c")` — `java.library.path` and the
+   OS loader paths.
 
 > **Naming:** the Maven `groupId` is `io.github.goplasmatic` (the
 > auto-verified Sonatype namespace tied to the GitHub org), but the Java
@@ -102,18 +125,80 @@ Open one session per thread; a `Session` is not thread-safe. Every
 public type implements `AutoCloseable`, so use try-with-resources to
 avoid leaking native handles.
 
+## Data handles (parse once, evaluate many)
+
+When the same payload feeds many evaluations, parse it once into a
+`DataHandle` and skip the per-call JSON parse entirely:
+
+```java
+import com.goplasmatic.datalogic.DataHandle;
+
+try (DataHandle data = DataHandle.parse("{\"price\": 100, \"discount\": 0.2}")) {
+    rule.evaluate(data);              // one-shot path
+    session.evaluate(rule, data);     // hot path: zero parse work per call
+}
+```
+
+A `DataHandle` is immutable, thread-safe, and engine-independent — one
+handle can feed rules compiled by different engines, from any number of
+threads. It is not consumed by evaluation; close it after the last use.
+
+## Typed results
+
+When a rule is a predicate or a scoring function, skip the JSON result
+string too. The typed evaluations take a `DataHandle` and return Java
+scalars:
+
+```java
+boolean pass  = session.evaluateBool(rule, data);    // strict JSON boolean
+long    count = session.evaluateLong(rule, data);    // exact integer
+double  score = session.evaluateDouble(rule, data);  // any JSON number
+boolean ok    = session.evaluateTruthy(rule, data);  // engine truthiness, never mismatches
+```
+
+A result of the wrong type throws `EvaluateException` with error type
+`"TypeMismatch"` (e.g. `evaluateBool` on a rule that returned `3`);
+`evaluateTruthy` coerces any result the same way `if`/`and`/`or` do.
+
+## Batch evaluation
+
+Cross the native boundary once for a whole workload. Item failures
+never throw — each item of the returned list carries either the result
+JSON or its own error info:
+
+```java
+import com.goplasmatic.datalogic.EvalResult;
+
+// one rule × many payloads
+List<EvalResult> perPayload = session.evaluateBatch(rule, dataHandles);
+
+// many rules × one payload (rule-set / feature-flag shape)
+List<EvalResult> perRule = session.evaluateMany(rules, dataHandle);
+
+for (EvalResult r : perPayload) {
+    if (r.isSuccess()) {
+        use(r.value());                          // result JSON string
+    } else {
+        log(r.errorTag(), r.errorMessage());     // e.g. "Thrown", "boom"
+    }
+}
+```
+
 ## API surface
 
 The binding mirrors the Rust engine's
 [API tier model](https://github.com/GoPlasmatic/datalogic-rs#one-api-shape-every-binding).
-Every method takes and returns JSON strings.
+Methods take and return JSON strings unless noted.
 
 | Tier            | Entry point                                                 | Use when                                              |
 |-----------------|-------------------------------------------------------------|-------------------------------------------------------|
 | One-shot        | `engine.apply(rule, data)`                                  | Ad-hoc evaluation, one rule + one data shape          |
 | Engine + config | `new Engine(templating)` / `Engine.builder()…build()`       | Templating mode, custom operators, evaluation config  |
 | Compile once    | `engine.compile(rule)` → `rule.evaluate(data)`              | Same rule evaluated against many data inputs          |
+| Data handle     | `DataHandle.parse(json)` → `rule.evaluate(dataHandle)`      | Same payload evaluated by many rules / many times     |
 | Session         | `engine.openSession()` → `session.evaluate(rule, data)`     | Hot loops: amortise arena reset across iterations     |
+| Typed           | `session.evaluateBool/Long/Double/Truthy(rule, dataHandle)` | Predicates and scores without JSON result parsing     |
+| Batch           | `session.evaluateBatch(rule, datas)` / `session.evaluateMany(rules, data)` | Whole workloads in one native call     |
 | Traced          | `engine.openTracedSession()` → `session.evaluate(rule, data)` | Step-by-step debugging; feeds the React debugger    |
 
 ## Custom operators
@@ -191,7 +276,8 @@ Everything the binding throws extends `DatalogicException` (unchecked):
 | Exception           | When                                                          |
 |---------------------|---------------------------------------------------------------|
 | `ParseException`    | Malformed rule or data JSON, or an unsupported operator       |
-| `EvaluateException` | Operator failure at runtime, or a rejected engine config      |
+| `EvaluateException` | Operator failure at runtime, a rejected engine config, or a typed-result type mismatch (`errorType() == "TypeMismatch"`) |
+| `DatalogicException` (base) | Invalid arguments at the boundary (e.g. a rule compiled by a different engine) or an internal engine error |
 
 The structured fields ride on the base class: `errorType()` is the
 stable engine tag (e.g. `"ParseError"`, `"Thrown"`, `"NaN"`),
@@ -213,11 +299,12 @@ try (Engine engine = new Engine()) {
 
 ## Threading
 
-| Type      | Pattern                                  |
-|-----------|-------------------------------------------|
-| `Engine`  | Build once; share across threads          |
-| `Rule`    | Compile once; share across threads        |
-| `Session` | One per worker thread; never share        |
+| Type         | Pattern                                  |
+|--------------|-------------------------------------------|
+| `Engine`     | Build once; share across threads          |
+| `Rule`       | Compile once; share across threads        |
+| `DataHandle` | Parse once; share across threads          |
+| `Session`    | One per worker thread; never share        |
 
 `TracedSession` is thread-safe as well.
 
@@ -244,21 +331,23 @@ in the trace: use it for debugging, not hot paths.
 <!-- canonical-bench v5.0 -->
 Geomean across 50 operator benchmark suites (Apple M2 Pro, median of 3 runs; pairwise shared-suite ratios per the [methodology](https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md)): the native Rust core evaluates at **9.0 ns/op**, 7.9× faster than json-logic-engine (compiled, the fastest JS engine), 30.3× faster than jsonlogic-rs (the closest Rust alternative), and 102.8× faster than the json-logic-js reference implementation. The WASM build under Node measures 881.9 ns geomean (98× native); on Node servers, prefer `@goplasmatic/datalogic-node`.
 
-The JNA boundary adds a small per-call marshalling cost on top of the
-core numbers.
+The FFM boundary adds a small per-call marshalling cost on top of the
+core numbers; pre-parsed `DataHandle`s roughly halve it versus JSON
+strings, and `evaluateBatch` / `evaluateMany` amortise the crossing over
+whole workloads.
 
 ## Building from source
 
 The binding lives in
 [`bindings/jvm/`](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/jvm)
 and loads the C ABI cdylib from `bindings/c/`. Build that once, then use
-Maven as usual (Surefire points `jna.library.path` at the cargo target
-dir for local tests):
+Maven as usual (Surefire points the `datalogic.library.path` system
+property at the cargo target dir for local tests):
 
 ```bash
 git clone https://github.com/GoPlasmatic/datalogic-rs
 cd datalogic-rs/bindings/c && cargo build --release
-cd ../jvm
+cd ../jvm      # needs JDK 22+
 mvn test
 mvn package    # target/datalogic-5.0.0.jar + sources + javadoc
 ```

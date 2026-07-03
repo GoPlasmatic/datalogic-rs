@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 
-using System.Text.Json;
 using System.Text.Json.Nodes;
 
 using Goplasmatic.Datalogic.Native;
@@ -22,12 +21,13 @@ namespace Goplasmatic.Datalogic;
 public sealed class Engine : IDisposable
 {
     private IntPtr _handle;
-    // Pinned GCHandles for any custom-operator callbacks registered on
-    // this engine. Released alongside the native handle on Dispose to
-    // keep the C-side function pointers valid until the engine dies.
+    // GCHandles for any custom-operator callbacks registered on this
+    // engine. Released alongside the native handle on Dispose to keep
+    // the delegates the native trampolines resolve alive until the
+    // engine dies.
     private List<System.Runtime.InteropServices.GCHandle>? _pinnedCallbacks;
 
-    static Engine() => NativeLibraryResolver.Install();
+    static Engine() => NativeInit.EnsureLoaded();
 
     /// <summary>
     /// Construct an engine with default (non-templating) configuration.
@@ -44,16 +44,17 @@ public sealed class Engine : IDisposable
         _handle = NativeMethods.datalogic_engine_new(templating ? 1 : 0);
         if (_handle == IntPtr.Zero)
         {
-            throw DatalogicException.FromLastError("datalogic_engine_new returned NULL");
+            throw new EvaluateException(
+                "datalogic_engine_new returned NULL", null, null, null, EvaluationStatus.InternalError);
         }
     }
 
     internal Engine(IntPtr handle) { _handle = handle; }
 
     /// <summary>
-    /// Adopt a set of pinned GCHandles owned by a builder so they stay
-    /// alive until this engine is disposed. Called once at construction
-    /// time by <see cref="EngineBuilder.Build"/>.
+    /// Adopt a set of GCHandles owned by a builder so they stay alive
+    /// until this engine is disposed. Called once at construction time
+    /// by <see cref="EngineBuilder.Build"/>.
     /// </summary>
     internal void AdoptPinnedCallbacks(List<System.Runtime.InteropServices.GCHandle> pinned)
     {
@@ -77,7 +78,7 @@ public sealed class Engine : IDisposable
     {
         get
         {
-            NativeLibraryResolver.Install();
+            NativeInit.EnsureLoaded();
             return NativeMethods.BorrowUtf8String(NativeMethods.datalogic_version()) ?? "";
         }
     }
@@ -86,33 +87,64 @@ public sealed class Engine : IDisposable
     /// Compile a JSONLogic rule (as a JSON string) into a reusable
     /// <see cref="Rule"/> that can be evaluated against many inputs.
     /// </summary>
+    /// <exception cref="ParseException">The rule JSON is malformed or uses an unknown operator.</exception>
     public Rule Compile(string ruleJson)
     {
         ArgumentNullException.ThrowIfNull(ruleJson);
-        var rule = NativeMethods.datalogic_engine_compile(Handle, ruleJson);
-        if (rule == IntPtr.Zero)
+        unsafe
         {
-            throw DatalogicException.FromLastError("compile failed");
+            using var ruleU8 = Utf8Input.From(ruleJson, stackalloc byte[Utf8Input.StackBufferSize]);
+            var err = IntPtr.Zero;
+            DatalogicStatus status;
+            IntPtr rulePtr;
+            fixed (byte* rp = ruleU8.Span)
+            {
+                status = NativeMethods.datalogic_engine_compile(
+                    Handle, rp, (nuint)ruleU8.Span.Length, out rulePtr, ref err);
+            }
+            if (status != DatalogicStatus.Ok)
+            {
+                throw DatalogicException.FromNative(status, err, "compile failed");
+            }
+            GC.KeepAlive(this);
+            return new Rule(rulePtr);
         }
-        return new Rule(rule);
     }
 
     /// <summary>
     /// One-shot: compile and evaluate in a single call, returning the
     /// result as a JSON-string. Prefer <see cref="Compile"/> +
-    /// <see cref="Rule.Evaluate"/> for repeated evaluations of the same
-    /// rule.
+    /// <see cref="Rule.Evaluate(string)"/> for repeated evaluations of
+    /// the same rule.
     /// </summary>
     public string Apply(string ruleJson, string dataJson)
     {
         ArgumentNullException.ThrowIfNull(ruleJson);
         ArgumentNullException.ThrowIfNull(dataJson);
-        var ptr = NativeMethods.datalogic_engine_apply(Handle, ruleJson, dataJson);
-        if (ptr == IntPtr.Zero)
+        unsafe
         {
-            throw DatalogicException.FromLastError("apply failed");
+            using var ruleU8 = Utf8Input.From(ruleJson, stackalloc byte[Utf8Input.StackBufferSize]);
+            using var dataU8 = Utf8Input.From(dataJson, stackalloc byte[Utf8Input.StackBufferSize]);
+            var err = IntPtr.Zero;
+            DatalogicStatus status;
+            DatalogicBuf buf;
+            fixed (byte* rp = ruleU8.Span)
+            fixed (byte* dp = dataU8.Span)
+            {
+                status = NativeMethods.datalogic_engine_apply(
+                    Handle,
+                    rp, (nuint)ruleU8.Span.Length,
+                    dp, (nuint)dataU8.Span.Length,
+                    out buf, ref err);
+            }
+            if (status != DatalogicStatus.Ok)
+            {
+                throw DatalogicException.FromNative(status, err, "apply failed");
+            }
+            var result = NativeMethods.TakeBufUtf8(buf);
+            GC.KeepAlive(this);
+            return result;
         }
-        return NativeMethods.TakeUtf8String(ptr)!;
     }
 
     /// <summary>
@@ -133,8 +165,10 @@ public sealed class Engine : IDisposable
         var ptr = NativeMethods.datalogic_engine_session(Handle);
         if (ptr == IntPtr.Zero)
         {
-            throw DatalogicException.FromLastError("session failed");
+            throw new EvaluateException(
+                "datalogic_engine_session returned NULL", null, null, null, EvaluationStatus.InternalError);
         }
+        GC.KeepAlive(this);
         return new Session(ptr);
     }
 
@@ -148,8 +182,10 @@ public sealed class Engine : IDisposable
         var ptr = NativeMethods.datalogic_engine_traced_session(Handle);
         if (ptr == IntPtr.Zero)
         {
-            throw DatalogicException.FromLastError("traced session failed");
+            throw new EvaluateException(
+                "datalogic_engine_traced_session returned NULL", null, null, null, EvaluationStatus.InternalError);
         }
+        GC.KeepAlive(this);
         return new TracedSession(ptr);
     }
 

@@ -1,20 +1,30 @@
 /* SPDX-License-Identifier: Apache-2.0
  *
- * datalogic.h — C ABI for the datalogic-rs JSONLogic engine.
+ * datalogic.h — C ABI (v2) for the datalogic-rs JSONLogic engine.
  *
- * Threading & memory model
- * ------------------------
- *  - `datalogic_engine`, `datalogic_rule`, and `datalogic_traced_session`
- *    handles are thread-safe; share across threads freely.
- *  - `datalogic_session` handles are NOT thread-safe; open one per thread.
- *  - Inputs (rule_json, data_json) are caller-owned, NUL-terminated UTF-8.
- *  - Functions returning `char*` transfer ownership — caller must release
- *    via `datalogic_string_free`. NULL is returned on error; query the
- *    thread-local last-error state for details.
- *  - `const char*` returned by `datalogic_last_error_*` and `datalogic_version`
- *    is borrowed; never free. The pointers returned by `datalogic_last_error_*`
- *    remain valid only until the next call on the current thread that
- *    mutates that state.
+ * Contract summary
+ * ----------------
+ *  - ABI versioning: call `datalogic_abi_version()` once at load and
+ *    require it to equal DATALOGIC_ABI_VERSION (2). A mismatch means a
+ *    stale library and must abort initialisation.
+ *  - Byte inputs are (pointer, length) UTF-8. NOT NUL-terminated.
+ *  - Fallible calls return `datalogic_status` and take a trailing
+ *    `datalogic_error **err`: pass NULL to skip error capture, else
+ *    release the stored handle via `datalogic_error_free`. Error
+ *    accessors return borrowed (ptr,len) bytes valid until that free.
+ *  - Session results are BORROWED: `datalogic_session_evaluate*` point
+ *    into a session-owned buffer valid until the next call touching the
+ *    same session (any evaluate / reset / free). Copy before then.
+ *  - One-shot results are OWNED `datalogic_buf` values released via
+ *    `datalogic_buf_free`.
+ *
+ * Threading
+ * ---------
+ *  - `datalogic_engine`, `datalogic_rule`, `datalogic_data`, and
+ *    `datalogic_traced_session` are thread-safe; share freely.
+ *  - `datalogic_session` is NOT thread-safe; open one per thread.
+ *  - `datalogic_error` handles are plain owned values; free from any
+ *    thread.
  */
 
 #ifndef DATALOGIC_H
@@ -24,41 +34,108 @@
 
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include <stdint.h>
 
 /**
- * Opaque handle wrapping `Arc<datalogic_rs::Engine>`. Send + Sync — share
- * across threads freely. C consumers see this as `struct datalogic_engine`
- * (forward-declared in the generated header).
+ * ABI version stamp — bumped on any breaking change to the exported
+ * surface (v1 was the NUL-terminated / thread-local-error contract;
+ * v2 is the current `(ptr,len)` + status-code contract).
+ */
+#define DATALOGIC_ABI_VERSION 2
+
+/**
+ * Coarse, branchable outcome of a fallible call.
+ *
+ * The fine-grained engine tag (e.g. `"Thrown"`, `"ArithmeticError"`,
+ * `"ConfigurationError"`) stays available via [`datalogic_error_tag`],
+ * so wrappers branch on the status and surface the tag.
+ */
+typedef enum {
+  /**
+   * Success.
+   */
+  DATALOGIC_STATUS_OK = 0,
+  /**
+   * A NULL handle, a NULL byte pointer with non-zero length, invalid
+   * UTF-8 input, or a mismatched handle (e.g. a rule compiled by a
+   * different engine than the session's).
+   */
+  DATALOGIC_STATUS_INVALID_ARG = 1,
+  /**
+   * Rule / data / config JSON failed to parse.
+   */
+  DATALOGIC_STATUS_PARSE = 2,
+  /**
+   * Evaluation failed; the error tag carries the detail
+   * (`"Thrown"`, `"ArithmeticError"`, `"TypeError"`, …).
+   */
+  DATALOGIC_STATUS_EVAL = 3,
+  /**
+   * A typed-result call evaluated successfully but the result is not
+   * of the requested type.
+   */
+  DATALOGIC_STATUS_TYPE_MISMATCH = 4,
+  /**
+   * A panic was caught at the FFI boundary (engine bug or a
+   * panicking custom-operator callback).
+   */
+  DATALOGIC_STATUS_INTERNAL = 5,
+} datalogic_status;
+
+/**
+ * Immutable parsed JSON document (`struct datalogic_data`).
+ *
+ * Independent of any engine — one handle can feed rules compiled by
+ * different engines. Shareable across threads.
+ */
+typedef struct datalogic_data datalogic_data;
+
+/**
+ * Opaque handle wrapping `Arc<datalogic_rs::Engine>`
+ * (`struct datalogic_engine`). Send + Sync — share across threads
+ * freely.
  */
 typedef struct datalogic_engine datalogic_engine;
 
 /**
- * Opaque builder handle. Internally holds an `Option<EngineBuilder>` so
- * each `set_*` / `add_operator` entry point can take the inner by value
- * (the Rust builder consumes `self` on every method) and put it back.
+ * Opaque builder handle (`struct datalogic_engine_builder`).
+ * Internally holds an `Option<EngineBuilder>` so each `set_*` /
+ * `add_operator` entry point can take the inner by value (the Rust
+ * builder consumes `self` on every method) and put it back.
  */
 typedef struct datalogic_engine_builder datalogic_engine_builder;
 
 /**
- * Compiled JSONLogic rule. Send + Sync — share one across threads and
- * evaluate in parallel; each `datalogic_rule_evaluate` call creates its
- * own short-lived arena.
+ * Owned error detail behind `datalogic_error *`. Allocated only when
+ * the caller asked for capture; released via [`datalogic_error_free`].
+ */
+typedef struct datalogic_error datalogic_error;
+
+/**
+ * Outcome carrier handed to custom-operator callbacks (opaque
+ * `struct datalogic_op_result`). Only valid for the duration of the
+ * callback invocation — never store the pointer.
+ */
+typedef struct datalogic_op_result datalogic_op_result;
+
+/**
+ * Compiled JSONLogic rule (`struct datalogic_rule`). Send + Sync —
+ * share one across threads and evaluate in parallel.
  *
  * Holds an `Arc<Engine>` so the engine outlives every rule compiled
- * from it — C consumers can free the engine before the rule and the
- * rule still works (the underlying engine keeps a refcount).
+ * from it — consumers can free the engine handle before the rule and
+ * the rule still works.
  */
 typedef struct datalogic_rule datalogic_rule;
 
 /**
- * Single-threaded session reusing one `bumpalo::Bump` across
- * evaluations. **Not `Sync`** — a session must only ever be used from
- * the thread that created it (the C ABI does not enforce this; consumer
- * languages should).
+ * Single-threaded session (`struct datalogic_session`): one reusable
+ * `bumpalo::Bump` for evaluation scratch and one reusable `Vec<u8>`
+ * for serialized results. **Not thread-safe** — open one per thread.
  *
  * Holds `Arc<Engine>` so the underlying engine outlives the session
  * even if the consumer frees the engine handle first.
@@ -66,83 +143,116 @@ typedef struct datalogic_rule datalogic_rule;
 typedef struct datalogic_session datalogic_session;
 
 /**
- * Trace-enabled handle over a [`datalogic_rs::Engine`]. Constructed via
- * [`datalogic_engine_traced_session`].
- *
- * Unlike [`crate::session::Session`], this handle carries no per-call
- * arena — `TracedSession` always allocates a fresh `bumpalo::Bump` per
- * run to keep the borrowed-result lifetime tied to the trace. The
- * handle exists for API symmetry (every binding gets `engine ->
- * traced_session -> evaluate`).
- *
- * Holds `Arc<Engine>` so the underlying engine outlives the handle
- * even if the consumer frees the engine handle first.
+ * Trace-enabled handle over a [`datalogic_rs::Engine`]
+ * (`struct datalogic_traced_session`). Constructed via
+ * [`datalogic_engine_traced_session`]. Send + Sync — share freely.
  */
 typedef struct datalogic_traced_session datalogic_traced_session;
 
 /**
+ * Owned byte buffer returned by the one-shot entry points
+ * ([`datalogic_engine_apply`], [`datalogic_rule_evaluate`],
+ * [`datalogic_traced_session_evaluate`], …). Release via
+ * [`datalogic_buf_free`]. The bytes are UTF-8 JSON, not NUL-terminated.
+ */
+typedef struct {
+  uint8_t *ptr;
+  size_t len;
+  size_t cap;
+} datalogic_buf;
+
+/**
  * Callback signature for user-defined operators.
  *
- * * `args_json` — borrowed, NUL-terminated UTF-8 JSON-array string of
- *   pre-evaluated arguments (e.g. `"[1, 2, \"x\"]"`). Do not free.
- * * `user_data` — opaque pointer the caller registered via
- *   [`datalogic_engine_builder_add_operator`].
- * * `error_out` — out-pointer. On error, set `*error_out` to a freshly
- *   `malloc`'d, NUL-terminated UTF-8 message (the binding will call
- *   `free` on it). May be left untouched / `NULL` for a generic error.
+ * * `args_json` / `args_len` — borrowed UTF-8 JSON-array of the
+ *   pre-evaluated arguments (e.g. `[1, 2, "x"]`). Not NUL-terminated;
+ *   valid only during the invocation.
+ * * `user_data` — opaque pointer registered alongside the callback.
+ * * `out` — write the outcome through the `datalogic_op_result_set_*`
+ *   functions.
  *
- * Returns:
- * - **success**: a freshly `malloc`'d, NUL-terminated UTF-8 JSON string
- *   (e.g. `"42"`, `"\"variant_a\""`, `"{\"a\":1}"`). The binding parses
- *   and then calls `free` on it.
- * - **error**: `NULL`, optionally with `*error_out` filled.
+ * Return `0` for success, non-zero for failure.
  */
-typedef char *(*datalogic_op_callback)(const char *args_json, void *user_data, char **error_out);
+typedef int32_t (*datalogic_op_fn)(const uint8_t *args_json,
+                                   size_t args_len,
+                                   void *user_data,
+                                   datalogic_op_result *out);
+
+/**
+ * Borrowed byte range (UTF-8, not NUL-terminated). Used for the batch
+ * result arrays; validity follows the owning session's borrow rules.
+ */
+typedef struct {
+  const uint8_t *ptr;
+  size_t len;
+} datalogic_slice;
 
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
 
 /**
- * Return the binding's version as a static, NUL-terminated UTF-8 string.
+ * Runtime counterpart of [`DATALOGIC_ABI_VERSION`]. Wrappers call this
+ * once at library load and refuse to run on a mismatch.
+ */
+ uint32_t datalogic_abi_version(void);
+
+/**
+ * Return the binding's crate version as a static, NUL-terminated UTF-8
+ * string (the one deliberate NUL-terminated survivor — it's a literal
+ * for `printf`-style consumption).
  *
- * The returned pointer is valid for the program's lifetime — never free it.
+ * The returned pointer is valid for the program's lifetime — never
+ * free it.
  */
  const char *datalogic_version(void);
 
 /**
- * Release a string previously returned by any `datalogic_*` function
- * that documents owned-string return semantics. Safe to call with `NULL`.
+ * Release a [`Buf`] returned by a one-shot entry point. Safe to call
+ * with a zeroed/NULL-ptr buf.
  *
  * # Safety
  *
- * `ptr` must either be `NULL` or a pointer previously returned by this
- * library's owned-string path (e.g. [`datalogic_engine_apply`],
- * [`datalogic_rule_evaluate`], [`datalogic_session_evaluate`]). Calling
- * with any other pointer (or twice on the same pointer) is undefined
- * behaviour.
+ * `buf` must be exactly as returned by this library (same ptr/len/cap
+ * triple), passed at most once.
  */
- void datalogic_string_free(char *ptr);
+ void datalogic_buf_free(datalogic_buf buf);
 
 /**
- * `free(3)` from libc. The Rust default allocator on `cdylib` targets
- * is the system allocator (which is libc malloc on Linux/macOS/Windows),
- * so freeing user-supplied `malloc`'d strings via libc `free` is safe
- * across the FFI boundary.
+ * Set the operator's result as UTF-8 JSON (copied immediately; the
+ * caller keeps ownership of `json`). Calling twice replaces the
+ * earlier value. A success return (`0`) with no JSON set evaluates to
+ * JSON `null`.
+ *
+ * # Safety
+ *
+ * `out` must be the pointer passed into the currently-running
+ * callback; `json` must reference `len` readable bytes (a `NULL`
+ * pointer reads as empty).
  */
-extern void free(void *ptr);
+ void datalogic_op_result_set_json(datalogic_op_result *out, const uint8_t *json, size_t len);
 
 /**
- * Construct a new engine builder. Caller must release the handle via
- * [`datalogic_engine_builder_free`] (no-op after a successful
- * [`datalogic_engine_builder_build`], which consumes the builder).
+ * Set the operator's error message (copied immediately). Read only
+ * when the callback returns non-zero; a non-zero return with no
+ * message set produces a generic error naming the operator.
+ *
+ * # Safety
+ *
+ * Same contract as [`datalogic_op_result_set_json`].
+ */
+ void datalogic_op_result_set_error(datalogic_op_result *out, const uint8_t *msg, size_t len);
+
+/**
+ * Construct a new engine builder. Release the handle via
+ * [`datalogic_engine_builder_free`] (still required after a successful
+ * [`datalogic_engine_builder_build`], which only drains the inner
+ * builder).
  */
  datalogic_engine_builder *datalogic_engine_builder_new(void);
 
 /**
- * Free an engine builder handle. Safe with `NULL`. Idempotent after a
- * successful `build()` (which already drops the inner builder; the
- * outer handle still needs freeing).
+ * Free an engine builder handle. Safe with `NULL`.
  *
  * # Safety
  *
@@ -152,219 +262,306 @@ extern void free(void *ptr);
  void datalogic_engine_builder_free(datalogic_engine_builder *builder);
 
 /**
- * Toggle templating mode on the builder.
+ * Toggle templating mode on the builder. No-op on a `NULL` or
+ * already-built builder.
  *
  * # Safety
  *
- * `builder` must be a valid pointer returned by
- * [`datalogic_engine_builder_new`].
+ * `builder` must be `NULL` or a valid builder handle.
  */
  void datalogic_engine_builder_set_templating(datalogic_engine_builder *builder, int32_t enabled);
 
 /**
- * Set the engine's evaluation configuration from a JSON object string.
+ * Set the engine's evaluation configuration from a JSON object.
  *
- * `config_json` is parsed by the core crate's shared config parser
+ * Parsed by the core crate's shared config parser
  * ([`EvaluationConfig::from_json_str`]) — the same wire format every
- * binding uses. All keys are optional; an optional `"preset"`
- * (`"default"` | `"safe_arithmetic"` | `"strict"`) selects the starting
- * point and the remaining keys override individual fields on top of it:
- *
- * | Key | Value |
- * |-----|-------|
- * | `preset` | `"default"` \| `"safe_arithmetic"` \| `"strict"` |
- * | `arithmetic_nan_handling` | `"throw_error"` \| `"ignore_value"` \| `"coerce_to_zero"` \| `"return_null"` |
- * | `division_by_zero` | `"return_saturated"` \| `"throw_error"` \| `"return_null"` \| `"return_infinity"` |
- * | `loose_equality_errors` | bool |
- * | `truthy_evaluator` | `"javascript"` \| `"python"` \| `"strict_boolean"` |
- * | `numeric_coercion` | object with bool keys `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
- * | `max_recursion_depth` | integer ≥ 1 |
- *
- * Unknown keys, unknown enum strings, and type mismatches are rejected
- * (tag `"ConfigurationError"`) so typos fail loudly instead of being
- * silently ignored. Each call replaces the builder's entire evaluation
- * config; templating and registered operators are unaffected.
- *
- * Returns `0` on success, `-1` on failure with the thread-local
- * last-error block populated (query
- * [`crate::datalogic_last_error_message`]).
+ * binding uses (`preset`, `arithmetic_nan_handling`,
+ * `division_by_zero`, `loose_equality_errors`, `truthy_evaluator`,
+ * `numeric_coercion`, `max_recursion_depth`). Unknown keys and enum
+ * strings are rejected (tag `"ConfigurationError"`) so typos fail
+ * loudly. Each call replaces the builder's entire evaluation config;
+ * templating and registered operators are unaffected. A failed call
+ * leaves the builder usable.
  *
  * # Safety
  *
- * `builder` must be a valid pointer returned by
- * [`datalogic_engine_builder_new`]; `config_json` must be a valid
- * NUL-terminated UTF-8 string.
+ * `builder` must be a valid builder handle; `config_json` must
+ * reference `config_len` readable bytes; `err` follows the crate-wide
+ * error out-param contract.
  */
 
-int32_t datalogic_engine_builder_set_config_json(datalogic_engine_builder *builder,
-                                                 const char *config_json);
+datalogic_status datalogic_engine_builder_set_config_json(datalogic_engine_builder *builder,
+                                                          const uint8_t *config_json,
+                                                          size_t config_len,
+                                                          datalogic_error **err);
 
 /**
- * Register a custom operator. The callback is invoked on every match of
- * the operator name during evaluation. See [`DatalogicOpCallback`] for
- * the contract.
- *
- * **Built-ins win** — registering a name that collides with a built-in
- * JSONLogic operator (`+`, `if`, `var`, …) silently does nothing at
- * evaluation time; the built-in dispatches first.
+ * Register a custom operator. The callback runs on every match of the
+ * operator name during evaluation — see [`DatalogicOpFn`] for the
+ * contract. **Built-ins win**: registering a name that collides with a
+ * built-in JSONLogic operator silently never dispatches.
  *
  * # Safety
  *
- * `builder` must be valid; `name` must be NUL-terminated UTF-8;
- * `callback` must be a valid C function pointer (or `NULL` to make this
- * a no-op). `user_data` is opaque to the binding and passed back into
- * every invocation.
+ * `builder` must be a valid builder handle; `name` must reference
+ * `name_len` readable bytes; `callback` must be a valid function
+ * pointer (a `NULL` callback is rejected as `InvalidArg`); `user_data`
+ * is opaque, passed back into every invocation, and must be
+ * thread-safe if the engine is shared across threads.
  */
 
-int32_t datalogic_engine_builder_add_operator(datalogic_engine_builder *builder,
-                                              const char *name,
-                                              datalogic_op_callback callback,
-                                              void *user_data);
+datalogic_status datalogic_engine_builder_add_operator(datalogic_engine_builder *builder,
+                                                       const uint8_t *name,
+                                                       size_t name_len,
+                                                       datalogic_op_fn callback,
+                                                       void *user_data,
+                                                       datalogic_error **err);
 
 /**
  * Finalise the builder into an [`Engine`]. The builder handle is left
- * in a drained state — [`datalogic_engine_builder_free`] still needs to
- * be called to release the outer allocation.
- *
- * Returns `NULL` if the builder has already been built / is invalid.
+ * drained — [`datalogic_engine_builder_free`] still releases the outer
+ * allocation. Returns `NULL` if the builder is `NULL` or already
+ * built.
  *
  * # Safety
  *
- * `builder` must be a valid pointer returned by
- * [`datalogic_engine_builder_new`].
+ * `builder` must be `NULL` or a valid builder handle.
  */
  datalogic_engine *datalogic_engine_builder_build(datalogic_engine_builder *builder);
 
 /**
- * Construct a new engine. Pass `templating != 0` to enable the engine's
- * templating mode (multi-key objects in compiled rules become
- * output-shaping templates).
+ * Parse `(json, len)` into a resident data handle.
  *
- * Returns an owned handle the caller must release via
- * [`datalogic_engine_free`]. Returns `NULL` only if engine construction
- * panics internally (with `"InternalError"` set on the last-error block).
+ * On success stores the new handle in `*out` and returns
+ * `DATALOGIC_STATUS_OK`. The handle is immutable, thread-safe, and
+ * engine-independent; release it with [`datalogic_data_free`] after
+ * the last evaluation that uses it (handles are not consumed by
+ * evaluation).
+ *
+ * # Safety
+ *
+ * `json` must reference `len` readable bytes for the duration of the
+ * call (the handle copies what it needs — the caller's buffer may be
+ * freed afterwards). `out` must be a valid, writable slot. `err`
+ * follows the crate-wide error out-param contract.
+ */
+
+datalogic_status datalogic_data_parse(const uint8_t *json,
+                                      size_t len,
+                                      datalogic_data **out,
+                                      datalogic_error **err);
+
+/**
+ * Release a data handle. Safe to call with `NULL`.
+ *
+ * # Safety
+ *
+ * `data` must either be `NULL` or a pointer previously returned by
+ * [`datalogic_data_parse`] that has not been freed, with no evaluation
+ * concurrently reading it.
+ */
+ void datalogic_data_free(datalogic_data *data);
+
+/**
+ * Bytes held by the handle's backing arena (input copy + tree).
+ * Returns `0` for `NULL`.
+ *
+ * # Safety
+ *
+ * `data` must be `NULL` or a valid data handle.
+ */
+ size_t datalogic_data_allocated_bytes(const datalogic_data *data);
+
+/**
+ * Construct a new engine. Pass `templating != 0` to enable templating
+ * mode (multi-key objects in compiled rules become output-shaping
+ * templates).
+ *
+ * Returns an owned handle released via [`datalogic_engine_free`];
+ * `NULL` only if construction panics internally.
  */
  datalogic_engine *datalogic_engine_new(int32_t templating);
 
 /**
- * Release an engine handle. Safe to call with `NULL`.
+ * Release an engine handle. Safe to call with `NULL`. Rules, sessions,
+ * and traced sessions hold their own reference — freeing the engine
+ * first is fine.
  *
  * # Safety
  *
  * `engine` must either be `NULL` or a pointer previously returned by
- * [`datalogic_engine_new`] that has not been freed. Calling with any
- * other pointer (or twice on the same pointer) is undefined behaviour.
+ * [`datalogic_engine_new`] / [`crate::datalogic_engine_builder_build`]
+ * that has not been freed.
  */
  void datalogic_engine_free(datalogic_engine *engine);
 
 /**
- * Compile a JSONLogic rule (`rule_json`, NUL-terminated UTF-8) into a
- * reusable [`Rule`] handle. Returns `NULL` on parse failure — query
- * [`crate::datalogic_last_error_message`] for details.
+ * Compile `(rule_json, rule_len)` into a reusable rule handle stored
+ * in `*out_rule` (release via [`crate::datalogic_rule_free`]).
  *
  * # Safety
  *
- * `engine` must be a valid pointer returned by [`datalogic_engine_new`];
- * `rule_json` must be a valid NUL-terminated UTF-8 string.
+ * `engine` must be a valid handle; `rule_json` must reference
+ * `rule_len` readable bytes; `out_rule` must be writable; `err`
+ * follows the crate-wide error out-param contract.
  */
- datalogic_rule *datalogic_engine_compile(datalogic_engine *engine, const char *rule_json);
+
+datalogic_status datalogic_engine_compile(const datalogic_engine *engine,
+                                          const uint8_t *rule_json,
+                                          size_t rule_len,
+                                          datalogic_rule **out_rule,
+                                          datalogic_error **err);
 
 /**
- * One-shot: compile `rule_json` and evaluate against `data_json` in a
- * single call. Returns the result as a freshly-allocated JSON string
- * the caller must release via [`crate::datalogic_string_free`]. Returns
- * `NULL` on failure — query the last-error state for details.
+ * One-shot: compile `(rule_json)` and evaluate against `(data_json)`
+ * in a single call, storing the owned JSON result in `*out` (release
+ * via [`crate::datalogic_buf_free`]).
  *
- * For repeated evaluations of the same rule, prefer
- * [`datalogic_engine_compile`] + [`crate::datalogic_rule_evaluate`] to
- * avoid re-parsing on every call.
+ * For repeated evaluations of one rule, prefer
+ * [`datalogic_engine_compile`] + a session; for repeated evaluations
+ * against one payload, add [`crate::datalogic_data_parse`].
  *
  * # Safety
  *
- * `engine`, `rule_json`, and `data_json` must all be valid pointers.
+ * `engine` must be a valid handle; the byte inputs must reference
+ * their stated lengths; `out` must be writable; `err` follows the
+ * crate-wide error out-param contract.
  */
 
-char *datalogic_engine_apply(datalogic_engine *engine,
-                             const char *rule_json,
-                             const char *data_json);
+datalogic_status datalogic_engine_apply(const datalogic_engine *engine,
+                                        const uint8_t *rule_json,
+                                        size_t rule_len,
+                                        const uint8_t *data_json,
+                                        size_t data_len,
+                                        datalogic_buf *out,
+                                        datalogic_error **err);
 
 /**
- * Open a hot-loop [`Session`] bound to this engine. The session reuses
- * a single `bumpalo` arena across evaluations and resets it at the
- * start of each call to bound peak memory.
- *
- * Sessions are **not thread-safe** — open one per thread.
+ * Open a hot-loop [`Session`] bound to this engine. Sessions are
+ * **not thread-safe** — open one per thread. Returns `NULL` for a
+ * `NULL` engine.
  *
  * # Safety
  *
- * `engine` must be a valid pointer returned by [`datalogic_engine_new`].
+ * `engine` must be `NULL` or a valid engine handle.
  */
- datalogic_session *datalogic_engine_session(datalogic_engine *engine);
+ datalogic_session *datalogic_engine_session(const datalogic_engine *engine);
 
 /**
- * Reset thread-local last-error state. Safe to call when no error is set.
- */
- void datalogic_last_error_clear(void);
-
-/**
- * Return the last error's human-readable message, or `NULL` if no error.
+ * Release an error handle produced by any `datalogic_*` call. Safe to
+ * call with `NULL`.
  *
- * The returned pointer is owned by the library; do **not** free. It is
- * valid only until the next call on this thread that mutates the
- * last-error block (any fallible `datalogic_*` call, plus
- * [`datalogic_last_error_clear`]).
- */
- const char *datalogic_last_error_message(void);
-
-/**
- * Return the last error's stable type tag (e.g. `"ParseError"`,
- * `"Thrown"`, `"NaN"`, `"InternalError"`), or `NULL` if no error.
+ * # Safety
  *
- * Same lifetime caveat as [`datalogic_last_error_message`].
+ * `err` must either be `NULL` or a pointer stored into a
+ * `datalogic_error **` out-param by this library that has not been
+ * freed.
  */
- const char *datalogic_last_error_type(void);
+ void datalogic_error_free(datalogic_error *err);
 
 /**
- * Return the outermost failing operator's name (e.g. `"+"`, `"var"`),
- * or `NULL` if the last error didn't originate inside a named operator
- * (or if no error is set).
+ * The error's [`Status`] (same value the failing call returned).
+ * Returns [`Status::Internal`] for a `NULL` handle.
+ *
+ * # Safety
+ *
+ * `err` must be `NULL` or a valid error handle.
  */
- const char *datalogic_last_error_operator(void);
+ datalogic_status datalogic_error_status(const datalogic_error *err);
 
 /**
- * Return the resolved root-to-leaf error path as a JSON array string
- * (matching the Python binding's `.path` attribute), or `NULL` if not
- * available. Available when the failing call had a compiled `Rule` in
- * scope at the time of failure.
+ * The error's human-readable message. Borrowed from the handle (valid
+ * until [`datalogic_error_free`]); not NUL-terminated — use `*len_out`.
+ *
+ * # Safety
+ *
+ * `err` must be `NULL` (returns `NULL`) or a valid error handle;
+ * `len_out` must be `NULL` or writable.
  */
- const char *datalogic_last_error_path_json(void);
+ const uint8_t *datalogic_error_message(const datalogic_error *err, size_t *len_out);
+
+/**
+ * The error's stable type tag — the engine's `Error::tag()` values
+ * (`"ParseError"`, `"Thrown"`, `"ArithmeticError"`, `"TypeError"`,
+ * `"ConfigurationError"`, …) plus this binding's own
+ * `"InvalidArgument"` / `"TypeMismatch"` / `"InternalError"`. Same
+ * lifetime and encoding contract as [`datalogic_error_message`].
+ *
+ * # Safety
+ *
+ * `err` must be `NULL` (returns `NULL`) or a valid error handle;
+ * `len_out` must be `NULL` or writable.
+ */
+ const uint8_t *datalogic_error_tag(const datalogic_error *err, size_t *len_out);
+
+/**
+ * The outermost failing operator's name (e.g. `"+"`, `"var"`), or
+ * `NULL` if the error didn't originate inside a named operator.
+ *
+ * # Safety
+ *
+ * `err` must be `NULL` (returns `NULL`) or a valid error handle;
+ * `len_out` must be `NULL` or writable.
+ */
+ const uint8_t *datalogic_error_operator(const datalogic_error *err, size_t *len_out);
+
+/**
+ * The resolved root-to-leaf error path as a JSON array string
+ * (matching the Python binding's `.path`), or `NULL` when the failing
+ * call had no compiled rule in scope.
+ *
+ * # Safety
+ *
+ * `err` must be `NULL` (returns `NULL`) or a valid error handle;
+ * `len_out` must be `NULL` or writable.
+ */
+ const uint8_t *datalogic_error_path_json(const datalogic_error *err, size_t *len_out);
 
 /**
  * Release a rule handle. Safe to call with `NULL`.
  *
  * # Safety
  *
- * `rule` must either be `NULL` or a pointer previously returned by
+ * `rule` must either be `NULL` or a pointer previously stored by
  * [`crate::datalogic_engine_compile`] that has not been freed.
  */
  void datalogic_rule_free(datalogic_rule *rule);
 
 /**
- * Evaluate a compiled rule against `data_json` and return the result
- * as a freshly-allocated JSON string the caller must release via
- * [`crate::datalogic_string_free`]. Returns `NULL` on failure — query
- * the last-error state for details.
- *
- * Uses a short-lived per-call arena. For tight loops, prefer
- * [`crate::datalogic_session_evaluate`] which reuses one arena.
+ * Evaluate a compiled rule against `(data_json, data_len)` and store
+ * the owned JSON result in `*out` (release via
+ * [`crate::datalogic_buf_free`]). Runs over the pooled thread-local
+ * arena. For tight loops, prefer a session — it also skips the result
+ * allocation.
  *
  * # Safety
  *
- * `rule` must be a valid pointer returned by
- * [`crate::datalogic_engine_compile`]; `data_json` must be a valid
- * NUL-terminated UTF-8 string.
+ * `rule` must be a valid handle; `data_json` must reference `data_len`
+ * readable bytes; `out` must be writable; `err` follows the crate-wide
+ * error out-param contract.
  */
- char *datalogic_rule_evaluate(datalogic_rule *rule, const char *data_json);
+
+datalogic_status datalogic_rule_evaluate(const datalogic_rule *rule,
+                                         const uint8_t *data_json,
+                                         size_t data_len,
+                                         datalogic_buf *out,
+                                         datalogic_error **err);
+
+/**
+ * Same as [`datalogic_rule_evaluate`] with a parsed-data handle
+ * instead of JSON text.
+ *
+ * # Safety
+ *
+ * Same as [`datalogic_rule_evaluate`]; `data` must be a valid handle
+ * from [`crate::datalogic_data_parse`].
+ */
+
+datalogic_status datalogic_rule_evaluate_data(const datalogic_rule *rule,
+                                              const datalogic_data *data,
+                                              datalogic_buf *out,
+                                              datalogic_error **err);
 
 /**
  * Release a session handle. Safe to call with `NULL`.
@@ -377,30 +574,9 @@ char *datalogic_engine_apply(datalogic_engine *engine,
  void datalogic_session_free(datalogic_session *session);
 
 /**
- * Evaluate `rule` against `data_json` using the session's reusable
- * arena. The arena is reset at the start of every call so peak memory
- * stays bounded; the previous call's result string has already been
- * materialised by the time we reset.
- *
- * Returns a freshly-allocated JSON string the caller must release via
- * [`crate::datalogic_string_free`]. Returns `NULL` on failure.
- *
- * # Safety
- *
- * `session` and `rule` must be valid pointers; `data_json` must be a
- * valid NUL-terminated UTF-8 string. Must be called from the same
- * thread that created the session.
- */
-
-char *datalogic_session_evaluate(datalogic_session *session,
-                                 datalogic_rule *rule,
-                                 const char *data_json);
-
-/**
- * Manually reset the session's arena. Optional — every
- * [`datalogic_session_evaluate`] already resets at the start of the call.
- * Exposed mainly for consumers who want to release memory between
- * long pauses between evaluations.
+ * Reset the session's arena and invalidate any borrowed result.
+ * Optional — every evaluate call already resets at the start. Exposed
+ * for consumers who want to release memory between long pauses.
  *
  * # Safety
  *
@@ -409,27 +585,176 @@ char *datalogic_session_evaluate(datalogic_session *session,
  void datalogic_session_reset(datalogic_session *session);
 
 /**
- * Number of bytes currently held by the session's arena (sum across
- * all chunks). Useful for sizing or diagnostics. Returns `0` if
- * `session` is `NULL`.
+ * Bytes currently held by the session's evaluation arena (sum across
+ * all chunks; excludes the result buffer). Returns `0` for `NULL`.
  *
  * # Safety
  *
  * `session` must be a valid pointer or `NULL`.
  */
- uintptr_t datalogic_session_allocated_bytes(datalogic_session *session);
+ size_t datalogic_session_allocated_bytes(const datalogic_session *session);
 
 /**
- * Open a [`TracedSession`] bound to this engine. Every `evaluate` call
- * returns a JSON object carrying the result alongside execution-step and
- * expression-tree metadata.
+ * Evaluate `rule` against `(data_json, data_len)` and expose the JSON
+ * result as borrowed bytes: on success `*out_ptr`/`*out_len` point
+ * into the session's buffer, valid until the next call touching this
+ * session. On failure the out-params are left untouched.
  *
  * # Safety
  *
- * `engine` must be a valid pointer returned by
- * [`crate::datalogic_engine_new`].
+ * `session`/`rule` must be valid handles from the same engine, used
+ * from one thread; `data_json` must reference `data_len` readable
+ * bytes; `out_ptr`/`out_len` must be writable; `err` follows the
+ * crate-wide error out-param contract.
  */
- datalogic_traced_session *datalogic_engine_traced_session(datalogic_engine *engine);
+
+datalogic_status datalogic_session_evaluate(datalogic_session *session,
+                                            const datalogic_rule *rule,
+                                            const uint8_t *data_json,
+                                            size_t data_len,
+                                            const uint8_t **out_ptr,
+                                            size_t *out_len,
+                                            datalogic_error **err);
+
+/**
+ * Same as [`datalogic_session_evaluate`] with a parsed-data handle
+ * instead of JSON text — the hot path: zero parse work per call.
+ *
+ * # Safety
+ *
+ * Same as [`datalogic_session_evaluate`]; `data` must be a valid
+ * handle from [`crate::datalogic_data_parse`].
+ */
+
+datalogic_status datalogic_session_evaluate_data(datalogic_session *session,
+                                                 const datalogic_rule *rule,
+                                                 const datalogic_data *data,
+                                                 const uint8_t **out_ptr,
+                                                 size_t *out_len,
+                                                 datalogic_error **err);
+
+/**
+ * Evaluate and read the result as a strict JSON boolean into `*out`
+ * (0/1). Returns `DATALOGIC_STATUS_TYPE_MISMATCH` if the result is any
+ * other type; for JSONLogic truthiness coercion use
+ * [`datalogic_session_evaluate_truthy`].
+ *
+ * # Safety
+ *
+ * Same handle/thread contract as [`datalogic_session_evaluate_data`];
+ * `out` must be writable.
+ */
+
+datalogic_status datalogic_session_evaluate_bool(datalogic_session *session,
+                                                 const datalogic_rule *rule,
+                                                 const datalogic_data *data,
+                                                 int32_t *out,
+                                                 datalogic_error **err);
+
+/**
+ * Evaluate and read the result as an integer into `*out`. Returns
+ * `DATALOGIC_STATUS_TYPE_MISMATCH` when the result is not an exact
+ * integer number.
+ *
+ * # Safety
+ *
+ * Same contract as [`datalogic_session_evaluate_bool`].
+ */
+
+datalogic_status datalogic_session_evaluate_i64(datalogic_session *session,
+                                                const datalogic_rule *rule,
+                                                const datalogic_data *data,
+                                                int64_t *out,
+                                                datalogic_error **err);
+
+/**
+ * Evaluate and read the result as a double into `*out`. Accepts any
+ * JSON number; returns `DATALOGIC_STATUS_TYPE_MISMATCH` otherwise.
+ *
+ * # Safety
+ *
+ * Same contract as [`datalogic_session_evaluate_bool`].
+ */
+
+datalogic_status datalogic_session_evaluate_f64(datalogic_session *session,
+                                                const datalogic_rule *rule,
+                                                const datalogic_data *data,
+                                                double *out,
+                                                datalogic_error **err);
+
+/**
+ * Evaluate and collapse the result to 0/1 via the engine's configured
+ * truthiness rules (the same coercion `if`/`and`/`or` apply). Never
+ * type-mismatches — any result truthy-converts.
+ *
+ * # Safety
+ *
+ * Same contract as [`datalogic_session_evaluate_bool`].
+ */
+
+datalogic_status datalogic_session_evaluate_truthy(datalogic_session *session,
+                                                   const datalogic_rule *rule,
+                                                   const datalogic_data *data,
+                                                   int32_t *out,
+                                                   datalogic_error **err);
+
+/**
+ * One rule × `n` data handles. `out_results`/`out_statuses` are
+ * caller-allocated arrays of length `n`.
+ *
+ * Per item `i`: `out_statuses[i]` carries the item's status and
+ * `out_results[i]` points at either the result JSON or (on item
+ * failure) a small error object `{"tag": ..., "message": ...}`. All
+ * result slices borrow from the session buffer — same validity
+ * contract as [`datalogic_session_evaluate`]. The call-level return
+ * covers argument problems only; item failures never fail the call.
+ *
+ * # Safety
+ *
+ * `datas` must reference `n` readable handle pointers;
+ * `out_results`/`out_statuses` must be writable for `n` entries
+ * (`n == 0` short-circuits and allows NULL arrays). Same
+ * session/thread contract as [`datalogic_session_evaluate`].
+ */
+
+datalogic_status datalogic_session_evaluate_batch(datalogic_session *session,
+                                                  const datalogic_rule *rule,
+                                                  const datalogic_data *const *datas,
+                                                  size_t n,
+                                                  datalogic_slice *out_results,
+                                                  datalogic_status *out_statuses,
+                                                  datalogic_error **err);
+
+/**
+ * `n` rules × one data handle — the rule-set / feature-flag shape.
+ * Same per-item semantics, buffer borrowing, and array contracts as
+ * [`datalogic_session_evaluate_batch`].
+ *
+ * # Safety
+ *
+ * `rules` must reference `n` readable handle pointers; everything else
+ * as [`datalogic_session_evaluate_batch`].
+ */
+
+datalogic_status datalogic_session_evaluate_many(datalogic_session *session,
+                                                 const datalogic_rule *const *rules,
+                                                 size_t n,
+                                                 const datalogic_data *data,
+                                                 datalogic_slice *out_results,
+                                                 datalogic_status *out_statuses,
+                                                 datalogic_error **err);
+
+/**
+ * Open a [`TracedSession`] bound to this engine. Returns `NULL` for a
+ * `NULL` engine.
+ *
+ * # Safety
+ *
+ * `engine` must be `NULL` or a valid pointer returned by
+ * [`crate::datalogic_engine_new`] /
+ * [`crate::datalogic_engine_builder_build`].
+ */
+ datalogic_traced_session *datalogic_engine_traced_session(const datalogic_engine *engine);
 
 /**
  * Release a traced-session handle. Safe to call with `NULL`.
@@ -442,25 +767,29 @@ char *datalogic_session_evaluate(datalogic_session *session,
  void datalogic_traced_session_free(datalogic_traced_session *session);
 
 /**
- * One-shot traced evaluation: compile `rule_json` internally with the
- * optimizer disabled, evaluate against `data_json`, and return the
- * result + trace as a JSON-object string. Engine errors (parse / eval)
- * surface inside the returned JSON's `error` / `structured_error`
- * fields, not as a `NULL` return — `NULL` is reserved for invalid input
- * pointers (null / non-UTF8).
+ * One-shot traced evaluation: compile `(rule_json, rule_len)` with the
+ * optimizer disabled, evaluate against `(data_json, data_len)`, and
+ * store the result + trace as an owned JSON buffer in `*out` (release
+ * via [`crate::datalogic_buf_free`]).
  *
- * Caller releases the returned string via
- * [`crate::datalogic_string_free`].
+ * Engine errors (parse / eval) surface **inside** the returned JSON's
+ * `error` / `structured_error` fields with a `DATALOGIC_STATUS_OK`
+ * return — a non-OK status is reserved for invalid arguments.
  *
  * # Safety
  *
- * `session` must be a valid pointer; `rule_json` and `data_json` must be
- * valid NUL-terminated UTF-8 strings.
+ * `session` must be a valid handle; the byte inputs must reference
+ * their stated lengths; `out` must be writable; `err` follows the
+ * crate-wide error out-param contract.
  */
 
-char *datalogic_traced_session_evaluate(datalogic_traced_session *session,
-                                        const char *rule_json,
-                                        const char *data_json);
+datalogic_status datalogic_traced_session_evaluate(const datalogic_traced_session *session,
+                                                   const uint8_t *rule_json,
+                                                   size_t rule_len,
+                                                   const uint8_t *data_json,
+                                                   size_t data_len,
+                                                   datalogic_buf *out,
+                                                   datalogic_error **err);
 
 #ifdef __cplusplus
 }  // extern "C"

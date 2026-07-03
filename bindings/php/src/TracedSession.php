@@ -6,6 +6,7 @@ declare(strict_types=1);
 
 namespace Goplasmatic\Datalogic;
 
+use FFI;
 use FFI\CData;
 use Goplasmatic\Datalogic\Exception\DatalogicException;
 use Goplasmatic\Datalogic\Exception\EvaluateException;
@@ -43,16 +44,23 @@ final class TracedSession
      */
     public function evaluate(string $ruleJson, string $dataJson): TracedRun
     {
-        $ptr = Native::ffi()->datalogic_traced_session_evaluate(
+        $ffi = Native::ffi();
+        $buf = $ffi->new('datalogic_buf');
+        $err = Native::newErrorOut();
+        $rc = $ffi->datalogic_traced_session_evaluate(
             $this->handle(),
             $ruleJson,
+            strlen($ruleJson),
             $dataJson,
+            strlen($dataJson),
+            FFI::addr($buf),
+            FFI::addr($err),
         );
-        if ($ptr === null) {
-            throw DatalogicException::fromLastError('traced session evaluate failed');
+        if ($rc !== Native::STATUS_OK) {
+            throw DatalogicException::fromNative($rc, $err, 'traced session evaluate failed');
         }
-        $payload = Native::takeString($ptr);
-        $decoded = json_decode($payload ?? '', associative: true);
+        $payload = Native::takeBuf($buf);
+        $decoded = json_decode($payload, associative: true);
         if (!is_array($decoded)) {
             throw new EvaluateException('traced session returned malformed payload');
         }

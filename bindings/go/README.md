@@ -110,7 +110,70 @@ The Go binding mirrors the Rust engine's
 | Engine       | `datalogic.NewEngine().Apply(rule, data)`    | Engine reuse without compile-once                       |
 | Compile once | `engine.Compile(rule)` → `rule.Evaluate(data)` | Same rule evaluated against many data inputs          |
 | Session      | `engine.Session()` → `session.Evaluate(rule, data)` | Hot loops — arena reuse per goroutine            |
+| Data handle  | `datalogic.ParseData(json)` → `session.EvaluateData(rule, data)` | Same payload evaluated many times: parse once, zero parse work per call |
+| Typed        | `session.EvaluateBool/Int64/Float64/Truthy(rule, data)` | Predicates and scalar results, no JSON decode on the way out |
+| Batch        | `session.EvaluateBatch(rule, datas)` / `session.EvaluateMany(rules, data)` | Many evaluations per native call, per-item errors |
 | Traced       | `engine.TracedSession()` → `ts.Evaluate(rule, data)` | Step-level execution traces for debuggers and tooling |
+
+## Data handles, typed results, and batch evaluation
+
+New with C ABI v2 (5.0.1). A `DataHandle` is an immutable, pre-parsed
+JSON document: parse a payload once with `datalogic.ParseData` and every
+evaluation against it skips JSON parsing entirely. Handles are
+engine-independent (one handle can feed rules compiled by different
+engines), safe for concurrent use from multiple goroutines, and not
+consumed by evaluation. `Close()` them after the last use (a GC
+finalizer backstops forgotten closes, best-effort).
+
+```go
+data, err := datalogic.ParseData(`{"age": 25, "status": "active"}`)
+if err != nil { /* invalid JSON */ }
+defer data.Close()
+
+out, _ := rule.EvaluateData(data)       // goroutine-safe, like rule.Evaluate
+out, _ = session.EvaluateData(rule, data) // hot path: session arena + no parse
+```
+
+For predicates and scalar results, the typed session evaluations skip
+the JSON result string too:
+
+```go
+ok, err  := session.EvaluateBool(rule, data)   // strict JSON boolean
+n, err   := session.EvaluateInt64(rule, data)  // exact integer result
+f, err   := session.EvaluateFloat64(rule, data) // any JSON number
+t, err   := session.EvaluateTruthy(rule, data) // JSONLogic truthiness, never mismatches
+```
+
+`EvaluateBool`, `EvaluateInt64`, and `EvaluateFloat64` return a `*Error`
+with `Type == "TypeMismatch"` when the rule evaluates fine but the
+result is not of the requested type. `EvaluateTruthy` coerces any result
+through the engine's configured truthiness rules (the same coercion
+`if`/`and`/`or` apply).
+
+The batch entry points evaluate a whole set in one native call and
+report failures per item, so one bad input never poisons its
+neighbours:
+
+```go
+// One rule, many payloads:
+results, err := session.EvaluateBatch(rule, []*datalogic.DataHandle{d0, d1, d2})
+// Many rules, one payload (the rule-set / feature-flag shape):
+results, err = session.EvaluateMany([]*datalogic.Rule{r0, r1}, data)
+
+for i, r := range results {
+    if r.Err != nil {
+        e := r.Err.(*datalogic.Error)
+        fmt.Printf("item %d failed: %s (%s)\n", i, e.Message, e.Type)
+        continue
+    }
+    fmt.Printf("item %d: %s\n", i, r.Value)
+}
+```
+
+The call-level `error` return is reserved for argument problems (nil
+session, a rule compiled by a different engine, ...). Typed and batch
+evaluations take data handles only; rules must belong to the session's
+engine, and sessions stay single-goroutine.
 
 ## Custom operators
 
@@ -215,6 +278,7 @@ if err != nil {
 |-----------|------------------------------------------------------------------------------------|
 | `Engine`  | Construct once; share across goroutines                                            |
 | `Rule`    | Compile once; share across goroutines — `Evaluate` is safe to call from many       |
+| `DataHandle` | Parse once; immutable, share across goroutines and engines                      |
 | `Session` | One per goroutine — the per-task workhorse                                         |
 | `TracedSession` | Share across goroutines; every `Evaluate` uses a fresh internal arena        |
 
@@ -237,6 +301,14 @@ datalogic-rs (Rust)  →  bindings/c/  →  libdatalogic_c.a  →  cgo → Go
 `make build` keeps `lib/` and `include/` in sync with the Rust source.
 Go is the only binding that links the staticlib; the JVM, .NET, and PHP
 bindings consume the same C ABI as a shared library (cdylib).
+
+The binding targets C ABI **v2**: inputs cross as (pointer, length)
+UTF-8 with Go string bytes passed zero-copy, results are copied out of
+session-owned buffers or owned bufs, and errors travel as status codes
+plus an error handle (no thread-local state, so no OS-thread pinning).
+At load time the package asserts `datalogic_abi_version() == 2` and
+panics on a stale library, so a mismatched `libdatalogic_c.a` fails
+loudly at init instead of corrupting at call time.
 
 ## Learn more
 

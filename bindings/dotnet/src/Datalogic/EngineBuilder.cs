@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Runtime.InteropServices;
+using System.Text;
 
 using Goplasmatic.Datalogic.Native;
 
@@ -26,11 +27,12 @@ public sealed class EngineBuilder
 {
     private IntPtr _handle;
     private bool _consumed;
-    // Pin every registered callback so its function pointer stays valid
-    // until the resulting Engine is disposed.
+    // Keep every registered callback delegate alive (GCHandle) until
+    // the resulting Engine is disposed — the native side stores the
+    // GCHandle address as its user_data.
     private readonly List<GCHandle> _pinned = new();
 
-    static EngineBuilder() => NativeLibraryResolver.Install();
+    static EngineBuilder() => NativeInit.EnsureLoaded();
 
     /// <summary>Construct a fresh, empty builder.</summary>
     public EngineBuilder()
@@ -38,7 +40,8 @@ public sealed class EngineBuilder
         _handle = NativeMethods.datalogic_engine_builder_new();
         if (_handle == IntPtr.Zero)
         {
-            throw DatalogicException.FromLastError("builder_new failed");
+            throw new EvaluateException(
+                "datalogic_engine_builder_new returned NULL", null, null, null, EvaluationStatus.InternalError);
         }
     }
 
@@ -75,16 +78,28 @@ public sealed class EngineBuilder
     {
         ArgumentNullException.ThrowIfNull(json);
         EnsureFresh();
-        var rc = NativeMethods.datalogic_engine_builder_set_config_json(_handle, json);
-        if (rc != 0)
+        unsafe
         {
-            throw DatalogicException.FromLastError("set_config_json failed");
+            using var jsonU8 = Utf8Input.From(json, stackalloc byte[Utf8Input.StackBufferSize]);
+            var err = IntPtr.Zero;
+            DatalogicStatus status;
+            fixed (byte* jp = jsonU8.Span)
+            {
+                status = NativeMethods.datalogic_engine_builder_set_config_json(
+                    _handle, jp, (nuint)jsonU8.Span.Length, ref err);
+            }
+            if (status != DatalogicStatus.Ok)
+            {
+                throw DatalogicException.FromNative(status, err, "set_config_json failed");
+            }
         }
         return this;
     }
 
     /// <summary>
     /// Register a custom JSONLogic operator under <paramref name="name"/>.
+    /// The callback may be invoked from any thread that evaluates rules
+    /// on the built engine, so it must be thread-safe.
     /// </summary>
     public EngineBuilder AddOperator(string name, CustomOperator op)
     {
@@ -92,24 +107,31 @@ public sealed class EngineBuilder
         ArgumentNullException.ThrowIfNull(op);
         EnsureFresh();
 
-        // Pin a GCHandle so the runtime won't move/free the closure
-        // while the engine is alive. The pin is released when the
-        // owning Engine is disposed.
+        // A GCHandle keeps the delegate reachable while the engine is
+        // alive; its IntPtr form rides across the boundary as the
+        // callback's user_data. Released when the owning Engine is
+        // disposed.
         var handle = GCHandle.Alloc(op);
         _pinned.Add(handle);
 
         unsafe
         {
-            delegate* unmanaged[Cdecl]<IntPtr, IntPtr, IntPtr*, IntPtr> trampoline = &Trampoline;
-            var fnPtr = (IntPtr)trampoline;
-            var rc = NativeMethods.datalogic_engine_builder_add_operator(
-                _handle,
-                name,
-                fnPtr,
-                GCHandle.ToIntPtr(handle));
-            if (rc != 0)
+            delegate* unmanaged[Cdecl]<byte*, nuint, void*, IntPtr, int> trampoline = &Trampoline;
+            using var nameU8 = Utf8Input.From(name, stackalloc byte[Utf8Input.StackBufferSize]);
+            var err = IntPtr.Zero;
+            DatalogicStatus status;
+            fixed (byte* np = nameU8.Span)
             {
-                throw DatalogicException.FromLastError("add_operator failed");
+                status = NativeMethods.datalogic_engine_builder_add_operator(
+                    _handle,
+                    np, (nuint)nameU8.Span.Length,
+                    (IntPtr)trampoline,
+                    GCHandle.ToIntPtr(handle),
+                    ref err);
+            }
+            if (status != DatalogicStatus.Ok)
+            {
+                throw DatalogicException.FromNative(status, err, "add_operator failed");
             }
         }
         return this;
@@ -132,7 +154,8 @@ public sealed class EngineBuilder
         if (enginePtr == IntPtr.Zero)
         {
             ReleasePins();
-            throw DatalogicException.FromLastError("builder build failed");
+            throw new EvaluateException(
+                "builder build failed", null, null, null, EvaluationStatus.InternalError);
         }
         var engine = new Engine(enginePtr);
         // Ownership of pin list transfers to the engine; the builder
@@ -156,57 +179,61 @@ public sealed class EngineBuilder
 
     /// <summary>
     /// `extern "C"` trampoline invoked by the Rust engine for every
-    /// custom-operator call. Resolves the <see cref="GCHandle"/> back to
-    /// the C# delegate and forwards the call.
+    /// custom-operator call (v2 `datalogic_op_fn` contract). Resolves
+    /// the <see cref="GCHandle"/> back to the C# delegate, forwards the
+    /// call, and writes the outcome through
+    /// `datalogic_op_result_set_json` / `_set_error` (both copy
+    /// immediately — nothing allocated here crosses the boundary).
+    /// Returns 0 on success, non-zero on failure.
     /// </summary>
     [UnmanagedCallersOnly(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
-    private static unsafe IntPtr Trampoline(IntPtr argsJsonPtr, IntPtr userData, IntPtr* errorOut)
+    private static unsafe int Trampoline(byte* argsJson, nuint argsLen, void* userData, IntPtr outResult)
     {
         try
         {
-            var handle = GCHandle.FromIntPtr(userData);
-            var op = (CustomOperator?)handle.Target;
-            if (op is null)
+            var handle = GCHandle.FromIntPtr((IntPtr)userData);
+            if (handle.Target is not CustomOperator op)
             {
-                WriteError(errorOut, "internal: operator handle had wrong type");
-                return IntPtr.Zero;
+                SetError(outResult, "internal: operator handle had wrong type");
+                return 1;
             }
-            var argsJson = Marshal.PtrToStringUTF8(argsJsonPtr) ?? "[]";
-            var result = op(argsJson);
-            // Allocate with the C runtime's malloc (NativeMemory.Alloc
-            // inside AllocLibcUtf8) so the Rust side's libc `free()` is
-            // valid. See AllocLibcUtf8 for why Marshal.AllocHGlobal
-            // would not be safe here.
-            return AllocLibcUtf8(result);
+            var args = argsJson == null || argsLen == 0
+                ? "[]"
+                : Encoding.UTF8.GetString(argsJson, checked((int)argsLen));
+            var result = op(args);
+            if (result is null)
+            {
+                SetError(outResult, "custom operator returned null");
+                return 1;
+            }
+            var bytes = Encoding.UTF8.GetBytes(result);
+            fixed (byte* rp = bytes)
+            {
+                NativeMethods.datalogic_op_result_set_json(outResult, rp, (nuint)bytes.Length);
+            }
+            return 0;
         }
         catch (Exception ex)
         {
-            WriteError(errorOut, ex.Message);
-            return IntPtr.Zero;
+            SetError(outResult, ex.Message);
+            return 1;
         }
     }
 
-    private static unsafe void WriteError(IntPtr* errorOut, string message)
+    private static unsafe void SetError(IntPtr outResult, string message)
     {
-        if (errorOut != null && *errorOut == IntPtr.Zero)
+        try
         {
-            *errorOut = AllocLibcUtf8(message);
+            var bytes = Encoding.UTF8.GetBytes(message);
+            fixed (byte* mp = bytes)
+            {
+                NativeMethods.datalogic_op_result_set_error(outResult, mp, (nuint)bytes.Length);
+            }
+        }
+        catch
+        {
+            // Best effort: a non-zero return with no message still
+            // produces a generic engine error naming the operator.
         }
     }
-
-    private static unsafe IntPtr AllocLibcUtf8(string s)
-    {
-        // Use NativeMemory.Alloc — backed by the C runtime's `malloc`
-        // on every supported platform (.NET 6+). Critical for Windows:
-        // Marshal.AllocHGlobal uses LocalAlloc, which is NOT freeable by
-        // libc's free(). The Rust side calls libc `free()` on this
-        // pointer, so we have to allocate with the matching allocator.
-        var bytes = System.Text.Encoding.UTF8.GetByteCount(s);
-        var ptr = NativeMemory.Alloc((nuint)(bytes + 1));
-        var span = new Span<byte>(ptr, bytes + 1);
-        System.Text.Encoding.UTF8.GetBytes(s, span);
-        span[bytes] = 0;
-        return (IntPtr)ptr;
-    }
-
 }

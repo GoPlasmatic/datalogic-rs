@@ -64,13 +64,32 @@ public sealed class TracedSession : IDisposable
     {
         ArgumentNullException.ThrowIfNull(ruleJson);
         ArgumentNullException.ThrowIfNull(dataJson);
-        var ptr = NativeMethods.datalogic_traced_session_evaluate(Handle, ruleJson, dataJson);
-        if (ptr == IntPtr.Zero)
+        unsafe
         {
-            throw DatalogicException.FromLastError("traced session evaluate failed");
+            using var ruleU8 = Utf8Input.From(ruleJson, stackalloc byte[Utf8Input.StackBufferSize]);
+            using var dataU8 = Utf8Input.From(dataJson, stackalloc byte[Utf8Input.StackBufferSize]);
+            var err = IntPtr.Zero;
+            DatalogicStatus status;
+            DatalogicBuf buf;
+            fixed (byte* rp = ruleU8.Span)
+            fixed (byte* dp = dataU8.Span)
+            {
+                status = NativeMethods.datalogic_traced_session_evaluate(
+                    Handle,
+                    rp, (nuint)ruleU8.Span.Length,
+                    dp, (nuint)dataU8.Span.Length,
+                    out buf, ref err);
+            }
+            // Engine errors surface inside the returned JSON payload with
+            // an Ok status; a non-Ok status here means invalid arguments.
+            if (status != DatalogicStatus.Ok)
+            {
+                throw DatalogicException.FromNative(status, err, "traced session evaluate failed");
+            }
+            var json = NativeMethods.TakeBufUtf8(buf);
+            GC.KeepAlive(this);
+            return Parse(json);
         }
-        var json = NativeMethods.TakeUtf8String(ptr)!;
-        return Parse(json);
     }
 
     private static TracedRun Parse(string json)

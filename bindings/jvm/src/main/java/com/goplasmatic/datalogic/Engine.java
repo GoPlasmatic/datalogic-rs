@@ -2,8 +2,11 @@
 package com.goplasmatic.datalogic;
 
 import com.goplasmatic.datalogic.internal.DatalogicNative;
-import com.sun.jna.Pointer;
 
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
+import java.lang.ref.Reference;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,10 +22,13 @@ import java.util.List;
  * </pre>
  */
 public class Engine implements AutoCloseable {
-    private Pointer handle;
-    // JNA holds Callback references weakly via the C side; hold them
-    // strongly here so they live as long as the engine.
-    final List<DatalogicNative.OperatorCallback> retainedCallbacks = new ArrayList<>();
+    private volatile MemorySegment handle;
+    // Custom-operator upcall stubs live in an automatic arena; keep the
+    // arena (and the bound bridges) strongly reachable for as long as
+    // the engine — and anything compiled from it — is, so the native
+    // side never dispatches into a reclaimed stub.
+    final List<Object> retainedCallbacks = new ArrayList<>();
+    private final Arena callbackArena;
 
     /** Construct an engine with default (non-templating) configuration. */
     public Engine() {
@@ -34,28 +40,44 @@ public class Engine implements AutoCloseable {
      * multi-key objects in compiled rules become output-shaping templates.
      */
     public Engine(boolean templating) {
-        this(DatalogicNative.INSTANCE.datalogic_engine_new(templating ? 1 : 0), null);
+        this(newEngine(templating), null, null);
     }
 
-    Engine(Pointer handle, List<DatalogicNative.OperatorCallback> adoptedCallbacks) {
-        this.handle = handle;
-        if (handle == null || Pointer.nativeValue(handle) == 0) {
-            throw DatalogicException.fromLastError("datalogic_engine_new returned null");
+    Engine(MemorySegment handle, List<Object> adoptedCallbacks, Arena callbackArena) {
+        if (handle == null || handle.address() == 0) {
+            throw new DatalogicException("datalogic_engine_new returned null", null, null, null);
         }
+        this.handle = handle;
+        this.callbackArena = callbackArena;
         if (adoptedCallbacks != null) {
             retainedCallbacks.addAll(adoptedCallbacks);
         }
     }
 
-    /** The binding's version string (sourced from the underlying C ABI). */
-    public static String version() {
-        Pointer p = DatalogicNative.INSTANCE.datalogic_version();
-        return p == null ? "" : p.getString(0, "UTF-8");
+    private static MemorySegment newEngine(boolean templating) {
+        try {
+            return (MemorySegment) DatalogicNative.ENGINE_NEW.invokeExact(templating ? 1 : 0);
+        } catch (Throwable t) {
+            throw DatalogicException.propagate(t);
+        }
     }
 
-    Pointer handle() {
-        if (handle == null) throw new IllegalStateException("Engine is closed");
-        return handle;
+    /** The binding's version string (sourced from the underlying C ABI). */
+    public static String version() {
+        try {
+            MemorySegment p = (MemorySegment) DatalogicNative.VERSION.invokeExact();
+            // The one NUL-terminated string in the v2 ABI: a static
+            // literal valid for the program's lifetime.
+            return p.address() == 0 ? "" : p.reinterpret(Long.MAX_VALUE).getString(0);
+        } catch (Throwable t) {
+            throw DatalogicException.propagate(t);
+        }
+    }
+
+    MemorySegment handle() {
+        MemorySegment h = handle;
+        if (h == null) throw new IllegalStateException("Engine is closed");
+        return h;
     }
 
     /**
@@ -64,9 +86,22 @@ public class Engine implements AutoCloseable {
      */
     public Rule compile(String ruleJson) {
         if (ruleJson == null) throw new NullPointerException("ruleJson");
-        Pointer r = DatalogicNative.INSTANCE.datalogic_engine_compile(handle(), ruleJson);
-        if (r == null) throw DatalogicException.fromLastError("compile failed");
-        return new Rule(r);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment rule = DatalogicNative.utf8(arena, ruleJson);
+            MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment errSlot = arena.allocate(ValueLayout.ADDRESS);
+            int status;
+            try {
+                status = (int) DatalogicNative.ENGINE_COMPILE.invokeExact(
+                        handle(), rule, rule.byteSize(), out, errSlot);
+            } catch (Throwable t) {
+                throw DatalogicException.propagate(t);
+            }
+            if (status != DatalogicNative.STATUS_OK) {
+                throw DatalogicException.fromNative(status, errSlot, "compile failed");
+            }
+            return new Rule(out.get(ValueLayout.ADDRESS, 0), this);
+        }
     }
 
     /**
@@ -77,9 +112,27 @@ public class Engine implements AutoCloseable {
     public String apply(String ruleJson, String dataJson) {
         if (ruleJson == null) throw new NullPointerException("ruleJson");
         if (dataJson == null) throw new NullPointerException("dataJson");
-        Pointer ptr = DatalogicNative.INSTANCE.datalogic_engine_apply(handle(), ruleJson, dataJson);
-        if (ptr == null) throw DatalogicException.fromLastError("apply failed");
-        return takeOwnedString(ptr);
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment rule = DatalogicNative.utf8(arena, ruleJson);
+            MemorySegment data = DatalogicNative.utf8(arena, dataJson);
+            MemorySegment buf = arena.allocate(DatalogicNative.BUF_LAYOUT);
+            MemorySegment errSlot = arena.allocate(ValueLayout.ADDRESS);
+            int status;
+            try {
+                status = (int) DatalogicNative.ENGINE_APPLY.invokeExact(
+                        handle(), rule, rule.byteSize(), data, data.byteSize(), buf, errSlot);
+            } catch (Throwable t) {
+                throw DatalogicException.propagate(t);
+            }
+            if (status != DatalogicNative.STATUS_OK) {
+                throw DatalogicException.fromNative(status, errSlot, "apply failed");
+            }
+            return DatalogicNative.takeOwnedBuf(buf);
+        } finally {
+            // apply() may dispatch custom operators: keep the upcall
+            // stubs (reachable through this engine) alive across the call.
+            Reference.reachabilityFence(this);
+        }
     }
 
     /**
@@ -87,9 +140,16 @@ public class Engine implements AutoCloseable {
      * NOT thread-safe — open one per thread.
      */
     public Session openSession() {
-        Pointer s = DatalogicNative.INSTANCE.datalogic_engine_session(handle());
-        if (s == null) throw DatalogicException.fromLastError("session failed");
-        return new Session(s);
+        MemorySegment s;
+        try {
+            s = (MemorySegment) DatalogicNative.ENGINE_SESSION.invokeExact(handle());
+        } catch (Throwable t) {
+            throw DatalogicException.propagate(t);
+        }
+        if (s.address() == 0) {
+            throw new DatalogicException("datalogic_engine_session returned null", null, null, null);
+        }
+        return new Session(s, this);
     }
 
     /**
@@ -99,9 +159,16 @@ public class Engine implements AutoCloseable {
      * expression-tree metadata.
      */
     public TracedSession openTracedSession() {
-        Pointer s = DatalogicNative.INSTANCE.datalogic_engine_traced_session(handle());
-        if (s == null) throw DatalogicException.fromLastError("traced session failed");
-        return new TracedSession(s);
+        MemorySegment s;
+        try {
+            s = (MemorySegment) DatalogicNative.ENGINE_TRACED_SESSION.invokeExact(handle());
+        } catch (Throwable t) {
+            throw DatalogicException.propagate(t);
+        }
+        if (s.address() == 0) {
+            throw new DatalogicException("datalogic_engine_traced_session returned null", null, null, null);
+        }
+        return new TracedSession(s, this);
     }
 
     /** Builder for engines with custom operators. */
@@ -109,20 +176,18 @@ public class Engine implements AutoCloseable {
 
     @Override
     public void close() {
-        if (handle != null) {
-            DatalogicNative.INSTANCE.datalogic_engine_free(handle);
+        MemorySegment h = handle;
+        if (h != null) {
             handle = null;
+            try {
+                DatalogicNative.ENGINE_FREE.invokeExact(h);
+            } catch (Throwable t) {
+                throw DatalogicException.propagate(t);
+            }
         }
-        retainedCallbacks.clear();
-    }
-
-    /**
-     * Marshal a returned UTF-8 C string (callee-owned) into a Java
-     * String and free the native allocation.
-     */
-    static String takeOwnedString(Pointer ptr) {
-        String s = ptr.getString(0, "UTF-8");
-        DatalogicNative.INSTANCE.datalogic_string_free(ptr);
-        return s;
+        // retainedCallbacks / callbackArena stay referenced by this
+        // object (and by rules/sessions created from it) — rules hold an
+        // Arc on the Rust engine and may still dispatch custom
+        // operators after the engine handle itself is freed.
     }
 }

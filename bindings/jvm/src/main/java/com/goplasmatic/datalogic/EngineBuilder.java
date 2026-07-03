@@ -2,11 +2,13 @@
 package com.goplasmatic.datalogic;
 
 import com.goplasmatic.datalogic.internal.DatalogicNative;
-import com.sun.jna.Native;
-import com.sun.jna.Pointer;
-import com.sun.jna.ptr.PointerByReference;
 
-import java.nio.charset.StandardCharsets;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -18,24 +20,37 @@ import java.util.List;
  * always win.
  */
 public final class EngineBuilder {
-    private Pointer handle;
+    private MemorySegment handle;
     private boolean consumed;
-    // Strongly retain every registered callback until the resulting
-    // Engine is closed; otherwise JNA may GC them while the engine
-    // still holds the function pointer.
-    private final List<DatalogicNative.OperatorCallback> pinned = new ArrayList<>();
+    // Strongly retain every registered bridge until the resulting
+    // Engine (and everything compiled from it) goes away; the upcall
+    // stubs themselves live in `stubArena`.
+    private final List<Object> pinned = new ArrayList<>();
+    // Automatic arena owning the upcall stubs: reclaimed by the GC only
+    // once nothing (builder, engine, rule, session) references it any
+    // more — never explicitly closed, so a stale function pointer can
+    // never be invoked while its Java owner is still reachable.
+    private Arena stubArena;
 
     EngineBuilder() {
-        handle = DatalogicNative.INSTANCE.datalogic_engine_builder_new();
-        if (handle == null) {
-            throw DatalogicException.fromLastError("builder_new failed");
+        try {
+            handle = (MemorySegment) DatalogicNative.BUILDER_NEW.invokeExact();
+        } catch (Throwable t) {
+            throw DatalogicException.propagate(t);
+        }
+        if (handle.address() == 0) {
+            throw new DatalogicException("datalogic_engine_builder_new returned null", null, null, null);
         }
     }
 
     /** Toggle templating mode on the resulting engine. */
     public EngineBuilder withTemplating(boolean enabled) {
         ensureFresh();
-        DatalogicNative.INSTANCE.datalogic_engine_builder_set_templating(handle, enabled ? 1 : 0);
+        try {
+            DatalogicNative.BUILDER_SET_TEMPLATING.invokeExact(handle, enabled ? 1 : 0);
+        } catch (Throwable t) {
+            throw DatalogicException.propagate(t);
+        }
         return this;
     }
 
@@ -61,9 +76,19 @@ public final class EngineBuilder {
     public EngineBuilder setConfigJson(String json) {
         if (json == null) throw new NullPointerException("json");
         ensureFresh();
-        int rc = DatalogicNative.INSTANCE.datalogic_engine_builder_set_config_json(handle, json);
-        if (rc != 0) {
-            throw DatalogicException.fromLastError("set_config_json failed");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment config = DatalogicNative.utf8(arena, json);
+            MemorySegment errSlot = arena.allocate(ValueLayout.ADDRESS);
+            int status;
+            try {
+                status = (int) DatalogicNative.BUILDER_SET_CONFIG_JSON.invokeExact(
+                        handle, config, config.byteSize(), errSlot);
+            } catch (Throwable t) {
+                throw DatalogicException.propagate(t);
+            }
+            if (status != DatalogicNative.STATUS_OK) {
+                throw DatalogicException.fromNative(status, errSlot, "set_config_json failed");
+            }
         }
         return this;
     }
@@ -78,24 +103,27 @@ public final class EngineBuilder {
         if (op == null) throw new NullPointerException("op");
         ensureFresh();
 
-        DatalogicNative.OperatorCallback cb = (argsJsonPtr, userData, errorOut) -> {
+        if (stubArena == null) {
+            stubArena = Arena.ofAuto();
+        }
+        OperatorBridge bridge = new OperatorBridge(op);
+        MemorySegment stub = DatalogicNative.LINKER.upcallStub(
+                OperatorBridge.INVOKE.bindTo(bridge), DatalogicNative.OP_FN_DESC, stubArena);
+        pinned.add(bridge);
+
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment nameSeg = DatalogicNative.utf8(arena, name);
+            MemorySegment errSlot = arena.allocate(ValueLayout.ADDRESS);
+            int status;
             try {
-                String args = argsJsonPtr == null ? "[]" : argsJsonPtr.getString(0, "UTF-8");
-                String result = op.invoke(args);
-                if (result == null) {
-                    setError(errorOut, "custom operator returned null result");
-                    return null;
-                }
-                return allocLibcUtf8(result);
+                status = (int) DatalogicNative.BUILDER_ADD_OPERATOR.invokeExact(
+                        handle, nameSeg, nameSeg.byteSize(), stub, MemorySegment.NULL, errSlot);
             } catch (Throwable t) {
-                setError(errorOut, t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage());
-                return null;
+                throw DatalogicException.propagate(t);
             }
-        };
-        pinned.add(cb);
-        int rc = DatalogicNative.INSTANCE.datalogic_engine_builder_add_operator(handle, name, cb, null);
-        if (rc != 0) {
-            throw DatalogicException.fromLastError("add_operator failed");
+            if (status != DatalogicNative.STATUS_OK) {
+                throw DatalogicException.fromNative(status, errSlot, "add_operator failed");
+            }
         }
         return this;
     }
@@ -106,14 +134,19 @@ public final class EngineBuilder {
      */
     public Engine build() {
         ensureFresh();
-        Pointer enginePtr = DatalogicNative.INSTANCE.datalogic_engine_builder_build(handle);
-        DatalogicNative.INSTANCE.datalogic_engine_builder_free(handle);
+        MemorySegment enginePtr;
+        try {
+            enginePtr = (MemorySegment) DatalogicNative.BUILDER_BUILD.invokeExact(handle);
+            DatalogicNative.BUILDER_FREE.invokeExact(handle);
+        } catch (Throwable t) {
+            throw DatalogicException.propagate(t);
+        }
         handle = null;
         consumed = true;
-        if (enginePtr == null) {
-            throw DatalogicException.fromLastError("builder build failed");
+        if (enginePtr.address() == 0) {
+            throw new DatalogicException("builder build failed", null, null, null);
         }
-        return new Engine(enginePtr, pinned);
+        return new Engine(enginePtr, pinned, stubArena);
     }
 
     private void ensureFresh() {
@@ -122,24 +155,60 @@ public final class EngineBuilder {
     }
 
     /**
-     * Allocate a UTF-8 NUL-terminated buffer using the C runtime's
-     * malloc — Rust calls libc {@code free()} on this pointer, so we
-     * have to use the matching allocator. JNA's {@link Native#malloc} is
-     * a thin wrapper around libc malloc on every supported platform.
+     * Java side of `datalogic_op_fn`: decodes the borrowed args JSON,
+     * invokes the user's {@link CustomOperator}, and writes the outcome
+     * through `datalogic_op_result_set_json` / `_set_error` (both copy
+     * immediately, so per-call confined arenas are safe). Returns 0 on
+     * success, 1 on failure. No Throwable ever crosses the upcall — an
+     * exception unwinding into native code would tear the VM down.
      */
-    private static Pointer allocLibcUtf8(String s) {
-        byte[] bytes = s.getBytes(StandardCharsets.UTF_8);
-        long ptr = Native.malloc(bytes.length + 1);
-        if (ptr == 0) throw new OutOfMemoryError("Native.malloc failed");
-        Pointer p = new Pointer(ptr);
-        p.write(0, bytes, 0, bytes.length);
-        p.setByte(bytes.length, (byte) 0);
-        return p;
-    }
+    private static final class OperatorBridge {
+        static final MethodHandle INVOKE;
 
-    private static void setError(PointerByReference errorOut, String msg) {
-        if (errorOut != null && msg != null) {
-            errorOut.setValue(allocLibcUtf8(msg));
+        static {
+            try {
+                INVOKE = MethodHandles.lookup().findVirtual(
+                        OperatorBridge.class,
+                        "invoke",
+                        MethodType.methodType(int.class,
+                                MemorySegment.class, long.class, MemorySegment.class, MemorySegment.class));
+            } catch (ReflectiveOperationException e) {
+                throw new ExceptionInInitializerError(e);
+            }
+        }
+
+        private final CustomOperator op;
+
+        OperatorBridge(CustomOperator op) { this.op = op; }
+
+        @SuppressWarnings("unused") // invoked reflectively through INVOKE
+        int invoke(MemorySegment argsJson, long argsLen, MemorySegment userData, MemorySegment out) {
+            try {
+                String args = argsLen == 0 ? "[]" : DatalogicNative.readUtf8(argsJson, argsLen);
+                String result = op.invoke(args);
+                if (result == null) {
+                    return fail(out, "custom operator returned null result");
+                }
+                try (Arena arena = Arena.ofConfined()) {
+                    MemorySegment json = DatalogicNative.utf8(arena, result);
+                    DatalogicNative.OP_RESULT_SET_JSON.invokeExact(out, json, json.byteSize());
+                }
+                return 0;
+            } catch (Throwable t) {
+                String message = t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage();
+                return fail(out, message);
+            }
+        }
+
+        private static int fail(MemorySegment out, String message) {
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment msg = DatalogicNative.utf8(arena, message);
+                DatalogicNative.OP_RESULT_SET_ERROR.invokeExact(out, msg, msg.byteSize());
+            } catch (Throwable ignored) {
+                // a bare non-zero return still yields a generic error
+                // naming the operator — never propagate across the upcall
+            }
+            return 1;
         }
     }
 }

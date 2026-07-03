@@ -68,6 +68,72 @@ foreach ([1, 2, 3] as $x) {
 compile once per process and reuse them across requests. Sessions
 (below) hold a mutable arena, so give each evaluation loop its own.
 
+## Data handles (parse once, evaluate many)
+
+When one payload feeds many evaluations, parse it once into a
+`DataHandle` and pass the handle wherever a JSON string is accepted —
+the per-call JSON parse disappears entirely:
+
+```php
+use Goplasmatic\Datalogic\DataHandle;
+
+$data = new DataHandle('{"user":{"age":42,"plan":"pro"}}');
+$rule->evaluate($data);              // same result as the string overload
+$session->evaluate($rule, $data);    // hot path: zero parse work per call
+```
+
+Handles are immutable and engine-independent — one handle can feed
+rules compiled by different engines, any number of times (evaluation
+never consumes it). The native memory is released when the object is
+GC'd, or eagerly via `close()`; `allocatedBytes()` reports the handle's
+resident size.
+
+## Typed evaluations
+
+Sessions can return native PHP scalars instead of JSON strings —
+handy for predicates (feature flags, routing) where decoding JSON per
+call is pure overhead. All four take a compiled `Rule` and a
+`DataHandle`:
+
+```php
+$session->evaluateBool($rule, $data);    // bool   — strict: JSON true/false only
+$session->evaluateInt($rule, $data);     // int    — exact integers only
+$session->evaluateFloat($rule, $data);   // float  — any JSON number
+$session->evaluateTruthy($rule, $data);  // bool   — JSONLogic truthiness, never mismatches
+```
+
+The strict variants throw `EvaluateException` with
+`$errorType === "TypeMismatch"` when the result is of any other type;
+`evaluateTruthy` collapses any result through the engine's configured
+truthiness rules (the same coercion `if`/`and`/`or` apply).
+
+## Batch evaluation
+
+Evaluate one rule against many payloads (`evaluateBatch`) or many
+rules against one payload (`evaluateMany`, the rule-set / feature-flag
+shape) in a single native call. Results come back in input order; a
+failed item puts a `BatchItemError` in its slot instead of aborting
+the other N-1 — item failures never throw:
+
+```php
+use Goplasmatic\Datalogic\BatchItemError;
+
+$results = $session->evaluateBatch($rule, $handles);   // list<DataHandle> in
+$results = $session->evaluateMany($rules, $data);      // list<Rule> in
+
+foreach ($results as $i => $r) {
+    if ($r instanceof BatchItemError) {
+        error_log("item {$i} failed: {$r->tag}: {$r->message}");
+        continue;
+    }
+    // $r is the item's JSON-string result
+}
+```
+
+`BatchItemError` exposes `$status` (the raw C-ABI status code), `$tag`
+(stable engine tag, e.g. `"Thrown"`, `"NaN"`), `$message`, and
+`$operator` (outermost failing operator, when known).
+
 ## Sessions (hot loops)
 
 A `Session` reuses one arena across evaluations and resets it at the
@@ -95,8 +161,14 @@ Every method takes and returns JSON strings.
 | One-shot        | `$engine->apply($rule, $data)`                                 | Ad-hoc evaluation, one rule + one data shape          |
 | Engine + config | `new Engine($templating)` / `Engine::builder()…->build()`      | Templating mode, custom operators, evaluation config  |
 | Compile once    | `$engine->compile($rule)` → `$rule->evaluate($data)`           | Same rule evaluated against many data inputs          |
+| Parse once      | `new DataHandle($json)` → pass instead of a JSON string        | Same payload evaluated by many rules/calls            |
 | Session         | `$engine->openSession()` → `$session->evaluate($rule, $data)`  | Hot loops: amortise arena reset across iterations     |
+| Typed           | `$session->evaluateBool/Int/Float/Truthy($rule, $handle)`      | Predicates: native scalars, no JSON decode per call   |
+| Batch           | `$session->evaluateBatch($rule, $handles)` / `evaluateMany($rules, $handle)` | Many evaluations per FFI crossing, per-item errors |
 | Traced          | `$engine->openTracedSession()` → `$session->evaluate($rule, $data)` | Step-by-step debugging; feeds the React debugger |
+
+`Rule::evaluate` and `Session::evaluate` accept either a JSON string or
+a `DataHandle`.
 
 ## Custom operators
 
@@ -178,19 +250,26 @@ use Goplasmatic\Datalogic\Exception\EvaluateException;
 try {
     $engine->apply('{"+":["x",1]}', '{}');  // arithmetic on a non-numeric string
 } catch (EvaluateException $e) {
-    echo $e->errorType;     // runtime error tag, e.g. "NaN"
+    echo $e->errorType;     // runtime error tag, e.g. "Thrown", "NaN"
     echo $e->operatorName;  // "+"
     echo $e->pathJson;      // JSON-array path through the compiled tree
 }
 ```
 
+Under the hood the binding targets the engine's C ABI **v2**: every
+fallible native call returns a status code plus an owned error handle,
+and the binding asserts `datalogic_abi_version() == 2` the first time
+the library is loaded — a stale native library fails loudly at startup
+(`RuntimeException`), never mid-request.
+
 ## Threading
 
-| Type      | Pattern                                        |
-|-----------|-------------------------------------------------|
-| `Engine`  | Build once per process; reuse across requests  |
-| `Rule`    | Compile once per process; reuse across requests |
-| `Session` | One per evaluation loop; do not share           |
+| Type         | Pattern                                         |
+|--------------|-------------------------------------------------|
+| `Engine`     | Build once per process; reuse across requests   |
+| `Rule`       | Compile once per process; reuse across requests |
+| `DataHandle` | Immutable; share freely across engines/rules    |
+| `Session`    | One per evaluation loop; do not share           |
 
 PHP is single-threaded per request, so `Engine`, `Rule`, `Session`, and
 `TracedSession` are all safe in that model.
@@ -223,6 +302,42 @@ Geomean across 50 operator benchmark suites (Apple M2 Pro, median of 3 runs; pai
 
 The PHP FFI boundary adds a small per-call marshalling cost on top of
 the core numbers.
+
+## Preloading (opcache.preload + FFI)
+
+By default the binding lazily calls `FFI::cdef` on first use, which
+works out of the box on the CLI. Production FPM/web SAPIs should use
+[FFI preloading](https://www.php.net/manual/en/ffi.configuration.php)
+instead: PHP's default `ffi.enable=preload` forbids runtime `FFI::cdef`
+outside the CLI, and preloading also moves all header parsing to server
+start. The package ships a ready-made preload script:
+
+```ini
+; php.ini
+opcache.preload=/path/to/vendor/goplasmatic/datalogic/preload.php
+opcache.preload_user=www-data
+ffi.enable=preload
+```
+
+`preload.php` resolves the native library exactly like the runtime
+loader does (see [Building from source](#building-from-source)),
+rewrites the `FFI_LIB` line of the bundled header
+(`src/datalogic-ffi.h`) to that absolute path, and registers the
+persistent FFI scope `"datalogic"` via `FFI::load`. At request time the
+binding finds the scope through `FFI::scope("datalogic")` and skips
+`FFI::cdef` entirely; when no scope is preloaded it falls back to
+`FFI::cdef` transparently. To pin a specific library build, set the
+`DATALOGIC_NATIVE_LIB` environment variable before the server starts.
+
+If your application already has a preload script, `require` the
+package's `preload.php` from it (it is idempotent), or call
+`\Goplasmatic\Datalogic\Internal\Native::preload()` directly.
+Power users who manage their own headers can copy `src/datalogic-ffi.h`,
+hard-code `FFI_LIB` to their library path, and `FFI::load` it
+themselves — the committed default (`libdatalogic_c.so`) resolves via
+the OS loader path. The header is also the single source of the cdef
+declarations (Native.php reads it with the `#define` lines stripped),
+so the two load paths cannot drift apart.
 
 ## Building from source
 

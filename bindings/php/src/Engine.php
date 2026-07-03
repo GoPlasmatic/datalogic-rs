@@ -39,7 +39,7 @@ class Engine
         $ffi = Native::ffi();
         $handle = $ffi->datalogic_engine_new($templating ? 1 : 0);
         if ($handle === null) {
-            throw DatalogicException::fromLastError('datalogic_engine_new returned NULL');
+            throw new \RuntimeException('datalogic_engine_new returned NULL');
         }
         $this->handle = $handle;
     }
@@ -70,18 +70,28 @@ class Engine
     /** The binding's version (sourced from the underlying C ABI). */
     public static function version(): string
     {
-        $p = Native::ffi()->datalogic_version();
-        return Native::borrowString($p) ?? '';
+        // The one deliberately NUL-terminated static string in the v2
+        // ABI — PHP FFI auto-converts the `const char*` return.
+        return Native::ffi()->datalogic_version() ?? '';
     }
 
     /** Compile a JSONLogic rule (JSON-string) into a reusable {@see Rule}. */
     public function compile(string $ruleJson): Rule
     {
-        $r = Native::ffi()->datalogic_engine_compile($this->handle(), $ruleJson);
-        if ($r === null) {
-            throw DatalogicException::fromLastError('compile failed');
+        $ffi = Native::ffi();
+        $out = $ffi->new('datalogic_rule*');
+        $err = Native::newErrorOut();
+        $rc = $ffi->datalogic_engine_compile(
+            $this->handle(),
+            $ruleJson,
+            strlen($ruleJson),
+            FFI::addr($out),
+            FFI::addr($err),
+        );
+        if ($rc !== Native::STATUS_OK) {
+            throw DatalogicException::fromNative($rc, $err, 'compile failed');
         }
-        return new Rule($r);
+        return new Rule($out);
     }
 
     /**
@@ -90,19 +100,30 @@ class Engine
      */
     public function apply(string $ruleJson, string $dataJson): string
     {
-        $ptr = Native::ffi()->datalogic_engine_apply($this->handle(), $ruleJson, $dataJson);
-        if ($ptr === null) {
-            throw DatalogicException::fromLastError('apply failed');
+        $ffi = Native::ffi();
+        $buf = $ffi->new('datalogic_buf');
+        $err = Native::newErrorOut();
+        $rc = $ffi->datalogic_engine_apply(
+            $this->handle(),
+            $ruleJson,
+            strlen($ruleJson),
+            $dataJson,
+            strlen($dataJson),
+            FFI::addr($buf),
+            FFI::addr($err),
+        );
+        if ($rc !== Native::STATUS_OK) {
+            throw DatalogicException::fromNative($rc, $err, 'apply failed');
         }
-        return Native::takeString($ptr) ?? '';
+        return Native::takeBuf($buf);
     }
 
-    /** Open a hot-loop {@see Session}. NOT thread-safe — one per process. */
+    /** Open a hot-loop {@see Session}. NOT thread-safe — one per thread. */
     public function openSession(): Session
     {
         $s = Native::ffi()->datalogic_engine_session($this->handle());
         if ($s === null) {
-            throw DatalogicException::fromLastError('session failed');
+            throw new \RuntimeException('datalogic_engine_session returned NULL');
         }
         return new Session($s);
     }
@@ -112,7 +133,7 @@ class Engine
     {
         $s = Native::ffi()->datalogic_engine_traced_session($this->handle());
         if ($s === null) {
-            throw DatalogicException::fromLastError('traced session failed');
+            throw new \RuntimeException('datalogic_engine_traced_session returned NULL');
         }
         return new TracedSession($s);
     }

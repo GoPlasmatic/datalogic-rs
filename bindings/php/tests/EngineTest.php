@@ -45,6 +45,16 @@ final class EngineTest extends TestCase
         self::assertGreaterThan(0, $session->allocatedBytes());
     }
 
+    public function test_session_reset_is_optional_and_keeps_session_usable(): void
+    {
+        $engine = new Engine();
+        $rule = $engine->compile('{"+":[{"var":"x"},1]}');
+        $session = $engine->openSession();
+        self::assertSame('2', $session->evaluate($rule, '{"x":1}'));
+        $session->reset();
+        self::assertSame('3', $session->evaluate($rule, '{"x":2}'));
+    }
+
     public function test_parse_error_throws_ParseException(): void
     {
         $engine = new Engine();

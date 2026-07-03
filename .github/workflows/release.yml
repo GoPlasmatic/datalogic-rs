@@ -699,7 +699,7 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: '25'
 
       # publish-jvm needs the cdylibs inside the JAR. The build-jvm
       # output is an artifact (not a filesystem snapshot), so we
@@ -713,10 +713,10 @@ jobs:
           pattern: c-cdylib-*
           merge-multiple: true
 
-      # Same classpath-root <jna-platform>/ layout the packaged-JAR
-      # smoke test in release-build-jvm.yml validates — JNA's
-      # `Native.load` does not search META-INF/native/.
-      - name: Stage native libs under <jna-platform>/ (classpath root)
+      # Same classpath-root <os-arch>/ layout the packaged-JAR smoke
+      # test in release-build-jvm.yml validates — the binding's loader
+      # does not search META-INF/native/.
+      - name: Stage native libs under <os-arch>/ (classpath root)
         shell: bash
         run: bash scripts/stage-jvm-natives.sh cdylib
 

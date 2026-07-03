@@ -4,11 +4,18 @@ package datalogic
 // through a C trampoline; the user_data slot carries a `cgo.Handle` so
 // we can fan out to many distinct Go closures per engine.
 //
+// v2 callback contract: the trampoline receives the pre-evaluated
+// arguments as a borrowed (ptr, len) JSON-array byte range, writes its
+// outcome through datalogic_op_result_set_json / _set_error (both copy
+// immediately, so Go string bytes can be passed zero-copy), and returns
+// 0 for success / non-zero for failure. No allocator crosses the
+// boundary in either direction.
+//
 // Threading note: the engine may invoke a registered operator from any
-// thread that calls Engine.Apply / Rule.Evaluate / Session.Evaluate.
-// Go callbacks themselves are goroutine-safe (the runtime serialises
-// the cgo crossing); user code inside the callback is responsible for
-// its own synchronisation.
+// goroutine/thread that calls Engine.Apply / Rule.Evaluate /
+// Session.Evaluate. Go callbacks themselves are goroutine-safe (the
+// runtime serialises the cgo crossing); user code inside the callback
+// is responsible for its own synchronisation.
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/include
@@ -27,21 +34,20 @@ package datalogic
 // so our forward decl must carry the same attribute up front. mingw-gcc
 // (windows/amd64) is lenient about this; clang is not.
 #if defined(_WIN32)
-extern __declspec(dllexport) char* goDatalogicOpTrampoline(char* args_json, void* user_data, char** error_out);
+extern __declspec(dllexport) int32_t goDatalogicOpTrampoline(uint8_t* args_json, size_t args_len, void* user_data, datalogic_op_result* out);
 #else
-extern char* goDatalogicOpTrampoline(char* args_json, void* user_data, char** error_out);
+extern int32_t goDatalogicOpTrampoline(uint8_t* args_json, size_t args_len, void* user_data, datalogic_op_result* out);
 #endif
 
-// cgo treats `datalogic_op_callback` (a Rust `Option<fn ptr>`) as an
-// opaque pointer-sized type from Go; wrap the function-pointer return
-// in a tiny helper so we don't have to construct the typedef value in
-// Go directly.
-static datalogic_op_callback datalogic_go_get_trampoline(void) {
-    // The cgo-generated declaration uses non-const `char*` while the
-    // C ABI typedef uses `const char*`. The trampoline never writes
+// cgo can't construct a C function-pointer value directly from Go, so
+// wrap the trampoline address in a tiny helper returning the ABI's
+// callback typedef.
+static datalogic_op_fn datalogic_go_get_trampoline(void) {
+    // The cgo-generated declaration uses non-const `uint8_t*` while the
+    // C ABI typedef uses `const uint8_t*`. The trampoline never writes
     // through the pointer, so the cast is safe; the compiler just
     // can't see that from the signature.
-    return (datalogic_op_callback)goDatalogicOpTrampoline;
+    return (datalogic_op_fn)goDatalogicOpTrampoline;
 }
 */
 import "C"
@@ -80,6 +86,7 @@ type handleBox struct {
 type EngineBuilder struct {
 	ptr     *C.datalogic_engine_builder
 	handles []*handleBox // freed when the consuming Engine is closed
+	err     error        // first registration error; surfaced by Build
 }
 
 // NewEngineBuilder creates a fresh, empty builder.
@@ -122,18 +129,11 @@ func (b *EngineBuilder) Templating(on bool) *EngineBuilder {
 // entire evaluation config; templating and registered operators are
 // unaffected.
 func (b *EngineBuilder) SetConfigJSON(configJSON string) error {
-	cConfig := C.CString(configJSON)
-	defer C.free(unsafe.Pointer(cConfig))
-	// Keep the call and the thread-local last-error read on one OS thread.
-	runtime.LockOSThread()
-	rc := C.datalogic_engine_builder_set_config_json(b.ptr, cConfig)
-	var err error
-	if rc != 0 {
-		err = lastError()
-	}
-	runtime.UnlockOSThread()
-	if rc != 0 {
-		return err
+	cp, cl := strBytes(configJSON)
+	var cerr *C.datalogic_error
+	rc := C.datalogic_engine_builder_set_config_json(b.ptr, cp, cl, &cerr)
+	if rc != C.DATALOGIC_STATUS_OK {
+		return takeError(cerr)
 	}
 	return nil
 }
@@ -145,35 +145,48 @@ func (b *EngineBuilder) SetConfigJSON(configJSON string) error {
 // registration.
 //
 // The callback is held by the resulting Engine; it stays alive until
-// Engine.Close.
+// Engine.Close. A failed registration (e.g. a name that is not valid
+// UTF-8) is remembered and surfaced by Build.
 func (b *EngineBuilder) AddOperator(name string, fn OperatorFunc) *EngineBuilder {
-	cName := C.CString(name)
-	defer C.free(unsafe.Pointer(cName))
+	np, nl := strBytes(name)
 	hb := &handleBox{h: cgo.NewHandle(fn)}
 	b.handles = append(b.handles, hb)
-	C.datalogic_engine_builder_add_operator(
+	var cerr *C.datalogic_error
+	rc := C.datalogic_engine_builder_add_operator(
 		b.ptr,
-		cName,
+		np, nl,
 		C.datalogic_go_get_trampoline(),
 		unsafe.Pointer(hb),
+		&cerr,
 	)
+	if rc != C.DATALOGIC_STATUS_OK {
+		err := takeError(cerr)
+		if b.err == nil {
+			b.err = err
+		}
+	}
 	return b
 }
 
 // Build consumes the builder and returns a configured Engine. Calling
 // the builder after Build is a no-op (Build is idempotent in that
-// subsequent calls return nil + an error from the underlying C API).
+// subsequent calls return nil + an error).
 func (b *EngineBuilder) Build() (*Engine, error) {
+	if b.err != nil {
+		err := b.err
+		b.err = nil
+		b.release()
+		return nil, err
+	}
 	ePtr := C.datalogic_engine_builder_build(b.ptr)
 	if ePtr == nil {
-		// Reclaim handles — the engine never picked them up.
-		for _, hb := range b.handles {
-			hb.h.Delete()
+		// v2 returns NULL only for a nil or already-drained builder —
+		// there is no error handle to read, so synthesise one.
+		b.release()
+		return nil, &Error{
+			Message: "engine builder is nil or was already built",
+			Type:    "InvalidArgument",
 		}
-		b.handles = nil
-		C.datalogic_engine_builder_free(b.ptr)
-		b.ptr = nil
-		return nil, lastError()
 	}
 	C.datalogic_engine_builder_free(b.ptr)
 	handles := b.handles
@@ -184,17 +197,26 @@ func (b *EngineBuilder) Build() (*Engine, error) {
 	return e, nil
 }
 
+// release frees the native builder and reclaims callback handles the
+// engine never picked up. Used on the Build failure paths.
+func (b *EngineBuilder) release() {
+	for _, hb := range b.handles {
+		hb.h.Delete()
+	}
+	b.handles = nil
+	C.datalogic_engine_builder_free(b.ptr)
+	b.ptr = nil
+}
+
 //export goDatalogicOpTrampoline
-func goDatalogicOpTrampoline(argsJSON *C.char, userData unsafe.Pointer, errorOut **C.char) *C.char {
+func goDatalogicOpTrampoline(argsJSON *C.uint8_t, argsLen C.size_t, userData unsafe.Pointer, out *C.datalogic_op_result) C.int32_t {
 	hb := (*handleBox)(userData)
 	fn, ok := hb.h.Value().(OperatorFunc)
 	if !ok {
-		if errorOut != nil {
-			*errorOut = C.CString("internal: operator handle had wrong type")
-		}
-		return nil
+		setOpError(out, "internal: operator handle had wrong type")
+		return 1
 	}
-	args := C.GoString(argsJSON)
+	args := goStringN(argsJSON, argsLen)
 	// Recover panics so we don't unwind across the cgo boundary.
 	var (
 		result string
@@ -209,10 +231,18 @@ func goDatalogicOpTrampoline(argsJSON *C.char, userData unsafe.Pointer, errorOut
 		result, err = fn(args)
 	}()
 	if err != nil {
-		if errorOut != nil {
-			*errorOut = C.CString(err.Error())
-		}
-		return nil
+		setOpError(out, err.Error())
+		return 1
 	}
-	return C.CString(result)
+	p, n := strBytes(result)
+	C.datalogic_op_result_set_json(out, p, n)
+	return 0
+}
+
+// setOpError writes msg through datalogic_op_result_set_error, which
+// copies immediately — the Go string bytes only need to live for the
+// duration of the call.
+func setOpError(out *C.datalogic_op_result, msg string) {
+	p, n := strBytes(msg)
+	C.datalogic_op_result_set_error(out, p, n)
 }

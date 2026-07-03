@@ -19,8 +19,9 @@ internal static class NativeLibraryResolver
     private static int _installed; // 0 = not yet, 1 = done
 
     /// <summary>
-    /// Idempotent installer — call from every public type's static
-    /// constructor before any P/Invoke runs.
+    /// Idempotent installer — invoked by <see cref="NativeInit"/>'s
+    /// static constructor (which every public type touches) before any
+    /// P/Invoke runs.
     /// </summary>
     internal static void Install()
     {

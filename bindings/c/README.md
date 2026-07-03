@@ -31,44 +31,65 @@ cargo build --release
 cargo test
 ```
 
-The `tests/smoke.rs` integration test links the `rlib` and exercises
-the `extern "C"` surface — version, compile/apply, session arena
-reuse, error propagation, and NULL-safety. The full operator surface
-is exercised by the core crate's JSONLogic test suite, not here.
+`tests/smoke.rs` links the `rlib` and exercises the `extern "C"`
+contract mechanics — abi/version, status codes, error handles,
+borrowed session results, owned bufs, data handles, typed results,
+batch, callbacks, and NULL-safety. `tests/conformance.rs` drives the
+full JSONLogic suite (3,000+ cases) through the ABI twice per case:
+once via one-shot `apply` and once via the compile + data-handle +
+session hot path.
 
 ## API surface
 
-See [`include/datalogic.h`](include/datalogic.h). High-level shape:
+See [`include/datalogic.h`](include/datalogic.h). High-level shape (ABI **v2**):
 
 | Group | Functions |
 |---|---|
-| Engine | `datalogic_engine_new` / `_free` / `_compile` / `_apply` / `_session` |
-| Rule | `datalogic_rule_free` / `_evaluate` |
-| Session | `datalogic_session_free` / `_evaluate` / `_reset` / `_allocated_bytes` |
-| Errors | `datalogic_last_error_message` / `_type` / `_operator` / `_path_json` / `_clear` |
-| Meta | `datalogic_version`, `datalogic_string_free` |
+| Meta | `datalogic_abi_version` (must equal `DATALOGIC_ABI_VERSION` = 2), `datalogic_version`, `datalogic_buf_free` |
+| Engine | `datalogic_engine_new` / `_free` / `_compile` / `_apply` / `_session` / `_traced_session` |
+| Builder | `datalogic_engine_builder_new` / `_free` / `_set_templating` / `_set_config_json` / `_add_operator` / `_build`; callbacks write results via `datalogic_op_result_set_json` / `_set_error` |
+| Data | `datalogic_data_parse` / `_free` / `_allocated_bytes` — parse once, evaluate many |
+| Rule | `datalogic_rule_free` / `_evaluate` / `_evaluate_data` |
+| Session | `datalogic_session_free` / `_reset` / `_allocated_bytes` / `_evaluate` / `_evaluate_data` / `_evaluate_bool` / `_evaluate_i64` / `_evaluate_f64` / `_evaluate_truthy` / `_evaluate_batch` / `_evaluate_many` |
+| Traced | `datalogic_traced_session_free` / `_evaluate` |
+| Errors | `datalogic_error_free` / `_status` / `_message` / `_tag` / `_operator` / `_path_json` |
 
-### Memory & threading
+### Contract (v2)
 
-- **Inputs** (`rule_json`, `data_json`) are caller-owned, NUL-terminated UTF-8.
-- **Returned `char*`** are callee-allocated; release via `datalogic_string_free`.
-- **Returned `const char*`** (from `_last_error_*` and `_version`) are
-  borrowed — never free. Last-error pointers stay valid only until the
-  next call on the current thread that mutates last-error state.
-- **`Engine` and `Rule`** handles are thread-safe; share freely.
-- **`Session`** handles are **not** thread-safe; open one per thread.
-- Errors flow via `NULL` returns + the thread-local last-error block.
-  Every fallible entry point clears last-error on entry, so a
-  successful call always leaves last-error empty.
+- **ABI check first**: call `datalogic_abi_version()` once at load and
+  refuse to run unless it returns `2` — a mismatch means a stale
+  library and must fail initialisation loudly.
+- **Inputs** are `(pointer, length)` UTF-8 byte ranges — **not**
+  NUL-terminated.
+- **Fallible calls** return `datalogic_status` and take a trailing
+  `datalogic_error **err`. Pass `NULL` to skip capture; otherwise
+  release the stored handle via `datalogic_error_free` after reading
+  the accessors (`_status` / `_message` / `_tag` / `_operator` /
+  `_path_json`). There is **no thread-local error state**.
+- **Session results are borrowed**: `datalogic_session_evaluate*`
+  return pointers into a session-owned buffer, valid until the next
+  call touching that session. Copy immediately.
+- **One-shot results are owned** `datalogic_buf` values; release via
+  `datalogic_buf_free`.
+- **`engine` / `rule` / `data` / `traced_session`** handles are
+  thread-safe; **`session`** is not — open one per thread.
+- **Custom operators** receive `(args_ptr, args_len, user_data, out)`,
+  write their outcome via `datalogic_op_result_set_json` /
+  `_set_error` (both copy immediately), and return `0` / non-zero. No
+  allocator crosses the boundary in either direction.
+
+v1 (NUL-terminated strings, `datalogic_string_free`, the thread-local
+`datalogic_last_error_*` block) was replaced wholesale in 5.0.1 — see
+the C ABI section of [`MIGRATION.md`](../../MIGRATION.md).
 
 ## Consumers
 
 | Binding | Path | Mechanism |
 |---|---|---|
 | Go | `bindings/go/` | `cgo` over the staticlib |
-| JVM | `bindings/jvm/` | JNA over the cdylib |
+| JVM | `bindings/jvm/` | `java.lang.foreign` (FFM, JDK 22+) over the cdylib |
 | .NET | `bindings/dotnet/` | P/Invoke (`LibraryImport`) over the cdylib |
-| PHP | `bindings/php/` | PHP FFI (`FFI::cdef`) over the cdylib |
+| PHP | `bindings/php/` | PHP FFI over the cdylib (preloaded `FFI::load` scope, `FFI::cdef` fallback) |
 
 The Python (`bindings/python/`) and WASM (`bindings/wasm/`) bindings
 target their language runtimes directly (pyo3, wasm-bindgen) and do

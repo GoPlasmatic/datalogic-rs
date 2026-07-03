@@ -6,13 +6,15 @@ declare(strict_types=1);
 
 namespace Goplasmatic\Datalogic\Exception;
 
+use FFI;
+use FFI\CData;
 use Goplasmatic\Datalogic\Internal\Native;
 use RuntimeException;
 
 /**
- * Base class for every exception thrown by this binding. Mirrors the
- * thread-local last-error block exposed by the C ABI
- * (`datalogic_last_error_*`).
+ * Base class for every exception thrown by this binding. Carries the
+ * structured error detail exposed by the C ABI's error handles
+ * (`datalogic_error_message` / `_tag` / `_operator` / `_path_json`).
  */
 class DatalogicException extends RuntimeException
 {
@@ -26,25 +28,35 @@ class DatalogicException extends RuntimeException
     }
 
     /**
-     * Construct the right subclass by reading the C ABI's thread-local
-     * last-error block.
+     * Construct the right subclass from a failed v2 call: `$status` is
+     * the `datalogic_status` the call returned, `$errOut` the
+     * `datalogic_error *` out-param slot it may have filled. Reads the
+     * borrowed accessors and ALWAYS releases the handle.
+     *
+     * @internal
      */
-    public static function fromLastError(string $fallback): self
+    public static function fromNative(int $status, CData $errOut, string $fallback): self
     {
         $ffi = Native::ffi();
-        $msgPtr  = $ffi->datalogic_last_error_message();
-        $typePtr = $ffi->datalogic_last_error_type();
-        $opPtr   = $ffi->datalogic_last_error_operator();
-        $pathPtr = $ffi->datalogic_last_error_path_json();
+        if (FFI::isNull($errOut)) {
+            // No detail captured (should not happen — every fallible
+            // call in this binding passes an out-param).
+            return $status === Native::STATUS_PARSE
+                ? new ParseException($fallback)
+                : new EvaluateException($fallback);
+        }
 
-        $msg  = Native::borrowString($msgPtr) ?? $fallback;
-        $type = Native::borrowString($typePtr);
-        $op   = Native::borrowString($opPtr);
-        $path = Native::borrowString($pathPtr);
+        $len = $ffi->new('size_t');
+        $addr = FFI::addr($len);
+        $msg  = Native::copyBytes($ffi->datalogic_error_message($errOut, $addr), $len->cdata);
+        $tag  = Native::copyBytes($ffi->datalogic_error_tag($errOut, $addr), $len->cdata);
+        $op   = Native::copyBytes($ffi->datalogic_error_operator($errOut, $addr), $len->cdata);
+        $path = Native::copyBytes($ffi->datalogic_error_path_json($errOut, $addr), $len->cdata);
+        $ffi->datalogic_error_free($errOut);
 
-        return match ($type) {
-            'ParseError' => new ParseException($msg, $type, $op, $path),
-            default       => new EvaluateException($msg, $type, $op, $path),
-        };
+        $message = ($msg === null || $msg === '') ? $fallback : $msg;
+        return $status === Native::STATUS_PARSE
+            ? new ParseException($message, $tag, $op, $path)
+            : new EvaluateException($message, $tag, $op, $path);
     }
 }

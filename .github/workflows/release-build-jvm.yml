@@ -2,10 +2,12 @@ name: _release-build-jvm
 
 # Internal reusable workflow — called by release.yml's `build-jvm`
 # job. Consumes the cdylib matrix artifacts, stages them under
-# bindings/jvm/src/main/resources/<jna-platform>/ (the classpath-root
-# layout JNA's auto-loader extracts from — `Native.load` searches
-# `<Platform.RESOURCE_PREFIX>/<libname>` at the classpath root, NOT
-# `META-INF/native/`), runs `mvn test`, then `mvn package` and uploads
+# bindings/jvm/src/main/resources/<os-arch>/ (the classpath-root layout
+# the binding's own loader extracts from — it searches
+# `<os-arch>/<libname>` at the classpath root, NOT `META-INF/native/`;
+# the <os-arch> strings deliberately match JNA's historical
+# Platform.RESOURCE_PREFIX naming so this staging never changed across
+# the JNA→FFM rewrite), runs `mvn test`, then `mvn package` and uploads
 # the resulting JAR.
 
 on:
@@ -21,7 +23,7 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: '25'
 
       - name: Cache Maven repository
         uses: actions/cache@v5
@@ -37,12 +39,13 @@ jobs:
           pattern: c-cdylib-*
           merge-multiple: true
 
-      # Map the matrix's `<os>-<arch>` to JNA's platform-resource
-      # naming (Platform.RESOURCE_PREFIX) and stage native libs at the
-      # classpath root under <jna-platform>/, which is where JNA's
-      # `Native.load` auto-extracts from. Shared with release.yml's
-      # publish-jvm job so the two layouts cannot drift apart.
-      - name: Stage native libs under <jna-platform>/ (classpath root)
+      # Map the matrix's `<os>-<arch>` to the binding loader's
+      # platform-resource naming (JNA's historical RESOURCE_PREFIX
+      # strings, kept identical across the FFM rewrite) and stage native
+      # libs at the classpath root under <os-arch>/, which is where the
+      # loader auto-extracts from. Shared with release.yml's publish-jvm
+      # job so the two layouts cannot drift apart.
+      - name: Stage native libs under <os-arch>/ (classpath root)
         shell: bash
         run: bash scripts/stage-jvm-natives.sh cdylib
 
@@ -59,9 +62,9 @@ jobs:
         run: mvn -B -DskipTests package
 
       # Load the natives the way a Maven Central consumer does: from the
-      # packaged JAR's classpath-root <jna-platform>/ resources, with
-      # jna.library.path UNSET. `mvn test` above points jna.library.path at
-      # the in-tree cdylib, so it never exercises the packaged layout; this
+      # packaged JAR's classpath-root <os-arch>/ resources, with
+      # datalogic.library.path UNSET. `mvn test` above points it at the
+      # in-tree cdylib, so it never exercises the packaged layout; this
       # step is the only guard on the resource path staged into the JAR.
       - name: Smoke-test the packaged JAR (classpath-root native load)
         working-directory: bindings/jvm
@@ -87,9 +90,10 @@ jobs:
           }
           EOF
           javac -cp "$CP" -d smoke smoke/Smoke.java
-          # No -Djna.library.path: force JNA to extract the native from the
-          # JAR's classpath-root resources, exactly as a published consumer would.
-          java -cp "$CP:smoke" Smoke
+          # No -Ddatalogic.library.path: force the binding's loader to
+          # extract the native from the JAR's classpath-root resources,
+          # exactly as a published consumer would.
+          java --enable-native-access=ALL-UNNAMED -cp "$CP:smoke" Smoke
 
       - name: Upload JARs
         uses: actions/upload-artifact@v7

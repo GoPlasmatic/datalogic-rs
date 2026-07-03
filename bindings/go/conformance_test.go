@@ -11,9 +11,9 @@ package datalogic
 //     reflect.DeepEqual; encoding/json decodes every number as float64,
 //     which makes int/float representation differences a non-issue.
 //   - "error" cases: Apply must return a non-nil error with a non-empty
-//     message. (The C ABI collapses the expected error object into the
-//     last-error block, so we assert that an error surfaced, not its
-//     exact shape.)
+//     message. (The C ABI collapses the expected error object into a
+//     status code + error handle, so we assert that an error surfaced,
+//     not its exact shape.)
 //
 // The flagd/ suites run unconditionally: the C ABI static library is
 // always built with the core crate's `flagd` feature enabled.

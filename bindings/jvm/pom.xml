@@ -6,11 +6,11 @@
 
     <groupId>io.github.goplasmatic</groupId>
     <artifactId>datalogic</artifactId>
-    <version>5.0.0</version>
+    <version>5.0.1</version>
     <packaging>jar</packaging>
 
     <name>datalogic</name>
-    <description>Java/JVM bindings for datalogic-rs — a JSONLogic (json-logic) rules engine with a native Rust core via JNA. Compile once, evaluate in nanoseconds; identical semantics across Java, Kotlin, Scala, .NET, Python, Go, Node.js, WASM, PHP, and Rust.</description>
+    <description>Java/JVM bindings for datalogic-rs — a JSONLogic (json-logic) rules engine with a native Rust core via the Java FFM API (java.lang.foreign). Compile once, evaluate in nanoseconds; identical semantics across Java, Kotlin, Scala, .NET, Python, Go, Node.js, WASM, PHP, and Rust.</description>
     <url>https://github.com/GoPlasmatic/datalogic-rs</url>
 
     <licenses>
@@ -35,28 +35,17 @@
     </scm>
 
     <properties>
-        <!-- JDK 11 is the floor: JNA 5.x runs on 8+ but new Java
-             libraries targeting Maven Central typically baseline at 11
-             since 8 is EOL for non-paid support. -->
-        <maven.compiler.source>11</maven.compiler.source>
-        <maven.compiler.target>11</maven.compiler.target>
+        <!-- JDK 22 is the floor: the binding speaks to libdatalogic_c
+             through the java.lang.foreign (FFM) API, final since 22.
+             No JNA, no JNI glue — the JDK is the FFI runtime. -->
+        <maven.compiler.release>22</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-        <jna.version>5.17.0</jna.version>
         <jackson.version>2.22.0</jackson.version>
         <junit.version>5.14.4</junit.version>
     </properties>
 
     <dependencies>
-        <!-- JNA gives us a typed Library proxy over libdatalogic_c
-             without writing JNI. 5.14+ supports darwin-aarch64,
-             linux-aarch64, win32-aarch64. -->
-        <dependency>
-            <groupId>net.java.dev.jna</groupId>
-            <artifactId>jna</artifactId>
-            <version>${jna.version}</version>
-        </dependency>
-
         <!-- Jackson for JSON-string marshalling at the boundary. Most
              Java users have Jackson already; if not, the Maven Central
              footprint is well-understood. -->
@@ -87,13 +76,18 @@
                 <version>3.5.2</version>
                 <configuration>
                     <!-- In-tree dev: surface the C ABI's cargo target
-                         dir so JNA can resolve libdatalogic_c.* without
-                         the classpath-root <jna-platform>/ JAR layout
-                         (the release workflow stages those at packaging
-                         time; locally they're absent on a fresh clone). -->
+                         dir so the FFM loader can resolve
+                         libdatalogic_c.* without the classpath-root
+                         <os-arch>/ JAR layout (the release workflow
+                         stages those at packaging time; locally they're
+                         absent on a fresh clone). -->
                     <systemPropertyVariables>
-                        <jna.library.path>${project.basedir}/../c/target/release</jna.library.path>
+                        <datalogic.library.path>${project.basedir}/../c/target/release</datalogic.library.path>
                     </systemPropertyVariables>
+                    <!-- FFM downcalls/upcalls are "restricted methods":
+                         JDK 24+ warns (and will eventually deny) unless
+                         native access is granted explicitly. -->
+                    <argLine>--enable-native-access=ALL-UNNAMED</argLine>
                 </configuration>
             </plugin>
             <plugin>

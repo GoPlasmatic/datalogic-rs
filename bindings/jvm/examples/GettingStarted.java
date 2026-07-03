@@ -1,10 +1,11 @@
 // getting-started: one-shot JSONLogic evaluation with the datalogic JVM binding.
 //
-// Run from bindings/jvm/ (needs the C ABI built once:
+// Run from bindings/jvm/ (needs JDK 22+, and the C ABI built once:
 // `cargo build --release --manifest-path ../c/Cargo.toml`):
 //   mvn -q compile dependency:build-classpath -Dmdep.outputFile=target/cp.txt
-//   java -cp "target/classes:$(cat target/cp.txt)" \
-//        -Djna.library.path=../c/target/release examples/GettingStarted.java
+//   java --enable-native-access=ALL-UNNAMED \
+//        -cp "target/classes:$(cat target/cp.txt)" \
+//        -Ddatalogic.library.path=../c/target/release examples/GettingStarted.java
 
 import com.goplasmatic.datalogic.Engine;
 

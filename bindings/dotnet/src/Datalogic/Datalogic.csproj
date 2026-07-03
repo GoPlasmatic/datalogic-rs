@@ -13,7 +13,7 @@
          via the release workflow; the validate step fails the build if
          this drifts. -->
     <PackageId>Goplasmatic.Datalogic</PackageId>
-    <Version>5.0.0</Version>
+    <Version>5.0.1</Version>
     <Authors>Plasmatic</Authors>
     <Company>Plasmatic</Company>
     <Description>.NET bindings for datalogic-rs — a JSONLogic (json-logic) rules engine with a native Rust core via P/Invoke. Compile once, evaluate in nanoseconds; identical semantics across .NET, Java, Python, Go, Node.js, WASM, PHP, and Rust.</Description>
@@ -56,6 +56,12 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="all" />
     <PackageReference Include="System.Text.Json" Version="10.0.8" />
+  </ItemGroup>
+
+  <!-- Let the test project reach the internal NativeMethods surface
+       (e.g. to assert datalogic_abi_version() == 2 directly). -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Datalogic.Tests" />
   </ItemGroup>
 
 </Project>

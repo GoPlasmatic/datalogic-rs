@@ -1,4 +1,5 @@
-// getting-started: one-shot JSONLogic evaluation with the datalogic Go binding.
+// getting-started: one-shot JSONLogic evaluation with the datalogic Go
+// binding, plus the typed-result tier for boolean predicates.
 //
 // Run from bindings/go/ (build first: make build):
 //
@@ -17,9 +18,34 @@ func main() {
 	rule := `{"and": [{">=": [{"var": "age"}, 18]}, {"==": [{"var": "status"}, "active"]}]}`
 	data := `{"age": 25, "status": "active"}`
 
+	// One-shot: compile + evaluate in a single call.
 	out, err := datalogic.Apply(rule, data)
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println(out) // true
+
+	// Typed result: for predicates, skip the JSON string round trip.
+	// Compile the rule, parse the data once into a handle, and read the
+	// result directly as a Go bool.
+	engine := datalogic.NewEngine()
+	defer engine.Close()
+	compiled, err := engine.Compile(rule)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer compiled.Close()
+	parsed, err := datalogic.ParseData(data)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer parsed.Close()
+
+	session := engine.Session()
+	defer session.Close()
+	eligible, err := session.EvaluateBool(compiled, parsed)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(eligible) // true
 }

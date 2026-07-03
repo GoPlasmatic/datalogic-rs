@@ -90,18 +90,78 @@ Open one session per thread; a `Session` is not thread-safe. Every
 public type implements `IDisposable` (with a finalizer as best-effort
 fallback), so prefer `using` to release native handles deterministically.
 
+## Parsed data handles
+
+When the same payload feeds many evaluations, parse it once into a
+`DataHandle` and skip the per-call JSON parse entirely:
+
+```csharp
+using var data = DataHandle.Parse("""{"user":{"age":25,"plan":"pro"}}""");
+var a = rule.Evaluate(data);            // thread-safe one-shot
+var b = session.Evaluate(rule, data);   // session hot path
+```
+
+A `DataHandle` is immutable, thread-safe, and engine-independent — one
+handle can feed rules compiled by different engines, and evaluation
+never consumes it. Dispose it after the last evaluation that uses it.
+
+## Typed results
+
+For predicate- and scalar-shaped rules, the typed session variants
+return the value directly with no JSON serialization on the native
+side. They take a `DataHandle` (the flows that want typed results are
+exactly the flows that parse data once):
+
+```csharp
+bool   ok  = session.EvaluateBool(rule, data);    // strict JSON boolean
+long   n   = session.EvaluateInt64(rule, data);   // exact integer
+double x   = session.EvaluateDouble(rule, data);  // any JSON number
+bool   t   = session.EvaluateTruthy(rule, data);  // JSONLogic truthiness
+```
+
+`EvaluateBool` / `EvaluateInt64` / `EvaluateDouble` throw
+`EvaluateException` with `Status == EvaluationStatus.TypeMismatch`
+(error type `"TypeMismatch"`) when the rule evaluates fine but the
+result is not of the requested type. `EvaluateTruthy` never mismatches
+— it collapses any result through the engine's configured truthiness
+rules (the same coercion `if` / `and` / `or` apply).
+
+## Batch evaluation
+
+Two batch shapes cross the native boundary in a single call:
+
+```csharp
+// One rule x N payloads:
+EvaluationResult[] perPayload = session.EvaluateBatch(rule, dataHandles);
+
+// N rules x one payload (the rule-set / feature-flag shape):
+EvaluationResult[] perRule = session.EvaluateMany(rules, data);
+```
+
+Per-item failures don't throw: each `EvaluationResult` carries either
+the result (`IsSuccess`, `Json`) or the item's error detail
+(`Status`, `ErrorTag`, `ErrorMessage`, `ErrorOperator`). `Value`
+returns the JSON or throws the mapped exception for callers that treat
+any item failure as exceptional. The batch call itself only throws for
+argument-level problems (e.g. a rule compiled by a different engine).
+
 ## API surface
 
 The binding mirrors the Rust engine's
 [API tier model](https://github.com/GoPlasmatic/datalogic-rs#one-api-shape-every-binding).
-Every method takes and returns JSON strings.
+Rules and results cross the boundary as JSON strings; data crosses as a
+JSON string or a pre-parsed `DataHandle`, and the typed session
+variants return .NET scalars directly.
 
 | Tier            | Entry point                                                 | Use when                                              |
 |-----------------|-------------------------------------------------------------|-------------------------------------------------------|
 | One-shot        | `engine.Apply(rule, data)`                                  | Ad-hoc evaluation, one rule + one data shape          |
 | Engine + config | `new Engine(templating)` / `Engine.Builder()…Build()`       | Templating mode, custom operators, evaluation config  |
 | Compile once    | `engine.Compile(rule)` → `rule.Evaluate(data)`              | Same rule evaluated against many data inputs          |
+| Parse once      | `DataHandle.Parse(json)` → `rule.Evaluate(dataHandle)`      | Same payload evaluated by many rules / many times     |
 | Session         | `engine.OpenSession()` → `session.Evaluate(rule, data)`     | Hot loops: amortise arena reset across iterations     |
+| Typed           | `session.EvaluateBool/Int64/Double/Truthy(rule, dataHandle)` | Predicates and scalars without JSON round-trips      |
+| Batch           | `session.EvaluateBatch(rule, datas)` / `session.EvaluateMany(rules, data)` | Many evaluations per native call        |
 | Traced          | `engine.OpenTracedSession()` → `session.Evaluate(rule, data)` | Step-by-step debugging; feeds the React debugger    |
 
 ## Custom operators
@@ -172,20 +232,24 @@ Everything the binding throws extends `DatalogicException`:
 | `EvaluateException` | Operator failure at runtime, or a rejected engine config  |
 
 The structured fields ride on the base class: `ErrorType` is the stable
-engine tag (e.g. `"ParseError"`, `"Thrown"`, `"NaN"`), `Operator` the
-outermost failing operator (e.g. `"+"`), and `PathJson` the
-root-to-leaf error path as a JSON array; each is `null` when not
-applicable.
+engine tag (e.g. `"ParseError"`, `"Thrown"`, `"TypeMismatch"`,
+`"InvalidArgument"`), `Operator` the outermost failing operator (e.g.
+`"+"`), `PathJson` the root-to-leaf error path as a JSON array (each
+`null` when not applicable), and `Status` the coarse
+`EvaluationStatus` the native call returned (`ParseError`,
+`EvaluationError`, `TypeMismatch`, `InvalidArgument`, `InternalError`).
 
 ```csharp
 using var engine = new Engine();
 try
 {
-    engine.Apply("""{"+":["x",1]}""", "{}");  // arithmetic on a non-numeric string
+    // arithmetic on a non-numeric string throws {"type":"NaN"}
+    engine.Apply("""{"+":[{"var":"x"},1]}""", """{"x":"abc"}""");
 }
 catch (EvaluateException e)
 {
-    Console.WriteLine(e.ErrorType);  // runtime error tag, e.g. "NaN"
+    Console.WriteLine(e.Status);     // EvaluationError
+    Console.WriteLine(e.ErrorType);  // "Thrown"
     Console.WriteLine(e.Operator);   // "+"
     Console.WriteLine(e.PathJson);   // JSON-array path through the compiled tree
 }
@@ -193,13 +257,16 @@ catch (EvaluateException e)
 
 ## Threading
 
-| Type      | Pattern                                  |
-|-----------|-------------------------------------------|
-| `Engine`  | Build once; share across threads          |
-| `Rule`    | Compile once; share across threads        |
-| `Session` | One per worker thread; never share        |
+| Type         | Pattern                                  |
+|--------------|-------------------------------------------|
+| `Engine`     | Build once; share across threads          |
+| `Rule`       | Compile once; share across threads        |
+| `DataHandle` | Parse once; immutable, share across threads (and engines) |
+| `Session`    | One per worker thread; never share        |
 
-`TracedSession` is thread-safe as well.
+`TracedSession` is thread-safe as well. Rules passed to a session must
+come from the engine that opened it (a foreign rule throws
+`EvaluateException` with `Status == EvaluationStatus.InvalidArgument`).
 
 ## Tracing
 
@@ -232,8 +299,11 @@ The binding lives in
 [`bindings/dotnet/`](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/dotnet).
 At runtime the native library resolves in order: the
 `DATALOGIC_NATIVE_LIB` env var (absolute path), NuGet's
-`runtimes/<rid>/native/` layout, then the in-tree C ABI target dir. So a
-fresh clone needs the C ABI built once:
+`runtimes/<rid>/native/` layout, then the in-tree C ABI target dir. On
+first use the binding asserts the resolved library speaks C ABI v2
+(`datalogic_abi_version() == 2`) and fails loudly with a rebuild hint
+if a stale library is picked up. So a fresh clone needs the C ABI built
+once:
 
 ```bash
 git clone https://github.com/GoPlasmatic/datalogic-rs

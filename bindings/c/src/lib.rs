@@ -1,17 +1,29 @@
-//! `datalogic-c` — C ABI for the `datalogic-rs` JSONLogic engine.
+//! `datalogic-c` — C ABI (v2) for the `datalogic-rs` JSONLogic engine.
 //!
-//! See `include/datalogic.h` for the public surface. Consumers in Go,
-//! PHP, JVM, and other C-FFI languages link against the `cdylib`/`staticlib`
-//! produced by this crate.
+//! See `include/datalogic.h` for the generated public surface and
+//! `README.md` for the contract; the measurements and design rationale
+//! behind v2 are recorded in `tools/benchmark/BINDINGS-OVERHEAD.md`.
+//! Consumers in Go, JVM, .NET, PHP, and other C-FFI languages link
+//! against the `cdylib`/`staticlib` produced by this crate.
 //!
-//! The contract is JSON-in/JSON-out throughout: rules and data cross
-//! the boundary as NUL-terminated UTF-8 strings, results are returned
-//! as freshly-allocated owned strings the caller releases via
-//! [`datalogic_string_free`]. Errors surface as `NULL` returns plus a
-//! thread-local last-error block queryable via
-//! [`datalogic_last_error_message`] et al.
+//! ## The v2 contract in one paragraph
+//!
+//! Byte inputs cross the boundary as `(ptr, len)` UTF-8 — no NUL
+//! terminators anywhere. Every fallible entry point returns a
+//! [`Status`] and takes a trailing `datalogic_error **err` out-param:
+//! pass `NULL` to skip error capture, otherwise release whatever lands
+//! there with [`datalogic_error_free`]. Hot results are **borrowed**:
+//! session evaluations return a pointer into a session-owned buffer
+//! that stays valid until the next call touching that session. One-shot
+//! paths return an owned [`Buf`] released via [`datalogic_buf_free`].
+//! There is no thread-local state anywhere in the binding.
+//!
+//! Wrappers must assert `datalogic_abi_version() ==
+//! DATALOGIC_ABI_VERSION` at load time so a stale shared library fails
+//! loudly at init instead of corrupting at call time.
 
 mod builder;
+mod data;
 mod engine;
 mod error;
 mod rule;
@@ -19,99 +31,149 @@ mod session;
 mod traced_session;
 
 pub use builder::*;
+pub use data::*;
 pub use engine::*;
 pub use error::*;
 pub use rule::*;
 pub use session::*;
 pub use traced_session::*;
 
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::c_char;
 
-/// Run a C ABI entry-point body, converting any panic into the thread-local
-/// last-error block (tagged `"InternalError"`) and returning `default`
-/// instead of unwinding across the `extern "C"` boundary.
-///
-/// Since Rust 1.81 an unwind that escapes an `extern "C"` function aborts the
-/// process, which would take down the host JVM / .NET runtime / PHP-FPM
-/// worker / Go binary with no catchable error. Wrapping each fallible entry
-/// point in this guard turns an internal panic (engine bug, arena OOM, a
-/// panicking custom-operator callback) into an ordinary `NULL`/`0` return
-/// that consumers already handle via the last-error block.
-pub(crate) fn ffi_guard<T>(default: T, body: impl FnOnce() -> T) -> T {
-    // `AssertUnwindSafe`: on panic we discard all captured state and return a
-    // fixed default, observing nothing beyond the last-error block, so the
-    // usual `UnwindSafe` concerns don't apply at this boundary.
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)) {
-        Ok(value) => value,
-        Err(_) => {
-            error::set_error_message(
-                "internal error: a panic was caught at the datalogic FFI boundary",
-                "InternalError",
-            );
-            default
-        }
-    }
+/// ABI version stamp — bumped on any breaking change to the exported
+/// surface (v1 was the NUL-terminated / thread-local-error contract;
+/// v2 is the current `(ptr,len)` + status-code contract).
+pub const DATALOGIC_ABI_VERSION: u32 = 2;
+
+/// Runtime counterpart of [`DATALOGIC_ABI_VERSION`]. Wrappers call this
+/// once at library load and refuse to run on a mismatch.
+#[unsafe(no_mangle)]
+pub extern "C" fn datalogic_abi_version() -> u32 {
+    DATALOGIC_ABI_VERSION
 }
 
-/// Return the binding's version as a static, NUL-terminated UTF-8 string.
+/// Return the binding's crate version as a static, NUL-terminated UTF-8
+/// string (the one deliberate NUL-terminated survivor — it's a literal
+/// for `printf`-style consumption).
 ///
-/// The returned pointer is valid for the program's lifetime — never free it.
+/// The returned pointer is valid for the program's lifetime — never
+/// free it.
 #[unsafe(no_mangle)]
 pub extern "C" fn datalogic_version() -> *const c_char {
-    // `concat!` lets us embed the NUL terminator at compile time, so the
+    // `concat!` embeds the NUL terminator at compile time, so the
     // returned pointer is into static memory and never needs freeing.
     static VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "\0");
     VERSION.as_ptr() as *const c_char
 }
 
-/// Release a string previously returned by any `datalogic_*` function
-/// that documents owned-string return semantics. Safe to call with `NULL`.
+// =============== byte-range types ===============
+
+/// Owned byte buffer returned by the one-shot entry points
+/// ([`datalogic_engine_apply`], [`datalogic_rule_evaluate`],
+/// [`datalogic_traced_session_evaluate`], …). Release via
+/// [`datalogic_buf_free`]. The bytes are UTF-8 JSON, not NUL-terminated.
+#[repr(C)]
+pub struct Buf {
+    pub ptr: *mut u8,
+    pub len: usize,
+    pub cap: usize,
+}
+
+impl Buf {
+    /// Hand a `Vec`'s allocation across the boundary. Reclaimed by
+    /// [`datalogic_buf_free`] via `Vec::from_raw_parts`.
+    pub(crate) fn from_vec(v: Vec<u8>) -> Self {
+        let mut v = std::mem::ManuallyDrop::new(v);
+        Self {
+            ptr: v.as_mut_ptr(),
+            len: v.len(),
+            cap: v.capacity(),
+        }
+    }
+}
+
+/// Borrowed byte range (UTF-8, not NUL-terminated). Used for the batch
+/// result arrays; validity follows the owning session's borrow rules.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct Slice {
+    pub ptr: *const u8,
+    pub len: usize,
+}
+
+/// Release a [`Buf`] returned by a one-shot entry point. Safe to call
+/// with a zeroed/NULL-ptr buf.
 ///
 /// # Safety
 ///
-/// `ptr` must either be `NULL` or a pointer previously returned by this
-/// library's owned-string path (e.g. [`datalogic_engine_apply`],
-/// [`datalogic_rule_evaluate`], [`datalogic_session_evaluate`]). Calling
-/// with any other pointer (or twice on the same pointer) is undefined
-/// behaviour.
+/// `buf` must be exactly as returned by this library (same ptr/len/cap
+/// triple), passed at most once.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn datalogic_string_free(ptr: *mut c_char) {
-    if ptr.is_null() {
+pub unsafe extern "C" fn datalogic_buf_free(buf: Buf) {
+    if buf.ptr.is_null() {
         return;
     }
-    // `CString::from_raw` reclaims the allocation we leaked in
-    // `string_to_cstring`; dropping it frees the buffer.
-    drop(unsafe { CString::from_raw(ptr) });
+    drop(unsafe { Vec::from_raw_parts(buf.ptr, buf.len, buf.cap) });
 }
 
-/// Borrow a `*const c_char` as a Rust `&str`. Returns `None` if the
-/// pointer is `NULL` or the bytes are not valid UTF-8.
-pub(crate) fn cstr_to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
-    if ptr.is_null() {
-        return None;
-    }
-    // SAFETY: caller contract — `ptr` is NUL-terminated and lives for the
-    // duration of the call. The returned `&str` is constrained by `'a`
-    // which the caller binds to the surrounding stack frame.
-    unsafe { CStr::from_ptr(ptr) }.to_str().ok()
-}
+// =============== shared entry-point plumbing ===============
 
-/// Convert an owned Rust `String` into an owned C string that the
-/// caller must release via [`datalogic_string_free`].
+/// Borrow a caller `(ptr, len)` byte range as `&str`, or produce the
+/// `InvalidArg` error naming the parameter. A NULL pointer with zero
+/// length reads as the empty string (which then fails JSON parsing with
+/// a proper `Parse` error rather than a pointer complaint).
 ///
-/// If `s` contains interior NUL bytes (it shouldn't — JSON output never
-/// does, but engine results round-tripped through user data theoretically
-/// could) we truncate at the first NUL rather than failing the call.
-pub(crate) fn string_to_cstring(s: String) -> *mut c_char {
-    match CString::new(s) {
-        Ok(cs) => cs.into_raw(),
-        Err(e) => {
-            let bytes = e.into_vec();
-            let pos = bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len());
-            let truncated = String::from_utf8_lossy(&bytes[..pos]).into_owned();
-            CString::new(truncated)
-                .unwrap_or_else(|_| CString::new("").expect("empty CString is always valid"))
-                .into_raw()
+/// # Safety
+///
+/// If `ptr` is non-NULL it must reference `len` readable bytes that
+/// stay valid for the duration of the surrounding call.
+pub(crate) unsafe fn str_from_raw<'a>(
+    name: &str,
+    ptr: *const u8,
+    len: usize,
+) -> Result<&'a str, Error> {
+    if ptr.is_null() {
+        if len == 0 {
+            return Ok("");
         }
+        return Err(Error::invalid_arg(format!(
+            "{name} pointer is null (with non-zero length)"
+        )));
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
+    std::str::from_utf8(bytes)
+        .map_err(|_| Error::invalid_arg(format!("{name} is not valid UTF-8")))
+}
+
+/// Run a handle-returning C ABI entry-point body, converting any panic
+/// into `default` instead of unwinding across the `extern "C"` boundary
+/// (which aborts the host process since Rust 1.81).
+pub(crate) fn ffi_guard<T>(default: T, body: impl FnOnce() -> T) -> T {
+    // `AssertUnwindSafe`: on panic we discard all captured state and
+    // return a fixed default, so the usual `UnwindSafe` concerns don't
+    // apply at this boundary.
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)) {
+        Ok(value) => value,
+        Err(_) => default,
+    }
+}
+
+/// Run a status-returning C ABI entry-point body, converting any panic
+/// (engine bug, arena OOM, a panicking custom-operator callback) into
+/// [`Status::Internal`] with the error handle stored for the caller.
+pub(crate) fn guard_status(
+    err_out: *mut *mut Error,
+    body: impl FnOnce() -> Status,
+) -> Status {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)) {
+        Ok(status) => status,
+        Err(_) => unsafe {
+            error::fail(
+                err_out,
+                Error::internal(
+                    "internal error: a panic was caught at the datalogic FFI boundary",
+                ),
+            )
+        },
     }
 }

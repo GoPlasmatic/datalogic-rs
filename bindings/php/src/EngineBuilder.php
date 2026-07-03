@@ -22,11 +22,10 @@ final class EngineBuilder
     private ?CData $handle;
     private bool $consumed = false;
     /**
-     * Pin every PHP callable AND its FFI closure CData so PHP doesn't
-     * GC them while the resulting engine still holds the function
-     * pointer.
+     * Pin every trampoline Closure so PHP doesn't GC it while the
+     * resulting engine still holds the C function pointer.
      *
-     * @var list<mixed>
+     * @var list<callable>
      */
     private array $pinned = [];
 
@@ -35,7 +34,7 @@ final class EngineBuilder
         $ffi = Native::ffi();
         $h = $ffi->datalogic_engine_builder_new();
         if ($h === null) {
-            throw DatalogicException::fromLastError('builder_new failed');
+            throw new \RuntimeException('datalogic_engine_builder_new returned NULL');
         }
         $this->handle = $h;
     }
@@ -69,9 +68,15 @@ final class EngineBuilder
     public function setConfigJson(string $json): self
     {
         $this->ensureFresh();
-        $rc = Native::ffi()->datalogic_engine_builder_set_config_json($this->handle, $json);
-        if ($rc !== 0) {
-            throw DatalogicException::fromLastError('set_config_json failed');
+        $err = Native::newErrorOut();
+        $rc = Native::ffi()->datalogic_engine_builder_set_config_json(
+            $this->handle,
+            $json,
+            strlen($json),
+            FFI::addr($err),
+        );
+        if ($rc !== Native::STATUS_OK) {
+            throw DatalogicException::fromNative($rc, $err, 'set_config_json failed');
         }
         return $this;
     }
@@ -95,37 +100,54 @@ final class EngineBuilder
         $ffi = Native::ffi();
 
         // PHP FFI auto-coerces a PHP callable to a C function pointer
-        // when the parameter type is a function-pointer typedef. Use
-        // `mixed` parameter types because:
-        //   - `const char*` auto-coerces to PHP string (PHP 8.1+)
-        //   - `void*` passes through as CData<void*> (may be null-pointer)
-        //   - `char**` passes through as CData<char**>
-        // Typing parameters strictly would throw TypeError from inside
-        // the callback, which PHP forbids ("throwing from FFI callbacks
-        // is not allowed").
-        $trampoline = function (mixed $args, mixed $userData, mixed $errorOutPtr) use ($op, $ffi): ?CData {
-            $argsString = is_string($args) ? $args : FFI::string($args);
+        // when the parameter type is a function-pointer typedef
+        // (`datalogic_op_fn`). Parameters are typed `mixed` because a
+        // TypeError thrown from inside an FFI callback is forbidden
+        // ("throwing from FFI callbacks is not allowed"):
+        //   - $argsPtr  arrives as CData<const uint8_t*> — the args are
+        //     NOT NUL-terminated, so the cdef deliberately avoids
+        //     `const char*` (which PHP would auto-convert by scanning
+        //     for a NUL) and we copy with the explicit length instead;
+        //   - $argsLen  arrives as int;
+        //   - $userData arrives as ?CData<void*> (unused, always NULL);
+        //   - $out      arrives as CData<datalogic_op_result*>, only
+        //     valid during this invocation.
+        // The outcome crosses the boundary through the v2 setters —
+        // `datalogic_op_result_set_json` / `_set_error` copy the bytes
+        // immediately, so no allocator crosses the FFI boundary.
+        $trampoline = function (mixed $argsPtr, mixed $argsLen, mixed $userData, mixed $out) use ($op, $ffi): int {
             try {
-                $result = $op($argsString);
+                $argsJson = ($argsPtr !== null && $argsLen > 0)
+                    ? FFI::string($argsPtr, $argsLen)
+                    : '[]';
+                $result = $op($argsJson);
                 if (!is_string($result)) {
-                    return self::writeError($ffi, $errorOutPtr, 'custom operator returned non-string');
+                    $msg = 'custom operator returned non-string';
+                    $ffi->datalogic_op_result_set_error($out, $msg, strlen($msg));
+                    return 1;
                 }
-                return self::allocCString($ffi, $result);
+                $ffi->datalogic_op_result_set_json($out, $result, strlen($result));
+                return 0;
             } catch (\Throwable $t) {
-                return self::writeError($ffi, $errorOutPtr, $t->getMessage() ?: $t::class);
+                $msg = $t->getMessage() !== '' ? $t->getMessage() : $t::class;
+                $ffi->datalogic_op_result_set_error($out, $msg, strlen($msg));
+                return 1;
             }
         };
 
         $this->pinned[] = $trampoline;
 
+        $err = Native::newErrorOut();
         $rc = $ffi->datalogic_engine_builder_add_operator(
             $this->handle,
             $name,
+            strlen($name),
             $trampoline,
             null,
+            FFI::addr($err),
         );
-        if ($rc !== 0) {
-            throw DatalogicException::fromLastError('add_operator failed');
+        if ($rc !== Native::STATUS_OK) {
+            throw DatalogicException::fromNative($rc, $err, 'add_operator failed');
         }
         return $this;
     }
@@ -143,7 +165,7 @@ final class EngineBuilder
         $this->handle = null;
         $this->consumed = true;
         if ($enginePtr === null) {
-            throw DatalogicException::fromLastError('builder build failed');
+            throw new \RuntimeException('engine builder build failed');
         }
         return Engine::fromHandle($enginePtr, $this->pinned);
     }
@@ -156,30 +178,5 @@ final class EngineBuilder
         if ($this->handle === null) {
             throw new \RuntimeException('EngineBuilder is invalid');
         }
-    }
-
-    /**
-     * Allocate a libc-managed UTF-8 NUL-terminated buffer and return a
-     * `char*` pointer to it. The Rust side calls libc `free()` on this
-     * pointer, so we MUST allocate with the matching allocator. PHP
-     * FFI's `new($type, owned: false, persistent: true)` uses libc
-     * `malloc` rather than Zend's emalloc — that's the critical bit;
-     * with `persistent: false` the allocation goes through Zend and a
-     * Rust `free()` segfaults on heap-allocator mismatch.
-     */
-    private static function allocCString(FFI $ffi, string $s): CData
-    {
-        $len = strlen($s);
-        $buf = $ffi->new("char[" . ($len + 1) . "]", owned: false, persistent: true);
-        FFI::memcpy($buf, $s, $len);
-        $buf[$len] = "\0";
-        return $ffi->cast('char*', FFI::addr($buf[0]));
-    }
-
-    private static function writeError(FFI $ffi, CData $errorOutPtr, string $msg): ?CData
-    {
-        $alloc = self::allocCString($ffi, $msg);
-        $errorOutPtr[0] = $alloc;
-        return null;
     }
 }

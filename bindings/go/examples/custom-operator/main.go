@@ -1,6 +1,7 @@
 // custom-operator: register a Go `double` operator and call it from a rule.
 // Custom operators receive their pre-evaluated arguments as a JSON-array
-// string and return a JSON-value string. Built-in names always win.
+// string and return a JSON-value string; a returned error becomes an
+// evaluation error for the caller. Built-in names always win.
 //
 // Run from bindings/go/ (build first: make build):
 //
@@ -10,6 +11,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 
@@ -22,6 +24,9 @@ func main() {
 			var args []float64
 			if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
 				return "", err
+			}
+			if len(args) == 0 {
+				return "", errors.New("double expects one numeric argument")
 			}
 			out, err := json.Marshal(args[0] * 2)
 			return string(out), err
@@ -37,4 +42,15 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Println(out) // 42
+
+	// Custom operators compose with built-ins.
+	out, err = engine.Apply(`{"map": [{"var": "xs"}, {"double": [{"var": ""}]}]}`, `{"xs": [1, 2, 3]}`)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(out) // [2,4,6]
+
+	// The operator's error path surfaces as a regular evaluation error.
+	_, err = engine.Apply(`{"double": []}`, `{}`)
+	fmt.Println(err) // datalogic: Custom: ... double expects one numeric argument
 }

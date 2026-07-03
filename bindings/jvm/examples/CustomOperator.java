@@ -2,11 +2,12 @@
 // Custom operators receive their pre-evaluated arguments as a JSON-array
 // string and return a JSON-value string. Built-in names always win.
 //
-// Run from bindings/jvm/ (needs the C ABI built once:
+// Run from bindings/jvm/ (needs JDK 22+, and the C ABI built once:
 // `cargo build --release --manifest-path ../c/Cargo.toml`):
 //   mvn -q compile dependency:build-classpath -Dmdep.outputFile=target/cp.txt
-//   java -cp "target/classes:$(cat target/cp.txt)" \
-//        -Djna.library.path=../c/target/release examples/CustomOperator.java
+//   java --enable-native-access=ALL-UNNAMED \
+//        -cp "target/classes:$(cat target/cp.txt)" \
+//        -Ddatalogic.library.path=../c/target/release examples/CustomOperator.java
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.goplasmatic.datalogic.Engine;

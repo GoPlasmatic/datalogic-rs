@@ -6,14 +6,15 @@ declare(strict_types=1);
 
 namespace Goplasmatic\Datalogic;
 
+use FFI;
 use FFI\CData;
 use Goplasmatic\Datalogic\Exception\DatalogicException;
 use Goplasmatic\Datalogic\Internal\Native;
 
 /**
  * A compiled JSONLogic rule. Safe to share across requests — each
- * {@see Rule::evaluate()} uses its own short-lived arena. For tight
- * loops, open a {@see Session} instead.
+ * {@see Rule::evaluate()} uses its own pooled arena. For tight loops,
+ * open a {@see Session} instead.
  */
 final class Rule
 {
@@ -34,14 +35,37 @@ final class Rule
         return $this->handle;
     }
 
-    /** Evaluate against `$dataJson`; returns the JSON-string result. */
-    public function evaluate(string $dataJson): string
+    /**
+     * Evaluate against a JSON string or a pre-parsed {@see DataHandle};
+     * returns the JSON-string result. Passing a `DataHandle` skips the
+     * per-call data parse — the hot path when one payload feeds many
+     * evaluations.
+     */
+    public function evaluate(string|DataHandle $data): string
     {
-        $ptr = Native::ffi()->datalogic_rule_evaluate($this->handle(), $dataJson);
-        if ($ptr === null) {
-            throw DatalogicException::fromLastError('rule evaluate failed');
+        $ffi = Native::ffi();
+        $buf = $ffi->new('datalogic_buf');
+        $err = Native::newErrorOut();
+        if ($data instanceof DataHandle) {
+            $rc = $ffi->datalogic_rule_evaluate_data(
+                $this->handle(),
+                $data->handle(),
+                FFI::addr($buf),
+                FFI::addr($err),
+            );
+        } else {
+            $rc = $ffi->datalogic_rule_evaluate(
+                $this->handle(),
+                $data,
+                strlen($data),
+                FFI::addr($buf),
+                FFI::addr($err),
+            );
         }
-        return Native::takeString($ptr) ?? '';
+        if ($rc !== Native::STATUS_OK) {
+            throw DatalogicException::fromNative($rc, $err, 'rule evaluate failed');
+        }
+        return Native::takeBuf($buf);
     }
 
     /** Release the underlying rule handle. Idempotent. */

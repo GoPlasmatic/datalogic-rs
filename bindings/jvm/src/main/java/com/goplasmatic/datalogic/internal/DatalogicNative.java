@@ -1,138 +1,334 @@
 /*
  * SPDX-License-Identifier: Apache-2.0
  *
- * JNA library interface for libdatalogic_c. Mirrors `bindings/c/include/datalogic.h`
- * 1:1 — keep entry points and signatures in sync when the C ABI changes.
+ * java.lang.foreign (FFM) bindings for libdatalogic_c, C ABI v2.
+ * Mirrors `bindings/c/include/datalogic.h` 1:1 — keep entry points and
+ * descriptors in sync when the C ABI changes.
  *
- * Native lookup:
- *   1. `jna.library.path` system property (set by Maven surefire for in-tree
- *      tests; users can set it themselves to override).
- *   2. JNA's JAR-resource auto-extract from `<jna-platform>/` at the
- *      classpath root (populated by the release workflow before
- *      `mvn package`). `Native.load` searches
- *      `<Platform.RESOURCE_PREFIX>/<libname>`, e.g. `darwin-aarch64/`.
- *   3. `java.library.path` and the OS's default loader paths.
+ * v2 contract highlights (see the header for the full text):
+ *   - Byte inputs cross as (pointer, length) UTF-8 — never
+ *     NUL-terminated. Java strings are encoded with an explicit
+ *     StandardCharsets.UTF_8 into a per-call confined arena.
+ *   - Fallible calls return a status int and take a trailing
+ *     `datalogic_error **err` out-param; non-OK reads the error handle
+ *     (message/tag/operator/path) and frees it.
+ *   - Session results are borrowed (ptr,len) — copied to a String
+ *     immediately. One-shot results are owned `datalogic_buf` structs
+ *     released via `datalogic_buf_free` (passed BY VALUE).
+ *
+ * Every downcall handle is created eagerly at class initialization,
+ * which doubles as the load-time symbol check; a missing symbol fails
+ * here, loudly, instead of at first use. `datalogic_abi_version()` is
+ * asserted == 2 in the same breath.
  */
 
 package com.goplasmatic.datalogic.internal;
 
-import com.sun.jna.Callback;
-import com.sun.jna.Library;
-import com.sun.jna.Native;
-import com.sun.jna.Pointer;
-import com.sun.jna.PointerType;
-import com.sun.jna.ptr.PointerByReference;
+import java.lang.foreign.Arena;
+import java.lang.foreign.FunctionDescriptor;
+import java.lang.foreign.Linker;
+import java.lang.foreign.MemoryLayout;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.SegmentAllocator;
+import java.lang.foreign.StructLayout;
+import java.lang.foreign.SymbolLookup;
+import java.lang.foreign.ValueLayout;
+import java.lang.invoke.MethodHandle;
+import java.nio.charset.StandardCharsets;
 
-/** JNA library proxy for libdatalogic_c. Loaded lazily on first use. */
-public interface DatalogicNative extends Library {
+/**
+ * FFM downcall handles + marshalling helpers for libdatalogic_c (ABI
+ * v2). Internal — not part of the binding's supported API.
+ */
+public final class DatalogicNative {
 
-    /** Eagerly-loaded singleton; getting at it triggers Native.load(...). */
-    DatalogicNative INSTANCE = Native.load("datalogic_c", DatalogicNative.class);
+    private DatalogicNative() {}
 
-    // =============== Meta ===============
+    /** The C ABI generation this binding is compiled against. */
+    public static final int EXPECTED_ABI_VERSION = 2;
 
-    /** Returns a borrowed UTF-8 pointer; do NOT free. */
-    Pointer datalogic_version();
+    // =============== status codes (datalogic_status) ===============
 
-    /** Releases an owned UTF-8 buffer returned by an evaluate/apply entry point. */
-    void datalogic_string_free(Pointer ptr);
+    public static final int STATUS_OK = 0;
+    public static final int STATUS_INVALID_ARG = 1;
+    public static final int STATUS_PARSE = 2;
+    public static final int STATUS_EVAL = 3;
+    public static final int STATUS_TYPE_MISMATCH = 4;
+    public static final int STATUS_INTERNAL = 5;
 
-    // =============== Engine ===============
+    // =============== layouts ===============
 
-    /** templating: 0 = off, !=0 = on. */
-    Pointer datalogic_engine_new(int templating);
+    /** All six supported platforms are LP64/LLP64 with 64-bit size_t. */
+    static final ValueLayout.OfLong SIZE_T = ValueLayout.JAVA_LONG;
 
-    void datalogic_engine_free(Pointer engine);
+    /** `datalogic_buf { uint8_t *ptr; size_t len; size_t cap; }` — owned, by-value free. */
+    public static final StructLayout BUF_LAYOUT = MemoryLayout.structLayout(
+            ValueLayout.ADDRESS.withName("ptr"),
+            SIZE_T.withName("len"),
+            SIZE_T.withName("cap"));
 
-    /** Returns NULL on parse failure; query last-error state. */
-    Pointer datalogic_engine_compile(Pointer engine, String rule_json);
+    /** `datalogic_slice { const uint8_t *ptr; size_t len; }` — borrowed batch results. */
+    public static final StructLayout SLICE_LAYOUT = MemoryLayout.structLayout(
+            ValueLayout.ADDRESS.withName("ptr"),
+            SIZE_T.withName("len"));
 
-    /** Returns owned UTF-8 (or NULL on failure); release via datalogic_string_free. */
-    Pointer datalogic_engine_apply(Pointer engine, String rule_json, String data_json);
+    /** `int32_t (*datalogic_op_fn)(const uint8_t*, size_t, void*, datalogic_op_result*)`. */
+    public static final FunctionDescriptor OP_FN_DESC = FunctionDescriptor.of(
+            ValueLayout.JAVA_INT,
+            ValueLayout.ADDRESS, SIZE_T, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
 
-    Pointer datalogic_engine_session(Pointer engine);
+    // =============== linker plumbing ===============
 
-    Pointer datalogic_engine_traced_session(Pointer engine);
+    public static final Linker LINKER = Linker.nativeLinker();
+    private static final SymbolLookup LOOKUP = NativeLibrary.load();
 
-    // =============== Engine builder (custom operators) ===============
-
-    Pointer datalogic_engine_builder_new();
-
-    void datalogic_engine_builder_free(Pointer builder);
-
-    void datalogic_engine_builder_set_templating(Pointer builder, int enabled);
-
-    /** Returns 0 on success, -1 on error (last-error state populated). */
-    int datalogic_engine_builder_set_config_json(Pointer builder, String config_json);
-
-    /**
-     * Callback type for custom operators. JNA invokes this on whatever thread
-     * the engine calls our trampoline from.
-     */
-    interface OperatorCallback extends Callback {
-        /**
-         * @param args_json borrowed UTF-8 JSON-array string of pre-evaluated args
-         * @param user_data opaque pointer registered alongside the callback
-         * @param error_out on error, set *error_out to a freshly-allocated UTF-8 message
-         * @return freshly-allocated UTF-8 JSON-value string on success, or NULL on error
-         */
-        Pointer invoke(Pointer args_json, Pointer user_data, PointerByReference error_out);
+    private static MethodHandle dh(String symbol, FunctionDescriptor descriptor) {
+        MemorySegment address = LOOKUP.find(symbol).orElseThrow(() -> new UnsatisfiedLinkError(
+                "datalogic native library is missing symbol '" + symbol
+                        + "' — it predates C ABI v" + EXPECTED_ABI_VERSION
+                        + "; rebuild bindings/c (`cargo build --release`) or upgrade the packaged library"));
+        return LINKER.downcallHandle(address, descriptor);
     }
 
-    /** Returns 0 on success, -1 on error. */
-    int datalogic_engine_builder_add_operator(
-            Pointer builder,
-            String name,
-            OperatorCallback callback,
-            Pointer user_data);
+    // =============== meta ===============
 
-    /** Returns NULL if the builder has already been built / is invalid. */
-    Pointer datalogic_engine_builder_build(Pointer builder);
+    public static final MethodHandle ABI_VERSION =
+            dh("datalogic_abi_version", FunctionDescriptor.of(ValueLayout.JAVA_INT));
+    public static final MethodHandle VERSION =
+            dh("datalogic_version", FunctionDescriptor.of(ValueLayout.ADDRESS));
+    /** Takes the `datalogic_buf` struct BY VALUE. */
+    public static final MethodHandle BUF_FREE =
+            dh("datalogic_buf_free", FunctionDescriptor.ofVoid(BUF_LAYOUT));
 
-    // =============== Rule ===============
+    // =============== engine ===============
 
-    void datalogic_rule_free(Pointer rule);
+    public static final MethodHandle ENGINE_NEW = dh("datalogic_engine_new",
+            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+    public static final MethodHandle ENGINE_FREE = dh("datalogic_engine_free",
+            FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+    public static final MethodHandle ENGINE_COMPILE = dh("datalogic_engine_compile",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    public static final MethodHandle ENGINE_APPLY = dh("datalogic_engine_apply",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T,
+                    ValueLayout.ADDRESS, SIZE_T, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    public static final MethodHandle ENGINE_SESSION = dh("datalogic_engine_session",
+            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    public static final MethodHandle ENGINE_TRACED_SESSION = dh("datalogic_engine_traced_session",
+            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
-    Pointer datalogic_rule_evaluate(Pointer rule, String data_json);
+    // =============== engine builder ===============
 
-    // =============== Session ===============
+    public static final MethodHandle BUILDER_NEW = dh("datalogic_engine_builder_new",
+            FunctionDescriptor.of(ValueLayout.ADDRESS));
+    public static final MethodHandle BUILDER_FREE = dh("datalogic_engine_builder_free",
+            FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+    public static final MethodHandle BUILDER_SET_TEMPLATING = dh("datalogic_engine_builder_set_templating",
+            FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+    public static final MethodHandle BUILDER_SET_CONFIG_JSON = dh("datalogic_engine_builder_set_config_json",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T, ValueLayout.ADDRESS));
+    public static final MethodHandle BUILDER_ADD_OPERATOR = dh("datalogic_engine_builder_add_operator",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    public static final MethodHandle BUILDER_BUILD = dh("datalogic_engine_builder_build",
+            FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
-    void datalogic_session_free(Pointer session);
+    // =============== custom-operator result setters ===============
 
-    Pointer datalogic_session_evaluate(Pointer session, Pointer rule, String data_json);
+    public static final MethodHandle OP_RESULT_SET_JSON = dh("datalogic_op_result_set_json",
+            FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T));
+    public static final MethodHandle OP_RESULT_SET_ERROR = dh("datalogic_op_result_set_error",
+            FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T));
 
-    void datalogic_session_reset(Pointer session);
+    // =============== data handles ===============
 
-    long datalogic_session_allocated_bytes(Pointer session);
+    public static final MethodHandle DATA_PARSE = dh("datalogic_data_parse",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, SIZE_T, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    public static final MethodHandle DATA_FREE = dh("datalogic_data_free",
+            FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+    public static final MethodHandle DATA_ALLOCATED_BYTES = dh("datalogic_data_allocated_bytes",
+            FunctionDescriptor.of(SIZE_T, ValueLayout.ADDRESS));
 
-    // =============== Traced session ===============
+    // =============== rule ===============
 
-    void datalogic_traced_session_free(Pointer session);
+    public static final MethodHandle RULE_FREE = dh("datalogic_rule_free",
+            FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+    public static final MethodHandle RULE_EVALUATE = dh("datalogic_rule_evaluate",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    public static final MethodHandle RULE_EVALUATE_DATA = dh("datalogic_rule_evaluate_data",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
-    /** Always returns a JSON-object string (or NULL on invalid input pointers). */
-    Pointer datalogic_traced_session_evaluate(Pointer session, String rule_json, String data_json);
+    // =============== session ===============
 
-    // =============== Last error ===============
+    public static final MethodHandle SESSION_FREE = dh("datalogic_session_free",
+            FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+    public static final MethodHandle SESSION_RESET = dh("datalogic_session_reset",
+            FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+    public static final MethodHandle SESSION_ALLOCATED_BYTES = dh("datalogic_session_allocated_bytes",
+            FunctionDescriptor.of(SIZE_T, ValueLayout.ADDRESS));
+    public static final MethodHandle SESSION_EVALUATE = dh("datalogic_session_evaluate",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    public static final MethodHandle SESSION_EVALUATE_DATA = dh("datalogic_session_evaluate_data",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    private static final FunctionDescriptor TYPED_EVAL_DESC = FunctionDescriptor.of(
+            ValueLayout.JAVA_INT,
+            ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+    public static final MethodHandle SESSION_EVALUATE_BOOL =
+            dh("datalogic_session_evaluate_bool", TYPED_EVAL_DESC);
+    public static final MethodHandle SESSION_EVALUATE_I64 =
+            dh("datalogic_session_evaluate_i64", TYPED_EVAL_DESC);
+    public static final MethodHandle SESSION_EVALUATE_F64 =
+            dh("datalogic_session_evaluate_f64", TYPED_EVAL_DESC);
+    public static final MethodHandle SESSION_EVALUATE_TRUTHY =
+            dh("datalogic_session_evaluate_truthy", TYPED_EVAL_DESC);
+    public static final MethodHandle SESSION_EVALUATE_BATCH = dh("datalogic_session_evaluate_batch",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    public static final MethodHandle SESSION_EVALUATE_MANY = dh("datalogic_session_evaluate_many",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
-    void datalogic_last_error_clear();
+    // =============== traced session ===============
 
-    /** Borrowed pointer — do NOT free. Valid until the next call on this thread. */
-    Pointer datalogic_last_error_message();
+    public static final MethodHandle TRACED_SESSION_FREE = dh("datalogic_traced_session_free",
+            FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+    public static final MethodHandle TRACED_SESSION_EVALUATE = dh("datalogic_traced_session_evaluate",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T,
+                    ValueLayout.ADDRESS, SIZE_T, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
-    Pointer datalogic_last_error_type();
+    // =============== error handles ===============
 
-    Pointer datalogic_last_error_operator();
+    public static final MethodHandle ERROR_FREE = dh("datalogic_error_free",
+            FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+    public static final MethodHandle ERROR_STATUS = dh("datalogic_error_status",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    private static final FunctionDescriptor ERROR_ACCESSOR_DESC = FunctionDescriptor.of(
+            ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+    public static final MethodHandle ERROR_MESSAGE = dh("datalogic_error_message", ERROR_ACCESSOR_DESC);
+    public static final MethodHandle ERROR_TAG = dh("datalogic_error_tag", ERROR_ACCESSOR_DESC);
+    public static final MethodHandle ERROR_OPERATOR = dh("datalogic_error_operator", ERROR_ACCESSOR_DESC);
+    public static final MethodHandle ERROR_PATH_JSON = dh("datalogic_error_path_json", ERROR_ACCESSOR_DESC);
 
-    Pointer datalogic_last_error_path_json();
+    // The ABI assert runs after the handles above exist (each dh() call
+    // already proved its symbol resolves; this proves the *semantics*
+    // match too — v1 libraries never export datalogic_abi_version, so
+    // they fail at the dh() stage with the missing-symbol message).
+    static {
+        int abi = abiVersion();
+        if (abi != EXPECTED_ABI_VERSION) {
+            throw new UnsatisfiedLinkError(
+                    "datalogic native library reports C ABI version " + abi + ", but this binding requires "
+                            + EXPECTED_ABI_VERSION + ". You are mixing a stale libdatalogic_c with a newer JAR "
+                            + "(or vice versa) — rebuild bindings/c (`cargo build --release`) or align the "
+                            + "JAR and native library versions.");
+        }
+    }
+
+    /** Runtime C ABI version of the loaded library. */
+    public static int abiVersion() {
+        try {
+            return (int) ABI_VERSION.invokeExact();
+        } catch (Throwable t) {
+            throw propagate(t);
+        }
+    }
+
+    // =============== marshalling helpers ===============
 
     /**
-     * Common owned-pointer wrapper used as a JNA struct field type when we
-     * want strongly-typed handle classes. Currently unused in the API
-     * (every handle is just `Pointer`), but kept here as the future
-     * extension point if/when handle types diverge.
+     * Encode a Java string as UTF-8 bytes in {@code allocator} — the v2
+     * input convention: exact (ptr,len), no NUL terminator, and an
+     * explicit charset (never the platform default).
      */
-    final class OwnedPointer extends PointerType {
-        public OwnedPointer() { super(); }
-        public OwnedPointer(Pointer p) { super(p); }
+    public static MemorySegment utf8(SegmentAllocator allocator, String s) {
+        return allocator.allocateFrom(ValueLayout.JAVA_BYTE, s.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Copy {@code len} bytes at {@code ptr} out of native memory as a
+     * UTF-8 string. Used for borrowed results — the copy must happen
+     * before the next call touching the owning session/error.
+     */
+    public static String readUtf8(MemorySegment ptr, long len) {
+        if (len == 0) {
+            return "";
+        }
+        byte[] bytes = ptr.reinterpret(len).toArray(ValueLayout.JAVA_BYTE);
+        return new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Read an owned `datalogic_buf` (filled by a one-shot entry point
+     * through an out-pointer) into a String, then release it via
+     * `datalogic_buf_free(buf)` — struct passed by value.
+     */
+    public static String takeOwnedBuf(MemorySegment bufStruct) {
+        MemorySegment ptr = bufStruct.get(ValueLayout.ADDRESS, 0);
+        long len = bufStruct.get(SIZE_T, ValueLayout.ADDRESS.byteSize());
+        String result = ptr.address() == 0 ? "" : readUtf8(ptr, len);
+        try {
+            BUF_FREE.invokeExact(bufStruct);
+        } catch (Throwable t) {
+            throw propagate(t);
+        }
+        return result;
+    }
+
+    /**
+     * Read a borrowed error-accessor field: `const uint8_t *fn(err,
+     * size_t *len_out)`. Returns {@code null} for absent fields.
+     */
+    public static String errorField(MethodHandle accessor, MemorySegment err, SegmentAllocator scratch) {
+        try {
+            MemorySegment lenOut = scratch.allocate(SIZE_T);
+            MemorySegment ptr = (MemorySegment) accessor.invokeExact(err, lenOut);
+            if (ptr.address() == 0) {
+                return null;
+            }
+            return readUtf8(ptr, lenOut.get(SIZE_T, 0));
+        } catch (Throwable t) {
+            throw propagate(t);
+        }
+    }
+
+    /** Release an error handle; never throws. */
+    public static void freeError(MemorySegment err) {
+        try {
+            ERROR_FREE.invokeExact(err);
+        } catch (Throwable ignored) {
+            // freeing is best-effort; the handle is small
+        }
+    }
+
+    /**
+     * Rethrow helper for {@code MethodHandle.invokeExact}'s checked
+     * {@link Throwable}: downcall handles to well-formed C functions do
+     * not throw, so anything landing here is a JVM-level failure.
+     */
+    public static RuntimeException propagate(Throwable t) {
+        if (t instanceof RuntimeException re) {
+            return re;
+        }
+        if (t instanceof Error e) {
+            throw e;
+        }
+        return new IllegalStateException("datalogic native call failed unexpectedly", t);
     }
 }
