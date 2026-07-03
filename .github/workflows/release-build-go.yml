@@ -103,6 +103,19 @@ jobs:
         working-directory: bindings/go
         run: go test -v ./...
 
+      # Execute the runnable examples (bindings/go/examples/) so they
+      # can't rot. One leg suffices: every leg already compiles them via
+      # the `./...` package walks above; only the execution is
+      # platform-redundant.
+      - name: Run examples
+        if: matrix.target.os == 'linux' && matrix.target.arch == 'amd64'
+        shell: bash
+        working-directory: bindings/go
+        run: |
+          go run ./examples/getting-started
+          go run ./examples/compile-once-evaluate-many
+          go run ./examples/custom-operator
+
       # Cross-compile (darwin/amd64 from arm64 host): we can verify the
       # link step but not run the resulting binary. `go vet` + `go build`
       # confirm the cgo file parses and the static library resolves all

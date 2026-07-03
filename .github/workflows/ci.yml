@@ -250,6 +250,15 @@ jobs:
         # never executes.
         run: cd bindings/wasm && wasm-pack test --node
 
+      # Execute the runnable examples against the just-built pkg/nodejs
+      # target so they can't rot. Node comes preinstalled on the runner.
+      - name: Run examples
+        run: |
+          cd bindings/wasm
+          node examples/getting-started.mjs
+          node examples/compile-once-evaluate-many.mjs
+          node examples/custom-operator.mjs
+
       # Hand the built pkg/ to the ui-build job below — saves it the cost
       # of repeating the wasm build from scratch.
       - name: Upload wasm-pkg
@@ -315,6 +324,15 @@ jobs:
         working-directory: bindings/python
         run: pytest -v
 
+      # Execute the runnable examples against the binding installed into
+      # the venv above so they can't rot.
+      - name: Run examples
+        working-directory: bindings/python
+        run: |
+          python examples/getting_started.py
+          python examples/compile_once_evaluate_many.py
+          python examples/custom_operator.py
+
   # Node-binding smoke build. The release-time matrix fans out to 8
   # platforms; mirroring all of them at PR time is expensive and most
   # regressions are platform-agnostic (binding logic, conv layer, error
@@ -358,6 +376,15 @@ jobs:
       - name: Run node:test
         working-directory: bindings/node
         run: npm test
+
+      # Execute the runnable examples against the just-built prebuild so
+      # they can't rot.
+      - name: Run examples
+        working-directory: bindings/node
+        run: |
+          node examples/getting-started.mjs
+          node examples/compile-once-evaluate-many.mjs
+          node examples/custom-operator.mjs
 
   # UI lint + library build. The UI's npm dep on @goplasmatic/datalogic-wasm
   # would normally resolve from the registry; we link the locally-built
@@ -417,6 +444,16 @@ jobs:
         working-directory: bindings/dotnet
         run: dotnet test -c Release
 
+      # Execute the runnable examples (examples/Examples.csproj is a
+      # console project outside the .sln; `dotnet run` builds it against
+      # the same c-abi-host cdylib the tests used) so they can't rot.
+      - name: Run examples
+        working-directory: bindings/dotnet
+        run: |
+          dotnet run -c Release --project examples -- getting-started
+          dotnet run -c Release --project examples -- compile-once
+          dotnet run -c Release --project examples -- custom-operator
+
   # JVM binding smoke. Same rationale as dotnet-test — the binding is
   # JNA over the C ABI's cdylib.
   jvm-test:
@@ -443,6 +480,19 @@ jobs:
         working-directory: bindings/jvm
         run: mvn -B test
 
+      # Execute the runnable examples (examples/*.java are single-file
+      # programs; the JDK source-file launcher compiles + runs each in one
+      # step) so they can't rot. `mvn test` above already compiled
+      # target/classes; build-classpath just materialises the dependency
+      # classpath (JNA, Jackson) into target/cp.txt.
+      - name: Run examples
+        working-directory: bindings/jvm
+        run: |
+          mvn -B -q dependency:build-classpath -Dmdep.outputFile=target/cp.txt
+          java -cp "target/classes:$(cat target/cp.txt)" -Djna.library.path=../c/target/release examples/GettingStarted.java
+          java -cp "target/classes:$(cat target/cp.txt)" -Djna.library.path=../c/target/release examples/CompileOnceEvaluateMany.java
+          java -cp "target/classes:$(cat target/cp.txt)" -Djna.library.path=../c/target/release examples/CustomOperator.java
+
   # PHP binding smoke. Same rationale — PHP FFI over the C ABI.
   php-test:
     name: PHP binding test
@@ -465,3 +515,12 @@ jobs:
       - name: phpunit
         working-directory: bindings/php
         run: vendor/bin/phpunit --no-coverage
+
+      # Execute the runnable examples (the FFI loader falls back to the
+      # c-abi-host build at bindings/c/target/release) so they can't rot.
+      - name: Run examples
+        working-directory: bindings/php
+        run: |
+          php examples/getting-started.php
+          php examples/compile-once-evaluate-many.php
+          php examples/custom-operator.php

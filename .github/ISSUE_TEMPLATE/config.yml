@@ -1,0 +1,17 @@
+# Routes non-bug traffic away from the issue tracker. Blank issues stay
+# enabled deliberately: "Who's using datalogic-rs" entries and anything
+# that doesn't fit a template should have zero friction.
+blank_issues_enabled: true
+contact_links:
+  - name: Question or help
+    url: https://github.com/GoPlasmatic/datalogic-rs/discussions/categories/q-a
+    about: Ask usage questions in Discussions — issues are for bugs and feature requests.
+  - name: Documentation
+    url: https://goplasmatic.github.io/datalogic-rs/
+    about: Operator reference, per-language guides, and configuration docs.
+  - name: Live playground
+    url: https://goplasmatic.github.io/datalogic-rs/playground/
+    about: Reproduce rule behavior in the browser before filing.
+  - name: Report a security vulnerability
+    url: https://github.com/GoPlasmatic/datalogic-rs/security/advisories/new
+    about: Please report privately — do not open a public issue.
