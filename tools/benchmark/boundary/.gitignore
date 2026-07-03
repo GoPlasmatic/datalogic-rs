@@ -1,0 +1,13 @@
+# Per-run results + compiled runner binaries (also matched by the
+# crate-level `output/` ignore; listed here so boundary/ is
+# self-contained).
+output/
+
+# Python venv the wheel is installed into (run.sh creates it).
+.venv/
+
+# Language build artifacts of the runner projects.
+runner-dotnet/bin/
+runner-dotnet/obj/
+runner-go/go.sum
+runner-jvm/*.class

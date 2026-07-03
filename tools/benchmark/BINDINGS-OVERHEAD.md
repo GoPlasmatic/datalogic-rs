@@ -1,10 +1,22 @@
 # Binding overhead analysis
 
-Status: **exploratory**. This document quantifies the per-call overhead each
-language binding adds on top of the Rust core, explains where every
-nanosecond goes, and catalogs reduction options graded by expected gain and
-compatibility impact. Nothing in this document has been implemented; it is
-the shared understanding to decide what to build next.
+Status: **implemented and re-measured**. This document began as the
+exploratory analysis quantifying the per-call overhead each language
+binding adds on top of the Rust core; that analysis (sections 1-7,
+kept as the record) drove the C ABI v2 arc that shipped in 5.0.1. The
+"Outcome" section below is the scoreboard; section 2 and the appendix
+carry the current (post-v2) capture, with the pre-v2 numbers preserved
+as the historical baseline at the end of the appendix.
+
+> **Decision (2026-07-03):** a direct C ABI v2 build for the v5.0.1
+> release was approved and implemented the same day, superseding the
+> staged sequencing in section 6 (the additive B-tier variants were
+> skipped; the C ABI is in-tree only, so v2 replaced v1 outright). The
+> shipped contract lives in
+> [`bindings/c/README.md`](../../bindings/c/README.md) and the generated
+> `include/datalogic.h`; the v1 → v2 migration table is in
+> [`MIGRATION.md`](../../MIGRATION.md). Every number in this file is
+> reproducible in-tree: [`boundary/README.md`](./boundary/README.md).
 
 > **Captured:** 2026-07-03 • Apple M2 Pro (arm64), macOS 26.5 • Rust 1.96
 > release builds • Node v24 • CPython 3.13 (abi3 wheel) • Go 1.25 toolchain
@@ -12,6 +24,58 @@ the shared understanding to decide what to build next.
 > • PHP 8.4 with FFI • median of 5 samples, each sized to ~250 ms, after
 > warmup. Same three workloads in every runtime; every runtime produced
 > byte-identical results before timing started.
+>
+> **Re-captured (ABI v2):** 2026-07-03, same host and discipline, after
+> the v2 rollthrough — JVM now OpenJDK 26 via FFM (JNA deleted), PHP now
+> 8.5.7. Current tables in section 2 and the appendix come from this
+> capture (`tools/benchmark/boundary/run.sh`).
+
+## Outcome: what shipped in 5.0.1
+
+Everything from section 1 down reads as the original analysis; this
+section is the scoreboard. **Shipped:** A1 (Python LTO), A3 (Node
+string fast-path), A4 (PHP preload header), A6 (docs honesty pass), and
+the C ABI v2 — C1 collapsing B1 data handles, B2 batch, B3 typed scalar
+results, B4 `(ptr,len)`, B5 status-code errors, B7 arena pooling, and
+B8 buffer-reuse results into one surface — with the JVM binding
+rewritten FFM-only (B10 + C2 in one step: JDK 22 floor, JNA deleted).
+A2 was superseded by the FFM rewrite. **Deferred:** A5 (WASM speed
+profile), B6 (object converters), B9 (Node async), and the
+Node/Python/WASM data-handle mirrors. C3 stays rejected.
+
+Re-measured on the `simple` workload, ns per evaluation:
+
+| Binding | v1 string | v2 string | v2 data handle | v2 batch (100 rules × 1 payload, per eval) |
+|---------|----------:|----------:|---------------:|-------------------------------------------:|
+| C ABI   |     186.0 |     122.8 |           39.1 |                                        39.3 |
+| .NET    |     216.7 |     162.3 |           49.7 |                                        62.0 |
+| Go      |     358.5 |     205.5 |          117.6 |                                        61.1 |
+| JVM     |   3,268.7 |     270.0 |          133.3 |                                        70.9 |
+| PHP     |     559.3 |     689.8 |          599.3 |                                       165.5 |
+
+Reading it:
+
+- **Every gate from the plan was met**: C session ≤140 (122.8); C
+  data-handle ≤110 / ≤450 / ≤2,200 across the three workloads (39.1 /
+  158.9 / 1,000.5 — a 12.2x reduction over the string path at 8 KB);
+  .NET ≤180 (162.3); Go ≤220 (205.5, with the per-call
+  `LockOSThread` pair and `C.CString` copies gone); JVM ≤600 (270.0).
+- **The JVM outlier is gone**: 12x faster on the string path, and the
+  plan's "100 × `simple` ≈ 327 µs → ~16 µs" batch estimate landed at
+  ~7 µs (~46x).
+- **The C session path now sits below the "string-contract floor"**
+  (122.8 vs 132.8) because the floor includes a result-`String`
+  allocation that v2's borrowed-result contract skips entirely.
+- **`ParsedData` passthrough is free**: the core `parseddata-eval` tier
+  equals `eval-preparsed` within noise (29.4 vs 29.5 ns).
+- **PHP is the one honest regression on the string path** (559 → 690
+  ns): PHP FFI dispatch costs per *argument*, and v2 adds a length
+  argument plus two out-params to the hot call (this capture also runs
+  PHP 8.5 vs the baseline's 8.4). PHP's wins land exactly where the
+  structural APIs do — data handle 8.2x at 8 KB, batch 4.2x at
+  `simple` (165.5 ns/eval). If the PHP string path matters later, an
+  additive NUL-terminated convenience entry point would restore parity;
+  deferred until demand appears.
 
 ## Workloads
 
@@ -67,64 +131,72 @@ binding's hot path should be judged by its distance from it.
 
 ## 2. Hot path per binding
 
-Compile-once + session (or closest equivalent), JSON string in/out:
+**(Re-captured post-v2; the pre-v2 table is in the appendix's
+historical baseline.)** Compile-once + session, JSON string in/out:
 
 | Binding                     | simple | eligibility | array100 | Fixed overhead vs floor (simple) |
 |-----------------------------|-------:|------------:|---------:|---------------------------------:|
-| string-contract floor       |    133 |         993 |   11,087 | 0 |
-| C ABI, called from C        |    186 |       1,135 |   12,799 | +53 |
-| .NET (`LibraryImport`)      |    217 |       1,263 |   13,341 | +84 |
-| Python (`evaluate_str`)     |    270 |       1,200 |   12,404 | +137 |
-| Node (`evaluateStr`)        |    333 |       1,321 |   12,010 | +200 |
-| Go (cgo)                    |    358 |       1,353 |   13,221 | +225 |
-| WASM (`CompiledRule`)       |    552 |       3,103 |   30,724 | +419 |
-| PHP (FFI)                   |    559 |       1,450 |   11,981 | +426 |
-| JVM (JNA)                   |  3,269 |       3,919 |   18,951 | +3,136 |
+| string-contract floor       |  132.8 |     1,004.6 | 11,979.0 | 0 |
+| C ABI, called from C        |  122.8 |       948.6 | 12,280.3 | -10 |
+| .NET (`Session.Evaluate`)   |  162.3 |     1,057.9 | 12,814.1 | +29 |
+| Go (cgo)                    |  205.5 |     1,055.9 | 12,506.0 | +73 |
+| JVM (FFM)                   |  270.0 |     1,181.2 | 13,260.6 | +137 |
+| Python (`evaluate_str`)     |  284.2 |     1,203.5 | 12,311.1 | +151 |
+| Node (`evaluateStr`)        |  330.7 |     1,378.8 | 13,277.8 | +198 |
+| WASM (session)              |  576.7 |     3,204.2 | 30,649.4 | +444 |
+| PHP (FFI)                   |  689.8 |     1,551.8 | 12,959.2 | +557 |
+
+And the same bindings on the v2 structural tier — parse the payload once
+(`datalogic_data_parse` / `DataHandle`), then evaluate:
+
+| Binding (data handle) | simple | eligibility | array100 | 100 rules × 1 payload (per eval, simple) |
+|-----------------------|-------:|------------:|---------:|------------------------------------------:|
+| C ABI                 |   39.1 |       158.9 |  1,000.5 | 39.3 |
+| .NET                  |   49.7 |       172.5 |  1,036.2 | 62.0 |
+| Go                    |  117.6 |       241.7 |  1,071.6 | 61.1 |
+| JVM                   |  133.3 |       284.5 |  1,149.5 | 70.9 |
+| PHP                   |  599.3 |       720.2 |  1,572.5 | 165.5 |
 
 (Cross-process run-to-run variance is roughly ±5%; treat single-digit
-percent differences between adjacent rows as noise. At 8 KB the shared parse
-dominates and most bindings converge to ~12-13 µs.)
+percent differences between adjacent rows as noise. On the string tier
+at 8 KB the shared parse still dominates and the native bindings
+converge to ~12-13 µs — which is exactly the cost the data-handle tier
+removes: at 8 KB it runs ~12x faster across C, .NET, Go, and JVM.)
 
-Takeaways, per binding:
+Takeaways, per binding (post-v2):
 
-- **.NET is nearly free.** Source-generated `LibraryImport` with
-  `StringMarshalling.Utf8` (`NativeMethods.cs:102`) adds ~84 ns fixed over
-  raw C. The managed boundary is not the problem anywhere in .NET; only the
-  shared contract is.
-- **Python's string path is excellent** (~137 ns fixed: abi3 zero-copy
-  `&str` extraction, one GIL detach round-trip, one `PyString` result copy).
-- **Node's string path** pays two `napi_get_value_string_utf8` calls
-  (length probe + copy, a UTF-16 to UTF-8 transcode) in and one
-  `napi_create_string_utf8` out; ~200 ns fixed.
-- **Go** pays 4 cgo crossings per call (`C.CString`, evaluate,
-  `datalogic_string_free`, `C.free`) plus a `runtime.LockOSThread` pair that
-  exists only to make the thread-local error state readable
-  (`bindings/go/datalogic.go:195-201`); ~225 ns fixed.
-- **PHP** pays FFI dynamic dispatch twice (evaluate + free) and one
-  `FFI::string` copy out; ~426 ns fixed. Input strings pass zero-copy
-  (zend_strings are NUL-terminated), which is why PHP matches Node at 8 KB.
-- **WASM's overhead scales with payload**, not just per call: the JS-side
-  encode/copy in, decode/copy out, and (crucially) parse + eval running
-  inside a `opt-level = "z"` + `wasm-opt -Oz` module. At 8 KB it is 2.8x the
-  string floor while true native bindings are ~1.15x.
-- **JVM is the outlier: 10 to 15x the .NET boundary cost.** JNA *interface
-  mapping* (`Native.load` proxy, reflective dispatch per call,
-  `DatalogicNative.java:27-30`) costs microseconds. Notably
-  `session.evaluate` (3 marshalled args) measures *slower* than
-  `rule.evaluate` (2 args) on tiny payloads: per-argument reflection cost
-  exceeds the arena saving. Two side findings: argument strings are encoded
-  with the JVM default charset (only results are forced UTF-8,
-  `Engine.java:124`), which is both slower and a latent non-ASCII
-  correctness bug on JDK < 18; and JDK 24+ prints restricted-native-access
-  warnings for JNA (blocked by default in a future JDK) unless
-  `--enable-native-access` is set.
+- **C, .NET, and Go now sit within ~75 ns of the floor** — and the raw
+  C session path is *below* it, because v2's borrowed-result contract
+  skips the result-`String` allocation the floor row includes. What
+  remains is UTF-8 marshalling and call dispatch.
+- **The JVM outlier is gone**: from 10-15x the .NET boundary cost under
+  JNA interface mapping to ~1.7x under eager FFM downcall handles.
+  Argument strings are now explicitly UTF-8, so the v1 default-charset
+  correctness hazard is structurally impossible. JDK 22+ required; add
+  `--enable-native-access=ALL-UNNAMED` on JDK 24+.
+- **Python and Node string paths are unchanged by design** (they bind
+  the Rust core directly, not the C ABI) and reproduce the baseline
+  within noise. Node's object-typed entry points now take the same
+  string fast-path as `evaluateStr` when handed JSON text.
+- **WASM is unchanged** (2.8x the floor at 8 KB): its data-handle
+  mirror and the speed-profile experiment (A5) are the deferred items.
+- **PHP traded ~130 ns on the string path for the structural wins**:
+  PHP FFI dispatch costs per argument, and v2's hot call gained a
+  length argument and two out-params (the capture also moved from PHP
+  8.4 to 8.5). Its hot lane is now the handle + batch tier — 165.5
+  ns/eval batched vs 689.8 single-call, and 8.2x at 8 KB.
 
 One-shot convenience tiers (compile per call: `apply`, `engine.eval`,
-free-function `evaluate`) cost 5 to 25x the hot path at small payloads
-(e.g. Node 4,883 ns vs 333 ns on `simple`). The docs already steer users to
-compile-once; no action needed beyond keeping that guidance loud.
+free-function `evaluate`) still cost 5 to 15x the hot path at small
+payloads (e.g. Node 4,819 ns vs 331 ns on `simple`). The docs already
+steer users to compile-once; no action needed beyond keeping that
+guidance loud.
 
 ## 3. The object paths: the largest self-inflicted cost
+
+*(Unchanged in v2 — the object paths don't route through the C ABI, and
+B6 remains deferred; the v2 capture reproduces these rows within
+noise.)*
 
 Node and Python also accept native objects. Measured against routing the
 same object through the string path:
@@ -185,6 +257,11 @@ Every cost identified, ranked by measured impact, with who pays it:
 
 ## 5. Options to reduce overhead
 
+*(Historical record — the outcome of every option is in the "Outcome"
+section at the top: A1/A3/A4/A6 shipped as-is, B1-B5 + B7 + B8 shipped
+collapsed into the C ABI v2 (C1), B10/C2 shipped as the FFM-only JVM
+rewrite, A2 was superseded, A5/B6/B9 deferred, C3 rejected.)*
+
 Graded: **A** = drop-in, no API change, no break. **B** = additive API
 (non-breaking; old paths stay). **C** = structural/breaking (next major).
 Expected gains are derived from the measurements above; treat them as
@@ -229,6 +306,11 @@ Node/Python items are their own crates.
 | C4 | WASM structural changes (resident data handles inside the module, shared-buffer views) | The JS<->wasm copy is unavoidable for strings; a data-handle API (B1 mirrored into the WASM classes) is non-breaking and captures most of it. Full redesign only if evidence demands. |
 
 ## 6. Suggested sequencing
+
+*(Historical — executed 2026-07-03 in a compressed form: step 0 shipped
+as `tools/benchmark/boundary/`; the A-tier quick wins landed; and steps
+3-5's additive staging was replaced by the direct C ABI v2 build per
+the decision at the top of this document.)*
 
 1. **Step 0, before any optimization: make these numbers reproducible in-tree.**
    Port the per-binding boundary runners into `tools/benchmark/runners/`
@@ -311,7 +393,61 @@ native column. The injectable-clock idea (deterministic `now` via
 
 ## Appendix: full result tables
 
-Hot-path and alternate tiers, ns/op, median of 5:
+Current capture (ABI v2, 2026-07-03), ns/op, median of 5 — reproduce
+with `tools/benchmark/boundary/run.sh all`:
+
+```
+runtime    mode                                 simple  eligibility    array100
+rust-core  eval-preparsed                         29.5        132.4       649.8
+rust-core  parseddata-eval                        29.4        132.7       647.4
+rust-core  parse-eval                            111.6        902.4    11,360.5
+rust-core  parse-eval-serialize                  132.8      1,004.6    11,979.0
+rust-core  parse-eval-serialize-fresharena       160.7      1,096.3    12,493.2
+rust-core  serde-value-in-out                     76.0        561.7     6,035.2
+c-abi      session-evaluate                      122.8        948.6    12,280.3
+c-abi      session-evaluate-data                  39.1        158.9     1,000.5
+c-abi      session-evaluate-many-100              39.3        161.7     1,005.1
+c-abi      rule-evaluate                         141.8      1,054.1    12,458.5
+c-abi      engine-apply-oneshot                1,488.7      7,971.0    13,929.3
+dotnet     session-evaluate                      162.3      1,057.9    12,814.1
+dotnet     session-evaluate-data                  49.7        172.5     1,036.2
+dotnet     session-evaluate-many-100              62.0        186.9     1,049.8
+dotnet     rule-evaluate                         189.4      1,166.2    12,983.0
+dotnet     engine-apply-oneshot                1,562.4      8,191.3    14,445.9
+python     session-evaluate-str                  284.2      1,203.5    12,311.1
+python     rule-evaluate-str                     276.6      1,230.6    12,528.8
+python     rule-evaluate-dict                    822.1      6,753.8    81,608.4
+python     dumps-str-loads-roundtrip           1,913.2      6,802.3    70,590.3
+python     engine-eval-oneshot                 3,842.7     26,345.9    84,987.8
+node       session-evaluateStr-str               330.7      1,378.8    13,277.8
+node       rule-evaluateStr-str                  319.4      1,413.9    13,580.2
+node       rule-evaluate-obj                   1,301.1     12,648.5   159,658.3
+node       stringify-str-parse-roundtrip         521.4      2,673.0    27,462.0
+node       engine-eval-oneshot                 4,819.2     29,574.1   163,489.2
+go         session-evaluate                      205.5      1,055.9    12,506.0
+go         session-evaluate-data                 117.6        241.7     1,071.6
+go         session-evaluate-many-100              61.1        188.9     1,023.1
+go         rule-evaluate                         266.3      1,217.1    12,814.9
+go         engine-apply-oneshot                1,712.7      8,326.0    14,295.4
+jvm        session-evaluate                      270.0      1,181.2    13,260.6
+jvm        session-evaluate-data                 133.3        284.5     1,149.5
+jvm        session-evaluate-many-100              70.9        199.4     1,055.4
+jvm        rule-evaluate                         283.4      1,269.2    13,326.6
+jvm        engine-apply-oneshot                1,723.1      8,493.8    15,082.2
+php        session-evaluate                      689.8      1,551.8    12,959.2
+php        session-evaluate-data                 599.3        720.2     1,572.5
+php        session-evaluate-many-100             165.5        289.7     1,148.3
+php        rule-evaluate                         657.4      1,598.3    12,998.6
+php        encode-eval-decode-roundtrip          840.9      2,876.5    26,901.5
+php        engine-apply-oneshot                2,065.0      8,645.2    14,627.6
+wasm       session-evaluate-str                  576.7      3,204.2    30,649.4
+wasm       compiledrule-evaluate-str             599.9      3,321.3    31,165.4
+wasm       oneshot-evaluate                    3,273.0     18,601.0    73,568.3
+```
+
+Historical baseline (pre-v2, captured earlier the same day — the
+numbers sections 1-6 were written against; JVM rows are the JNA
+binding, PHP rows are PHP 8.4):
 
 ```
 runtime      mode                              simple   eligibility   array100
@@ -367,8 +503,10 @@ Methodology notes:
   (fat LTO for node/c; size-first for wasm).
 - The JVM runner used OpenJDK 26 (Homebrew) because the system `java` stub
   has no runtime; JNA emits restricted-native-access warnings there.
-- Runners lived outside the repo for this capture (see step 0 in section 6
-  for making them permanent). Exact workload definitions:
+- The v1 capture's runners lived outside the repo; they now ship
+  in-tree as [`tools/benchmark/boundary/`](./boundary/README.md) with
+  the workloads checked in byte-stable (the v2 capture above came from
+  them). Exact workload definitions:
 
 ```jsonc
 // simple: rule 74 B, data 68 B

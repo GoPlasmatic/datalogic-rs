@@ -1,0 +1,1 @@
+{"map": [{"filter": [{"var": "items"}, {">": [{"var": "price"}, 250]}]}, {"var": "qty"}]}

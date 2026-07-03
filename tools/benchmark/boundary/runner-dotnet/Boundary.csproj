@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Boundary-benchmark console app for the .NET binding.
+       STATUS: WRITTEN, UNVERIFIED — see Program.cs header.
+       net9.0 console over the net8.0 binding, matching the documented
+       2026-07-03 capture environment. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Datalogic.Boundary</RootNamespace>
+    <AssemblyName>boundary-dotnet</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\bindings\dotnet\src\Datalogic\Datalogic.csproj" />
+  </ItemGroup>
+
+</Project>

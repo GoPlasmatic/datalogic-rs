@@ -11,6 +11,23 @@ Two binaries share a common suite loader and reporter (`src/lib.rs`):
 | `self`    | Times datalogic-rs alone using the fast arena path (compile once, persistent input arena, eval-arena reset). Use this to track regressions in our own engine. |
 | `compare` | Cross-library **matrix** — runs every suite against every available subject (datalogic-rs API tiers, gated Rust crates, JS/WASM via Node) and prints a markdown table of avg ns/op. |
 
+A third area, [`boundary/`](./boundary), measures the opposite of the
+matrix: **per-binding boundary cost** — what a real caller pays per
+evaluation through each language binding (C ABI, Node, Python, WASM,
+Go, JVM, .NET, PHP) on the three workloads from
+[`BINDINGS-OVERHEAD.md`](./BINDINGS-OVERHEAD.md). One runner per
+runtime, one shared discipline (warmup, ~250 ms samples, median of 5),
+JSON-lines output, and a renderer for that document's tables:
+
+```bash
+cd boundary && ./run.sh && python3 render.py
+```
+
+See [`boundary/README.md`](./boundary/README.md) for runner status
+(five verified; the Go/.NET/JVM/PHP runners are written against the
+C-ABI-v2 rollout and marked unverified until those rewrites land). The
+`boundary_core` bin target in this crate is the rust-core runner.
+
 Both read JSON suites from `crates/datalogic-rs/tests/suites/`, and both
 accept `--macro` to swap those for the synthesized macro suites instead.
 Both write JSON reports to `tools/benchmark/output/` (gitignored):

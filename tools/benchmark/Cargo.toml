@@ -49,6 +49,12 @@ subject-jsonlogic-rs = ["dep:jsonlogic-rs"]
 name = "self"
 path = "src/bin/self.rs"
 
+# Per-binding boundary benchmark, core-crate runner. Workloads + the
+# other runtimes' runners live in `boundary/` — see boundary/README.md.
+[[bin]]
+name = "boundary_core"
+path = "src/bin/boundary_core.rs"
+
 [[bin]]
 name = "compare"
 path = "src/bin/compare.rs"
