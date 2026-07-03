@@ -8,7 +8,9 @@ Native Node.js bindings for
 Rust implementation of [JSONLogic](http://jsonlogic.com). Same rules,
 same semantics as the Rust crate, with the **compile-once /
 evaluate-many** pattern exposed natively — compile a rule once and
-evaluate it against thousands of data inputs without re-parsing.
+evaluate it against thousands of data inputs without re-parsing. Every
+binding runs the same core and passes the same 1,532-case conformance
+battery (53 suites).
 
 For the cross-runtime overview and the API-tier model every binding
 implements, see the
@@ -227,14 +229,12 @@ paths.
 
 ## Performance
 
-This package wraps the same Rust engine measured as `dlrs:engine` in the
-[cross-library benchmark][bench] — geomean **9.7 ns/op across 44 operator
-suites**, ~5× faster than `json-logic-engine` (compiled JS) and ~44×
-faster than `json-logic-js`. The napi-rs boundary adds a small per-call
-marshalling cost on top; native-Node measurements will land in the
-benchmark report once the suite is wired up against the prebuild.
+<!-- canonical-bench v5.0 -->
+Geomean across 44 operator benchmark suites (Apple M2 Pro, median of 3 runs; [methodology](https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md)): the native Rust core evaluates at **9.7 ns/op** — 4.9× faster than json-logic-engine (compiled, the fastest JS engine), 22.5× faster than jsonlogic-rs (the closest Rust alternative), and 43.7× faster than the json-logic-js reference implementation. The WASM build under Node measures 855.6 ns (88× native); on Node servers, prefer `@goplasmatic/datalogic-node`.
 
-[bench]: https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md
+The napi-rs boundary adds a small per-call marshalling cost on top of
+the core numbers. Native-Node measurements will land in the benchmark
+report once the suite is wired up against the prebuild.
 
 ## Building from source
 
@@ -248,3 +248,11 @@ npm test
 This produces a local `datalogic-node.<platform-triple>.node`, plus
 `index.js` and `index.d.ts` loaders. The `.node`, `index.js`, and
 `index.d.ts` files are gitignored — `napi build` regenerates them.
+
+## Learn more
+
+- [datalogic-rs repository](https://github.com/GoPlasmatic/datalogic-rs#readme)
+- [Rust crate deep-dive](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs#readme)
+- [Documentation — Node.js](https://goplasmatic.github.io/datalogic-rs/nodejs/overview.html)
+- [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/)
+- [JSONLogic specification](https://jsonlogic.com)

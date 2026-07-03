@@ -8,36 +8,20 @@ High-performance [JSONLogic](https://jsonlogic.com/) engine for
 runtimes** — powered by WebAssembly. WASM bindings for
 [`datalogic-rs`](https://github.com/GoPlasmatic/datalogic-rs).
 
-Same rules, same semantics as the Rust crate. For the cross-runtime
-overview and the API-tier model that every binding implements, see the
+Same rules, same semantics as the Rust crate: every binding runs the
+same core and passes the same 1,532-case conformance battery
+(53 suites). For the cross-runtime overview and the API-tier model
+that every binding implements, see the
 [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
-> **Coming from `@goplasmatic/datalogic` (v4)?** This package is the v5
-> rename — same WASM engine, one JS-surface flag renamed
-> (`preserve_structure` → `templating`). See
-> [MIGRATION.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md#javascript--npm-consumers)
-> for the cookbook.
-
-> **Breaking change in the next release: errors are now real `Error`
-> objects.** Up to and including 5.0.x, every API rejected with a plain
-> JSON *string*, so `e instanceof Error` was `false` and callers had to
-> `JSON.parse` the rejection value. Failures now throw a proper `Error`
-> whose `name` is the error kind (for example `"ParseError"`), whose
-> `message` is human-readable, and whose structured fields (`type`,
-> `operator`, `node_ids`, variant extras) are attached as own
-> properties. The old JSON string is preserved verbatim on
-> `e.detailJson`, so existing parsing code migrates with one property
-> access. Because the rejection shape changed, the next npm release of
-> this package requires a semver-major bump. Details and migration
-> snippets in [Error handling](#error-handling).
-
-> **On Node.js? Use the native binding instead.**
-> [`@goplasmatic/datalogic-node`](https://www.npmjs.com/package/@goplasmatic/datalogic-node)
-> ships a per-platform native build via [napi-rs](https://napi.rs) and is
-> materially faster than the WASM path for Node workloads. This package
-> still works under Node (and is the right pick when you want a single
-> artifact across Node + browser), but production Node services should
-> reach for `@goplasmatic/datalogic-node` first.
+> **On Node.js? Use
+> [`@goplasmatic/datalogic-node`](https://www.npmjs.com/package/@goplasmatic/datalogic-node)**
+> — a native per-platform build that is materially faster than WASM
+> under Node; this package is the right pick for browsers, edge, Deno,
+> Bun, or a single artifact across Node + browser. Coming from
+> `@goplasmatic/datalogic` (v4)? This package is the v5 rename: one
+> flag changed (`preserve_structure` → `templating`), see
+> [MIGRATION.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md#javascript--npm-consumers).
 
 ## Install
 
@@ -123,7 +107,7 @@ import { evaluate }       from '@goplasmatic/datalogic-wasm/nodejs';   // nodejs
 ## API reference
 
 The WASM binding mirrors the Rust engine's
-[API tier model](https://github.com/GoPlasmatic/datalogic-rs#choosing-your-api-five-tiers-one-engine).
+[API tier model](https://github.com/GoPlasmatic/datalogic-rs#one-api-shape-every-binding).
 JavaScript surfaces four of the five tiers:
 
 | Tier        | Entry point                            | Use when                                                     |
@@ -309,10 +293,11 @@ const rule = new CompiledRule('{"+": [null, 1]}', false, '{"preset": "strict"}')
 
 ## Error handling
 
-**Breaking relative to 5.0.x:** every API now throws a real `Error`
-object. Previous releases rejected with a plain JSON string, so
-`e instanceof Error` was `false` and `e.name` / `e.message` did not
-exist. The thrown object carries:
+Every API throws a real `Error` object. This behavior ships in the
+next release (a semver-major bump: 5.0.x rejected with a plain JSON
+string, so `e instanceof Error` was `false`) and is tracked in the
+[changelog](https://github.com/GoPlasmatic/datalogic-rs/blob/main/CHANGELOG.md).
+The thrown object carries:
 
 | Property | Contents |
 |----------|----------|
@@ -403,15 +388,15 @@ For the full operator reference and semantics, see the
 
 ## Performance
 
+<!-- canonical-bench v5.0 -->
+Geomean across 44 operator benchmark suites (Apple M2 Pro, median of 3 runs; [methodology](https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md)): the native Rust core evaluates at **9.7 ns/op** — 4.9× faster than json-logic-engine (compiled, the fastest JS engine), 22.5× faster than jsonlogic-rs (the closest Rust alternative), and 43.7× faster than the json-logic-js reference implementation. The WASM build under Node measures 855.6 ns (88× native); on Node servers, prefer `@goplasmatic/datalogic-node`.
+
+WASM-specific notes:
+
 - **Compiled rules** are significantly faster for repeated evaluations
 - **Zero-copy** between JS strings and WASM where possible
 - **Self-contained module** — roughly 1.6 MB uncompressed, around 400 to 500 KB gzipped
-
-For numbers, see the cross-library benchmark matrix in
-[`tools/benchmark/BENCHMARK.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md).
-The WASM subject is included as `dlrs:wasm:compiled` — slower than
-the native Rust engine by design (the JS↔WASM boundary has a fixed
-cost) but still competitive with pure-JS implementations.
+- Measured as `dlrs:wasm:compiled` in the benchmark report
 
 ## Building from source
 
@@ -438,12 +423,11 @@ runner skip every test.
 
 ## Learn more
 
-- [Repo README](https://github.com/GoPlasmatic/datalogic-rs#readme) — cross-runtime overview, all binding READMEs
-- [Rust crate README](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/README.md) — engine design, the 5-tier API model, custom operators
-- [React debugger](https://github.com/GoPlasmatic/datalogic-rs/blob/main/ui/README.md) — `@goplasmatic/datalogic-ui`, consumes this binding
-- [Full documentation](https://goplasmatic.github.io/datalogic-rs/) — long-form guide, operator reference
-- [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/) — try rules live
-- [JSONLogic specification](https://jsonlogic.com/)
+- [datalogic-rs repository](https://github.com/GoPlasmatic/datalogic-rs#readme)
+- [Rust crate deep-dive](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs#readme)
+- [Documentation — JavaScript](https://goplasmatic.github.io/datalogic-rs/javascript/installation.html)
+- [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/)
+- [JSONLogic specification](https://jsonlogic.com)
 
 ## License
 

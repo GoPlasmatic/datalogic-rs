@@ -1,12 +1,22 @@
 # datalogic Go binding
 
-Go binding for the [`datalogic-rs`](../../crates/datalogic-rs) JSONLogic
-engine. Routes through the shared C ABI at [`bindings/c/`](../c) via
-cgo, linking `libdatalogic_c.a` statically — no runtime shared-library
-dependency for end-user binaries.
+[![Go Reference](https://pkg.go.dev/badge/github.com/GoPlasmatic/datalogic-rs/bindings/go/v5.svg)](https://pkg.go.dev/github.com/GoPlasmatic/datalogic-rs/bindings/go/v5)
+[![CI](https://github.com/GoPlasmatic/datalogic-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/GoPlasmatic/datalogic-rs/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Same rules, same semantics as the Rust crate. For the cross-runtime
-overview and the API-tier model every binding implements, see the
+Part of [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs) — one engine, every runtime.
+
+Go binding for the
+[`datalogic-rs`](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs)
+JSONLogic engine. Routes through the shared C ABI at
+[`bindings/c/`](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/c)
+via cgo, linking `libdatalogic_c.a` statically — no runtime
+shared-library dependency for end-user binaries.
+
+Same rules, same semantics as the Rust crate: every binding runs the
+same core and passes the same 1,532-case conformance battery
+(53 suites). For the cross-runtime overview and the API-tier model
+every binding implements, see the
 [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
 > **New in v5.** This Go binding is new — there is no v4 Go package. If
@@ -45,58 +55,7 @@ You only need a C compiler to link — no Rust toolchain required.
 import datalogic "github.com/GoPlasmatic/datalogic-rs/bindings/go/v5"
 ```
 
-## In-tree development
-
-Contributors working in this monorepo build the static library locally
-instead of using a tagged release. The `lib/` and `include/`
-directories are gitignored on `main`; only release tags carry the
-prebuilt artifacts.
-
-```sh
-cd bindings/go
-make build      # cargo-builds bindings/c, stages lib/<host>/ + include/
-make test       # runs `go test -v ./...`
-make print-platform   # prints the host's lib/ subdirectory name
-```
-
-Requirements for the in-tree path:
-
-- Go 1.22+
-- A Rust toolchain (the underlying C ABI crate lives in `bindings/c/`)
-- A C compiler (xcode-select on macOS, gcc/clang on Linux)
-- The Makefile auto-detects host OS/arch and stages into
-  `lib/<host_os>_<host_arch>/` — only the matching `cgo_*_*.go` file
-  needs that subdirectory populated locally.
-
-Re-run `make build` after any change to the C ABI's Rust source —
-cargo's incremental compile makes this fast, and the staging step is
-a couple of copies.
-
-## How releases are built
-
-CI (`.github/workflows/release.yml`) runs a matrix on a `v*` tag push,
-producing `libdatalogic_c.a` on a native runner for each supported
-(os, arch). The `publish-go` job collects all artifacts, stages them
-into `bindings/go/lib/<os>_<arch>/` and the header into
-`bindings/go/include/` on a synthetic commit, and pushes a
-`bindings/go/v<version>` tag pointing at that commit. The synthetic
-commit is reachable only through the tag — `main` stays
-binary-free.
-
-## API reference
-
-The Go binding mirrors the Rust engine's
-[API tier model](https://github.com/GoPlasmatic/datalogic-rs#choosing-your-api-five-tiers-one-engine).
-
-| Tier         | Entry point                                  | Use when                                                |
-|--------------|----------------------------------------------|---------------------------------------------------------|
-| One-shot     | `datalogic.Apply(rule, data)`                | Ad-hoc evaluation, one rule + one data shape            |
-| Engine       | `datalogic.NewEngine().Apply(rule, data)`    | Engine reuse without compile-once                       |
-| Compile once | `engine.Compile(rule)` → `rule.Evaluate(data)` | Same rule evaluated against many data inputs          |
-| Session      | `engine.Session()` → `session.Evaluate(rule, data)` | Hot loops — arena reuse per goroutine            |
-| Traced       | `engine.TracedSession()` → `ts.Evaluate(rule, data)` | Step-level execution traces for debuggers and tooling |
-
-### Quick start
+## Quick start
 
 ```go
 package main
@@ -130,6 +89,28 @@ func main() {
     }
 }
 ```
+
+## Development
+
+The in-tree development workflow (Makefile targets, toolchain
+requirements) lives in
+[DEVELOPMENT.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/DEVELOPMENT.md),
+and the release pipeline that stages prebuilt staticlibs onto
+`bindings/go/v*` tags in
+[bindings/BINDINGS.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/BINDINGS.md).
+
+## API reference
+
+The Go binding mirrors the Rust engine's
+[API tier model](https://github.com/GoPlasmatic/datalogic-rs#one-api-shape-every-binding).
+
+| Tier         | Entry point                                  | Use when                                                |
+|--------------|----------------------------------------------|---------------------------------------------------------|
+| One-shot     | `datalogic.Apply(rule, data)`                | Ad-hoc evaluation, one rule + one data shape            |
+| Engine       | `datalogic.NewEngine().Apply(rule, data)`    | Engine reuse without compile-once                       |
+| Compile once | `engine.Compile(rule)` → `rule.Evaluate(data)` | Same rule evaluated against many data inputs          |
+| Session      | `engine.Session()` → `session.Evaluate(rule, data)` | Hot loops — arena reuse per goroutine            |
+| Traced       | `engine.TracedSession()` → `ts.Evaluate(rule, data)` | Step-level execution traces for debuggers and tooling |
 
 ## Custom operators
 
@@ -182,7 +163,7 @@ individual fields on top of it: `arithmetic_nan_handling`,
 `numeric_coercion`, and `max_recursion_depth`. The accepted values for
 each key are listed on the `SetConfigJSON` doc comment; the underlying
 knobs are described in the
-[Rust crate README](../../crates/datalogic-rs/README.md).
+[Rust crate README](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs#readme).
 
 ## Traced evaluation
 
@@ -222,7 +203,7 @@ applicable), and a JSON-encoded path from the rule's compiled tree:
 _, err := rule.Evaluate(`{}`)
 if err != nil {
     e := err.(*datalogic.Error)
-    fmt.Println(e.Type)      // "Thrown" | "ParseError" | "NaN" | ...
+    fmt.Println(e.Type)      // "Thrown" | "ParseError" | "InvalidOperator" | ...
     fmt.Println(e.Operator)  // outermost failing operator name
     fmt.Println(e.PathJSON)  // JSON array string of {operator, json_pointer, ...}
 }
@@ -239,13 +220,11 @@ if err != nil {
 
 ## Performance
 
-This package wraps the same Rust engine measured as `dlrs:engine` in the
-[cross-library benchmark][bench] — geomean **9.7 ns/op across 44 operator
-suites**, ~5× faster than `json-logic-engine` (compiled JS) and ~22×
-faster than `jsonlogic-rs` (the closest native-Rust alternative). The
-cgo boundary adds a small per-call marshalling cost on top.
+<!-- canonical-bench v5.0 -->
+Geomean across 44 operator benchmark suites (Apple M2 Pro, median of 3 runs; [methodology](https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md)): the native Rust core evaluates at **9.7 ns/op** — 4.9× faster than json-logic-engine (compiled, the fastest JS engine), 22.5× faster than jsonlogic-rs (the closest Rust alternative), and 43.7× faster than the json-logic-js reference implementation. The WASM build under Node measures 855.6 ns (88× native); on Node servers, prefer `@goplasmatic/datalogic-node`.
 
-[bench]: https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md
+The cgo boundary adds a small per-call marshalling cost on top of the
+core numbers.
 
 ## How it links
 
@@ -261,8 +240,9 @@ bindings consume the same C ABI as a shared library (cdylib).
 
 ## Learn more
 
-- [Repo README](https://github.com/GoPlasmatic/datalogic-rs#readme) — cross-runtime overview, all binding READMEs
-- [Rust crate README](../../crates/datalogic-rs/README.md) — engine design, custom operators, configuration knobs
-- [C ABI README](../c/README.md) — the FFI boundary this binding consumes
-- [Full documentation](https://goplasmatic.github.io/datalogic-rs/) — long-form guide, operator reference
+- [datalogic-rs repository](https://github.com/GoPlasmatic/datalogic-rs#readme)
+- [Rust crate deep-dive](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs#readme)
+- [Documentation — Go](https://goplasmatic.github.io/datalogic-rs/go/installation.html)
 - [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/)
+- [JSONLogic specification](https://jsonlogic.com)
+- [C ABI internals](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/c#readme)

@@ -191,6 +191,19 @@ Supported (os, arch) matrix:
 | Windows | amd64 | `windows-latest` | `x86_64-pc-windows-gnu` (mingw — for cgo compat; PHP/JVM may need `msvc` too) |
 | Windows | arm64 | `windows-11-arm` | `aarch64-pc-windows-gnullvm` (llvm-mingw — installed in-job; no native mingw-w64 ARM64 port exists) |
 
+### Go tag mechanics: synthetic release commits
+
+The Go module is the one distribution channel where binaries must live
+in the source tree itself. `bindings/go/lib/` and `bindings/go/include/`
+are gitignored on `main`; only release tags carry the prebuilt
+artifacts. On a `v*` tag push, the `publish-go` job in `release.yml`
+collects the staticlib artifacts from the `release-build-go.yml` matrix,
+stages them into `bindings/go/lib/<os>_<arch>/` plus the generated C
+header into `bindings/go/include/`, records the result as a synthetic
+commit, and pushes a `bindings/go/v<version>` tag pointing at that
+commit. Only the tag is pushed: the synthetic commit is reachable
+exclusively through it, and `main` stays binary-free.
+
 ## Open candidates
 
 Bindings that haven't landed yet:
@@ -202,3 +215,43 @@ Bindings that haven't landed yet:
 The core engine is `Send + Sync` and exposes a clean compile-once /
 evaluate-many surface (`Engine`, `Logic`, `Session`), so the same
 binding shape transfers to any language with a Rust FFI story.
+
+## Binding README template
+
+Every binding README is a registry landing page first (npm, PyPI,
+pkg.go.dev, Maven Central, NuGet, Packagist) and a repo document second.
+New bindings follow this section order:
+
+1. H1: the published package name, no links
+2. Badge row (registry version, CI, license) plus the line
+   `Part of [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs) — one engine, every runtime.`
+3. Three-sentence pitch ending with the conformance stat: every binding
+   runs the same core and passes the same 1,532-case conformance
+   battery (53 suites)
+4. At most one version blockquote (v4 rename / "new in v5" steering)
+5. Install
+6. Quick start
+7. Compile-once / evaluate-many
+8. Sessions (hot-loop arena reuse)
+9. API surface table
+10. Custom operators
+11. Engine configuration: the shared config table, byte-identical
+    across bindings
+12. Error handling
+13. Threading table
+14. Tracing
+15. Performance: the canonical-bench block plus one boundary sentence
+    naming this binding's FFI layer
+16. Building from source (15 lines or fewer)
+17. Learn more footer: repository README, Rust crate deep-dive, the
+    binding's docs-site chapter, online playground, JSONLogic spec
+18. License
+
+Two invariants:
+
+- **Absolute URLs only.** Registry pages render the README standalone,
+  so relative links 404 there.
+- **The `<!-- canonical-bench v5.0 -->` block is quoted verbatim** in
+  every binding README (comment line plus one unwrapped paragraph), so
+  drift is greppable: `grep -A1 -r "canonical-bench" bindings/` must
+  return byte-identical paragraphs.
