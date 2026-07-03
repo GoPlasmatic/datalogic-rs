@@ -493,7 +493,9 @@ impl Engine {
     /// `data` accepts any input shape understood by [`crate::EvalInput`]:
     /// `&'a DataValue<'a>` (zero-cost passthrough), `DataValue<'a>`
     /// (single arena alloc), `&str` (JSON-parsed), `&OwnedDataValue`
-    /// (deep-borrowed), or `&serde_json::Value` (gated on `serde_json`).
+    /// (deep-borrowed), [`&ParsedData`](crate::ParsedData) (zero-cost
+    /// passthrough of a parse-once handle), or `&serde_json::Value`
+    /// (gated on `serde_json`).
     #[inline(always)]
     pub fn evaluate<'a, D: crate::EvalInput<'a>>(
         &self,
@@ -508,6 +510,31 @@ impl Engine {
             Ok(av) => Ok(av),
             Err(e) => Err(e.decorated(ctx.take_error_path(), compiled, true)),
         }
+    }
+
+    /// Apply the engine's configured truthiness rules
+    /// ([`crate::TruthyEvaluator`]) to an evaluated value.
+    ///
+    /// This is the same coercion `if` / `and` / `or` / `!` apply to
+    /// their operands, exposed so callers (and bindings) can collapse
+    /// any rule result to a boolean without re-implementing the
+    /// engine's configured semantics.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use bumpalo::Bump;
+    /// use datalogic_rs::Engine;
+    ///
+    /// let engine = Engine::new();
+    /// let compiled = engine.compile(r#"{"var": "items"}"#).unwrap();
+    /// let arena = Bump::new();
+    /// let result = engine.evaluate(&compiled, r#"{"items": [1]}"#, &arena).unwrap();
+    /// assert!(engine.truthy(result));
+    /// ```
+    #[inline]
+    pub fn truthy(&self, value: &crate::arena::DataValue<'_>) -> bool {
+        crate::arena::truthy_arena(value, self)
     }
 
     /// One-shot evaluation returning [`datavalue::OwnedDataValue`].

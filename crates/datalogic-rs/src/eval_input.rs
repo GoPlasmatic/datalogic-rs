@@ -7,6 +7,7 @@
 //! - `&'a DataValue<'a>` — already arena-resident; passed through unchanged.
 //! - `DataValue<'a>` — single bumpalo allocation into the arena.
 //! - `&OwnedDataValue` — deep-borrowed into the arena.
+//! - `&ParsedData` — parse-once handle; passed through unchanged (zero cost).
 //! - `&str` — JSON-parsed via [`datavalue::DataValue::from_str`].
 //! - `&serde_json::Value` (`serde_json`) — deep-converted into the arena.
 //!
@@ -88,6 +89,14 @@ impl<'a> EvalInput<'a> for &'a OwnedDataValue {
     #[inline]
     fn into_arena_value(self, arena: &'a Bump) -> Result<&'a DataValue<'a>> {
         Ok(arena.alloc(self.to_arena(arena)))
+    }
+}
+
+impl sealed::Sealed for &crate::ParsedData {}
+impl<'a> EvalInput<'a> for &'a crate::ParsedData {
+    #[inline]
+    fn into_arena_value(self, _arena: &'a Bump) -> Result<&'a DataValue<'a>> {
+        Ok(self.value())
     }
 }
 

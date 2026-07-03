@@ -109,6 +109,7 @@ mod node_serialize;
 mod opcode;
 pub mod operator;
 mod operators;
+mod parsed_data;
 mod path;
 mod result_output;
 #[cfg(feature = "serde_json")]
@@ -187,6 +188,7 @@ pub use error::{CustomErrorSource, Error, ErrorKind};
 pub use eval_input::{EvalInput, OwnedInput};
 pub use logic_input::IntoLogic;
 pub use node::Logic;
+pub use parsed_data::ParsedData;
 pub use path::PathStep;
 pub use result_output::FromDataValue;
 pub use session::Session;
