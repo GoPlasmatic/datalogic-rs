@@ -285,7 +285,7 @@ if err != nil {
 ## Performance
 
 <!-- canonical-bench v5.0 -->
-Geomean across 50 operator benchmark suites (Apple M2 Pro, median of 3 runs; pairwise shared-suite ratios per the [methodology](https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md)): the native Rust core evaluates at **9.0 ns/op**, 7.9× faster than json-logic-engine (compiled, the fastest JS engine), 30.3× faster than jsonlogic-rs (the closest Rust alternative), and 102.8× faster than the json-logic-js reference implementation. The WASM build under Node measures 881.9 ns geomean (98× native); on Node servers, prefer `@goplasmatic/datalogic-node`.
+Geomean across 50 operator benchmark suites (Apple M2 Pro, median of 3 runs; pairwise shared-suite ratios per the [methodology](https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md)): the native Rust core evaluates at **9.2 ns/op**, 7.5× faster than json-logic-engine (compiled, the fastest JS engine), 28.9× faster than jsonlogic-rs (the closest Rust alternative), and 95.2× faster than the json-logic-js reference implementation. The WASM build under Node measures 890.9 ns geomean (97× native); on Node servers, prefer `@goplasmatic/datalogic-node`.
 
 The cgo boundary adds a small per-call marshalling cost on top of the
 core numbers.

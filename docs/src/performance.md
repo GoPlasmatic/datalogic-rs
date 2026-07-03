@@ -8,14 +8,14 @@ This guide covers performance optimization, benchmarking, and best practices for
 Geomean execution time across 50 benchmark suites (Apple M2 Pro; median of 3 samples; ratios are pairwise shared-suite geomeans; methodology in the [benchmark matrix](https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md)):
 
 ```text
-datalogic-rs (native Rust)              | 9.0 ns   (■) 1x
-json-logic-engine (JS, compiled)        | 60.4 ns  (■■■■■■) 7.9x
-json-logic-engine (JS, interpreted)     | 236.0 ns (■■■■■■■■■■■■■■■■■■■■■■■■) 30.7x
-jsonlogic-rs (bestowinc Rust engine)    | 243.7 ns (■■■■■■■■■■■■■■■■■■■■■■■■) 30.3x
-json-logic-js (Reference JS library)    | 433.5 ns (■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■) 102.8x
+datalogic-rs (native Rust)              | 9.2 ns   (■) 1x
+json-logic-engine (JS, compiled)        | 59.5 ns  (■■■■■■) 7.5x
+json-logic-engine (JS, interpreted)     | 229.6 ns (■■■■■■■■■■■■■■■■■■■■■■■) 28.9x
+jsonlogic-rs (bestowinc Rust engine)    | 239.5 ns (■■■■■■■■■■■■■■■■■■■■■■■■) 28.9x
+json-logic-js (Reference JS library)    | 426.1 ns (■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■) 95.2x
 ```
 
-The WASM build under Node measures 881.9 ns geomean (98× native): on Node servers, prefer `@goplasmatic/datalogic-node`. Reproduce it yourself with `cargo run --release -p datalogic-bench --bin compare`; positioning against each alternative is on [How It Compares](comparison.md).
+The WASM build under Node measures 890.9 ns geomean (97× native): on Node servers, prefer `@goplasmatic/datalogic-node`. Reproduce it yourself with `cargo run --release -p datalogic-bench --bin compare`; positioning against each alternative is on [How It Compares](comparison.md).
 
 ## Performance Characteristics
 

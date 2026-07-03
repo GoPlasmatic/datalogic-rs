@@ -3,9 +3,9 @@
 In-tree reproduction of the per-binding boundary measurements in
 [`BINDINGS-OVERHEAD.md`](../BINDINGS-OVERHEAD.md) — the full cost a real
 caller pays per evaluation through each language binding, as opposed to
-the engine-only numbers in [`BENCHMARK.md`](../BENCHMARK.md). This is
-"step 0" of that document's section 6 and the acceptance harness the
-C ABI v2 arc was measured with (see that document's "Outcome" section).
+the engine-only numbers in [`BENCHMARK.md`](../BENCHMARK.md). It is also the
+harness the 5.0.1 boundary overhaul was measured with (see
+BINDINGS-OVERHEAD.md's "History" section).
 
 ## Quick start
 
