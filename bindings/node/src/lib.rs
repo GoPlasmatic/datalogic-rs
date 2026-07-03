@@ -10,6 +10,7 @@
 #[macro_use]
 extern crate napi_derive;
 
+mod data;
 mod engine;
 mod error;
 mod session;
@@ -18,6 +19,7 @@ use napi::Env;
 use napi::bindgen_prelude::*;
 use serde_json::Value;
 
+pub use crate::data::DataHandle;
 pub use crate::engine::{Engine, Rule};
 pub use crate::session::Session;
 

@@ -9,13 +9,14 @@ use datalogic_rs::{
     CustomOperator, DataValue, Engine as RsEngine, Error as DlError, EvaluationConfig, Logic,
     Result as DlResult,
 };
-use napi::Env;
 use napi::bindgen_prelude::*;
 use napi::sys;
+use napi::{Env, Task};
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::error::engine_error;
+use crate::data::DataHandle;
+use crate::error::{engine_error, engine_error_value};
 use crate::session::Session;
 
 /// Constructor options. Wrapped in an `Object` rather than passed
@@ -211,6 +212,102 @@ impl Rule {
     #[napi]
     pub fn evaluate_str(&self, env: Env, data: Value) -> Result<String> {
         evaluate_str(&env, &self.engine, &self.logic, data)
+    }
+
+    /// Evaluate against a pre-parsed `DataHandle` and return the result
+    /// as a JS value. Skips the per-call JSON parse of the data — parse
+    /// once with `new DataHandle(json)`, evaluate many times.
+    #[napi(ts_return_type = "unknown")]
+    pub fn evaluate_data(&self, env: Env, handle: &DataHandle) -> Result<Value> {
+        let arena = Bump::new();
+        let av = self
+            .engine
+            .evaluate(&self.logic, &handle.parsed, &arena)
+            .map_err(|e| engine_error(&env, &e, Some(&self.logic)))?;
+        serde_json::to_value(av)
+            .map_err(|e| engine_error(&env, &DlError::wrap(e), Some(&self.logic)))
+    }
+
+    /// Evaluate against a pre-parsed `DataHandle` and return the result
+    /// as a JSON string — no input parse, no JS-value materialisation.
+    #[napi]
+    pub fn evaluate_data_str(&self, env: Env, handle: &DataHandle) -> Result<String> {
+        let arena = Bump::new();
+        let av = self
+            .engine
+            .evaluate(&self.logic, &handle.parsed, &arena)
+            .map_err(|e| engine_error(&env, &e, Some(&self.logic)))?;
+        Ok(av.to_string())
+    }
+
+    /// Evaluate `dataJson` (a JSON string) on the libuv thread pool and
+    /// resolve with the result as a JSON string.
+    ///
+    /// This is not faster per operation than `evaluateStr` — the win is
+    /// event-loop hygiene: a large payload's parse + evaluate + serialize
+    /// happens off the JS thread, so use it when payloads are big enough
+    /// to cause noticeable event-loop stalls, or to overlap evaluation
+    /// with other work. String input only: `DataHandle` is pinned to the
+    /// JS thread and cannot cross to the pool.
+    ///
+    /// Rejections carry the same structured fields as the synchronous
+    /// throws (`name`, `errorType`, `operator`, `nodeIds`, `path`).
+    /// Rules from engines with custom operators reject if evaluation
+    /// reaches a JS-backed operator (the callback is pinned to the JS
+    /// thread).
+    #[napi(ts_return_type = "Promise<string>")]
+    pub fn evaluate_str_async(&self, data_json: String) -> AsyncTask<EvaluateStrTask> {
+        AsyncTask::new(EvaluateStrTask {
+            engine: self.engine.clone(),
+            logic: self.logic.clone(),
+            data: data_json,
+            failure: None,
+        })
+    }
+}
+
+/// Background evaluation job behind `Rule.evaluateStrAsync`. `compute`
+/// runs on the libuv pool with a task-local arena; `Engine` and `Logic`
+/// are both `Send + Sync` behind `Arc`s, and the data crosses as an
+/// owned `String`.
+pub struct EvaluateStrTask {
+    engine: Arc<RsEngine>,
+    logic: Arc<Logic>,
+    data: String,
+    /// Failure smuggled from the pool thread to `reject`, which runs on
+    /// the JS thread and can build the decorated JS Error there.
+    failure: Option<DlError>,
+}
+
+impl Task for EvaluateStrTask {
+    type Output = String;
+    type JsValue = String;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        let arena = Bump::new();
+        match self.engine.evaluate(&self.logic, self.data.as_str(), &arena) {
+            Ok(av) => Ok(av.to_string()),
+            Err(e) => {
+                // Fallback reason if `reject` cannot build the decorated
+                // object: message prefixed with the stable error tag.
+                let reason = format!("{}: {}", e.tag(), e);
+                self.failure = Some(e);
+                Err(Error::new(Status::GenericFailure, reason))
+            }
+        }
+    }
+
+    fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+        Ok(output)
+    }
+
+    fn reject(&mut self, env: Env, err: Error) -> Result<Self::JsValue> {
+        if let Some(dl) = self.failure.take() {
+            if let Some(decorated) = engine_error_value(&env, &dl, Some(&self.logic)) {
+                return Err(decorated);
+            }
+        }
+        Err(err)
     }
 }
 

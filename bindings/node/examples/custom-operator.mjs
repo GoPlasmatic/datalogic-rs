@@ -8,7 +8,24 @@
 import { Engine } from '../index.js';
 
 const engine = new Engine({}, {
-  double: (argsJson) => JSON.stringify(JSON.parse(argsJson)[0] * 2),
+  double: (argsJson) => {
+    const args = JSON.parse(argsJson);
+    if (args.length === 0) throw new Error('double expects one numeric argument');
+    return JSON.stringify(args[0] * 2);
+  },
 });
 
 console.log(engine.evalStr('{"double": [21]}', '{}')); // 42
+
+// Custom operators compose with built-ins.
+console.log(engine.evalStr(
+  '{"map": [{"var": "xs"}, {"double": [{"var": ""}]}]}',
+  '{"xs": [1, 2, 3]}',
+)); // [2,4,6]
+
+// The operator's error path surfaces as a regular EvaluateError.
+try {
+  engine.evalStr('{"double": []}', '{}');
+} catch (e) {
+  console.log(`${e.name}: ${e.message}`); // EvaluateError: ... double expects one numeric argument
+}

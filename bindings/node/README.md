@@ -95,6 +95,94 @@ for (const payload of inputs) {
 Sessions hold non-`Sync` state and must not be shared between worker
 threads — open one per worker.
 
+## Data handles, typed results, and batch evaluation
+
+New in 5.0.1, mirroring the C ABI v2 tiers. A `DataHandle` is an
+immutable, pre-parsed JSON document: parse a payload once with
+`new DataHandle(json)` and every evaluation against it skips JSON
+parsing entirely. Handles are engine-independent (one handle can feed
+rules compiled by different engines) and are never consumed or mutated
+by evaluation. They are per-JS-thread — the underlying parsed tree is
+`Send` but not `Sync`, which matches JS single-threaded semantics: a
+handle cannot be shared across worker threads, so parse one per worker.
+
+```js
+import { Engine, DataHandle } from '@goplasmatic/datalogic-node';
+
+const handle = new DataHandle('{"age": 25, "status": "active"}'); // throws ParseError on bad JSON
+handle.allocatedBytes;              // arena bytes (input copy + tree)
+
+rule.evaluateData(handle);          // JS value out, no parse per call
+rule.evaluateDataStr(handle);       // JSON string out
+sess.evaluateData(rule, handle);    // hot path: session arena + no parse
+sess.evaluateDataStr(rule, handle); // fastest: no parse, no JS materialisation
+```
+
+For predicates and scalar results, the typed session evaluations skip
+the JSON result round trip too:
+
+```js
+sess.evaluateBool(rule, handle);   // strict JSON boolean
+sess.evaluateNumber(rule, handle); // any JSON number (JS has one number type)
+sess.evaluateTruthy(rule, handle); // JSONLogic truthiness, never mismatches
+```
+
+`evaluateBool` and `evaluateNumber` throw an `EvaluateError` with
+`errorType: 'TypeMismatch'` when the rule evaluates fine but the result
+is not of the requested type (the message names the actual type).
+`evaluateTruthy` coerces any result through the engine's configured
+truthiness rules (the same coercion `if`/`and`/`or` apply).
+
+The batch entry points evaluate a whole set in one native call and
+report outcomes per item in the `Promise.allSettled` shape, so one bad
+input never poisons its neighbours:
+
+```js
+// One rule, many payloads:
+const outcomes = sess.evaluateBatch(rule, [h0, h1, h2]);
+// Many rules, one payload (the rule-set / feature-flag shape):
+const flags = sess.evaluateMany([r0, r1], handle);
+
+for (const [i, o] of outcomes.entries()) {
+  if (o.status === 'rejected') {
+    console.log(`item ${i} failed: ${o.reason.message} (${o.reason.tag})`);
+    continue;
+  }
+  console.log(`item ${i}: ${o.value}`); // result as a JSON string
+}
+```
+
+Item failures land in `{ status: 'rejected', reason: { tag, message,
+operator? } }` and never throw; argument errors (a non-handle in the
+array, a null rule, ...) do throw. The session arena is reset between
+items.
+
+One Node-specific note on engines: a `Rule` carries a reference to the
+engine that compiled it, but every `Session` method evaluates the rule's
+compiled logic with the **session's** engine — its configuration and
+custom operators apply, and (unlike the C ABI) no engine-identity check
+is performed. Compile rules and open sessions on the same engine unless
+you specifically want that substitution.
+
+## Async evaluation
+
+`Rule.evaluateStrAsync(dataJson)` evaluates on the libuv thread pool and
+returns a `Promise<string>`:
+
+```js
+const result = await rule.evaluateStrAsync('{"age": 25}');
+```
+
+It is **not** faster per operation than `evaluateStr` — the win is
+event-loop hygiene: a large payload's parse + evaluate + serialize runs
+off the JS thread, so reach for it when payloads are big enough to
+cause noticeable event-loop stalls or to overlap evaluation with other
+work. String input only (a `DataHandle` is pinned to the JS thread and
+cannot cross to the pool). Rejections carry the same structured fields
+as synchronous throws (`name`, `errorType`, `operator`, `nodeIds`,
+`path`). Rules from engines with custom operators reject if evaluation
+reaches a JS-backed operator — the callback is pinned to the JS thread.
+
 ## Errors
 
 Failures throw plain JS `Error` instances with structured fields
@@ -126,10 +214,22 @@ try {
 | `Engine.evalStr(rule, data)` | One-shot, returns JSON string |
 | `Engine.evaluateWithTrace(logic, data)` | One-shot with execution trace, returns JSON string |
 | `Engine.session()` → `Session` | Open a hot-loop arena |
+| `new DataHandle(json)` | Parse a payload once into a reusable handle |
+| `DataHandle.allocatedBytes` | Arena bytes held by the handle |
 | `Rule.evaluate(data)` | Evaluate, returns JS value |
 | `Rule.evaluateStr(data)` | Evaluate, returns JSON string |
+| `Rule.evaluateData(handle)` | Evaluate a pre-parsed handle, returns JS value |
+| `Rule.evaluateDataStr(handle)` | Same, returns JSON string |
+| `Rule.evaluateStrAsync(dataJson)` | Evaluate on the libuv pool, returns `Promise<string>` |
 | `Session.evaluate(rule, data)` | Evaluate with arena reuse |
 | `Session.evaluateStr(rule, data)` | Same, returns JSON string |
+| `Session.evaluateData(rule, handle)` | Handle in, JS value out, arena reuse |
+| `Session.evaluateDataStr(rule, handle)` | Handle in, JSON string out — fastest path |
+| `Session.evaluateBool(rule, handle)` | Strict boolean result (`TypeMismatch` otherwise) |
+| `Session.evaluateNumber(rule, handle)` | Any JSON number result (`TypeMismatch` otherwise) |
+| `Session.evaluateTruthy(rule, handle)` | Engine-truthiness boolean; never mismatches |
+| `Session.evaluateBatch(rule, handles)` | One rule × many handles, allSettled-style items |
+| `Session.evaluateMany(rules, handle)` | Many rules × one handle, allSettled-style items |
 | `Session.reset()` | Explicit arena reset (optional) |
 | `Session.allocatedBytes()` | High-water mark for the arena |
 
@@ -237,10 +337,13 @@ the core numbers; the measured per-call boundary overhead for this
 binding, per API tier, lives in
 [BINDINGS-OVERHEAD.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BINDINGS-OVERHEAD.md).
 
-**Pick the path by your data's shape.** Two rules of thumb: compile once
-and reuse the `Rule`, and when your data is already a JSON string, call
+**Pick the path by your data's shape.** Three rules of thumb: compile
+once and reuse the `Rule`; when your data is already a JSON string, call
 `evaluateStr` — the string path parses directly into the engine and is
-the fastest way across the boundary at every payload size. If your data
+the fastest way across the boundary at every payload size; and when the
+same payload feeds multiple evaluations, parse it once into a
+`DataHandle` — the handle paths skip the per-call parse entirely and are
+the fastest tier of all. If your data
 lives as plain JS objects and your rules are small, be aware that a
 well-optimized pure-JS engine (e.g. `json-logic-engine`'s compiled mode)
 runs with zero boundary cost and can beat any native binding on raw
