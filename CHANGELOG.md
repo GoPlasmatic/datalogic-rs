@@ -8,6 +8,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
+## [Unreleased]
+
+### Changed
+
+- **BREAKING (WASM — requires the next npm major): errors are real
+  `Error` objects.** Through 5.0.x every `@goplasmatic/datalogic-wasm`
+  API rejected with a plain JSON *string*, so `e instanceof Error` was
+  `false`. APIs now throw a proper `Error` whose `name` is the error
+  kind (for example `"ParseError"`), with the structured fields
+  (`type`, `operator`, `node_ids`, variant extras) attached as own
+  properties and the old JSON string preserved verbatim on
+  `e.detailJson`. Migration snippets in
+  [`bindings/wasm/README.md`](./bindings/wasm/README.md#error-handling).
+
+### Performance
+
+- Wide-object key lookup uses an optimistic ordered probe.
+- Identically-shaped ISO datetime strings compare on a byte-compare
+  fast path.
+- `try`/`catch` propagates thrown values through a borrowed channel and
+  interns the NaN payload.
+- Composite literals are pre-converted at compile time via
+  self-referential cells.
+- Strings render directly into the evaluation arena (no intermediate
+  heap `String`); contiguous `slice` (step == 1) is zero-copy; hot
+  numeric/flagd paths and cold error/output paths drop throwaway
+  allocations; constant-fold passes early-bail before cloning arg trees.
+
+### Fixed
+
+- Four conformance suites that existed on disk but were missing from
+  `tests/suites/index.json` now run in the conformance runner;
+  `type.json` array cases corrected.
+- Benchmark harness `suites_root` repointed at `crates/datalogic-rs`
+  after the repository reorganization.
+- Python binding: pyo3 / pythonize bumped to 0.29 (security advisories).
+
+### Added
+
+- **`Logic::is_constant`** — reports whether compilation constant-folded
+  the entire rule to a literal. Complements `Logic::is_static`
+  (`is_static` asks whether a rule *could* be evaluated without a data
+  context; `is_constant` reports whether the compiler actually *did*
+  reduce it — folding can fail, e.g. `{"/": [1, 0]}` stays an operator
+  node so the error surfaces at evaluation time). The benchmark harness
+  uses it to time folded and non-folded rules separately.
+- **`EvaluationConfig::from_json_str`** (requires `serde_json`) — build a
+  configuration from a JSON object: an optional `"preset"` key
+  (`"default"` / `"safe_arithmetic"` / `"strict"`) plus per-field
+  overrides. This is the wire format the language bindings use to pass
+  engine configuration across FFI boundaries through one shared parser.
+  Unknown keys and enum strings are rejected loudly.
+- cargo-fuzz target over `eval_str`.
+- flagd `fractional` testbed scenarios (flagd v3.1.0–v3.5.0) ported into
+  the conformance suites.
+- Release platform matrix evened out: Intel-mac Python wheels and Node
+  prebuilds, aarch64-musl Node prebuilds.
+- Runnable `examples/` for every language binding (Node, WASM, Python,
+  Go, JVM, .NET, PHP): the same three programs — `getting-started`,
+  `compile-once-evaluate-many`, `custom-operator` — with the same rule
+  and data in each language, executed in CI so they cannot rot.
+- `scripts/conformance-count.sh` — generates the canonical
+  "N suites / M cases" statistic quoted in READMEs and release notes.
+
+### Removed
+
+- **`NumericCoercionConfig::undefined_to_zero`** and its
+  `with_undefined_to_zero` setter. The flag was documented as reserved
+  and was never read: JSONLogic does not distinguish a missing key from
+  an explicit `null`, and a missing var already coerces to `0` under the
+  default `null_to_zero = true`. Removing an inert public field is
+  technically breaking for code that merely named it; delete the field
+  access or setter call — nothing changes behaviourally.
+
 ## [5.0.0] - 2026-05-14
 
 v5 is a coordinated major release across the Rust core crate and every
@@ -26,12 +100,17 @@ step-by-step v4→v5 migration, see [MIGRATION.md](./MIGRATION.md).
 - **Go binding** (`datalogic-go`) over the C ABI, with a synthetic
   `bindings/go/v*` tag published by the release pipeline.
 - **JVM binding** (`io.github.goplasmatic:datalogic`) via JNA over the
-  shared C cdylib, published to Maven Central.
+  shared C cdylib, packaged for Maven Central. *(Correction 2026-07-03:
+  the Maven Central publish leg did not run for 5.0.0 — the group had no
+  published artifacts. The first Maven Central release ships with the
+  next tag; until then, build from source per `bindings/jvm/README.md`.)*
 - **.NET binding** (`Goplasmatic.Datalogic`) via P/Invoke over the
   shared C cdylib, published to NuGet.
 - **PHP binding** (`goplasmatic/datalogic`) via PHP FFI over the shared
   C cdylib; ships via a subtree split to `GoPlasmatic/datalogic-php`
-  (Packagist resolves from tags).
+  (Packagist resolves from tags). *(Correction 2026-07-03: the subtree
+  split ran, but the package was not registered on packagist.org until
+  2026-07-03, so `composer require` did not resolve before that date.)*
 - **`flagd` Cargo feature** — opt-in OpenFeature flagd-compatible operators
   ([spec](https://flagd.dev/reference/custom-operations/)):
   - `fractional` — deterministic murmurhash3-x86-32 percentage bucketing,

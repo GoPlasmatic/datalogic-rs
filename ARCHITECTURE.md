@@ -281,9 +281,9 @@ Since `datalogic-rs` utilizes `bumpalo` for arena allocation and outputs zero-co
 ### 3. The C ABI Boundary (`bindings/c`)
 - **Lifecycle:** The C ABI accepts C-style null-terminated strings (`*const c_char`) representing JSON payloads.
 - **Memory Ownership:** 
-  - Compilation allocates `Logic` on the Rust heap and returns a raw pointer (`*mut Logic`).
+  - Compilation allocates `Logic` on the Rust heap and returns an opaque handle (`datalogic_rule*`).
   - Evaluations happen within transient or session-scoped boundaries.
-  - **Crucial:** Consumers (Go, JVM, .NET, PHP) must explicitly release this heap memory by calling `datalogic_free_logic(ptr)` to avoid memory leaks.
+  - **Crucial:** Consumers (Go, JVM, .NET, PHP) must explicitly release each handle with its paired free function — `datalogic_rule_free`, `datalogic_engine_free`, `datalogic_session_free`, `datalogic_traced_session_free` — and release returned strings with `datalogic_string_free` (see `bindings/c/include/datalogic.h`).
 
 ## AST Compilation Flow
 
