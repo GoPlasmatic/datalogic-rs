@@ -98,58 +98,58 @@ own tier-by-tier numbers, see `bin/self.rs`.
 
 | Suite                             | dlrs:engine | jsonlogic-rs | dlrs:wasm:compiled | json-logic-js | json-logic-engine | json-logic-engine:compiled |
 |-----------------------------------|------------:|-------------:|-------------------:|--------------:|------------------:|---------------------------:|
-| compatible.json                   |         8.5 |        438.9 |              590.3 |         241.7 |             110.6 |                       60.2 |
-| arithmetic/plus.json              |         3.1 |       222.6* |              506.0 |        374.8* |             112.4 |                       30.7 |
-| arithmetic/multiply.json          |         3.1 |       210.1* |              466.1 |        501.5* |             102.9 |                       31.4 |
-| arithmetic/minus.json             |         3.4 |       142.1* |              699.8 |        366.3* |             153.5 |                       32.0 |
-| arithmetic/divide.json            |         3.6 |          ERR |              540.3 |        344.5* |             104.9 |                       31.1 |
-| arithmetic/modulo.json            |         3.5 |       183.0* |              651.1 |        425.6* |             155.6 |                       34.4 |
-| arithmetic/min.json               |        13.7 |       358.6* |              976.8 |       1461.4* |             203.2 |                       36.7 |
-| arithmetic/max.json               |        13.6 |       355.5* |              995.4 |       1491.1* |             213.0 |                       38.1 |
-| arithmetic/chain.json             |        25.2 |          ERR |             2075.3 |           ERR |             433.3 |                      108.5 |
-| comparison/softEquals.json        |         2.8 |       138.8* |              416.9 |        291.0* |              97.4 |                       31.8 |
-| comparison/strictEquals.json      |         2.7 |       139.3* |              412.1 |        285.2* |              66.1 |                       26.8 |
-| comparison/softNotEquals.json     |         2.8 |       141.6* |              440.7 |        299.4* |              88.9 |                       31.5 |
-| comparison/strictNotEquals.json   |         2.7 |       141.7* |              419.1 |        281.3* |              68.2 |                       26.5 |
-| comparison/greaterThan.json       |         2.7 |        195.6 |              423.4 |        291.2* |              84.2 |                       30.5 |
-| comparison/greaterThanEquals.json |         2.7 |        202.0 |              498.7 |        365.8* |             107.3 |                       29.9 |
-| comparison/lessThan.json          |         2.6 |        192.4 |              396.6 |        239.6* |              53.9 |                       22.9 |
-| comparison/lessThanEquals.json    |         2.9 |        197.6 |              553.3 |        459.4* |              98.5 |                       30.2 |
-| control/if.json                   |         2.7 |        246.3 |              469.9 |        275.2* |              69.6 |                       32.2 |
-| control/and.json                  |         2.6 |       149.1* |              413.2 |         178.9 |             123.8 |                       32.7 |
-| control/or.json                   |         2.8 |       148.9* |              404.7 |        358.9* |             122.7 |                       31.3 |
-| control/switch.json               |        24.8 |       419.3* |              764.5 |           ERR |               ERR |                          — |
-| truthiness.json                   |         4.3 |        156.9 |              583.4 |       1420.6* |             189.0 |                       36.5 |
-| additional.json                   |        13.4 |       378.6* |             2015.9 |           ERR |             752.7 |                       78.0 |
-| coalesce.json                     |         5.5 |        169.1 |              766.7 |           ERR |             207.4 |                       30.0 |
-| chained.json                      |        36.8 |       516.6* |             2272.3 |           ERR |             615.6 |                      106.4 |
-| exists.json                       |         7.1 |        122.7 |              995.4 |           ERR |             332.2 |                       66.7 |
-| val.json                          |         7.8 |       173.2* |              938.9 |           ERR |             204.3 |                       31.8 |
-| val-compat.json                   |        14.7 |          ERR |             1208.3 |           ERR |             333.4 |                      130.0 |
-| val.extra.json                    |        61.8 |      1008.1* |             1988.6 |           ERR |             657.1 |                      219.7 |
-| scopes.json                       |        98.0 |          ERR |             3899.1 |           ERR |            1902.1 |                      424.4 |
-| empty-objects.json                |         3.2 |         22.9 |             1075.4 |         118.9 |             217.8 |                       47.1 |
-| structured-objects.json           |           — |        367.2 |                ERR |       1355.7* |               ERR |                        ERR |
-| try.json                          |        52.5 |        354.2 |             1789.5 |           ERR |             504.2 |                      129.9 |
-| try.extra.json                    |        58.3 |        473.9 |             1919.7 |           ERR |            7562.8 |                      287.2 |
-| datetime/datetime.json            |         9.4 |       379.9* |              771.4 |           ERR |               ERR |                          — |
-| datetime/duration.json            |        12.6 |       341.7* |              782.7 |           ERR |               ERR |                        ERR |
-| datetime/now.json                 |       117.3 |        357.9 |             2502.1 |           ERR |               ERR |                          — |
-| length.json                       |        11.0 |        289.3 |             1451.9 |           ERR |             374.5 |                      244.7 |
-| sort.json                         |        43.2 |       251.8* |             1888.4 |           ERR |               ERR |                          — |
-| slice.json                        |        33.9 |       225.1* |             1172.5 |           ERR |               ERR |                          — |
-| array/map.json                    |        75.9 |          ERR |             2787.1 |           ERR |           5120.3* |                    2939.1* |
-| array/merge.json                  |        13.2 |        223.9 |              660.8 |         403.2 |             143.7 |                       19.9 |
-| array/reduce.json                 |        41.4 |      3723.3* |             2101.9 |       1800.3* |             710.0 |                     286.8* |
-| string/string.json                |        22.4 |        189.3 |             1098.7 |           ERR |               ERR |                          — |
-| arithmetic/abs.json               |         3.4 |       154.4* |              886.4 |           ERR |               ERR |                          — |
-| arithmetic/ceil.json              |         3.2 |       139.8* |              780.8 |           ERR |               ERR |                          — |
-| arithmetic/floor.json             |         3.2 |       142.4* |              789.2 |           ERR |               ERR |                          — |
-| flagd/fractional.json             |        36.9 |        483.0 |             1427.6 |           ERR |               ERR |                          — |
-| flagd/sem_ver.json                |         6.9 |        279.8 |              605.6 |           ERR |               ERR |                          — |
-| type.json                         |         6.9 |        165.5 |              879.7 |           ERR |               ERR |                          — |
-| arithmetic mean                   |        19.1 |        340.3 |             1084.8 |         568.0 |             622.1 |                      161.3 |
-| geometric mean                    |         9.2 |        239.5 |              890.9 |         426.1 |             229.6 |                       59.5 |
+| compatible.json                   |         7.5 |        465.7 |              818.2 |         240.9 |             110.0 |                       62.5 |
+| arithmetic/plus.json              |         2.9 |       230.9* |              504.1 |        394.6* |             110.4 |                       30.6 |
+| arithmetic/multiply.json          |         2.9 |       214.4* |              484.2 |        519.0* |             106.1 |                       31.1 |
+| arithmetic/minus.json             |         3.2 |       144.5* |              716.0 |        364.7* |             155.0 |                       32.1 |
+| arithmetic/divide.json            |         3.5 |          ERR |              533.1 |        351.2* |             111.2 |                       32.3 |
+| arithmetic/modulo.json            |         3.3 |       186.8* |              675.5 |        439.1* |             177.2 |                       30.7 |
+| arithmetic/min.json               |        13.8 |       364.4* |              983.3 |       1505.8* |             303.8 |                       38.6 |
+| arithmetic/max.json               |        13.7 |       365.1* |              978.2 |       1500.8* |             207.1 |                       38.1 |
+| arithmetic/chain.json             |        25.6 |          ERR |             2024.8 |           ERR |             465.5 |                      109.6 |
+| comparison/softEquals.json        |         2.6 |       142.2* |              428.8 |        302.6* |              76.8 |                       29.6 |
+| comparison/strictEquals.json      |         2.5 |       140.7* |              418.6 |        279.3* |              65.8 |                       25.4 |
+| comparison/softNotEquals.json     |         2.6 |       144.8* |              426.5 |        302.8* |              91.8 |                       31.3 |
+| comparison/strictNotEquals.json   |         2.5 |       144.6* |              428.7 |        288.3* |              93.7 |                       28.5 |
+| comparison/greaterThan.json       |         2.5 |        200.1 |              440.8 |        301.4* |              77.5 |                       30.2 |
+| comparison/greaterThanEquals.json |         2.5 |        207.6 |              482.0 |        359.3* |             108.6 |                       29.1 |
+| comparison/lessThan.json          |         2.4 |        195.8 |              406.7 |        241.7* |              64.1 |                       23.4 |
+| comparison/lessThanEquals.json    |         2.6 |        199.2 |              554.5 |        470.9* |             149.3 |                       32.2 |
+| control/if.json                   |         2.3 |        249.8 |              471.5 |        277.1* |              73.7 |                       32.2 |
+| control/and.json                  |         2.3 |       152.4* |              423.8 |         202.8 |             127.7 |                       32.7 |
+| control/or.json                   |         2.5 |       150.9* |              415.8 |        364.1* |             121.8 |                       33.2 |
+| control/switch.json               |        24.8 |       432.7* |              786.2 |           ERR |               ERR |                          — |
+| truthiness.json                   |         4.0 |        161.9 |              588.8 |       1445.1* |             191.7 |                       37.6 |
+| additional.json                   |        13.8 |       385.8* |             1829.4 |           ERR |             699.2 |                       80.2 |
+| coalesce.json                     |         5.4 |        172.8 |              756.9 |           ERR |             194.0 |                       31.3 |
+| chained.json                      |        37.2 |       526.5* |             2377.9 |           ERR |             626.2 |                      111.7 |
+| exists.json                       |         7.1 |        125.4 |              882.3 |           ERR |             347.8 |                       70.4 |
+| val.json                          |         8.0 |       174.5* |              967.2 |           ERR |             207.1 |                       30.3 |
+| val-compat.json                   |        15.5 |          ERR |             1199.1 |           ERR |             344.5 |                      130.1 |
+| val.extra.json                    |        64.3 |      1029.3* |             2026.3 |           ERR |             564.4 |                      220.3 |
+| scopes.json                       |       102.6 |          ERR |             3565.7 |           ERR |            1914.9 |                      409.8 |
+| empty-objects.json                |         3.0 |         23.8 |             1155.7 |         122.1 |             222.2 |                       47.2 |
+| structured-objects.json           |           — |        378.5 |                ERR |       1357.9* |               ERR |                        ERR |
+| try.json                          |        52.7 |        364.1 |             1817.9 |           ERR |             536.9 |                      129.7 |
+| try.extra.json                    |        60.0 |        488.5 |             1937.1 |           ERR |            7612.5 |                      305.3 |
+| datetime/datetime.json            |         9.5 |       389.4* |              759.0 |           ERR |               ERR |                          — |
+| datetime/duration.json            |        12.5 |       349.8* |              806.8 |           ERR |               ERR |                        ERR |
+| datetime/now.json                 |       121.0 |        371.3 |             2620.6 |           ERR |               ERR |                          — |
+| length.json                       |        11.2 |        294.9 |             1475.0 |           ERR |             334.8 |                      256.3 |
+| sort.json                         |        43.0 |       257.5* |             1825.3 |           ERR |               ERR |                          — |
+| slice.json                        |        33.9 |       230.3* |             1169.5 |           ERR |               ERR |                          — |
+| array/map.json                    |        78.5 |          ERR |             2642.4 |           ERR |           5287.3* |                    3023.0* |
+| array/merge.json                  |        13.2 |        226.9 |              759.6 |         413.7 |              96.9 |                       22.6 |
+| array/reduce.json                 |        41.1 |      3810.4* |             2103.4 |       1802.5* |             745.7 |                     297.3* |
+| string/string.json                |        23.1 |        194.0 |             1057.2 |           ERR |               ERR |                          — |
+| arithmetic/abs.json               |         3.2 |       157.4* |              902.2 |           ERR |               ERR |                          — |
+| arithmetic/ceil.json              |         3.0 |       142.6* |              791.4 |           ERR |               ERR |                          — |
+| arithmetic/floor.json             |         3.0 |       145.2* |              838.4 |           ERR |               ERR |                          — |
+| flagd/fractional.json             |        37.2 |        487.7 |             1472.0 |           ERR |               ERR |                          — |
+| flagd/sem_ver.json                |         6.5 |        285.9 |              582.1 |           ERR |               ERR |                          — |
+| type.json                         |         6.8 |        166.6 |              874.0 |           ERR |               ERR |                          — |
+| arithmetic mean                   |        19.4 |        348.3 |             1085.4 |         577.0 |             631.2 |                      164.9 |
+| geometric mean                    |         8.9 |        244.9 |              901.1 |         434.8 |             235.2 |                       60.3 |
 ```
 
 `*` partial coverage — subject errored on some cases in this suite.
@@ -160,20 +160,20 @@ Quote these instead of dividing the per-column geomeans; each pair is
 computed only over the suites both subjects completed.
 
 ```
-  jsonlogic-rs                   28.9x slower than dlrs:engine                over 44 shared suites
-  dlrs:wasm:compiled             96.8x slower than dlrs:engine                over 49 shared suites
-  json-logic-js                  95.2x slower than dlrs:engine                over 23 shared suites
-  json-logic-engine              28.9x slower than dlrs:engine                over 36 shared suites
-  json-logic-engine:compiled      7.5x slower than dlrs:engine                over 36 shared suites
+  jsonlogic-rs                   30.6x slower than dlrs:engine                over 44 shared suites
+  dlrs:wasm:compiled            100.9x slower than dlrs:engine                over 49 shared suites
+  json-logic-js                 104.2x slower than dlrs:engine                over 23 shared suites
+  json-logic-engine              30.7x slower than dlrs:engine                over 36 shared suites
+  json-logic-engine:compiled      7.9x slower than dlrs:engine                over 36 shared suites
   dlrs:wasm:compiled              3.5x slower than jsonlogic-rs               over 44 shared suites
-  json-logic-js                   2.1x slower than jsonlogic-rs               over 23 shared suites
+  json-logic-js                   2.0x slower than jsonlogic-rs               over 23 shared suites
   jsonlogic-rs                    1.2x slower than json-logic-engine          over 31 shared suites
-  jsonlogic-rs                    4.8x slower than json-logic-engine:compiled over 31 shared suites
+  jsonlogic-rs                    4.9x slower than json-logic-engine:compiled over 31 shared suites
   dlrs:wasm:compiled              1.4x slower than json-logic-js              over 23 shared suites
   dlrs:wasm:compiled              3.7x slower than json-logic-engine          over 36 shared suites
   dlrs:wasm:compiled             14.3x slower than json-logic-engine:compiled over 36 shared suites
-  json-logic-js                   3.3x slower than json-logic-engine          over 23 shared suites
-  json-logic-js                  11.5x slower than json-logic-engine:compiled over 23 shared suites
+  json-logic-js                   3.2x slower than json-logic-engine          over 23 shared suites
+  json-logic-js                  11.6x slower than json-logic-engine:compiled over 23 shared suites
   json-logic-engine               3.9x slower than json-logic-engine:compiled over 36 shared suites
 ```
 
@@ -184,12 +184,12 @@ suites skip). Lower is better:
 
 | Subject                        | Geomean ns/op (own suite set) | Pairwise vs `dlrs:engine` (shared suites) |
 |--------------------------------|------------------------------:|------------------------------------------:|
-| `dlrs:engine`                  |                           9.2 | 1.0×                                       |
-| `json-logic-engine:compiled`   |                          59.5 | 7.5× (36)                                  |
-| `json-logic-engine` (interp.)  |                         229.6 | 28.9× (36)                                 |
-| `jsonlogic-rs`                 |                         239.5 | 28.9× (44)                                 |
-| `json-logic-js`                |                         426.1 | 95.2× (23)                                 |
-| `dlrs:wasm:compiled`           |                         890.9 | 96.8× (49)                                 |
+| `dlrs:engine`                  |                           8.9 | 1.0×                                       |
+| `json-logic-engine:compiled`   |                          60.3 | 7.9× (36)                                  |
+| `json-logic-engine` (interp.)  |                         235.2 | 30.7× (36)                                 |
+| `jsonlogic-rs`                 |                         244.9 | 30.6× (44)                                 |
+| `json-logic-js`                |                         434.8 | 104.2× (23)                                |
+| `dlrs:wasm:compiled`           |                         901.1 | 100.9× (49)                                |
 
 The geomean column aggregates whatever suites each subject completed, so
 those numbers cover different suite subsets. The pairwise column (from
@@ -318,15 +318,15 @@ release build from the repo root (no `target-cpu=native`):
 
 | Suite               | dlrs:engine | jsonlogic-rs | dlrs:wasm:compiled | json-logic-js | json-logic-engine | json-logic-engine:compiled |
 |---------------------|------------:|-------------:|-------------------:|--------------:|------------------:|---------------------------:|
-| macro/array-1k      |     10004.8 |     373201.5 |           223387.7 |     154172.1* |          30812.3* |                    7176.8* |
-| macro/array-10k     |    130701.7 |    4361015.9 |          2327601.2 |    1465646.6* |         287489.3* |                   67216.9* |
-| macro/object-128key |        66.3 |       5247.7 |             9359.9 |         286.6 |             251.5 |                      106.6 |
-| macro/deep-48       |       121.2 |      60965.4 |             4301.9 |        1406.6 |            1324.5 |                      141.4 |
-| macro/string-10kb   |      2809.0 |       2193.3 |            54813.4 |         740.1 |             377.9 |                       51.4 |
-| macro/eligibility   |       252.6 |      28655.8 |             9110.0 |        6775.2 |            5151.1 |                     1105.2 |
-| macro/checkout-40   |     28785.9 |    2270752.0 |           306637.4 |      556300.6 |           92825.9 |                    27722.1 |
-| arithmetic mean     |     24677.4 |    1014575.9 |           419315.9 |      312189.7 |           59747.5 |                    14788.6 |
-| geometric mean      |      2153.5 |      95847.7 |            61173.2 |       15875.0 |            6578.6 |                     1416.6 |
+| macro/array-1k      |      5364.6 |     370736.7 |           224809.5 |     156076.5* |          31560.5* |                    7354.1* |
+| macro/array-10k     |     69232.2 |    4322416.7 |          2342331.6 |    1476459.8* |         281423.2* |                   66324.0* |
+| macro/object-128key |        66.1 |       5197.9 |             9474.7 |         278.5 |             251.2 |                      118.3 |
+| macro/deep-48       |       121.8 |      61208.2 |             4759.8 |        1449.5 |            1315.7 |                      153.4 |
+| macro/string-10kb   |       321.2 |       2380.8 |            54832.0 |         844.5 |             505.9 |                       53.0 |
+| macro/eligibility   |       260.5 |      29847.8 |             9760.5 |        6763.2 |            4892.8 |                     1024.3 |
+| macro/checkout-40   |      9456.1 |    2253488.1 |           309804.5 |      555129.2 |          100102.1 |                    41343.0 |
+| arithmetic mean     |     12117.5 |    1006468.0 |           422253.2 |      313857.3 |           60007.4 |                    16624.3 |
+| geometric mean      |      1131.0 |      97144.3 |            62996.5 |       16216.4 |            6877.1 |                     1532.7 |
 
 * partial coverage — subject errored on some cases in this suite.
 
@@ -336,69 +336,72 @@ Geomean of per-suite ns/op ratios, computed only over suites where both
 subjects have finite cells. The per-column mean rows above cover different
 suite subsets when a subject errors; these ratios never mix subsets.
 
-  jsonlogic-rs                   44.5x slower than dlrs:engine                over  7 shared suites
-  dlrs:wasm:compiled             28.4x slower than dlrs:engine                over  7 shared suites
-  json-logic-js                   7.4x slower than dlrs:engine                over  7 shared suites
-  json-logic-engine               3.1x slower than dlrs:engine                over  7 shared suites
-  dlrs:engine                     1.5x slower than json-logic-engine:compiled over  7 shared suites
-  jsonlogic-rs                    1.6x slower than dlrs:wasm:compiled         over  7 shared suites
+  jsonlogic-rs                   85.9x slower than dlrs:engine                over  7 shared suites
+  dlrs:wasm:compiled             55.7x slower than dlrs:engine                over  7 shared suites
+  json-logic-js                  14.3x slower than dlrs:engine                over  7 shared suites
+  json-logic-engine               6.1x slower than dlrs:engine                over  7 shared suites
+  json-logic-engine:compiled      1.4x slower than dlrs:engine                over  7 shared suites
+  jsonlogic-rs                    1.5x slower than dlrs:wasm:compiled         over  7 shared suites
   jsonlogic-rs                    6.0x slower than json-logic-js              over  7 shared suites
-  jsonlogic-rs                   14.6x slower than json-logic-engine          over  7 shared suites
-  jsonlogic-rs                   67.7x slower than json-logic-engine:compiled over  7 shared suites
+  jsonlogic-rs                   14.1x slower than json-logic-engine          over  7 shared suites
+  jsonlogic-rs                   63.4x slower than json-logic-engine:compiled over  7 shared suites
   dlrs:wasm:compiled              3.9x slower than json-logic-js              over  7 shared suites
-  dlrs:wasm:compiled              9.3x slower than json-logic-engine          over  7 shared suites
-  dlrs:wasm:compiled             43.2x slower than json-logic-engine:compiled over  7 shared suites
+  dlrs:wasm:compiled              9.2x slower than json-logic-engine          over  7 shared suites
+  dlrs:wasm:compiled             41.1x slower than json-logic-engine:compiled over  7 shared suites
   json-logic-js                   2.4x slower than json-logic-engine          over  7 shared suites
-  json-logic-js                  11.2x slower than json-logic-engine:compiled over  7 shared suites
-  json-logic-engine               4.6x slower than json-logic-engine:compiled over  7 shared suites
+  json-logic-js                  10.6x slower than json-logic-engine:compiled over  7 shared suites
+  json-logic-engine               4.5x slower than json-logic-engine:compiled over  7 shared suites
 ```
 
 Reading the macro matrix honestly:
 
 - `dlrs:engine` matches its self-benchmark macro numbers within a few
-  percent (e.g. `macro/array-10k` at about 131 microseconds per op,
-  roughly 13 ns per element), so the two tiers cross-validate.
+  percent (e.g. `macro/array-10k` at about 69 microseconds per op,
+  roughly 7 ns per element), so the two tiers cross-validate.
 - **`macro/checkout-40` is the fair real-world row**: a large rule
   built only from spec-compatible operators, byte-identical results
   verified across engines, and full coverage in every column. On it,
-  `dlrs:engine` (28.8 µs) and `json-logic-engine:compiled` (27.7 µs)
-  are a statistical tie (the gap sits inside the ±5% run noise), with
-  every other subject 3.1x to 79x slower. The rule is
-  iterator-dominated — map/filter/reduce over 40-row object arrays,
-  with aggregates recomputed where referenced because pure-spec
-  JSONLogic has no local bindings (identical work for every engine) —
-  and per-row closure calls are exactly where a warmed JIT closes the
-  gap on native dispatch. dlrs's 7.5x micro-matrix lead lives on
-  dispatch-heavy rules; on per-row iteration the honest label is
-  "tied with the best JS engine, far ahead of everything else".
+  `dlrs:engine` (9.5 µs) leads `json-logic-engine:compiled` (27.7 to
+  41.3 µs across captures — its macro cells jitter with V8
+  inline-cache state) by 2.9x or better, with every other subject an
+  order of magnitude behind. Earlier captures had this row as a
+  statistical tie (28.8 vs 27.7 µs); the gap opened when the
+  per-row iteration overhead was attacked directly: a var⊗var
+  arithmetic map fast path (the `{"*": [unit_price, qty]}` line-total
+  shape), compile-time-detected predicate trees for
+  `and`/`or`/`!`/`in`/truthy-var filter and quantifier bodies, and a
+  remembered-index field lookup for homogeneous rows (the arena analog
+  of V8's monomorphic inline caches).
 - **Partial cells skip real work.** None of the JS subjects implement
   the non-spec `sort` operator, so their `*` cells on the two array
   suites replace the most expensive case with a cheap throw (~1.6 µs)
-  while `dlrs:engine` actually sorts (437 µs of its per-case budget at
-  10k). Reconstructing a fair six-case comparison from per-case
-  measurements puts dlrs and `json-logic-engine:compiled` at parity on
-  both array suites (75.9 vs 76.4 µs per case at 10k) — the apparent
-  jle array wins in the ratio table are entirely the skipped sort.
+  while `dlrs:engine` actually sorts (a numeric-key
+  `sort_unstable` fast path keeps that case cheap now). Even with the
+  sort case *included*, dlrs's array-10k cell (69.2 µs) sits at
+  parity with jle:compiled's sort-free cell (66.3 µs), and its
+  array-1k cell (5.4 µs) beats the corresponding sort-free 7.4 µs
+  outright — the asymmetry now biases *against* dlrs and it wins
+  anyway.
 - `jsonlogic-rs` shows full coverage on the array suites but does no
   sorting either: it treats an object whose key is not a known
   operation as a raw literal and returns it unchanged, so the `sort`
   case "succeeds" without touching the array.
-- `macro/string-10kb` is the one suite the JS engines win outright,
-  and per-case measurement shows why: 96% of dlrs's cost is the two
-  `substr` cases (4.0 and 6.8 µs each), which pay O(n) UTF-8
-  char-boundary scans to honour character indexing, where V8's UTF-16
-  sliced strings slice in O(1) (~15 ns). `cat` is most of the
-  remainder: dlrs materialises the 20 KB result (408 ns) while V8
-  builds a lazy rope (10 ns) that the benchmark sink never forces
-  flat. The `in` case is trivial for everyone (the needle occurs
-  27 bytes into the haystack). An ASCII fast path for `substr` offset
-  math would collapse most of this row.
-- The pairwise line "`dlrs:engine` 1.5x slower than
-  `json-logic-engine:compiled`" is shape-dominated, not a speed
-  verdict: it averages two sort-skewed array cells and the
-  string-10kb outlier against four rows dlrs wins or ties. Remove the
-  asymmetric cells and the same computation favors dlrs on every
-  remaining suite except the checkout tie.
+- `macro/string-10kb` is the one suite the JS engines still win, but
+  the margin collapsed from 55x to 6x: `substr` now takes an ASCII
+  fast path (byte-offset math plus a word-at-a-time `is_ascii` scan)
+  instead of O(n) UTF-8 char-boundary walks, and the non-ASCII path
+  only pays the full char count for negative offsets. What remains is
+  structural: `cat` materialises the 20 KB result where V8 builds a
+  lazy rope the benchmark sink never forces flat, and each `substr`
+  re-scans for ASCII-ness where V8 keeps a one-byte-representation
+  flag on the string object. Closing that would need a
+  representation-level change (a cached ASCII bit or rope strings in
+  `DataValue`).
+- With all seven suites included — sort asymmetry, string-10kb outlier
+  and all — the pairwise geomean now has `json-logic-engine:compiled`
+  1.4x slower than `dlrs:engine`. The honest label for per-row
+  iteration went from "tied with the best JS engine" to "ahead of the
+  best JS engine on every row shape except large-string slicing".
 - `dlrs:wasm:compiled` pays the V8-to-WASM string marshalling per call,
   and that cost scales with payload size: ~55 microseconds per op on
   `string-10kb` and ~2.3 ms per op on `array-10k` are boundary cost,
@@ -434,11 +437,20 @@ Reading the macro matrix honestly:
 ## Optimization provenance
 
 The current numbers include the 2026-07 optimization passes: zero-copy
-`substr`/string-`slice`, arena-backed sort scratch, `itoa`/`ryu` number
-rendering, a split context stack, a borrowed thrown-value channel with
-interned NaN, an ISO-datetime byte-compare fast path, compile-time
-literal pre-conversion via `self_cell`, an optimistic ordered probe for
-wide objects, and an `Error` layout shrunk 80 -> 40 bytes. Guardrails
+`substr`/string-`slice` with an ASCII byte-offset fast path (and lazy
+char counting on the non-ASCII path), arena-backed sort scratch plus a
+numeric-key `sort_unstable` fast path with index tiebreaker,
+`itoa`/`ryu` number rendering, a split context stack, a borrowed
+thrown-value channel with interned NaN, an ISO-datetime byte-compare
+fast path, compile-time literal pre-conversion via `self_cell`, an
+optimistic ordered probe for wide objects, a var⊗var arithmetic map
+fast path with remembered-index (inline-cache-style) field lookups,
+compile-time-detected compound predicate trees
+(`and`/`or`/`!`/`in`/truthy-var over comparison leaves) for
+filter/quantifier bodies with an indeterminate-shape fallback that
+also fixed the fast-path/general-path coercion divergences
+(`"9" >= 2`, `"5" == 5`, `true == 1` inside `filter` previously
+evaluated uncoerced), and an `Error` layout shrunk 80 -> 40 bytes. Guardrails
 that keep future optimization honest: the conformance suite, the
 optimized-vs-traced differential property test,
 `tests/layout_test.rs`, and the folded / non-folded split above (quote

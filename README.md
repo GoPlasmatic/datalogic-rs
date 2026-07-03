@@ -30,7 +30,7 @@ Write a [JSONLogic](https://jsonlogic.com) rule once and evaluate it with the ex
 
 - 🌐 **One rule, every runtime:** every binding runs the same compiled Rust core, so a rule evaluates with identical semantics on your backend, your edge workers, and your frontend. No cross-language drift, verified by a 1,532-case conformance battery in CI.
 - 🔒 **100% sandbox-safe:** evaluate user-submitted rules and formulas without arbitrary code execution. No `eval()`, no scripting runtime, no I/O; the core forbids unsafe code.
-- ⚡ **Nanosecond evaluation:** rules compile to OpCode-dispatched programs that run in a reusable memory arena: 9.2 ns geomean, 7.5× the fastest JS engine, 95.2× the reference implementation.
+- ⚡ **Nanosecond evaluation:** rules compile to OpCode-dispatched programs that run in a reusable memory arena: 8.9 ns geomean, 7.9× the fastest JS engine, 104.2× the reference implementation.
 - 🛠️ **Ready-made rule builder:** ship a visual editor and step-through debugger to your product dashboard with the companion React component, instead of building rule UI from scratch.
 
 ---
@@ -162,16 +162,16 @@ Rust adds two more tiers: zero-copy evaluation into a caller-owned arena, and tr
 Geomean execution time across 50 benchmark suites (Apple M2 Pro; median of 3 samples; ratios are pairwise shared-suite geomeans; methodology in [`tools/benchmark/BENCHMARK.md`][bench]):
 
 ```text
-datalogic-rs (native Rust)              | 9.2 ns   (■) 1x
-json-logic-engine (JS, compiled)        | 59.5 ns  (■■■■■■) 7.5x
-json-logic-engine (JS, interpreted)     | 229.6 ns (■■■■■■■■■■■■■■■■■■■■■■■) 28.9x
-jsonlogic-rs (bestowinc Rust engine)    | 239.5 ns (■■■■■■■■■■■■■■■■■■■■■■■■) 28.9x
-json-logic-js (Reference JS library)    | 426.1 ns (■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■) 95.2x
+datalogic-rs (native Rust)              | 8.9 ns   (■) 1x
+json-logic-engine (JS, compiled)        | 60.3 ns  (■■■■■■) 7.9x
+json-logic-engine (JS, interpreted)     | 235.2 ns (■■■■■■■■■■■■■■■■■■■■■■■■) 30.7x
+jsonlogic-rs (bestowinc Rust engine)    | 244.9 ns (■■■■■■■■■■■■■■■■■■■■■■■■) 30.6x
+json-logic-js (Reference JS library)    | 434.8 ns (■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■) 104.2x
 ```
 
 Rules compile to a simple AST with OpCode dispatch (no runtime string matching) and execute inside a reusable memory arena: single-digit nanoseconds for folded rules, 10-120 ns for context-dependent ones.
 
-In Node.js, the native `@goplasmatic/datalogic-node` package is the fast path and runs close to native Rust. The WASM build trades speed for portability (890.9 ns geomean under Node, 97× native, but it runs anywhere JavaScript does). Use native on Node servers; use WASM in browsers, edge runtimes, Deno, and Bun.
+In Node.js, the native `@goplasmatic/datalogic-node` package is the fast path and runs close to native Rust. The WASM build trades speed for portability (901.1 ns geomean under Node, 101× native, but it runs anywhere JavaScript does). Use native on Node servers; use WASM in browsers, edge runtimes, Deno, and Bun.
 
 Reproduce it yourself: `cargo run --release -p datalogic-bench --bin compare` — full matrix and caveats in [`tools/benchmark/BENCHMARK.md`][bench].
 
