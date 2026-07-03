@@ -13,7 +13,7 @@ For language runtimes without direct Rust interoperability libraries (like `pyo3
      |    |    |    |
      |    |    |    +---> PHP FFI (goplasmatic/datalogic)
      |    |    +--------> .NET P/Invoke (Goplasmatic.Datalogic)
-     |    +-------------> JVM JNA (io.github.goplasmatic:datalogic)
+     |    +-------------> JVM FFM (io.github.goplasmatic:datalogic)
      +------------------> Go cgo (github.com/GoPlasmatic/datalogic-rs/bindings/go/v5)
 ```
 
@@ -26,14 +26,14 @@ Because these bindings rely on compiled shared/static libraries, the release pip
 | Ecosystem | Packaging | Binaries Layout | Loading Mechanism |
 |---|---|---|---|
 | **Go** | Go Module | Static libraries in `lib/<os>_<arch>/` | cgo static linking at compile time |
-| **JVM** | Maven JAR | Shared libraries at the classpath root under `<jna-platform>/` | JNA `Native.load` at runtime |
+| **JVM** | Maven JAR | Shared libraries at the classpath root under `<os-arch>/` | FFM (`java.lang.foreign`) at runtime |
 | **.NET** | NuGet | Shared libraries under `runtimes/<rid>/native/` | P/Invoke `LibraryImport` at runtime |
 | **PHP** | Composer | Shared libraries under `lib/<os>-<arch>/` | PHP `FFI::cdef` at runtime |
 
 ## The JSON-in/JSON-out rule
 
-To keep the C ABI surface simple and performant, all inputs and outputs crossing the boundary are **NUL-terminated UTF-8 JSON strings**.
-No complex struct marshaling is performed at the boundary. Instead, inputs are serialized to JSON in the host language, passed to Rust, evaluated, and the result is returned as a JSON string to be parsed back by the host.
+To keep the C ABI surface simple and performant, inputs and outputs crossing the boundary are **UTF-8 JSON strings passed as `(pointer, length)` pairs** (ABI v2 carries an explicit byte length, so there are no NUL terminators and embedded NULs or non-ASCII bytes are safe).
+No complex struct marshaling is performed at the boundary. Instead, inputs are serialized to JSON in the host language, passed to Rust, evaluated, and the result is returned as JSON bytes to be parsed back by the host.
 
 ## Memory management & safety
 

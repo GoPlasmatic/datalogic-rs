@@ -1,6 +1,6 @@
 # Java / Kotlin (JVM)
 
-The JVM binding `io.github.goplasmatic:datalogic` uses Java Native Access (JNA) to wrap the shared C ABI. It supports **JDK 11 and newer** and works from Java, Kotlin, and Scala.
+The JVM binding `io.github.goplasmatic:datalogic` reaches the shared C ABI directly through the Java FFM API (`java.lang.foreign`), with no JNA or JNI glue. It requires **JDK 22 or newer** (the FFM API is final since 22) and works from Java, Kotlin, and Scala.
 
 ## Installation
 
@@ -12,14 +12,14 @@ Add the dependency to your project:
 <dependency>
     <groupId>io.github.goplasmatic</groupId>
     <artifactId>datalogic</artifactId>
-    <version>5.0.0</version>
+    <version>5.0.1</version>
 </dependency>
 ```
 
 ### Gradle (`build.gradle`)
 
 ```groovy
-implementation 'io.github.goplasmatic:datalogic:5.0.0'
+implementation 'io.github.goplasmatic:datalogic:5.0.1'
 ```
 
 *Note: The Maven `groupId` is `io.github.goplasmatic`, but the Java package path is `com.goplasmatic.datalogic`.*
@@ -96,4 +96,4 @@ public class Main {
 
 - [C ABI internals: memory management & thread safety](c-abi.md) — the native-heap ownership rules every FFI binding shares
 - [Engine configuration semantics](advanced/configuration.md)
-- [Package README on Maven Central](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/jvm#readme) — full API surface, error types, and platform table
+- [JVM binding README](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/jvm#readme) — full API surface, error types, and platform table

@@ -208,7 +208,7 @@ NativeAOT-ready). The native library is resolved at runtime via a
 `bindings/c/target/release/`. Publish target: NuGet `Goplasmatic.Datalogic`.
 End-user API: [bindings/dotnet/README.md](./bindings/dotnet/README.md).
 
-## `bindings/jvm` — JVM binding (JNA over C ABI)
+## `bindings/jvm` — JVM binding (FFM over C ABI)
 
 ```bash
 cd ../c && cargo build --release
@@ -217,11 +217,14 @@ mvn test                           # JUnit 5
 mvn package                        # produces target/datalogic-*.jar + sources + javadoc
 ```
 
-JNA `Library` interface mirrors `bindings/c/include/datalogic.h`. The
-Surefire plugin sets `jna.library.path` to `../c/target/release` so
-local tests pick up the in-tree cdylib. Publishable JARs ship the
-native libs at the classpath root under `<jna-platform>/` (where JNA's
-`Native.load` auto-extracts them). Target: Maven
+The binding calls the C ABI directly through the `java.lang.foreign`
+(FFM) API (JDK 22+); `internal/DatalogicNative` mirrors
+`bindings/c/include/datalogic.h` as `MethodHandle` downcalls. The
+Surefire plugin sets the `datalogic.library.path` system property to
+`../c/target/release` (and passes `--enable-native-access=ALL-UNNAMED`)
+so local tests pick up the in-tree cdylib. Publishable JARs ship the
+native libs at the classpath root under `<os-arch>/`, which the loader
+extracts and links at runtime. Target: Maven
 Central as `io.github.goplasmatic:datalogic`. End-user API:
 [bindings/jvm/README.md](./bindings/jvm/README.md).
 
@@ -289,14 +292,16 @@ validate job checks.
 The 5.0.x cycle landed changes whose release legs have never executed;
 whoever cuts the next tag should watch these once, then delete this list:
 
-- **Version choice:** removing the inert `undefined_to_zero` config field is
-  technically breaking for code that merely named it (CHANGELOG "Removed"),
-  and `@goplasmatic/datalogic-wasm` now rejects with structured `Error`
-  objects instead of JSON strings (breaking; migration note in its README).
-  Decide 5.1.0 (pragmatic) vs 6.0.0 (strict semver) accordingly.
+- **Version choice — resolved: shipping as 5.0.1.** Removing the inert
+  `undefined_to_zero` config field is technically breaking for code that
+  merely named it (CHANGELOG "Removed"), and `@goplasmatic/datalogic-wasm`
+  now rejects with structured `Error` objects instead of JSON strings
+  (breaking; migration note in its README). The breaking surface is deemed
+  low-usage, so the patch bump is an intentional call over 5.1.0/6.0.0.
 - **JVM publish leg:** local packaged-JAR validation passes (classpath-root
-  staging via `scripts/stage-jvm-natives.sh`, JNA loads with
-  `jna.library.path` unset), but `publish-jvm`'s Maven Central deploy has
+  staging via `scripts/stage-jvm-natives.sh`, the FFM loader extracts the
+  bundled native from the classpath root with `datalogic.library.path`
+  unset), but `publish-jvm`'s Maven Central deploy has
   never run with the corrected layout. Verify the published JAR loads
   natives on a clean machine.
 - **First run of new matrix entries:** x86_64-apple-darwin Python wheel

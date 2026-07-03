@@ -45,8 +45,8 @@ a deprecation notice on `npm install` pointing them at the new name.
 | Core feature | **No umbrella feature in core.** The binding owns its operator surface; `crates/datalogic-rs/Cargo.toml` stays free of binding-specific bundling so the published crate is binding-agnostic |
 | Tests | `bindings/<lang>/tests/` in the binding's native test runner (pytest, jest, …) |
 | CI | A pair of jobs added to `.github/workflows/release.yml` — `<lang>-build-*` (one or more, possibly a matrix) followed by `publish-<lang>` (`needs: publish-crate` so a binding never ships ahead of core) |
-| Release tags | `v*` (e.g. `v5.0.0`) — single unified trigger. One tag push runs validate + tests, publishes core, then fans out every binding in parallel. |
-| Versioning | Bindings track the core version exactly (5.0.0 → 5.0.0). `validate` fails if any binding's `Cargo.toml` / `pyproject.toml` / `package.json` drifts from core. |
+| Release tags | `v*` (e.g. `v5.0.1`) — single unified trigger. One tag push runs validate + tests, publishes core, then fans out every binding in parallel. |
+| Versioning | Bindings track the core version exactly (5.0.1 → 5.0.1). `validate` fails if any binding's `Cargo.toml` / `pyproject.toml` / `package.json` drifts from core. |
 
 ## Why these conventions
 
@@ -88,7 +88,7 @@ a deprecation notice on `npm install` pointing them at the new name.
 | Python | `bindings/python/` | pyo3 + maturin (abi3-py310) | PyPI: `datalogic-py` |
 | C ABI | `bindings/c/` | `extern "C"` + cbindgen-generated header | (not separately published — consumed in-tree by Go/JVM/.NET/PHP) |
 | Go | `bindings/go/` | cgo over `bindings/c/` (static link to `libdatalogic_c.a`) | Go modules: `github.com/GoPlasmatic/datalogic-rs/bindings/go/v5` |
-| JVM | `bindings/jvm/` | JNA over `bindings/c/` cdylib | Maven Central: `io.github.goplasmatic:datalogic` |
+| JVM | `bindings/jvm/` | FFM over `bindings/c/` cdylib | Maven Central: `io.github.goplasmatic:datalogic` |
 | .NET | `bindings/dotnet/` | P/Invoke (`LibraryImport`) over `bindings/c/` cdylib | NuGet: `Goplasmatic.Datalogic` |
 | PHP | `bindings/php/` | PHP FFI (`FFI::cdef`) over `bindings/c/` cdylib | Packagist: `goplasmatic/datalogic` |
 
@@ -149,7 +149,7 @@ consume the C ABI's cdylib + generated header.
 | Node native (napi-rs) | No | napi-rs exposes V8 types directly; cheaper than JSON-roundtrip |
 | Ruby (magnus) | No | magnus mirrors pyo3 — direct Ruby type marshalling |
 | Go (cgo) | **Yes** | No first-class Rust↔Go binding tool |
-| JVM (JNA) | **Yes** | Avoids hand-writing JNI per platform |
+| JVM (FFM) | **Yes** | Avoids hand-writing JNI per platform |
 | .NET (P/Invoke / `LibraryImport`) | **Yes** | NativeAOT-ready source-gen P/Invoke over the cdylib |
 | PHP (FFI) | **Yes** | PHP's FFI extension consumes any cdylib + curated header |
 
@@ -160,7 +160,7 @@ either go around the C ABI (rows above) or add a thin native shim on top.
 ### Cross-platform binary distribution for C-ABI bindings
 
 Languages that route through `bindings/c/` need the static / shared
-library at the consumer's build (Go cgo) or runtime (PHP FFI, JVM JNA)
+library at the consumer's build (Go cgo) or runtime (PHP FFI, JVM FFM)
 time. The release workflow handles this with a shared (os, arch)
 matrix that compiles `bindings/c/` once on a native runner per
 platform, plus a per-language packaging job that picks up the matrix
@@ -170,7 +170,7 @@ channel.
 | Lang | Distribution shape | Lib type | Path in artifact |
 |---|---|---|---|
 | Go | Git tag `bindings/go/vX.Y.Z` with binaries staged in source tree | `.a` static | `bindings/go/lib/<os>_<arch>/libdatalogic_c.a` |
-| JVM | JAR with platform binaries at the classpath root | `.so` / `.dylib` / `.dll` | `<jna-platform>/` (loaded via JNA `Native.load`) |
+| JVM | JAR with platform binaries at the classpath root | `.so` / `.dylib` / `.dll` | `<os-arch>/` (loaded via FFM `java.lang.foreign`) |
 | .NET | NuGet package with platform binaries under `runtimes/<rid>/native/` | `.so` / `.dylib` / `.dll` | `runtimes/{linux,osx,win}-{x64,arm64}/native/` |
 | PHP | Composer package with platform binaries under `lib/<os>-<arch>/` | `.so` / `.dylib` / `.dll` | `lib/<os>-<arch>/` (loaded via `FFI::cdef`) |
 

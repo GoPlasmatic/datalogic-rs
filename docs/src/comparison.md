@@ -69,7 +69,7 @@ the canonical choice for a JS-only stack.
 
 **Choose datalogic-rs when:** the same rules must also run outside
 JavaScript, evaluation is hot enough to show up in profiles (the native
-engine measures about 44x faster across the shared benchmark suites), or
+engine measures about 104x faster across the shared benchmark suites), or
 you want the visual debugger and playground.
 
 Migrating is close to a package swap; the full mapping is in
@@ -104,7 +104,7 @@ to the core standard, and evaluations are infrequent enough that per-call
 rule walking does not matter.
 
 **Choose datalogic-rs when:** evaluation is hot (compile-once evaluation
-measures about 22x faster geomean on the shared suites), you need the
+measures about 31x faster geomean on the shared suites), you need the
 extended operators (datetime, string, `try`/`throw`, flagd), custom
 operators, tracing, or any of the non-Rust bindings. Both engines speak
 JSONLogic, so rules carry over unchanged; switching is confined to the Rust

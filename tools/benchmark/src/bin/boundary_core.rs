@@ -311,17 +311,17 @@ fn main() {
     let engine = Engine::new();
 
     for w in &workloads {
-        if let Some(f) = &workload_filter {
-            if !f.iter().any(|x| x == w.name) {
-                continue;
-            }
+        if let Some(f) = &workload_filter
+            && !f.iter().any(|x| x == w.name)
+        {
+            continue;
         }
         let rule = engine.compile(w.rule.as_str()).expect("rule compile");
         for mode in MODES {
-            if let Some(f) = &mode_filter {
-                if !f.iter().any(|x| x == mode) {
-                    continue;
-                }
+            if let Some(f) = &mode_filter
+                && !f.iter().any(|x| x == mode)
+            {
+                continue;
             }
             let ns = run_mode(&engine, &rule, w, mode);
             emit(mode, w.name, ns);

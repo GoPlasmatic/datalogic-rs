@@ -20,7 +20,7 @@ verifying an end-to-end change in the React debugger.
 - **Node.js** 20+ — only if you are working on `ui/`, `bindings/node/` or `bindings/wasm/`
 - **Python 3.10+** with [`maturin`](https://www.maturin.rs/) — only if you are working on `bindings/python/`
 - **Go 1.22+** and a C compiler — only if you are working on `bindings/go/`
-- **Java JDK 11+ & Maven** — only if you are working on `bindings/jvm/`
+- **Java JDK 22+ & Maven** — only if you are working on `bindings/jvm/`
 - **.NET SDK 8.0+** — only if you are working on `bindings/dotnet/`
 - **PHP 8.4+ & Composer** — only if you are working on `bindings/php/`
 - **mdbook** — only if you are building the docs site

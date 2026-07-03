@@ -67,7 +67,7 @@ fn input_err_to_json(stage: &str, message: impl std::fmt::Display) -> String {
 ///   variant extras like `variable` / `thrown` / `index` / `length`,
 ///   optional `operator` / `node_ids` / `stage`) attached via
 ///   `Reflect::set`.
-/// - `detailJson`: the raw JSON string that releases up to 5.0.x used as
+/// - `detailJson`: the raw JSON string that releases up to 5.0.0 used as
 ///   the rejection value, kept so existing consumers migrate with one
 ///   property access instead of restructuring their catch blocks.
 fn build_js_error(name: &str, message: &str, detail_json: &str) -> JsValue {

@@ -21,7 +21,7 @@ graph TD
     %% FFI Consumers
     subgraph Consumers ["FFI Target Bindings"]
         Go["bindings/go <br> (cgo static link)"]
-        JVM["bindings/jvm <br> (JNA dynamic link)"]
+        JVM["bindings/jvm <br> (FFM dynamic link)"]
         DotNet["bindings/dotnet <br> (P/Invoke dynamic)"]
         PHP["bindings/php <br> (PHP FFI dynamic)"]
     end
@@ -176,7 +176,7 @@ JSON test-suite files via `serde_json::Value`; it does not need
 | Python FFI (pyo3)              | `bindings/python/src/lib.rs`                      |
 | C ABI (extern "C" + cbindgen)  | `bindings/c/src/`, generated header in `bindings/c/include/datalogic.h` |
 | Go binding (cgo over C ABI)    | `bindings/go/`                                    |
-| JVM binding (JNA over C ABI)   | `bindings/jvm/`                                   |
+| JVM binding (FFM over C ABI)   | `bindings/jvm/`                                   |
 | .NET binding (P/Invoke over C ABI) | `bindings/dotnet/`                            |
 | PHP binding (PHP FFI over C ABI) | `bindings/php/`                                 |
 | React editor + debugger        | `ui/src/components/logic-editor/`                 |

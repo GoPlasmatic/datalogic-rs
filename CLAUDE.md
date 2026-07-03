@@ -23,7 +23,7 @@ Cargo workspace + npm monorepo organized into four areas: **`crates/`**
 | `bindings/python` | `datalogic-py` (pyo3)                     | PyPI                                 |
 | `bindings/c`      | `datalogic-c` (C ABI / cbindgen)          | in-tree only (consumed by Go/JVM/.NET/PHP) |
 | `bindings/go`     | `datalogic-go` (cgo over C ABI)           | Go modules (`bindings/go/v*` tag)    |
-| `bindings/jvm`    | `io.github.goplasmatic:datalogic` (JNA)   | Maven Central                        |
+| `bindings/jvm`    | `io.github.goplasmatic:datalogic` (FFM)   | Maven Central                        |
 | `bindings/dotnet` | `Goplasmatic.Datalogic` (P/Invoke)        | NuGet                                |
 | `bindings/php`    | `goplasmatic/datalogic` (PHP FFI)         | Packagist                            |
 

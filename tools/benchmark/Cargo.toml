@@ -58,3 +58,9 @@ path = "src/bin/boundary_core.rs"
 [[bin]]
 name = "compare"
 path = "src/bin/compare.rs"
+
+# Sampling-profiler feeder (samply / Instruments): hammers one macro suite
+# in a hot loop so the profile shows only that suite's evaluation path.
+[[bin]]
+name = "profile_macro"
+path = "src/bin/profile_macro.rs"

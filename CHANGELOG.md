@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
-## [Unreleased]
+## [5.0.1] - 2026-07-03
 
 ### Changed
 
@@ -32,8 +32,8 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   native-resource layout is identical. Also fixes by construction the
   latent non-ASCII corruption: JNA marshalled *argument* strings with
   the JVM default charset (results were already forced UTF-8).
-- **BREAKING (WASM — requires the next npm major): errors are real
-  `Error` objects.** Through 5.0.x every `@goplasmatic/datalogic-wasm`
+- **BREAKING (WASM): errors are real
+  `Error` objects.** Through 5.0.0 every `@goplasmatic/datalogic-wasm`
   API rejected with a plain JSON *string*, so `e instanceof Error` was
   `false`. APIs now throw a proper `Error` whose `name` is the error
   kind (for example `"ParseError"`), with the structured fields
@@ -607,6 +607,7 @@ section for the subsequent migration).
   optional dispatch mode in v5).
 - Hash-caching layer (see above).
 
+[5.0.1]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.0.0...v5.0.1
 [5.0.0]: https://github.com/GoPlasmatic/datalogic-rs/compare/v4.0.21...v5.0.0
 [4.0.21]: https://github.com/GoPlasmatic/datalogic-rs/releases/tag/v4.0.21
 [4.0.20]: https://github.com/GoPlasmatic/datalogic-rs/releases/tag/v4.0.20

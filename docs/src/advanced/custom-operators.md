@@ -120,7 +120,7 @@ defer engine.Close()
 ```
 
 ```java
-// Java (JNA)
+// Java (FFM)
 import com.goplasmatic.datalogic.Engine;
 
 // argsJson is a JSON array string; parse with your JSON library (Jackson shown)

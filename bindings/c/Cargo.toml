@@ -15,7 +15,7 @@ repository = "https://github.com/GoPlasmatic/datalogic-rs"
 
 [lib]
 # `cdylib`    — the importable shared library (`.so`/`.dylib`/`.dll`)
-#               for cgo, PHP FFI, JNA, dlopen, etc.
+#               for cgo, PHP FFI, JVM FFM, dlopen, etc.
 # `staticlib` — for consumers that want to statically link (e.g. a Go
 #               binary with a self-contained datalogic).
 # `rlib`      — lets `tests/smoke.rs` (and downstream Rust crates) link

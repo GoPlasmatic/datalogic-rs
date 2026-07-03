@@ -408,9 +408,9 @@ const rule = new CompiledRule('{"+": [null, 1]}', false, '{"preset": "strict"}')
 
 ## Error handling
 
-Every API throws a real `Error` object. This behavior ships in the
-next release (a semver-major bump: 5.0.x rejected with a plain JSON
-string, so `e instanceof Error` was `false`) and is tracked in the
+Every API throws a real `Error` object. This behavior ships in 5.0.1
+(5.0.0 rejected with a plain JSON string, so `e instanceof Error` was
+`false`) and is tracked in the
 [changelog](https://github.com/GoPlasmatic/datalogic-rs/blob/main/CHANGELOG.md).
 The thrown object carries:
 
@@ -422,7 +422,7 @@ The thrown object carries:
 | `operator` | Outermost failing operator (runtime errors only) |
 | `node_ids` | Breadcrumb of compiled-node ids from the failure site toward the root (runtime errors only) |
 | variant extras | Kind-specific fields: `variable` (VariableNotFound), `thrown` (Thrown, as a parsed JS value), `index` / `length` (IndexOutOfBounds), `stage` (boundary input errors, e.g. `"parse-data"`) |
-| `detailJson` | The exact JSON string that 5.0.x used as the rejection value |
+| `detailJson` | The exact JSON string that 5.0.0 used as the rejection value |
 
 ```javascript
 try {
@@ -445,7 +445,7 @@ The two broad categories:
   the failing `operator` and the `node_ids` path through the compiled
   tree.
 
-### Migrating from 5.0.x
+### Migrating from 5.0.0
 
 Code that parsed the rejection value keeps working with one property
 access:
@@ -454,7 +454,7 @@ access:
 try {
   evaluate(logic, data, false);
 } catch (e) {
-  // Before (5.0.x): the rejection value was the JSON string itself.
+  // Before (5.0.0): the rejection value was the JSON string itself.
   // const info = JSON.parse(e);
 
   // After: the fields are already on the error...

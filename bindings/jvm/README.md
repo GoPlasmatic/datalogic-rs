@@ -29,11 +29,11 @@ implements, see the
 <dependency>
     <groupId>io.github.goplasmatic</groupId>
     <artifactId>datalogic</artifactId>
-    <version>5.0.0</version>
+    <version>5.0.1</version>
 </dependency>
 ```
 
-Gradle: `implementation("io.github.goplasmatic:datalogic:5.0.0")`
+Gradle: `implementation("io.github.goplasmatic:datalogic:5.0.1")`
 
 The binding speaks to the engine's C ABI directly through the Java FFM
 API (`java.lang.foreign`) — no JNA, no JNI glue, zero runtime
@@ -349,7 +349,7 @@ git clone https://github.com/GoPlasmatic/datalogic-rs
 cd datalogic-rs/bindings/c && cargo build --release
 cd ../jvm      # needs JDK 22+
 mvn test
-mvn package    # target/datalogic-5.0.0.jar + sources + javadoc
+mvn package    # target/datalogic-5.0.1.jar + sources + javadoc
 ```
 
 ## Learn more
