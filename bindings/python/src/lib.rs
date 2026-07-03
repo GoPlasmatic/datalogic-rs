@@ -2,10 +2,12 @@
 //!
 //! See `bindings/python/README.md` for the user-facing API; this file is
 //! the pyo3 wiring that exposes [`engine::Engine`], [`engine::Rule`],
-//! [`session::Session`], the exception hierarchy in [`error`], and the
-//! top-level [`apply`] convenience.
+//! [`session::Session`], [`data::DataHandle`],
+//! [`session::BatchItemError`], the exception hierarchy in [`error`],
+//! and the top-level [`apply`] convenience.
 
 mod conv;
+mod data;
 mod engine;
 mod error;
 mod session;
@@ -13,9 +15,10 @@ mod session;
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
 
+use crate::data::DataHandle;
 use crate::engine::{Engine, Rule, compile_inner, evaluate_value};
 use crate::error::{DataLogicError, EvaluateError, ParseError};
-use crate::session::Session;
+use crate::session::{BatchItemError, Session};
 
 /// Top-level convenience: compile ``rule`` and evaluate against ``data``
 /// in one call. Equivalent to ``Engine().compile(rule).evaluate(data)``.
@@ -37,6 +40,8 @@ fn datalogic_py(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Engine>()?;
     m.add_class::<Rule>()?;
     m.add_class::<Session>()?;
+    m.add_class::<DataHandle>()?;
+    m.add_class::<BatchItemError>()?;
 
     m.add("DataLogicError", py.get_type::<DataLogicError>())?;
     m.add("ParseError", py.get_type::<ParseError>())?;

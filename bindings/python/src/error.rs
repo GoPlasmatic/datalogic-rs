@@ -78,6 +78,21 @@ pub fn parse_error<S: Into<String>>(py: Python<'_>, message: S) -> PyErr {
     pyerr
 }
 
+/// Build an [`EvaluateError`] for failures the binding detects itself —
+/// typed-result mismatches (`error_type = "TypeMismatch"`) and argument
+/// problems (`error_type = "InvalidArgument"`), mirroring the C ABI's
+/// tags so every binding reports these identically. No engine `Error`
+/// exists in these paths, so the breadcrumb attributes are empty.
+pub fn evaluate_error_with_type(py: Python<'_>, message: String, error_type: &str) -> PyErr {
+    let pyerr = PyErr::new::<EvaluateError, _>(message);
+    let value = pyerr.value(py);
+    let _ = value.setattr("error_type", error_type);
+    let _ = value.setattr("operator", py.None());
+    let _ = value.setattr("node_ids", Vec::<u32>::new());
+    let _ = value.setattr("path", py.None());
+    pyerr
+}
+
 fn attach_attrs(py: Python<'_>, pyerr: &PyErr, err: &Error, compiled: Option<&Logic>) {
     let value = pyerr.value(py);
 

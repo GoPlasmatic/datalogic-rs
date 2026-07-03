@@ -69,6 +69,9 @@ The Python binding mirrors the Rust engine's
 | Engine       | `Engine().eval(rule, data)`              | Custom configuration (templating, custom operators, config)   |
 | Compile once | `Engine().compile(rule).evaluate(data)`  | Same rule evaluated against many data inputs                  |
 | Session      | `with engine.session() as sess: …`       | Hot loops — amortise arena reset across iterations            |
+| Data handle  | `DataHandle(json)` → `sess.evaluate_data(rule, data)` | Same payload evaluated many times: parse once, zero parse work per call |
+| Typed        | `sess.evaluate_bool/int/float/truthy(rule, data)` | Predicates and scalar results, no JSON decode on the way out |
+| Batch        | `sess.evaluate_batch(rule, datas)` / `sess.evaluate_many(rules, data)` | Many evaluations per native call, per-item errors |
 
 ### One-shot — `apply(rule, data)`
 
@@ -80,15 +83,18 @@ apply({"var": "user.age"}, {"user": {"age": 25}})          # 25
 apply({"and": [{">": [{"var": "x"}, 0]}, True]}, {"x": 5}) # True
 ```
 
-Both arguments accept Python `dict` / `list` values (converted via
-[`pythonize`](https://crates.io/crates/pythonize)). For small payloads
-(below roughly 1 KB) that conversion beats a JSON-string round-trip,
-because Python's `json` module carries ~1.5 µs of fixed per-call
-interpreter cost; for larger payloads the per-node conversion cost
-compounds and the advantage reverses — at ~8 KB the string path is
-measurably faster. If your data is already JSON text, skip the dict
-entirely and call the `*_str` entry points (`Rule.evaluate_str`,
-`Session.evaluate_str`). For payloads with types `pythonize`
+Both arguments accept Python `dict` / `list` values, converted by a
+direct walk between Python objects and the engine's arena values (no
+JSON text, no intermediate tree — 2.5-3.5× faster than the
+pythonize-based conversion earlier builds used, and faster than a
+`json.dumps` → `evaluate_str` → `json.loads` round-trip at every
+payload size we measure). Payload size still matters: conversion work
+scales with node count, so an 8 KB dict costs ~20 µs of walk on top of
+the evaluation. If your data is already JSON text, call the `*_str`
+entry points (`Rule.evaluate_str`, `Session.evaluate_str`) and skip
+conversion; if the same payload is evaluated repeatedly, parse it once
+into a [`DataHandle`](#data-handles-typed-results-and-batch-evaluation)
+and skip the per-call cost entirely. For payloads with types the walk
 doesn't cover, see [Type conversion](#type-conversion) below.
 
 ### Engine — `Engine().eval(rule, data)`
@@ -150,6 +156,68 @@ with engine.session() as sess:
 The arena that makes it fast can't be shared across threads (the same
 way a database connection is per-task in a connection-pool model);
 `Engine` and `Rule` are both thread-safe, so share those.
+
+## Data handles, typed results, and batch evaluation
+
+The ABI v2 tiers. A `DataHandle` is an immutable, pre-parsed JSON
+document: parse a payload once and every evaluation against it skips
+JSON parsing (and dict conversion) entirely. Handles are
+engine-independent (one handle can feed rules compiled by different
+engines), safe to share across threads for reads, and not consumed by
+evaluation — the native memory is released when the handle is
+garbage-collected.
+
+```python
+from datalogic_py import DataHandle
+
+data = DataHandle('{"age": 25, "status": "active"}')  # raises ParseError on bad JSON
+data.allocated_bytes                    # bytes held by the handle's arena
+
+rule.evaluate_data(data)                # thread-safe, like rule.evaluate
+rule.evaluate_data_str(data)            # same, JSON str out
+sess.evaluate_data(rule, data)          # hot path: session arena + no parse
+sess.evaluate_data_str(rule, data)
+```
+
+For predicates and scalar results, the typed session evaluations skip
+the result conversion too:
+
+```python
+ok = sess.evaluate_bool(rule, data)     # strict JSON boolean
+n  = sess.evaluate_int(rule, data)      # exact integer result
+f  = sess.evaluate_float(rule, data)    # any JSON number
+t  = sess.evaluate_truthy(rule, data)   # JSONLogic truthiness, never mismatches
+```
+
+`evaluate_bool`, `evaluate_int`, and `evaluate_float` raise
+`EvaluateError` with `error_type == "TypeMismatch"` when the rule
+evaluates fine but the result is not of the requested type.
+`evaluate_truthy` coerces any result through the engine's configured
+truthiness rules (the same coercion `if`/`and`/`or` apply).
+
+The batch entry points evaluate a whole set in one native call and
+report failures per item, so one bad input never poisons its
+neighbours:
+
+```python
+from datalogic_py import BatchItemError
+
+# One rule, many payloads:
+results = sess.evaluate_batch(rule, [d0, d1, d2])
+# Many rules, one payload (the rule-set / feature-flag shape):
+results = sess.evaluate_many([r0, r1], data)
+
+for i, r in enumerate(results):
+    if isinstance(r, BatchItemError):   # not raised — a result object
+        print(f"item {i} failed: {r.message} ({r.tag}, operator={r.operator})")
+    else:
+        print(f"item {i}: {r}")         # the item's JSON string
+```
+
+Exceptions are reserved for argument problems (a rule compiled by a
+different engine, a non-handle list element, …). Typed and batch
+evaluations take data handles only; rules must belong to the session's
+engine, and sessions stay single-threaded.
 
 ## Custom operators
 
@@ -215,6 +283,14 @@ All exceptions descend from `DataLogicError`:
 | `ParseError`     | Malformed rule or data JSON, or an unsupported Python type in the input |
 | `EvaluateError`  | Operator failure at runtime (including unknown operators, tag `InvalidOperator`) — carries `.error_type`, `.operator`, `.path` |
 
+Two `error_type` tags come from the binding itself rather than the
+engine, mirroring the C ABI: `"TypeMismatch"` (a typed evaluation whose
+result has the wrong type) and `"InvalidArgument"` (e.g. a rule
+compiled by a different engine passed to a session's handle-based entry
+points). Per-item batch failures don't raise at all — they surface as
+`BatchItemError` values (`.tag`, `.message`, `.operator`) in the result
+list.
+
 ```python
 from datalogic_py import Engine, EvaluateError
 
@@ -229,25 +305,44 @@ except EvaluateError as e:
 
 ## Threading
 
-| Type      | Pattern                                                                          |
-|-----------|----------------------------------------------------------------------------------|
-| `Engine`  | Build once; share across threads                                                 |
-| `Rule`    | Compile once; share across threads — `evaluate` releases the GIL for parallelism |
-| `Session` | One per worker thread — the per-task workhorse                                   |
+| Type         | Pattern                                                                          |
+|--------------|----------------------------------------------------------------------------------|
+| `Engine`     | Build once; share across threads                                                 |
+| `Rule`       | Compile once; share across threads — `evaluate` releases the GIL for parallelism |
+| `Session`    | One per worker thread — the per-task workhorse                                   |
+| `DataHandle` | Parse once; immutable, share across threads for reads (evaluation never mutates it) |
 
 ## Type conversion
 
-The dict-input path uses [`pythonize`](https://crates.io/crates/pythonize):
+The dict-input path walks Python objects directly into the engine's
+arena representation (with a [`pythonize`](https://crates.io/crates/pythonize)
+fallback for the long tail — behaviour is identical either way, only
+speed differs):
 
-**Supported:** `dict`, `list`, `str`, `int`, `float`, `bool`, `None`.
+**Fast direct walk:** `dict`, `list`, `tuple`, `str`, `int`, `float`,
+`bool`, `None`.
+
+**Handled via the fallback:** `set`/`frozenset` (become JSON arrays,
+iteration order), container/scalar subclasses (`IntEnum`,
+`OrderedDict`, …), mappings and dataclasses.
+
+**Conversion details worth knowing:**
+
+- `float('nan')` / `float('inf')` become JSON `null` (they have no JSON
+  encoding)
+- ints above `2^63 - 1` up to `2^64 - 1` degrade to `float`; beyond
+  that they raise `ParseError`
+- dict keys must be `str` (anything else raises `ParseError`) and
+  objects are presented to the engine in sorted-key order, so
+  object-iteration results are deterministic
+- result dicts also come back key-sorted
 
 **Not supported** — these raise `ParseError` with a clear message:
 
 - `datetime.datetime`, `datetime.date` — convert to ISO string at the
   Python edge
 - `decimal.Decimal` — convert to `float` or `str`
-- `bytes`, `set`, `tuple`
-- `float('nan')`, `float('inf')` — JSON spec disallows them
+- `bytes`, `bytearray`
 
 For payloads with exotic types, use `rule.evaluate_str(json_text)` and
 bring your own JSON encoder (e.g. with `default=str`).
@@ -298,10 +393,15 @@ for debugging, not hot paths.
 Geomean across 50 operator benchmark suites (Apple M2 Pro, median of 3 runs; pairwise shared-suite ratios per the [methodology](https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md)): the native Rust core evaluates at **9.0 ns/op**, 7.9× faster than json-logic-engine (compiled, the fastest JS engine), 30.3× faster than jsonlogic-rs (the closest Rust alternative), and 102.8× faster than the json-logic-js reference implementation. The WASM build under Node measures 881.9 ns geomean (98× native); on Node servers, prefer `@goplasmatic/datalogic-node`.
 
 The pyo3 boundary adds a small per-call marshalling cost on top of the
-core numbers. Use `rule.evaluate_str(json_text)` when you already have
-a JSON string and want to skip the `pythonize` dict-conversion path;
-`evaluate` releases the GIL, so a multi-threaded server gains real
-parallelism on top of the engine's native speed.
+core numbers; the dict paths use direct Python ↔ arena walks, so that
+cost scales with payload node count, not with a JSON round-trip. Use
+`rule.evaluate_str(json_text)` when you already have a JSON string, and
+a `DataHandle` when the same payload is evaluated repeatedly — on the
+boundary harness's 8 KB workload, `session.evaluate_data_str` measures
+~1.3 µs/op against ~12 µs for `session.evaluate_str` (the per-call JSON
+parse) and ~24 µs for the dict path (the per-call conversion walk).
+Every evaluate call releases the GIL, so a multi-threaded server gains
+real parallelism on top of the engine's native speed.
 
 ## Learn more
 

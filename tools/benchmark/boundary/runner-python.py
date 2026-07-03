@@ -8,6 +8,11 @@ that venv's interpreter.
 
 Modes:
   session-evaluate-str       session.evaluate_str(rule, data_str) — hot path
+  session-evaluate-data      session.evaluate_data_str(rule, handle) — ABI v2
+                             data-handle tier: zero parse work per call
+  session-evaluate-many-100  one session.evaluate_many call over 100
+                             separately-compiled copies of the rule and one
+                             handle (ns_op reported per evaluation: call/100)
   rule-evaluate-str          rule.evaluate_str(data_str)
   rule-evaluate-dict         rule.evaluate(data_dict) — the object path
   dumps-str-loads-roundtrip  json.loads(rule.evaluate_str(json.dumps(data_dict)))
@@ -43,6 +48,7 @@ WARMUP = 2_000
 TARGET_SAMPLE_NS = 250e6
 PILOT_MIN_NS = 10e6
 SAMPLES = 5
+MANY_N = 100
 
 _global_sink = 0
 
@@ -136,12 +142,38 @@ def main():
         # Single hot dict identity across the run (matches the capture).
         data_dict = json.loads(data_str)
         rule_dict = json.loads(rule_str)
+        # v2: parse-once data handle.
+        data_handle = datalogic_py.DataHandle(data_str)
+        # 100 identical rules, compiled separately (a rule-set of
+        # identical rules — separate compiles so the batch doesn't
+        # flatter one hot compiled tree). Mirrors runner-go.
+        many_rules = [engine.compile(rule_str) for _ in range(MANY_N)]
 
         def batch_session_str(n, session=session, rule=rule, data=data_str):
             sink = 0
             for _ in range(n):
                 sink += len(session.evaluate_str(rule, data))
             return sink
+
+        def batch_session_data(n, session=session, rule=rule, data=data_handle):
+            sink = 0
+            for _ in range(n):
+                sink += len(session.evaluate_data_str(rule, data))
+            return sink
+
+        def batch_session_many(n, session=session, rules=many_rules, data=data_handle):
+            sink = 0
+            for _ in range(n):
+                results = session.evaluate_many(rules, data)
+                sink += len(results[0]) + len(results[MANY_N - 1])
+            return sink
+
+        def verify_many():
+            results = session.evaluate_many(many_rules, data_handle)
+            for r in results:
+                if not isinstance(r, str):
+                    fail("session-evaluate-many-100", name, expected, r)
+                verify_str("session-evaluate-many-100", name, r, expected)
 
         def batch_rule_str(n, rule=rule, data=data_str):
             sink = 0
@@ -174,40 +206,57 @@ def main():
                 sink += res is not None
             return sink
 
+        # mode -> (verify, batch, evaluations per batch iteration).
         modes = {
             "session-evaluate-str": (
                 lambda: verify_str("session-evaluate-str", name,
                                    session.evaluate_str(rule, data_str), expected),
                 batch_session_str,
+                1,
+            ),
+            "session-evaluate-data": (
+                lambda: verify_str("session-evaluate-data", name,
+                                   session.evaluate_data_str(rule, data_handle), expected),
+                batch_session_data,
+                1,
+            ),
+            "session-evaluate-many-100": (
+                verify_many,
+                batch_session_many,
+                MANY_N,
             ),
             "rule-evaluate-str": (
                 lambda: verify_str("rule-evaluate-str", name,
                                    rule.evaluate_str(data_str), expected),
                 batch_rule_str,
+                1,
             ),
             "rule-evaluate-dict": (
                 lambda: verify_obj("rule-evaluate-dict", name,
                                    rule.evaluate(data_dict), expected),
                 batch_rule_dict,
+                1,
             ),
             "dumps-str-loads-roundtrip": (
                 lambda: verify_obj("dumps-str-loads-roundtrip", name,
                                    json.loads(rule.evaluate_str(json.dumps(data_dict))),
                                    expected),
                 batch_roundtrip,
+                1,
             ),
             "engine-eval-oneshot": (
                 lambda: verify_obj("engine-eval-oneshot", name,
                                    engine.eval(rule_dict, data_dict), expected),
                 batch_oneshot,
+                1,
             ),
         }
 
-        for mode, (verify, batch) in modes.items():
+        for mode, (verify, batch, per_call_evals) in modes.items():
             if mode_filter and mode not in mode_filter:
                 continue
             verify()
-            emit(mode, name, measure(batch))
+            emit(mode, name, measure(batch) / per_call_evals)
 
     print(f"{RUNTIME}: sink={_global_sink}", file=sys.stderr)
 

@@ -13,7 +13,8 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyString};
 use serde_json::Value;
 
-use crate::conv::{dict_to_value, value_to_pyobject};
+use crate::conv::{datavalue_to_pyobject, dict_to_value, value_to_pyobject};
+use crate::data::{DataHandle, build_py_tree};
 use crate::error::engine_error_to_pyerr;
 use crate::session::Session;
 
@@ -189,6 +190,10 @@ impl Rule {
     pub(crate) fn logic(&self) -> &Arc<Logic> {
         &self.logic
     }
+
+    pub(crate) fn engine_arc(&self) -> &Arc<RsEngine> {
+        &self.engine
+    }
 }
 
 #[pymethods]
@@ -196,15 +201,18 @@ impl Rule {
     /// Evaluate against ``data`` and return the result as a Python value.
     ///
     /// :param data: a Python ``dict``/``list``/scalar, or a ``str``
-    ///     containing the data as JSON. The dict path uses ``pythonize``
-    ///     (≈3-10× faster than a JSON round-trip).
+    ///     containing the data as JSON. The dict path walks Python
+    ///     objects straight into the engine's arena (faster than any
+    ///     JSON round-trip); for a payload evaluated repeatedly, parse
+    ///     it once into a :class:`DataHandle` and use
+    ///     :meth:`evaluate_data`.
     fn evaluate(&self, py: Python<'_>, data: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
         evaluate_value(py, &self.engine, &self.logic, data)
     }
 
     /// Evaluate against ``data`` (a JSON ``str``) and return the result as
     /// a JSON ``str``. Skips dict ↔ value conversion entirely — the
-    /// fastest path through the binding.
+    /// fastest string-shaped path through the binding.
     fn evaluate_str(&self, py: Python<'_>, data: &str) -> PyResult<String> {
         // Capture sendable references for the GIL-released closure.
         let engine: &RsEngine = &self.engine;
@@ -215,6 +223,41 @@ impl Rule {
             Ok(av.to_string())
         });
         result.map_err(|e| engine_error_to_pyerr(py, &e, Some(&self.logic)))
+    }
+
+    /// Evaluate against a pre-parsed :class:`DataHandle` and return the
+    /// result as a Python value — zero parse work per call.
+    ///
+    /// Like :meth:`evaluate`, thread-safe: the handle is immutable and
+    /// the binding releases the GIL around the Rust evaluate call.
+    fn evaluate_data(&self, py: Python<'_>, data: &DataHandle) -> PyResult<Py<PyAny>> {
+        let mut arena = Bump::new();
+        let res = eval_borrowing(
+            py,
+            &self.engine,
+            &self.logic,
+            DetachInput::Tree(data.tree.value()),
+            &mut arena,
+        );
+        match res {
+            Ok(av) => datavalue_to_pyobject(py, av),
+            Err(e) => Err(engine_error_to_pyerr(py, &e, Some(&self.logic))),
+        }
+    }
+
+    /// Evaluate against a pre-parsed :class:`DataHandle` and return the
+    /// result as a JSON ``str`` — the fastest repeated-payload path on
+    /// `Rule`.
+    fn evaluate_data_str(&self, py: Python<'_>, data: &DataHandle) -> PyResult<String> {
+        let engine: &RsEngine = &self.engine;
+        let logic: &Logic = &self.logic;
+        let tree = &data.tree;
+        py.detach(move || -> Result<String, datalogic_rs::Error> {
+            let arena = Bump::new();
+            let av = engine.evaluate(logic, tree.value(), &arena)?;
+            Ok(av.to_string())
+        })
+        .map_err(|e| engine_error_to_pyerr(py, &e, Some(&self.logic)))
     }
 
     fn __repr__(&self) -> String {
@@ -339,20 +382,87 @@ pub(crate) fn compile_inner(
         .map_err(|e| engine_error_to_pyerr(py, &e, None))
 }
 
+/// Input shapes for [`eval_borrowing`]. Both are `Send` references into
+/// caller-owned storage that outlives the evaluation.
+pub(crate) enum DetachInput<'a> {
+    /// JSON text; parsed into the arena by the engine (zero-copy — the
+    /// parsed strings may borrow the text, so it must outlive the
+    /// result).
+    Str(&'a str),
+    /// An already-resident tree (`DataHandle` or the dict fast path's
+    /// walked cell); passed through at zero cost.
+    Tree(&'a DataValue<'a>),
+}
+
+/// Evaluate with the GIL released and hand back the **borrowed** arena
+/// result, so the caller can convert it straight to Python objects (or
+/// project a typed scalar) without materialising an intermediate tree.
+///
+/// The `&mut Bump` is what lets the borrow escape `py.detach`: the
+/// closure owns the unique reference (`&mut Bump: Send` even though
+/// `Bump: !Sync`) and downgrades it to `&'a Bump` for the whole borrow,
+/// so the returned `&'a DataValue` stays valid until the caller drops
+/// or resets the arena.
+pub(crate) fn eval_borrowing<'a>(
+    py: Python<'_>,
+    engine: &RsEngine,
+    // Shares `'a` because the core's `evaluate` may return references
+    // into the compiled rule's pre-built literals — callers keep the
+    // `Arc<Logic>` alive until the result is converted.
+    logic: &'a Logic,
+    input: DetachInput<'a>,
+    arena: &'a mut Bump,
+) -> Result<&'a DataValue<'a>, DlError> {
+    py.detach(move || {
+        let arena: &'a Bump = arena;
+        match input {
+            DetachInput::Str(s) => engine.evaluate(logic, s, arena),
+            DetachInput::Tree(v) => engine.evaluate(logic, v, arena),
+        }
+    })
+}
+
 pub(crate) fn evaluate_value(
     py: Python<'_>,
     engine: &Arc<RsEngine>,
     logic: &Arc<Logic>,
     data: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    // Fast path: if the caller already has a JSON string, skip dict conversion.
+    // Fast path: if the caller already has a JSON string, skip dict
+    // conversion — parse and evaluate in one detached pass, then convert
+    // the borrowed result directly.
     if let Ok(s) = data.cast::<PyString>() {
-        let json = run_eval_to_value_from_str(py, engine, logic, s.to_str()?)?;
-        return value_to_pyobject(py, &json);
+        let text = s.to_str()?.to_string();
+        let mut arena = Bump::new();
+        let res = eval_borrowing(py, engine, logic, DetachInput::Str(&text), &mut arena);
+        return match res {
+            Ok(av) => datavalue_to_pyobject(py, av),
+            Err(e) => Err(engine_error_to_pyerr(py, &e, Some(logic))),
+        };
     }
-    let value = dict_to_value(py, data)?;
-    let json = run_eval_to_value(py, engine, logic, &value)?;
-    value_to_pyobject(py, &json)
+    // Dict path: walk the Python objects straight into an arena tree.
+    // Shapes the walk doesn't cover fall back to the pythonize path.
+    match build_py_tree(data) {
+        Ok(tree) => {
+            let mut arena = Bump::new();
+            let res = eval_borrowing(
+                py,
+                engine,
+                logic,
+                DetachInput::Tree(tree.value()),
+                &mut arena,
+            );
+            match res {
+                Ok(av) => datavalue_to_pyobject(py, av),
+                Err(e) => Err(engine_error_to_pyerr(py, &e, Some(logic))),
+            }
+        }
+        Err(_) => {
+            let value = dict_to_value(py, data)?;
+            let json = run_eval_to_value(py, engine, logic, &value)?;
+            value_to_pyobject(py, &json)
+        }
+    }
 }
 
 pub(crate) fn evaluate_str(
@@ -361,10 +471,10 @@ pub(crate) fn evaluate_str(
     logic: &Arc<Logic>,
     data: &Bound<'_, PyAny>,
 ) -> PyResult<String> {
+    let engine_ref: &RsEngine = engine;
+    let logic_ref: &Logic = logic;
     if let Ok(s) = data.cast::<PyString>() {
         let s_owned = s.to_str()?.to_string();
-        let engine_ref: &RsEngine = engine;
-        let logic_ref: &Logic = logic;
         return py
             .detach(|| -> Result<String, datalogic_rs::Error> {
                 let arena = Bump::new();
@@ -373,17 +483,31 @@ pub(crate) fn evaluate_str(
             })
             .map_err(|e| engine_error_to_pyerr(py, &e, Some(logic)));
     }
-    let value = dict_to_value(py, data)?;
-    let engine_ref: &RsEngine = engine;
-    let logic_ref: &Logic = logic;
-    py.detach(|| -> Result<String, datalogic_rs::Error> {
-        let arena = Bump::new();
-        let av = engine_ref.evaluate(logic_ref, &value, &arena)?;
-        Ok(av.to_string())
-    })
-    .map_err(|e| engine_error_to_pyerr(py, &e, Some(logic)))
+    // Dict input: direct walk (with pythonize fallback), string result
+    // materialised inside the detached closure.
+    match build_py_tree(data) {
+        Ok(tree) => py
+            .detach(move || -> Result<String, datalogic_rs::Error> {
+                let arena = Bump::new();
+                let av = engine_ref.evaluate(logic_ref, tree.value(), &arena)?;
+                Ok(av.to_string())
+            })
+            .map_err(|e| engine_error_to_pyerr(py, &e, Some(logic))),
+        Err(_) => {
+            let value = dict_to_value(py, data)?;
+            py.detach(|| -> Result<String, datalogic_rs::Error> {
+                let arena = Bump::new();
+                let av = engine_ref.evaluate(logic_ref, &value, &arena)?;
+                Ok(av.to_string())
+            })
+            .map_err(|e| engine_error_to_pyerr(py, &e, Some(logic)))
+        }
+    }
 }
 
+/// pythonize-fallback evaluation: `serde_json::Value` in, owned
+/// `serde_json::Value` out. Only reached for input shapes the direct
+/// walk doesn't cover.
 fn run_eval_to_value(
     py: Python<'_>,
     engine: &Arc<RsEngine>,
@@ -395,23 +519,6 @@ fn run_eval_to_value(
     py.detach(|| -> Result<Value, datalogic_rs::Error> {
         let arena = Bump::new();
         let av = engine_ref.evaluate(logic_ref, value, &arena)?;
-        serde_json::to_value(av).map_err(datalogic_rs::Error::wrap)
-    })
-    .map_err(|e| engine_error_to_pyerr(py, &e, Some(logic)))
-}
-
-fn run_eval_to_value_from_str(
-    py: Python<'_>,
-    engine: &Arc<RsEngine>,
-    logic: &Arc<Logic>,
-    data: &str,
-) -> PyResult<Value> {
-    let data_owned = data.to_string();
-    let engine_ref: &RsEngine = engine;
-    let logic_ref: &Logic = logic;
-    py.detach(|| -> Result<Value, datalogic_rs::Error> {
-        let arena = Bump::new();
-        let av = engine_ref.evaluate(logic_ref, data_owned.as_str(), &arena)?;
         serde_json::to_value(av).map_err(datalogic_rs::Error::wrap)
     })
     .map_err(|e| engine_error_to_pyerr(py, &e, Some(logic)))
