@@ -49,42 +49,72 @@ pub(crate) fn evaluate_substr<'a>(
 
     let s_av = engine.dispatch_node(&args[0], ctx, arena)?;
     let string = data_to_str(s_av, arena);
-    let char_count = string.chars().count();
 
     // `start` defaults to 0; `length` is optional. Both swallow non-numeric
     // values silently (per substr's spec). Literal fast path skips dispatch.
     let start: i64 = substr_arg_i64(args.get(1), ctx, engine, arena)?.unwrap_or(0);
     let length: Option<i64> = substr_arg_i64(args.get(2), ctx, engine, arena)?;
 
-    let actual_start = if start < 0 {
-        let abs_start = start.saturating_abs() as usize;
-        char_count.saturating_sub(abs_start)
-    } else {
-        (start as usize).min(char_count)
-    };
-
-    // How many chars to take after skipping `actual_start`; `None` = take
-    // the rest. Equivalent to the previous per-branch `.collect()` logic.
-    let take: Option<usize> = match length {
-        // Negative length = end position from the end of the string.
-        Some(len) if len < 0 => {
-            let abs_end = len.saturating_abs() as usize;
-            let end_pos = char_count.saturating_sub(abs_end);
-            Some(end_pos.saturating_sub(actual_start))
-        }
-        Some(0) => Some(0),
-        Some(len) => Some((len as usize).min(char_count.saturating_sub(actual_start))),
-        None => None,
-    };
-
     // The selected chars form one contiguous run of `string`, and `string`
     // is already arena-resident (`data_to_str` returns `&'a str`), so the
-    // result is a borrowed sub-slice: walk to the char boundaries and slice,
-    // no copy.
-    let byte_start = char_to_byte_offset(string, actual_start);
-    let byte_end = match take {
-        Some(n) => byte_start + char_to_byte_offset(&string[byte_start..], n),
-        None => string.len(),
+    // result is a borrowed sub-slice of it either way: find the two char
+    // boundaries and slice, no copy.
+    //
+    // ASCII fast path: one byte per char, so both boundaries are plain
+    // index math. `is_ascii` is a word-at-a-time scan — on large strings
+    // roughly two orders of magnitude cheaper than the per-char decode
+    // walks the general path needs.
+    let (byte_start, byte_end) = if string.is_ascii() {
+        let n = string.len();
+        let byte_start = if start < 0 {
+            n.saturating_sub(start.saturating_abs() as usize)
+        } else {
+            (start as usize).min(n)
+        };
+        let byte_end = match length {
+            // Negative length = end position from the end of the string.
+            Some(len) if len < 0 => n.saturating_sub(len.saturating_abs() as usize).max(byte_start),
+            Some(len) => byte_start.saturating_add(len as usize).min(n),
+            None => n,
+        };
+        (byte_start, byte_end)
+    } else {
+        // `char_count` (a full decode walk) is only needed to anchor
+        // negative offsets; positive offsets clamp inside
+        // `char_to_byte_offset` without it.
+        let char_count = if start < 0 || matches!(length, Some(len) if len < 0) {
+            string.chars().count()
+        } else {
+            0
+        };
+        let actual_start = if start < 0 {
+            let abs_start = start.saturating_abs() as usize;
+            char_count.saturating_sub(abs_start)
+        } else {
+            start as usize
+        };
+
+        // How many chars to take after skipping `actual_start`; `None` =
+        // take the rest.
+        let take: Option<usize> = match length {
+            Some(len) if len < 0 => {
+                let abs_end = len.saturating_abs() as usize;
+                let end_pos = char_count.saturating_sub(abs_end);
+                // `actual_start` is clamped to `char_count` only on the
+                // negative-start branch; clamp here so the subtraction
+                // can't underflow-skip on a past-the-end positive start.
+                Some(end_pos.saturating_sub(actual_start.min(char_count)))
+            }
+            Some(len) => Some(len as usize),
+            None => None,
+        };
+
+        let byte_start = char_to_byte_offset(string, actual_start);
+        let byte_end = match take {
+            Some(n) => byte_start + char_to_byte_offset(&string[byte_start..], n),
+            None => string.len(),
+        };
+        (byte_start, byte_end)
     };
 
     let result = &string[byte_start..byte_end];

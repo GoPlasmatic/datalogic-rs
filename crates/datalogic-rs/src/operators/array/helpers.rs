@@ -74,6 +74,15 @@ pub(super) fn evaluate_invariant_no_push<'a>(
 /// predicate's own [`CompiledNode::BuiltinOperator`] node — see the
 /// `predicate_hint` field. Quantifier/filter operators read the cached hint
 /// instead of pattern-matching the predicate tree on every iteration.
+///
+/// Beyond the scalar-comparison leaves, small `and` / `or` / `!` trees over
+/// such leaves are folded into `AllOf` / `AnyOf` / `Not` nodes, and three
+/// more leaf shapes are recognized (bare truthy var, `in` against a
+/// string-literal array, loose equality against a string literal). Every
+/// shape except [`FastPredicate::LooseStrEq`] evaluates totally; that one
+/// reports "indeterminate" on non-string values (coercion territory), which
+/// makes the whole per-item evaluation abort so the caller can re-run the
+/// collection through the general dispatch path.
 #[derive(Debug, Clone)]
 pub(crate) enum FastPredicate {
     /// Strict equality (===) or inequality (!==) against a literal
@@ -95,7 +104,38 @@ pub(crate) enum FastPredicate {
         literal_f: f64,
         negate: bool,
     },
+    /// Bare `{"var": path}` used for its truthiness (e.g. an `and` arm)
+    Truthy {
+        var_path: Box<[crate::node::PathSegment]>,
+    },
+    /// Loose equality (==) or inequality (!=) against a string literal.
+    /// Only string values evaluate here; anything else is indeterminate
+    /// (loose-equality coercion belongs to the general path).
+    LooseStrEq {
+        var_path: Box<[crate::node::PathSegment]>,
+        literal: Box<str>,
+        negate: bool,
+    },
+    /// `{"in": [{var}, ["a", "b", ...]]}` — membership of the var's value
+    /// in an all-string literal array. `in` uses strict equality per
+    /// element, so non-string values are simply `false` — total semantics.
+    InStrLits {
+        var_path: Box<[crate::node::PathSegment]>,
+        items: Box<[Box<str>]>,
+    },
+    /// `{"and": [...]}` over detected sub-predicates; short-circuits on the
+    /// first false arm, matching `evaluate_and`'s left-to-right order.
+    AllOf(Box<[FastPredicate]>),
+    /// `{"or": [...]}` over detected sub-predicates; short-circuits on true.
+    AnyOf(Box<[FastPredicate]>),
+    /// `{"!": pred}` — truthiness negation of a detected sub-predicate.
+    Not(Box<FastPredicate>),
 }
+
+/// Recursion guard for compound-predicate detection. Real filter/quantifier
+/// predicates are shallow (`and(not(in(...)), cmp)` is depth 3); the cap
+/// only bounds pathological rule shapes from doing quadratic populate work.
+const MAX_PREDICATE_DEPTH: u32 = 4;
 
 impl FastPredicate {
     /// Try to detect a fast predicate pattern from a compiled predicate's
@@ -104,6 +144,98 @@ impl FastPredicate {
     /// every evaluation. Owns its `var_path` and `literal` so the cached
     /// hint has no lifetime tie to the args slice.
     pub(crate) fn try_detect_owned(opcode: OpCode, pred_args: &[CompiledNode]) -> Option<Self> {
+        Self::detect_op(opcode, pred_args, 0)
+    }
+
+    /// Detection for one operator node, recursing through the compound
+    /// combinators (`and` / `or` / `!` / `!!`). A single non-detectable arm
+    /// anywhere makes the whole tree non-detectable — the general dispatch
+    /// path keeps full semantics (including error propagation from impure
+    /// sub-expressions, which detected trees can never contain).
+    fn detect_op(opcode: OpCode, args: &[CompiledNode], depth: u32) -> Option<Self> {
+        if depth >= MAX_PREDICATE_DEPTH {
+            return None;
+        }
+        match opcode {
+            OpCode::And | OpCode::Or if !args.is_empty() => {
+                let preds: Option<Box<[FastPredicate]>> = args
+                    .iter()
+                    .map(|a| Self::detect_operand(a, depth + 1))
+                    .collect();
+                let preds = preds?;
+                Some(if matches!(opcode, OpCode::And) {
+                    FastPredicate::AllOf(preds)
+                } else {
+                    FastPredicate::AnyOf(preds)
+                })
+            }
+            // `!` — truthiness negation. `!!` folds away entirely: the
+            // consumer only reads the tree through truthiness.
+            OpCode::Not if args.len() == 1 => Some(FastPredicate::Not(Box::new(
+                Self::detect_operand(&args[0], depth + 1)?,
+            ))),
+            OpCode::BoolCast if args.len() == 1 => Self::detect_operand(&args[0], depth + 1),
+            // `in` with an all-string literal array: `in` compares elements
+            // with strict equality, so a non-string needle is always false —
+            // total semantics, no coercion involved.
+            OpCode::In if args.len() == 2 => {
+                let CompiledNode::Var {
+                    scope_level: 0,
+                    segments,
+                    reduce_hint: ReduceHint::None,
+                    metadata_hint: MetadataHint::None,
+                    default_value: None,
+                    ..
+                } = &args[0]
+                else {
+                    return None;
+                };
+                let CompiledNode::Value {
+                    value: datavalue::OwnedDataValue::Array(items),
+                    ..
+                } = &args[1]
+                else {
+                    return None;
+                };
+                let strs: Option<Box<[Box<str>]>> = items
+                    .iter()
+                    .map(|it| match it {
+                        datavalue::OwnedDataValue::String(s) => Some(s.as_str().into()),
+                        _ => None,
+                    })
+                    .collect();
+                Some(FastPredicate::InStrLits {
+                    var_path: segments.clone(),
+                    items: strs?,
+                })
+            }
+            _ => Self::detect_cmp_leaf(opcode, args),
+        }
+    }
+
+    /// Detection for a combinator operand: a bare scope-0 `var` is a
+    /// truthiness test; a nested operator recurses through [`Self::detect_op`].
+    fn detect_operand(node: &CompiledNode, depth: u32) -> Option<Self> {
+        match node {
+            CompiledNode::Var {
+                scope_level: 0,
+                segments,
+                reduce_hint: ReduceHint::None,
+                metadata_hint: MetadataHint::None,
+                default_value: None,
+                ..
+            } => Some(FastPredicate::Truthy {
+                var_path: segments.clone(),
+            }),
+            CompiledNode::BuiltinOperator { opcode, args, .. } => {
+                Self::detect_op(*opcode, args, depth)
+            }
+            _ => None,
+        }
+    }
+
+    /// The original two-arg `(var, literal)` comparison-leaf detection.
+    fn detect_cmp_leaf(opcode: OpCode, pred_args: &[CompiledNode]) -> Option<Self> {
         if pred_args.len() != 2 {
             return None;
         }
@@ -138,6 +270,17 @@ impl FastPredicate {
                                 return Some(FastPredicate::LooseNumericEq {
                                     var_path,
                                     literal_f: lit_f,
+                                    negate,
+                                });
+                            }
+                            // String literals: same-type loose equality is
+                            // plain equality; other value types stay
+                            // indeterminate at evaluation time.
+                            if let datavalue::OwnedDataValue::String(s) = literal {
+                                let negate = matches!(opcode, OpCode::NotEquals);
+                                return Some(FastPredicate::LooseStrEq {
+                                    var_path,
+                                    literal: s.as_str().into(),
                                     negate,
                                 });
                             }
@@ -187,51 +330,104 @@ impl FastPredicate {
         }
     }
 
-    /// Evaluate this predicate against a single item.
+    /// Evaluate this predicate against a single item. `None` means
+    /// "indeterminate" — the item's value shape needs coercion semantics
+    /// only the general dispatch path implements, so the caller must
+    /// abandon the fast path for the whole collection (fast evaluation is
+    /// pure, so a re-run through the general path is exact).
     ///
-    /// `#[inline(always)]` because this runs once per item in every
-    /// quantifier/filter fast path — the per-call overhead of an outlined
-    /// version dominates the actual comparison work for scalar predicates.
-    #[inline(always)]
-    pub(super) fn evaluate<'b>(&self, item: &'b DataValue<'b>) -> bool {
+    /// `#[inline]` (not `always`): the scalar leaves still collapse into
+    /// the per-item loops, while the recursive combinator arms keep
+    /// codegen from ballooning.
+    #[inline]
+    pub(super) fn evaluate_opt<'b>(
+        &self,
+        item: &'b DataValue<'b>,
+        engine: &crate::Engine,
+    ) -> Option<bool> {
         match self {
             FastPredicate::StrictEq {
                 var_path,
                 literal,
                 negate,
             } => {
-                let matches = match Self::resolve_value(var_path, item) {
-                    Some(av) => value_equals_serde(av, literal),
-                    None => false,
-                };
-                if *negate { !matches } else { matches }
+                // A missing field resolves to `var`'s implicit null default,
+                // which strict-compares like any other value (`null === null`
+                // is true) — total semantics, no coercion anywhere in `===`.
+                let av = Self::resolve_value(var_path, item).unwrap_or(&DataValue::Null);
+                Some(value_equals_serde(av, literal) != *negate)
             }
             FastPredicate::NumericCmp {
                 var_path,
                 literal_f,
                 opcode,
                 var_is_lhs,
-            } => match Self::resolve_value(var_path, item).and_then(|v| v.as_f64()) {
-                Some(val_f) => {
+            } => match Self::resolve_value(var_path, item) {
+                // Only native numbers compare here. Anything else (string,
+                // bool, null, missing) goes through the general path's
+                // coercion table — `"9" >= 2` and `null >= 0` are true there.
+                Some(DataValue::Number(n)) => {
+                    let val_f = n.as_f64();
                     let (lhs, rhs) = if *var_is_lhs {
                         (val_f, *literal_f)
                     } else {
                         (*literal_f, val_f)
                     };
-                    inline_numeric_cmp(lhs, rhs, *opcode)
+                    Some(inline_numeric_cmp(lhs, rhs, *opcode))
                 }
-                None => false,
+                _ => None,
             },
             FastPredicate::LooseNumericEq {
                 var_path,
                 literal_f,
                 negate,
-            } => {
-                let matches = Self::resolve_value(var_path, item)
-                    .and_then(|v| v.as_f64())
-                    .is_some_and(|val_f| val_f == *literal_f);
-                if *negate { !matches } else { matches }
+            } => match Self::resolve_value(var_path, item) {
+                // Same-type loose equality only; `"5" == 5` / `true == 1`
+                // need the general path's coercion table.
+                Some(DataValue::Number(n)) => Some((n.as_f64() == *literal_f) != *negate),
+                _ => None,
+            },
+            FastPredicate::Truthy { var_path } => Some(match Self::resolve_value(var_path, item) {
+                Some(av) => crate::arena::truthy_arena(av, engine),
+                None => false,
+            }),
+            FastPredicate::LooseStrEq {
+                var_path,
+                literal,
+                negate,
+            } => match Self::resolve_value(var_path, item) {
+                // Same-type loose equality is plain equality; any other
+                // value shape (including a missing field's implicit null)
+                // needs the general path's coercion table.
+                Some(DataValue::String(s)) => Some((*s == &**literal) != *negate),
+                _ => None,
+            },
+            FastPredicate::InStrLits { var_path, items } => {
+                let found = match Self::resolve_value(var_path, item) {
+                    Some(DataValue::String(s)) => items.iter().any(|lit| &**lit == *s),
+                    // `in` is strict-equality membership: a non-string (or
+                    // missing) needle never equals a string literal.
+                    _ => false,
+                };
+                Some(found)
             }
+            FastPredicate::AllOf(preds) => {
+                for p in preds.iter() {
+                    if !p.evaluate_opt(item, engine)? {
+                        return Some(false);
+                    }
+                }
+                Some(true)
+            }
+            FastPredicate::AnyOf(preds) => {
+                for p in preds.iter() {
+                    if p.evaluate_opt(item, engine)? {
+                        return Some(true);
+                    }
+                }
+                Some(false)
+            }
+            FastPredicate::Not(inner) => inner.evaluate_opt(item, engine).map(|b| !b),
         }
     }
 }

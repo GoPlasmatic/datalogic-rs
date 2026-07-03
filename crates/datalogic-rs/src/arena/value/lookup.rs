@@ -223,6 +223,28 @@ pub(crate) fn object_lookup_field<'a>(
     linear_lookup(pairs, target)
 }
 
+/// Hinted object field lookup for homogeneous-row iteration loops — the
+/// arena analog of a monomorphic inline cache. The caller keeps a pair
+/// index across rows; when consecutive rows share one key layout (the
+/// overwhelmingly common case for real data sources), every row after the
+/// first resolves in a single `key_eq`. A hint miss falls back to
+/// [`object_lookup_field`] and re-learns the position.
+#[inline(always)]
+pub(crate) fn object_lookup_field_hinted<'a>(
+    pairs: &'a [(&'a str, DataValue<'a>)],
+    target: &str,
+    hint: &mut usize,
+) -> Option<&'a DataValue<'a>> {
+    if let Some((k, v)) = pairs.get(*hint) {
+        if key_eq(k, target) {
+            return Some(v);
+        }
+    }
+    let idx = pairs.iter().position(|(k, _)| key_eq(k, target))?;
+    *hint = idx;
+    Some(&pairs[idx].1)
+}
+
 #[cfg(test)]
 mod tests {
     use bumpalo::Bump;

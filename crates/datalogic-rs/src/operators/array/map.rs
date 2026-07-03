@@ -53,6 +53,10 @@ pub(crate) fn evaluate_map<'a>(
         if let Some(result) = map_arith_var_lit_fast_path(&src, body, arena) {
             return Ok(result);
         }
+
+        if let Some(result) = map_arith_var_var_fast_path(&src, body, arena) {
+            return Ok(result);
+        }
     }
 
     map_general(&src, body, ctx, engine, arena)
@@ -183,6 +187,140 @@ fn map_arith_var_lit_int<'a>(
         results.push(DataValue::Number(NumberValue::Integer(r)));
     }
     Some(arena.alloc(DataValue::Array(results.into_bump_slice())))
+}
+
+/// Detect a `{op: [{var: a}, {var: b}]}` body — both plain scope-0 vars —
+/// and fold the iteration into a tight two-field-extract loop, the var⊗var
+/// sibling of [`map_arith_var_lit_fast_path`]. Covers the pervasive
+/// line-total shape `{"*": [{var: "unit_price"}, {var: "qty"}]}`.
+///
+/// Only `Number` operands are handled; any missing field or non-numeric
+/// value abandons the fast path (dropping the partial results in the
+/// arena) so the general path re-runs with full coercion semantics.
+#[inline]
+fn map_arith_var_var_fast_path<'a>(
+    src: &IterSrc<'a>,
+    body: &'a CompiledNode,
+    arena: &'a Bump,
+) -> Option<&'a DataValue<'a>> {
+    let CompiledNode::BuiltinOperator { opcode, args, .. } = body else {
+        return None;
+    };
+    if args.len() != 2 {
+        return None;
+    }
+    let opcode = *opcode;
+    if !matches!(opcode, OpCode::Add | OpCode::Subtract | OpCode::Multiply) {
+        return None;
+    }
+
+    let (a_segs, b_segs) = match (&args[0], &args[1]) {
+        (
+            CompiledNode::Var {
+                scope_level: 0,
+                segments: a_segments,
+                reduce_hint: ReduceHint::None,
+                metadata_hint: MetadataHint::None,
+                default_value: None,
+                ..
+            },
+            CompiledNode::Var {
+                scope_level: 0,
+                segments: b_segments,
+                reduce_hint: ReduceHint::None,
+                metadata_hint: MetadataHint::None,
+                default_value: None,
+                ..
+            },
+        ) => (a_segments.as_ref(), b_segments.as_ref()),
+        _ => return None,
+    };
+
+    let len = src.len();
+    let mut a_field = FieldCursor::new(a_segs);
+    let mut b_field = FieldCursor::new(b_segs);
+
+    // Integer pass. Aborts (without committing results) on the first
+    // overflow or non-integer operand — the f64 pass below takes over, and
+    // `NumberValue::from_f64`'s whole-value canonicalization keeps the two
+    // passes' outputs identical where they overlap.
+    'int_pass: {
+        let mut results = bvec::<DataValue<'a>>(arena, len);
+        for i in 0..len {
+            let item = src.get(i);
+            let a = a_field.resolve(item)?;
+            let b = b_field.resolve(item)?;
+            let (Some(ia), Some(ib)) = (a.as_i64(), b.as_i64()) else {
+                break 'int_pass;
+            };
+            let r = match opcode {
+                OpCode::Add => ia.checked_add(ib),
+                OpCode::Subtract => ia.checked_sub(ib),
+                OpCode::Multiply => ia.checked_mul(ib),
+                _ => unreachable!(),
+            };
+            let Some(r) = r else { break 'int_pass };
+            results.push(DataValue::Number(NumberValue::Integer(r)));
+        }
+        return Some(arena.alloc(DataValue::Array(results.into_bump_slice())));
+    }
+
+    // f64 pass — still Numbers only; anything else falls to the general path.
+    let mut results = bvec::<DataValue<'a>>(arena, len);
+    for i in 0..len {
+        let item = src.get(i);
+        let a_f = a_field.resolve(item)?.as_f64()?;
+        let b_f = b_field.resolve(item)?.as_f64()?;
+        let r = match opcode {
+            OpCode::Add => a_f + b_f,
+            OpCode::Subtract => a_f - b_f,
+            OpCode::Multiply => a_f * b_f,
+            _ => unreachable!(),
+        };
+        results.push(DataValue::Number(NumberValue::from_f64(r)));
+    }
+    Some(arena.alloc(DataValue::Array(results.into_bump_slice())))
+}
+
+/// Per-loop resolver for a scope-0 var path against successive row items.
+/// Single object-key paths (the dominant row shape) carry a remembered pair
+/// index across rows — see `object_lookup_field_hinted` — so homogeneous
+/// rows resolve in one key compare after the first. Everything else
+/// delegates to the general segment traversal.
+struct FieldCursor<'n> {
+    segments: &'n [PathSegment],
+    /// Key of a single-`Field`/`FieldOrIndex` segment path, when applicable.
+    single_key: Option<&'n str>,
+    /// Last hit index for the hinted lookup.
+    hint: usize,
+}
+
+impl<'n> FieldCursor<'n> {
+    #[inline]
+    fn new(segments: &'n [PathSegment]) -> Self {
+        let single_key = match segments {
+            [PathSegment::Field(k)] => Some(k.as_ref()),
+            [PathSegment::FieldOrIndex(k, _)] => Some(k.as_ref()),
+            _ => None,
+        };
+        Self {
+            segments,
+            single_key,
+            hint: 0,
+        }
+    }
+
+    #[inline(always)]
+    fn resolve<'a>(&mut self, item: &'a DataValue<'a>) -> Option<&'a DataValue<'a>> {
+        if let (Some(key), DataValue::Object(pairs)) = (self.single_key, item) {
+            return crate::arena::value::object_lookup_field_hinted(pairs, key, &mut self.hint);
+        }
+        if self.segments.is_empty() {
+            Some(item)
+        } else {
+            crate::arena::value::traverse_segments(item, self.segments)
+        }
+    }
 }
 
 /// Body fast path: `var` body with simple shape — identity (empty segments)

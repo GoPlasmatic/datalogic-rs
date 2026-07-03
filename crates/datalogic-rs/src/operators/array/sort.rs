@@ -96,6 +96,37 @@ fn sort_direction<'a>(
 #[inline]
 fn sort_no_extractor<'a>(src: &IterSrc<'a>, ascending: bool, arena: &'a Bump) -> &'a DataValue<'a> {
     let len = src.len();
+
+    // All-numeric fast path: sort scalar `(key, index)` pairs instead of
+    // driving `compare_values` through an index indirection per comparison.
+    // The index tiebreaker reproduces the stable sort's equal-key order, so
+    // the output is identical to the general path's.
+    if src.0.iter().all(|v| matches!(v, DataValue::Number(_))) {
+        let mut keyed = bvec::<(f64, u32)>(arena, len);
+        keyed.extend(src.0.iter().enumerate().map(|(i, v)| {
+            let f = match v {
+                DataValue::Number(n) => n.as_f64(),
+                _ => unreachable!(),
+            };
+            // Collapse -0.0 to 0.0 so `total_cmp` can't order the two zero
+            // representations, keeping zero-keyed ties on the index
+            // tiebreaker exactly like the stable path.
+            (if f == 0.0 { 0.0 } else { f }, i as u32)
+        }));
+        keyed.sort_unstable_by(|(ka, ia), (kb, ib)| {
+            // `total_cmp` keeps the comparator a total order even for NaN
+            // keys (which JSON data can't contain anyway — pdqsort panics
+            // on inconsistent comparators, so `partial_cmp` is off the
+            // table). Ties break by input position, reproducing the stable
+            // sort's equal-key order.
+            let cmp = ka.total_cmp(kb);
+            let cmp = if ascending { cmp } else { cmp.reverse() };
+            cmp.then(ia.cmp(ib))
+        });
+        let slice = arena.alloc_slice_fill_iter(keyed.iter().map(|&(_, i)| *src.get(i as usize)));
+        return arena.alloc(DataValue::Array(slice));
+    }
+
     let mut indices = bvec::<usize>(arena, len);
     indices.extend(0..len);
     indices.sort_by(|&a, &b| {
