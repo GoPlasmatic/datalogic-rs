@@ -19,6 +19,11 @@ import ReactDOM from 'react-dom/client';
 
 // Import styles - include all component CSS (but NOT index.css which has global styles)
 import '@xyflow/react/dist/style.css';
+// theme.css is the Signal Board token layer (--sig-*, --font-*, --ink, --surface,
+// …). It is fully scoped to `.logic-editor`, so — unlike index.css — it is safe to
+// bundle here: it defines the tokens the component CSS below consumes without
+// leaking any global styles into the host page. Must precede the component CSS.
+import '../components/logic-editor/styles/theme.css';
 // NOTE: index.css is NOT imported here because it has global styles that affect the entire page
 import '../components/logic-editor/styles/nodes.css';
 import '../components/logic-editor/LogicEditor.css';
