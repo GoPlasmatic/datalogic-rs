@@ -287,6 +287,12 @@ export function applyTreeLayout(
   // slack — the single biggest win for "minimum connection length".
   centerParentsOnChildren(g, nodes, childrenMap);
 
+  // Post-process 3: repack the depth (X) axis by real per-node widths so every
+  // parent->child connector spans exactly ranksep, eliminating the per-rank
+  // max-width slack that Dagre's column model adds to connectors from narrow
+  // nodes. Touches X only (Y is owned by the two passes above).
+  tightenDepthAxis(g, nodes, childrenMap, rankdir);
+
   // Apply the calculated positions and dimensions to nodes
   return nodes.map((node) => {
     const nodeWithPosition = g.node(node.id);
@@ -559,6 +565,47 @@ function centerParentsOnChildren(
       }
     }
   }
+}
+
+// Pack the depth (X) axis by real per-node widths: walk the tree from each root
+// and place every child so its inner (connector-facing) edge sits exactly
+// ranksep from the parent's inner edge. This makes every parent->child connector
+// span exactly ranksep regardless of sibling widths, replacing Dagre's column
+// model where a rank reserves the widest node's width and centres everyone on it
+// (which trails narrow nodes with that wide sibling's slack on both sides).
+//
+// Y is left untouched. Overlap-free for a tree: within an ancestor chain X is
+// strictly monotonic (>= ranksep gap); any two unrelated nodes live in the
+// disjoint Y bands of distinct children of their lowest common ancestor, which
+// dagre + fixChildOrdering keep contiguous.
+function tightenDepthAxis(
+  g: DagreGraph,
+  nodes: LogicNode[],
+  childrenMap: Map<string, string[]>,
+  rankdir: 'LR' | 'RL',
+): void {
+  const ranksep = DAGRE_OPTIONS.rankSep;
+  const dir = rankdir === 'RL' ? -1 : 1; // children sit left (RL) or right (LR)
+
+  const parentOf = new Map<string, string>();
+  for (const [parent, kids] of childrenMap) {
+    for (const kid of kids) parentOf.set(kid, parent);
+  }
+  const roots = nodes.filter((n) => !parentOf.has(n.id)).map((n) => n.id);
+
+  const visited = new Set<string>(); // guard against a malformed non-tree cycle
+  const place = (parentId: string): void => {
+    if (visited.has(parentId)) return;
+    visited.add(parentId);
+    const parent = g.node(parentId) as DagreNode;
+    for (const kid of childrenMap.get(parentId) ?? []) {
+      const child = g.node(kid) as DagreNode;
+      // RL: child.right = parent.left - ranksep; LR: child.left = parent.right + ranksep
+      child.x = parent.x + dir * (parent.width / 2 + ranksep + child.width / 2);
+      place(kid);
+    }
+  };
+  for (const rootId of roots) place(rootId); // roots keep their dagre X as anchor
 }
 
 // Build edges from node parent relationships
