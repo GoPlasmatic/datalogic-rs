@@ -1,7 +1,6 @@
 import { memo } from 'react';
 import type { LiteralNodeData } from '../types';
-import { CATEGORY_COLORS } from '../types';
-import { LITERAL_TYPE_ICONS, Icon } from '../utils/icons';
+import { signalForLiteral, signalVar } from '../utils/signal';
 import { formatValue } from '../utils/formatting';
 import { useDebugClassName } from '../hooks';
 import { NodeInputHandles, NodeDebugBubble } from './shared';
@@ -12,32 +11,37 @@ interface LiteralNodeProps {
   selected?: boolean;
 }
 
+/** Short type tag shown on the folded-corner constant tag (Signal Board). */
+const LITERAL_PTAG: Record<LiteralNodeData['valueType'], string> = {
+  number: 'num',
+  string: 'str',
+  boolean: 'bool',
+  array: 'arr',
+  null: 'null',
+};
+
 export const LiteralNode = memo(function LiteralNode({
   id,
   data,
   selected,
 }: LiteralNodeProps) {
-  const color = CATEGORY_COLORS.literal;
-  const typeIcon = LITERAL_TYPE_ICONS[data.valueType];
+  const color = signalVar(signalForLiteral(data.valueType));
   const debugClassName = useDebugClassName(id);
 
+  // "shape = role": a bare constant renders as a folded-corner tag, tinted by
+  // its value type (the signal it carries), value in mono.
   return (
     <div
-      className={`dl-node literal-node ${selected ? 'selected' : ''} ${debugClassName}`}
-      style={{
-        borderColor: color,
-        backgroundColor: `${color}20`,
-      }}
+      className={`dl-node literal-node dl-shape-literal ${selected ? 'selected' : ''} ${debugClassName}`}
+      style={{ ['--dl-sig']: color } as React.CSSProperties}
     >
       <NodeDebugBubble nodeId={id} position="top" />
       <NodeInputHandles nodeId={id} color={color} />
 
-      <div className="literal-node-content">
-        <span className="literal-type-icon" style={{ color }}>
-          <Icon name={typeIcon} size={14} />
-        </span>
+      <span className="dl-lit">
+        <span className="dl-lit-ptag">{LITERAL_PTAG[data.valueType]}</span>
         <span className="literal-value">{formatValue(data.value)}</span>
-      </div>
+      </span>
     </div>
   );
 });

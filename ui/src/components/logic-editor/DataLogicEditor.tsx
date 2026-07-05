@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useCallback, useRef } from 'react';
+import { useEffect, useMemo, useCallback, useRef, useState } from 'react';
 import {
   ReactFlow,
   Background,
@@ -6,6 +6,7 @@ import {
   useNodesState,
   useEdgesState,
   ReactFlowProvider,
+  MarkerType,
 } from '@xyflow/react';
 import { Workflow } from 'lucide-react';
 import './styles/reactflow-base.css';
@@ -18,7 +19,7 @@ import { useContextMenu } from './hooks/useContextMenu';
 import { getHiddenNodeIds } from './utils/visibility';
 import { buildEdgesFromNodes } from './utils/edge-builder';
 import { nodesToJsonLogic } from './utils/nodes-to-jsonlogic';
-import { EvaluationContext, DebuggerProvider, ConnectedHandlesProvider, EditorProvider } from './context';
+import { EvaluationContext, DebuggerProvider, ConnectedHandlesProvider, EditorProvider, DirectionContext, useDirection, type FlowDirection } from './context';
 import { useEditorContext } from './context/editor';
 import { DebuggerControls } from './debugger-controls';
 import { PropertiesPanel } from './properties-panel';
@@ -33,6 +34,15 @@ import './styles/nodes.css';
 import './LogicEditor.css';
 
 const emptyResults: EvaluationResultsMap = new Map();
+
+// Producer(child)->consumer(parent) edges: the arrowhead sits at the target end
+// and points right, toward the result. Shared by the read-only and editable canvases.
+const DEFAULT_EDGE_MARKER = {
+  type: MarkerType.ArrowClosed,
+  width: 16,
+  height: 16,
+  color: '#8098b0',
+} as const;
 
 function EmptyState({
   exampleSuggestions,
@@ -90,6 +100,7 @@ function ReadOnlyEditorInner({
   onSelectExample?: (name: string) => void;
 }) {
   const bgColor = theme === 'dark' ? '#404040' : '#cccccc';
+  const direction = useDirection();
 
   const [nodes, , onNodesChange] = useNodesState<LogicNode>(initialNodes);
   const [, , onEdgesChange] = useEdgesState<LogicEdge>(initialEdges);
@@ -103,7 +114,7 @@ function ReadOnlyEditorInner({
     [nodes, hiddenNodeIds]
   );
 
-  const currentEdges = useMemo(() => buildEdgesFromNodes(nodes), [nodes]);
+  const currentEdges = useMemo(() => buildEdgesFromNodes(nodes, direction), [nodes, direction]);
 
   const visibleEdges = useMemo(
     () =>
@@ -138,6 +149,7 @@ function ReadOnlyEditorInner({
             defaultEdgeOptions={{
               type: 'default',
               animated: false,
+              markerEnd: DEFAULT_EDGE_MARKER,
             }}
           >
             <Background color={bgColor} gap={20} size={1} />
@@ -181,6 +193,7 @@ function EditableEditorInner({
 }) {
   // Background dot colors based on theme
   const bgColor = theme === 'dark' ? '#404040' : '#cccccc';
+  const direction = useDirection();
 
   // Context menu hook
   const {
@@ -234,7 +247,7 @@ function EditableEditorInner({
     [nodes, hiddenNodeIds]
   );
 
-  const currentEdges = useMemo(() => buildEdgesFromNodes(nodes), [nodes]);
+  const currentEdges = useMemo(() => buildEdgesFromNodes(nodes, direction), [nodes, direction]);
 
   const visibleEdges = useMemo(
     () =>
@@ -271,6 +284,7 @@ function EditableEditorInner({
             defaultEdgeOptions={{
               type: 'default',
               animated: false,
+              markerEnd: DEFAULT_EDGE_MARKER,
             }}
             onNodeContextMenu={handleNodeContextMenu}
             onPaneContextMenu={handlePaneContextMenu}
@@ -330,6 +344,10 @@ export function DataLogicEditor({
   // Determine if we're in edit mode
   const isEditMode = editable;
 
+  // Diagram direction — 'flow' (data flow, root on the right) by default, or
+  // 'hierarchy' (root on the left, JSON nesting order). Toggled from the toolbar.
+  const [direction, setDirection] = useState<FlowDirection>('flow');
+
   // Theme handling - use prop override or system preference
   const systemTheme = useSystemTheme();
   const resolvedTheme = themeProp ?? systemTheme;
@@ -349,11 +367,12 @@ export function DataLogicEditor({
     evaluateWithTrace: evalEnabled && wasmReady ? evaluateWithTrace : undefined,
     data: evalEnabled ? data : undefined,
     templating,
+    direction,
   });
 
   // Use a combination of node count, edge count, and root node ID as key
   // This ensures the component remounts when the expression structure changes
-  const expressionKey = `${editor.nodes.length}-${editor.edges.length}-${editor.nodes[0]?.id ?? 'empty'}`;
+  const expressionKey = `${editor.nodes.length}-${editor.edges.length}-${editor.nodes[0]?.id ?? 'empty'}-${direction}`;
 
   // Check if debugger should be active (trace mode with steps)
   const hasDebugger = evalEnabled && editor.usingTraceMode && editor.steps.length > 0;
@@ -405,19 +424,21 @@ export function DataLogicEditor({
   // --- Read-only mode: skip EditorProvider entirely ---
   if (!isEditMode) {
     const readOnlyInner = (
-      <ReadOnlyEditorInner
-        key={expressionKey}
-        initialNodes={editor.nodes}
-        initialEdges={editor.edges}
-        theme={resolvedTheme}
-        showDebugger={false}
-        exampleSuggestions={exampleSuggestions}
-        onSelectExample={onSelectExample}
-      />
+      <DirectionContext.Provider value={direction}>
+        <ReadOnlyEditorInner
+          key={expressionKey}
+          initialNodes={editor.nodes}
+          initialEdges={editor.edges}
+          theme={resolvedTheme}
+          showDebugger={false}
+          exampleSuggestions={exampleSuggestions}
+          onSelectExample={onSelectExample}
+        />
+      </DirectionContext.Provider>
     );
 
     return (
-      <div className={editorClassName} data-theme={resolvedTheme}>
+      <div className={editorClassName} data-theme={resolvedTheme} data-direction={direction}>
         {hasDebugger ? (
           <DebuggerProvider
             steps={editor.steps}
@@ -429,6 +450,8 @@ export function DataLogicEditor({
               hasDebugger={hasDebugger}
               templating={templating}
               onTemplatingChange={onTemplatingChange}
+              direction={direction}
+              onDirectionChange={setDirection}
             />
             <div className="logic-editor-body">
               <div className="logic-editor-main">
@@ -443,6 +466,8 @@ export function DataLogicEditor({
               hasDebugger={hasDebugger}
               templating={templating}
               onTemplatingChange={onTemplatingChange}
+              direction={direction}
+              onDirectionChange={setDirection}
             />
             <div className="logic-editor-body">
               <div className="logic-editor-main">
@@ -457,16 +482,18 @@ export function DataLogicEditor({
 
   // --- Edit mode: full EditorProvider with all features ---
   const editableInner = (
-    <EditableEditorInner
-      key={expressionKey}
-      initialNodes={editor.nodes}
-      initialEdges={editor.edges}
-      evaluationResults={emptyResults}
-      theme={resolvedTheme}
-      showDebugger={false}
-      exampleSuggestions={exampleSuggestions}
-      onSelectExample={onSelectExample}
-    />
+    <DirectionContext.Provider value={direction}>
+      <EditableEditorInner
+        key={expressionKey}
+        initialNodes={editor.nodes}
+        initialEdges={editor.edges}
+        evaluationResults={emptyResults}
+        theme={resolvedTheme}
+        showDebugger={false}
+        exampleSuggestions={exampleSuggestions}
+        onSelectExample={onSelectExample}
+      />
+    </DirectionContext.Provider>
   );
 
   return (
@@ -476,7 +503,7 @@ export function DataLogicEditor({
       onNodesChange={handleNodesChange}
     >
       <KeyboardHandler />
-      <div className={editorClassName} data-theme={resolvedTheme}>
+      <div className={editorClassName} data-theme={resolvedTheme} data-direction={direction}>
         {hasDebugger ? (
           <DebuggerProvider
             steps={editor.steps}
@@ -488,6 +515,8 @@ export function DataLogicEditor({
               hasDebugger={hasDebugger}
               templating={templating}
               onTemplatingChange={onTemplatingChange}
+              direction={direction}
+              onDirectionChange={setDirection}
             />
             <div className="logic-editor-body">
               <div className="logic-editor-main">
@@ -503,6 +532,8 @@ export function DataLogicEditor({
               hasDebugger={hasDebugger}
               templating={templating}
               onTemplatingChange={onTemplatingChange}
+              direction={direction}
+              onDirectionChange={setDirection}
             />
             <div className="logic-editor-body">
               <div className="logic-editor-main">

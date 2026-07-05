@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { CellData } from '../types';
 import { HANDLE_POSITIONS } from '../constants';
+import { useIsFlowDirection } from '../context';
 
 interface CellHandlesProps {
   cell: CellData;
@@ -18,14 +19,19 @@ export const CellHandles = memo(function CellHandles({
   color,
 }: CellHandlesProps) {
   const cellIndex = cell.index;
+  // Child/operand handles sit opposite the node's parent-link: on the LEFT in
+  // 'flow' (children feed in from the left), on the RIGHT in 'hierarchy'.
+  const isFlow = useIsFlowDirection();
+  const handleType = isFlow ? 'target' : 'source';
+  const handlePosition = isFlow ? Position.Left : Position.Right;
 
   return (
     <>
       {/* Condition branch handle - positioned at 30% of row height */}
       {cell.conditionBranchId && (
         <Handle
-          type="source"
-          position={Position.Right}
+          type={handleType}
+          position={handlePosition}
           id={`branch-${cellIndex}-cond`}
           className="cell-handle condition-handle"
           style={{ background: color, top: `${HANDLE_POSITIONS.conditionTop}px` }}
@@ -34,8 +40,8 @@ export const CellHandles = memo(function CellHandles({
       {/* Then/Yes branch handle - positioned at 70% of row height */}
       {cell.thenBranchId && (
         <Handle
-          type="source"
-          position={Position.Right}
+          type={handleType}
+          position={handlePosition}
           id={`branch-${cellIndex}-then`}
           className="cell-handle then-handle"
           style={{ background: '#22C55E', top: `${HANDLE_POSITIONS.thenTop}px` }}
@@ -44,8 +50,8 @@ export const CellHandles = memo(function CellHandles({
       {/* Standard single branch handle - centered vertically */}
       {cell.branchId && !cell.conditionBranchId && !cell.thenBranchId && (
         <Handle
-          type="source"
-          position={Position.Right}
+          type={handleType}
+          position={handlePosition}
           id={`branch-${cellIndex}`}
           className="cell-handle"
           style={{ background: color, top: `${HANDLE_POSITIONS.centeredTop}px` }}

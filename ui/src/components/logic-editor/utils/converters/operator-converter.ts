@@ -9,6 +9,7 @@ import { getCategoryIcon } from '../../config/categories';
 import { generateExpressionText, generateArgSummary, formatOperandLabel } from '../formatting';
 import { isSimpleOperand } from '../type-helpers';
 import { createBranchEdge, createArgEdge } from '../node-factory';
+import { inlineVarIndices } from '../inline-vars';
 
 // Unary operators for special handling
 const UNARY_OPERATORS = ['!', '!!'];
@@ -32,13 +33,19 @@ export function convertOperator(
   // Get iterator argument icons if applicable
   const iteratorIcons = ITERATOR_ARG_ICONS[operator];
 
+  // Signal Board: static var/val reads collapse into inline pills instead of their
+  // own child nodes (capped per operator — see inline-vars). AND / OR / NOT are the
+  // exception: they always wire every operand out so the gate silhouette renders.
+  const forceChildren = category === 'logical';
+  const inlineVarIdx = forceChildren ? new Set<number>() : inlineVarIndices(operandArray);
+
   operandArray.forEach((operand, idx) => {
     // Determine the cell icon - use type-based icon, but override with iterator icons for iterators
     const typeIcon = getOperandTypeIcon(operand);
     const cellIcon = iteratorIcons ? iteratorIcons[idx] || typeIcon : typeIcon;
 
-    // Check if operand can be displayed inline (simple literal or variable)
-    if (isSimpleOperand(operand)) {
+    // Display inline when it's a simple literal or a collapsible static var read.
+    if (!forceChildren && (isSimpleOperand(operand) || inlineVarIdx.has(idx))) {
       cells.push({
         type: 'inline',
         label: formatOperandLabel(operand),

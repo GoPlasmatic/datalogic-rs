@@ -2,197 +2,226 @@
   box-sizing: border-box;
 }
 
+/*
+ * DataLogic Studio — app shell tokens (Signal Board)
+ * ============================================================
+ * These mirror the editor's own tokens (see
+ * src/components/logic-editor/styles/theme.css) but live at :root so the
+ * Studio *chrome* — header, panels, debug pane, buttons — sits on the exact
+ * same "board" substrate as the .logic-editor canvas it wraps.
+ *
+ * The board tokens (--board / --ink / --hairline / --accent / --sig-*) are the
+ * primary axis. The legacy aliases below (--bg-primary, --syntax-*, --debug-*,
+ * --node-*) are kept and mapped onto the board so existing component CSS keeps
+ * working unchanged.
+ */
 :root {
-  /* Light theme (default) — zinc-leaning neutrals */
-  --bg-primary: #fafafa;
-  --bg-secondary: #ffffff;
-  --bg-tertiary: #f6f6f7;
-  --bg-hover: #f0f0f1;
-  --bg-active: #e8e8ea;
+  /* ---- Fonts ------------------------------------------------------ */
+  --font-ui: 'Space Grotesk', ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Code',
+    'Consolas', monospace;
 
-  --text-primary: #18181b;
-  --text-secondary: #3f3f46;
-  --text-tertiary: #71717a;
-  --text-muted: #a1a1aa;
-  --text-placeholder: #c4c4c7;
+  /* ---- Substrate — cool paper (light default) -------------------- */
+  --board: #eef1f5;
+  --board-grid: rgba(20, 40, 70, 0.05);
+  --surface: #ffffff;
+  --surface-2: #f6f8fb;
+  --chip: #ffffff;
+  --hairline: #d6dde6;
+  --hairline-2: #e6ebf1;
 
-  --border-primary: rgba(0, 0, 0, 0.10);
-  --border-secondary: rgba(0, 0, 0, 0.06);
-  --border-light: rgba(0, 0, 0, 0.04);
+  --ink: #0e1826;
+  --ink-2: #33475e;
+  --muted: #5b6a7d;
+  --faint: #9aa9ba; /* NON-TEXT only: idle wires, dot-grid, dashed slots */
 
-  --accent-blue: #6366f1;
-  --accent-blue-light: #e0e7ff;
-  --accent-blue-hover: #4f46e5;
+  /* ---- Structural accent — used ONLY for selection/root/focus ----- */
+  --accent: #4b56d6;
+  --accent-soft: #e7e9fb;
+  --accent-hover: #3a44c0;
 
-  --accent-amber: #f59e0b;
-  --accent-amber-light: #fef3c7;
+  /* ---- SIGNAL palette — colour = the value that flows OUT --------- */
+  --sig-bool-true: #1a7f37;
+  --sig-bool-false: #cf222e;
+  --sig-bool-rest: #57708a;
+  --sig-number: #0959c0;
+  --sig-string: #8a5a00;
+  --sig-collection: #8250df;
+  --sig-data: #1b7c83;
+  --sig-temporal: #bf3989;
+  --sig-null: #6e7781;
 
-  /* Status colors */
-  --success-bg: #ecfdf5;
-  --success-text: #047857;
-  --success-border: #a7f3d0;
+  --sig-bool-true-bg: rgba(26, 127, 55, 0.10);
+  --sig-bool-false-bg: rgba(207, 34, 46, 0.10);
+  --sig-number-bg: rgba(9, 105, 218, 0.10);
+  --sig-string-bg: rgba(154, 103, 0, 0.12);
+  --sig-collection-bg: rgba(130, 80, 223, 0.10);
+  --sig-data-bg: rgba(27, 124, 131, 0.10);
+  --sig-temporal-bg: rgba(191, 57, 137, 0.10);
+  --sig-null-bg: rgba(110, 119, 129, 0.10);
 
-  --error-bg: #fef2f2;
-  --error-bg-light: #fff7f7;
-  --error-bg-lighter: #fffafa;
-  --error-text: #dc2626;
-  --error-border: #fecaca;
-
-  --warning-bg: #fffbeb;
-  --warning-text: #b45309;
-  --warning-border: #fde68a;
-
-  /* Syntax highlighting */
-  --syntax-key: #0550ae;
-  --syntax-string: #0a3069;
-  --syntax-number: #0550ae;
-  --syntax-boolean: #cf222e;
-  --syntax-null: #6e7781;
-  --syntax-bracket: #24292f;
-  --syntax-punctuation: #24292f;
-
-  /* Node colors */
-  --node-bg: #ffffff;
-  --node-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --node-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.05);
-
-  /* Code background */
-  --code-bg: #f8f9fa;
-
-  /* Debug popover colors */
-  --debug-popover-bg: #ffffff;
-  --debug-popover-text: #1f2937;
-  --debug-popover-error-bg: #fef2f2;
-  --debug-popover-shadow: rgba(0, 0, 0, 0.15);
-  --debug-popover-value-bg: rgba(0, 0, 0, 0.05);
-  --debug-iteration-color: #b45309;
-  --debug-label-color: #6b7280;
-  --debug-border-color: rgba(0, 0, 0, 0.1);
-
-  /* Debug value type colors */
-  --debug-value-true: #059669;
-  --debug-value-false: #dc2626;
-  --debug-value-number: #2563eb;
-  --debug-value-string: #059669;
-  --debug-value-array: #7c3aed;
-  --debug-value-null: #6b7280;
-
-  /* Radius scale */
-  --radius-sm: 6px;
+  /* ---- Radius & spacing scales ----------------------------------- */
+  --radius-sm: 7px;
   --radius-md: 10px;
   --radius-lg: 14px;
 
-  /* Shadow elevation scale (layered: ambient + key) */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.10);
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-8: 32px;
 
-  /* Motion */
+  /* ---- Elevation ------------------------------------------------- */
+  --shadow-sm: 0 1px 2px rgba(16, 30, 54, 0.05);
+  --shadow-md: 0 1px 2px rgba(16, 30, 54, 0.06), 0 2px 6px rgba(16, 30, 54, 0.06);
+  --shadow-lg: 0 8px 30px rgba(16, 30, 54, 0.14), 0 2px 8px rgba(16, 30, 54, 0.08);
+
+  /* ---- Motion ---------------------------------------------------- */
   --motion-fast: 120ms;
   --motion-base: 180ms;
   --motion-slow: 260ms;
   --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* Focus ring */
-  --focus-ring: 0 0 0 2px var(--accent-blue);
+  /* ============================================================
+     LEGACY ALIASES — mapped onto the Signal Board system so existing
+     shell / debug-panel CSS keeps working. Prefer the tokens above.
+     ============================================================ */
+  --bg-primary: var(--board);
+  --bg-secondary: var(--surface);
+  --bg-tertiary: var(--surface-2);
+  --bg-hover: var(--surface-2);
+  --bg-active: var(--hairline-2);
 
-  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  --text-primary: var(--ink);
+  --text-secondary: var(--ink-2);
+  --text-tertiary: var(--muted);
+  --text-muted: var(--muted);
+  --text-placeholder: var(--faint);
+
+  --border-primary: var(--hairline);
+  --border-secondary: var(--hairline-2);
+  --border-light: var(--hairline-2);
+
+  --accent-blue: var(--accent);
+  --accent-blue-light: var(--accent-soft);
+  --accent-blue-hover: var(--accent-hover);
+
+  --accent-amber: var(--sig-string);
+  --accent-amber-light: var(--sig-string-bg);
+
+  --success-bg: var(--sig-bool-true-bg);
+  --success-text: var(--sig-bool-true);
+  --success-border: color-mix(in srgb, var(--sig-bool-true) 30%, transparent);
+
+  --error-bg: var(--sig-bool-false-bg);
+  --error-bg-light: color-mix(in srgb, var(--sig-bool-false) 6%, var(--surface));
+  --error-bg-lighter: color-mix(in srgb, var(--sig-bool-false) 3%, var(--surface));
+  --error-text: var(--sig-bool-false);
+  --error-border: color-mix(in srgb, var(--sig-bool-false) 30%, transparent);
+
+  --warning-bg: var(--sig-string-bg);
+  --warning-text: var(--sig-string);
+  --warning-border: color-mix(in srgb, var(--sig-string) 30%, transparent);
+
+  /* Syntax highlighting — reads as signal types */
+  --syntax-key: var(--sig-data);
+  --syntax-string: var(--sig-string);
+  --syntax-number: var(--sig-number);
+  --syntax-boolean: var(--sig-bool-false);
+  --syntax-null: var(--sig-null);
+  --syntax-bracket: var(--ink-2);
+  --syntax-punctuation: var(--muted);
+
+  --node-bg: var(--chip);
+  --node-shadow: var(--shadow-sm);
+  --node-shadow-hover: var(--shadow-md);
+
+  --code-bg: var(--surface-2);
+
+  --debug-popover-bg: var(--chip);
+  --debug-popover-text: var(--ink);
+  --debug-popover-error-bg: var(--sig-bool-false-bg);
+  --debug-popover-shadow: rgba(16, 30, 54, 0.15);
+  --debug-popover-value-bg: var(--surface-2);
+  --debug-iteration-color: var(--sig-collection);
+  --debug-label-color: var(--muted);
+  --debug-border-color: var(--hairline-2);
+
+  --debug-value-true: var(--sig-bool-true);
+  --debug-value-false: var(--sig-bool-false);
+  --debug-value-number: var(--sig-number);
+  --debug-value-string: var(--sig-string);
+  --debug-value-array: var(--sig-collection);
+  --debug-value-null: var(--sig-null);
+
+  --focus-ring: 0 0 0 2px var(--accent);
+
+  font-family: var(--font-ui);
   line-height: 1.5;
   font-weight: 400;
   color-scheme: light dark;
-  color: var(--text-primary);
-  background-color: var(--bg-primary);
+  color: var(--ink);
+  background-color: var(--board);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: 'cv11', 'ss01';
 }
 
-[data-theme="dark"] {
-  --bg-primary: #0c0c0d;
-  --bg-secondary: #161618;
-  --bg-tertiary: #1c1c1f;
-  --bg-hover: #242427;
-  --bg-active: #2c2c30;
+/* ============================================================
+   DARK — "lit logic board"
+   ============================================================ */
+:root[data-theme="dark"] {
+  --board: #0a0f16;
+  --board-grid: rgba(120, 170, 255, 0.06);
+  --surface: #10161f;
+  --surface-2: #141b26;
+  --chip: #161d28;
+  --hairline: #263140;
+  --hairline-2: #1d2632;
 
-  --text-primary: #fafafa;
-  --text-secondary: #d4d4d8;
-  --text-tertiary: #a1a1aa;
-  --text-muted: #71717a;
-  --text-placeholder: #52525b;
+  --ink: #e6edf5;
+  --ink-2: #b3c1d1;
+  --muted: #8a9cb0;
+  --faint: #566172;
 
-  --border-primary: rgba(255, 255, 255, 0.10);
-  --border-secondary: rgba(255, 255, 255, 0.06);
-  --border-light: rgba(255, 255, 255, 0.04);
+  --accent: #7c86f5;
+  --accent-soft: #1b2140;
+  --accent-hover: #9aa2f8;
 
-  --accent-blue: #818cf8;
-  --accent-blue-light: #1e1b4b;
-  --accent-blue-hover: #a5b4fc;
+  --sig-bool-true: #3fb950;
+  --sig-bool-false: #f85149;
+  --sig-bool-rest: #8098b0;
+  --sig-number: #58a6ff;
+  --sig-string: #e3b341;
+  --sig-collection: #bc8cff;
+  --sig-data: #39c5cf;
+  --sig-temporal: #db61a2;
+  --sig-null: #8b949e;
 
-  --accent-amber: #fbbf24;
-  --accent-amber-light: #422006;
+  --sig-bool-true-bg: rgba(63, 185, 80, 0.13);
+  --sig-bool-false-bg: rgba(248, 81, 73, 0.13);
+  --sig-number-bg: rgba(88, 166, 255, 0.13);
+  --sig-string-bg: rgba(227, 179, 65, 0.14);
+  --sig-collection-bg: rgba(188, 140, 255, 0.13);
+  --sig-data-bg: rgba(57, 197, 207, 0.13);
+  --sig-temporal-bg: rgba(219, 97, 162, 0.14);
+  --sig-null-bg: rgba(139, 148, 158, 0.14);
 
-  /* Status colors - darker variants */
-  --success-bg: #052e1c;
-  --success-text: #6ee7b7;
-  --success-border: #065f46;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.6), 0 2px 10px rgba(0, 0, 0, 0.4);
 
-  --error-bg: #2c0a0c;
-  --error-bg-light: #240a0c;
-  --error-bg-lighter: #1a0a0c;
-  --error-text: #fca5a5;
-  --error-border: #7f1d1d;
+  --debug-popover-shadow: rgba(0, 0, 0, 0.5);
 
-  --warning-bg: #2a1c05;
-  --warning-text: #fcd34d;
-  --warning-border: #78350f;
-
-  /* Syntax highlighting - dark theme */
-  --syntax-key: #79c0ff;
-  --syntax-string: #a5d6ff;
-  --syntax-number: #79c0ff;
-  --syntax-boolean: #ff7b72;
-  --syntax-null: #8b949e;
-  --syntax-bracket: #c9d1d9;
-  --syntax-punctuation: #c9d1d9;
-
-  /* Node colors */
-  --node-bg: #18181b;
-  --node-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
-  --node-shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
-
-  /* Code background */
-  --code-bg: #1f1f1f;
-
-  /* Debug popover colors */
-  --debug-popover-bg: #1f2937;
-  --debug-popover-text: #f3f4f6;
-  --debug-popover-error-bg: #7f1d1d;
-  --debug-popover-shadow: rgba(0, 0, 0, 0.4);
-  --debug-popover-value-bg: rgba(0, 0, 0, 0.2);
-  --debug-iteration-color: #fbbf24;
-  --debug-label-color: #9ca3af;
-  --debug-border-color: rgba(255, 255, 255, 0.1);
-
-  /* Debug value type colors */
-  --debug-value-true: #86efac;
-  --debug-value-false: #fca5a5;
-  --debug-value-number: #93c5fd;
-  --debug-value-string: #86efac;
-  --debug-value-array: #d8b4fe;
-  --debug-value-null: #9ca3af;
-
-  /* Dark mode shadow tweaks */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.6);
+  color-scheme: dark;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  font-family: var(--font-ui);
+  background: var(--board);
+  color: var(--ink);
 }
 
 #root {

@@ -12,6 +12,8 @@ import { createBranchEdge, createArgEdge } from '../../node-factory';
 import { findMatchingChild, getNextUnusedChild } from '../child-matching';
 import { determineNodeType } from '../node-type';
 
+type BranchType = 'yes' | 'no' | 'branch' | 'condition';
+
 // Forward declaration for processExpressionNode and createFallbackNode
 type ProcessExpressionNodeFn = (
   exprNode: ExpressionNode,
@@ -28,8 +30,10 @@ type CreateFallbackNodeFn = (
 ) => void;
 
 /**
- * Create a VerticalCellNode for if/else expressions from trace data
- * Each condition and then value gets its own row for handle clarity
+ * Create a CHAIN of decision-diamond nodes for an if/then/else from trace data —
+ * one diamond per condition (when / then / else), the else input chaining into
+ * the next diamond for each else-if. The first diamond keeps the trace node id so
+ * its debug mapping is preserved.
  */
 export function createIfElseNodeFromTrace(
   nodeId: string,
@@ -45,194 +49,120 @@ export function createIfElseNodeFromTrace(
   const ifArgs = obj[operator] as JsonLogicValue[];
   const usedChildIndices = new Set<number>();
 
-  const cells: CellData[] = [];
-  let cellIndex = 0;
-
-  // Parse the if-else chain
-  let idx = 0;
-  while (idx < ifArgs.length - 1) {
-    const condition = ifArgs[idx];
-    const thenValue = ifArgs[idx + 1];
-    const isFirst = idx === 0;
-
-    // Process condition branch
-    let conditionBranchId: string;
-    const condMatch = findMatchingChild(condition, children, usedChildIndices);
-    if (condMatch) {
-      usedChildIndices.add(condMatch.index);
-      conditionBranchId = processExpressionNode(condMatch.child, context, {
-        parentId: nodeId,
-        argIndex: idx,
-        branchType: 'condition',
-      });
-    } else {
-      // Try positional matching if exact matching fails and value is complex
-      const condNodeType: NodeType = determineNodeType(condition, context.templating);
-      const nextUnused = (condNodeType !== 'literal') ? getNextUnusedChild(children, usedChildIndices) : null;
-      if (nextUnused) {
-        // Use the trace child for proper debug step mapping
-        usedChildIndices.add(nextUnused.index);
-        conditionBranchId = processExpressionNode(nextUnused.child, context, {
-          parentId: nodeId,
-          argIndex: idx,
-          branchType: 'condition',
-        }, condition); // Pass original value to preserve key ordering
-      } else {
-        // True fallback: create node without trace mapping
-        conditionBranchId = `${nodeId}-cond-${idx}`;
-        createFallbackNode(conditionBranchId, condition, context, {
-          parentId: nodeId,
-          argIndex: idx,
-          branchType: 'condition',
-        });
-      }
+  // Resolve one arg to a child node via trace matching (exact, then positional,
+  // then a fallback node), returning its id.
+  const processArg = (
+    value: JsonLogicValue,
+    parentId: string,
+    argIndex: number,
+    branchType: BranchType,
+  ): string => {
+    const match = findMatchingChild(value, children, usedChildIndices);
+    if (match) {
+      usedChildIndices.add(match.index);
+      return processExpressionNode(match.child, context, { parentId, argIndex, branchType });
     }
+    const nodeType: NodeType = determineNodeType(value, context.templating);
+    const nextUnused = nodeType !== 'literal' ? getNextUnusedChild(children, usedChildIndices) : null;
+    if (nextUnused) {
+      usedChildIndices.add(nextUnused.index);
+      return processExpressionNode(nextUnused.child, context, { parentId, argIndex, branchType }, value);
+    }
+    const fallbackId = `${parentId}-arg${argIndex}`;
+    createFallbackNode(fallbackId, value, context, { parentId, argIndex, branchType });
+    return fallbackId;
+  };
 
-    // Create condition edge (use cellIndex to match CellHandles)
-    context.edges.push(createBranchEdge(nodeId, conditionBranchId, cellIndex));
+  // Split into (condition, then) pairs plus an optional final else.
+  const pairs: { condition: JsonLogicValue; thenValue: JsonLogicValue }[] = [];
+  for (let i = 0; i + 1 < ifArgs.length; i += 2) {
+    pairs.push({ condition: ifArgs[i], thenValue: ifArgs[i + 1] });
+  }
+  const hasFinalElse = ifArgs.length % 2 === 1;
+  const elseValue = hasFinalElse ? ifArgs[ifArgs.length - 1] : undefined;
 
-    // Create cell for condition (If or Else If)
-    const conditionText = generateExpressionText(condition, 40);
+  // First diamond keeps the trace node id (debug mapping); the rest get fresh ids.
+  const diamondIds = pairs.map((_, k) => (k === 0 ? nodeId : `${nodeId}-elif-${k}`));
+
+  // Process condition + then for each pair in evaluation order, then the else, so
+  // the positional trace-child matching consumes children in the original order.
+  const condIds: string[] = [];
+  const thenIds: string[] = [];
+  for (let k = 0; k < pairs.length; k++) {
+    condIds.push(processArg(pairs[k].condition, diamondIds[k], 0, 'condition'));
+    thenIds.push(processArg(pairs[k].thenValue, diamondIds[k], 1, 'yes'));
+  }
+  const elseBranchId =
+    elseValue !== undefined
+      ? processArg(elseValue, diamondIds[diamondIds.length - 1], 2, 'no')
+      : undefined;
+
+  // Build one diamond node per condition, chaining the else input to the next.
+  for (let k = 0; k < pairs.length; k++) {
+    const dId = diamondIds[k];
+    const cells: CellData[] = [];
+
     cells.push({
       type: 'branch',
       icon: 'diamond',
-      rowLabel: isFirst ? 'If' : 'Else If',
-      label: conditionText,
-      branchId: conditionBranchId,
-      index: cellIndex,
+      rowLabel: 'when',
+      label: generateExpressionText(pairs[k].condition, 40),
+      branchId: condIds[k],
+      index: 0,
     });
-    cellIndex++;
+    context.edges.push(createBranchEdge(dId, condIds[k], 0));
 
-    // Process then branch
-    let thenBranchId: string;
-    const thenMatch = findMatchingChild(thenValue, children, usedChildIndices);
-    if (thenMatch) {
-      usedChildIndices.add(thenMatch.index);
-      thenBranchId = processExpressionNode(thenMatch.child, context, {
-        parentId: nodeId,
-        argIndex: idx + 1,
-        branchType: 'yes',
-      });
-    } else {
-      // Try positional matching if exact matching fails and value is complex
-      const thenNodeType: NodeType = determineNodeType(thenValue, context.templating);
-      const nextUnused = (thenNodeType !== 'literal') ? getNextUnusedChild(children, usedChildIndices) : null;
-      if (nextUnused) {
-        // Use the trace child for proper debug step mapping
-        usedChildIndices.add(nextUnused.index);
-        thenBranchId = processExpressionNode(nextUnused.child, context, {
-          parentId: nodeId,
-          argIndex: idx + 1,
-          branchType: 'yes',
-        }, thenValue); // Pass original value to preserve key ordering
-      } else {
-        // True fallback: create node without trace mapping
-        thenBranchId = `${nodeId}-then-${idx}`;
-        createFallbackNode(thenBranchId, thenValue, context, {
-          parentId: nodeId,
-          argIndex: idx + 1,
-          branchType: 'yes',
-        });
-      }
-    }
-
-    // Create then edge
-    context.edges.push(createBranchEdge(nodeId, thenBranchId, cellIndex));
-
-    // Create cell for then value
-    const thenText = generateExpressionText(thenValue, 40);
     cells.push({
       type: 'branch',
       icon: 'check',
-      rowLabel: 'Then',
-      label: thenText,
-      branchId: thenBranchId,
-      index: cellIndex,
+      rowLabel: 'then',
+      label: generateExpressionText(pairs[k].thenValue, 40),
+      branchId: thenIds[k],
+      index: 1,
     });
-    cellIndex++;
+    context.edges.push(createBranchEdge(dId, thenIds[k], 1));
 
-    idx += 2;
-  }
-
-  // Handle final else (if exists)
-  const hasFinalElse = ifArgs.length % 2 === 1;
-  if (hasFinalElse) {
-    const elseValue = ifArgs[ifArgs.length - 1];
-
-    // Process else branch
-    let elseBranchId: string;
-    const elseMatch = findMatchingChild(elseValue, children, usedChildIndices);
-    if (elseMatch) {
-      usedChildIndices.add(elseMatch.index);
-      elseBranchId = processExpressionNode(elseMatch.child, context, {
-        parentId: nodeId,
-        argIndex: ifArgs.length - 1,
-        branchType: 'no',
+    const elseTarget = k < pairs.length - 1 ? diamondIds[k + 1] : elseBranchId;
+    if (elseTarget) {
+      const restArgs = ifArgs.slice((k + 1) * 2);
+      cells.push({
+        type: 'branch',
+        icon: 'x',
+        rowLabel: 'else',
+        label:
+          k < pairs.length - 1
+            ? generateExpressionText({ if: restArgs }, 40)
+            : generateExpressionText(elseValue as JsonLogicValue, 40),
+        branchId: elseTarget,
+        index: 2,
       });
-    } else {
-      // Try positional matching if exact matching fails and value is complex
-      const elseNodeType: NodeType = determineNodeType(elseValue, context.templating);
-      const nextUnused = (elseNodeType !== 'literal') ? getNextUnusedChild(children, usedChildIndices) : null;
-      if (nextUnused) {
-        // Use the trace child for proper debug step mapping
-        usedChildIndices.add(nextUnused.index);
-        elseBranchId = processExpressionNode(nextUnused.child, context, {
-          parentId: nodeId,
-          argIndex: ifArgs.length - 1,
-          branchType: 'no',
-        }, elseValue); // Pass original value to preserve key ordering
-      } else {
-        // True fallback: create node without trace mapping
-        elseBranchId = `${nodeId}-else`;
-        createFallbackNode(elseBranchId, elseValue, context, {
-          parentId: nodeId,
-          argIndex: ifArgs.length - 1,
-          branchType: 'no',
-        });
-      }
+      context.edges.push(createBranchEdge(dId, elseTarget, 2));
     }
 
-    // Create else edge
-    context.edges.push(createBranchEdge(nodeId, elseBranchId, cellIndex));
-
-    const elseText = generateExpressionText(elseValue, 40);
-
-    cells.push({
-      type: 'branch',
-      icon: 'x',
-      rowLabel: 'Else',
-      label: elseText,
-      branchId: elseBranchId,
-      index: cellIndex,
-    });
+    const isElif = k > 0;
+    const node: LogicNode = {
+      id: dId,
+      type: 'operator',
+      position: { x: 0, y: 0 },
+      data: {
+        type: 'operator',
+        operator: 'if',
+        category: 'control',
+        label: isElif ? 'elif' : 'if',
+        icon: 'diamond',
+        cells,
+        collapsed: false,
+        expressionText: generateExpressionText({ if: ifArgs.slice(k * 2) }),
+        parentId: isElif ? diamondIds[k - 1] : parentInfo.parentId,
+        argIndex: isElif ? 2 : parentInfo.argIndex,
+        branchType: isElif ? 'no' : parentInfo.branchType,
+        expression: { if: ifArgs.slice(k * 2) },
+      } as OperatorNodeData,
+    };
+    context.nodes.push(node);
   }
 
-  // Generate expression text for the entire if/else
-  const expressionText = generateExpressionText(expression);
-
-  // Create the operator node for if/else
-  const ifElseNode: LogicNode = {
-    id: nodeId,
-    type: 'operator',
-    position: { x: 0, y: 0 },
-    data: {
-      type: 'operator',
-      operator: 'if',
-      category: 'control',
-      label: 'If / Then / Else',
-      icon: 'diamond',
-      cells,
-      collapsed: false,
-      expressionText,
-      parentId: parentInfo.parentId,
-      argIndex: parentInfo.argIndex,
-      branchType: parentInfo.branchType,
-      expression,
-    } as OperatorNodeData,
-  };
-  context.nodes.push(ifElseNode);
-
-  // Add edge from parent if exists and not a branch type
+  // The head diamond wires to the parent (unless it's itself a branch child).
   if (parentInfo.parentId && !parentInfo.branchType) {
     context.edges.push(createArgEdge(parentInfo.parentId, nodeId, parentInfo.argIndex ?? 0));
   }

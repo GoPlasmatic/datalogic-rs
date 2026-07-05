@@ -14,6 +14,7 @@ import { getCategoryIcon } from '../../../config/categories';
 import { generateExpressionText, generateArgSummary, formatOperandLabel } from '../../formatting';
 import { isSimpleOperand } from '../../type-helpers';
 import { createBranchEdge, createArgEdge } from '../../node-factory';
+import { inlineVarIndices } from '../../inline-vars';
 import { findMatchingChild } from '../child-matching';
 import { mapInlinedChildren } from '../inline-mapping';
 import { traceIdToNodeId } from '../evaluation-results';
@@ -61,12 +62,18 @@ export function createVerticalCellNodeFromTrace(
 
   const iteratorIcons = ITERATOR_ARG_ICONS[operator];
 
+  // Static var/val reads collapse into inline pills (capped — see inline-vars);
+  // AND / OR / NOT force every operand to a child so the gate silhouette renders.
+  const forceChildren = opCategory === 'logical';
+  const inlineVarIdx = forceChildren ? new Set<number>() : inlineVarIndices(operandArray);
+
   operandArray.forEach((operand, idx) => {
     const typeIcon = getOperandTypeIcon(operand as JsonLogicValue);
     const cellIcon = iteratorIcons ? iteratorIcons[idx] || typeIcon : typeIcon;
 
-    if (isSimpleOperand(operand as JsonLogicValue)) {
-      // Simple operand is inlined - map the trace child to this parent node
+    if (!forceChildren && (isSimpleOperand(operand as JsonLogicValue) || inlineVarIdx.has(idx))) {
+      // Simple literal or collapsible static var — inline. Map the trace child to
+      // this parent node so its debug highlight folds into the parent.
       const match = findMatchingChild(operand as JsonLogicValue, children, usedChildIndices);
       if (match) {
         usedChildIndices.add(match.index);

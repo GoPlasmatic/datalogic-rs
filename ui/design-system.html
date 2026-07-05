@@ -1,0 +1,2357 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Datalogic Studio — Signal Board Design System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+/* =============================================================
+   DATALOGIC STUDIO — "SIGNAL BOARD" VISUAL LANGUAGE
+   A proposed visual system for reading & editing JSONLogic.
+   Self-contained prototype. Vanilla CSS + a little vanilla JS.
+   ============================================================= */
+
+/* ---------- Tokens: LIGHT ("schematic on paper") ---------- */
+:root {
+  --font-ui: 'Space Grotesk', ui-sans-serif, -apple-system, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Code', monospace;
+
+  /* Substrate — cool paper */
+  --board:        #eef1f5;
+  --board-grid:   rgba(20, 40, 70, 0.05);
+  --surface:      #ffffff;
+  --surface-2:    #f6f8fb;
+  --chip:         #ffffff;
+  --hairline:     #d6dde6;
+  --hairline-2:   #e6ebf1;
+
+  --ink:          #0e1826;
+  --ink-2:        #33475e;
+  --muted:        #5b6a7d;   /* darkened one step to clear WCAG AA on --surface */
+  --faint:        #9aa9ba;   /* NON-TEXT only: hairlines, idle wires, dot-grid */
+
+  /* Structural accent — electric indigo. Used ONLY for selection / root / focus / control. */
+  --accent:       #4b56d6;
+  --accent-soft:  #e7e9fb;
+
+  /* SIGNAL palette — the primary color axis. Colour = the value that flows OUT. */
+  --sig-bool-true:  #1a7f37;  /* condition holds  */
+  --sig-bool-false: #cf222e;  /* condition fails / error */
+  --sig-bool-rest:  #57708a;  /* boolean, not yet run */
+  --sig-number:     #0959c0;  /* numeric value  (darkened for AA) */
+  --sig-string:     #8a5a00;  /* text value     (darkened for AA) */
+  --sig-collection: #8250df;  /* array / object */
+  --sig-data:       #1b7c83;  /* var / val — a tap into the data */
+  --sig-temporal:   #bf3989;  /* datetime / duration — the 7th signal, rose */
+  --sig-null:       #6e7781;  /* null / absent  */
+
+  --sig-bool-true-bg:  rgba(26,127,55,0.10);
+  --sig-bool-false-bg: rgba(207,34,46,0.10);
+  --sig-number-bg:     rgba(9,105,218,0.10);
+  --sig-string-bg:     rgba(154,103,0,0.12);
+  --sig-collection-bg: rgba(130,80,223,0.10);
+  --sig-data-bg:       rgba(27,124,131,0.10);
+  --sig-temporal-bg:   rgba(191,57,137,0.10);
+
+  --shadow-chip: 0 1px 2px rgba(16,30,54,0.06), 0 1px 1px rgba(16,30,54,0.04);
+  --shadow-pop:  0 8px 30px rgba(16,30,54,0.14), 0 2px 8px rgba(16,30,54,0.08);
+
+  /* radius scale — concentric 6 / 10 / 14 */
+  --radius: 10px;
+  --radius-sm: 7px;
+  --radius-lg: 14px;
+
+  /* spacing scale — 4pt rhythm */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-12: 48px;
+}
+
+/* ---------- Tokens: DARK ("lit logic board") ---------- */
+[data-theme="dark"] {
+  --board:        #0a0f16;
+  --board-grid:   rgba(120, 170, 255, 0.06);
+  --surface:      #10161f;
+  --surface-2:    #141b26;
+  --chip:         #161d28;
+  --hairline:     #263140;
+  --hairline-2:   #1d2632;
+
+  --ink:          #e6edf5;
+  --ink-2:        #b3c1d1;
+  --muted:        #8a9cb0;   /* lightened one step to clear AA on the dark board */
+  --faint:        #566172;   /* NON-TEXT only */
+
+  --accent:       #7c86f5;
+  --accent-soft:  #1b2140;
+
+  --sig-bool-true:  #3fb950;
+  --sig-bool-false: #f85149;
+  --sig-bool-rest:  #8098b0;
+  --sig-number:     #58a6ff;
+  --sig-string:     #e3b341;
+  --sig-collection: #bc8cff;
+  --sig-data:       #39c5cf;
+  --sig-temporal:   #db61a2;  /* datetime / duration — rose */
+  --sig-null:       #8b949e;
+
+  --sig-bool-true-bg:  rgba(63,185,80,0.13);
+  --sig-bool-false-bg: rgba(248,81,73,0.13);
+  --sig-number-bg:     rgba(88,166,255,0.13);
+  --sig-string-bg:     rgba(227,179,65,0.14);
+  --sig-collection-bg: rgba(188,140,255,0.13);
+  --sig-data-bg:       rgba(57,197,207,0.13);
+  --sig-temporal-bg:   rgba(219,97,162,0.14);
+
+  --shadow-chip: 0 1px 2px rgba(0,0,0,0.5), 0 1px 1px rgba(0,0,0,0.4);
+  --shadow-pop:  0 12px 40px rgba(0,0,0,0.6), 0 2px 10px rgba(0,0,0,0.4);
+}
+
+* { box-sizing: border-box; }
+html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  background: var(--board);
+  color: var(--ink);
+  line-height: 1.55;
+  background-image:
+    radial-gradient(var(--board-grid) 1px, transparent 1px);
+  background-size: 22px 22px;
+  transition: background-color .35s ease, color .35s ease;
+}
+
+/* ============================ Layout shell ============================ */
+.wrap { max-width: 1160px; margin: 0 auto; padding: 0 28px; }
+
+header.site {
+  position: sticky; top: 0; z-index: 50;
+  backdrop-filter: blur(14px);
+  background: color-mix(in srgb, var(--board) 82%, transparent);
+  border-bottom: 1px solid var(--hairline);
+}
+.site-inner { display: flex; align-items: center; gap: 16px; height: 60px; }
+.brand { display: flex; align-items: center; gap: 11px; font-weight: 600; letter-spacing: -0.01em; }
+.brand .mark {
+  width: 26px; height: 26px; border-radius: 7px; position: relative;
+  background: linear-gradient(150deg, var(--accent), color-mix(in srgb, var(--accent) 55%, var(--sig-data)));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18);
+}
+.brand .mark::after {
+  content:""; position:absolute; inset: 7px 6px; border-radius: 2px;
+  background:
+    linear-gradient(0deg, rgba(255,255,255,0.9), rgba(255,255,255,0.9)) 0 50% / 100% 2px no-repeat,
+    linear-gradient(0deg, rgba(255,255,255,0.55), rgba(255,255,255,0.55)) 50% 0 / 2px 100% no-repeat;
+}
+.brand small { display:block; font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); font-weight: 500; letter-spacing: 0.02em; }
+.brand b { font-size: 15px; }
+.site-nav { margin-left: auto; display:flex; gap: 4px; align-items:center; }
+.site-nav a { color: var(--muted); text-decoration: none; font-size: 13px; padding: 7px 11px; border-radius: 7px; }
+.site-nav a:hover { color: var(--ink); background: var(--surface-2); }
+
+.toggle-theme {
+  font-family: var(--font-mono); font-size: 12px; cursor: pointer;
+  border: 1px solid var(--hairline); background: var(--surface); color: var(--ink-2);
+  padding: 7px 12px; border-radius: 8px; display:flex; align-items:center; gap:7px;
+}
+.toggle-theme:hover { border-color: var(--accent); color: var(--ink); }
+
+/* ============================ Typographic system ============================ */
+.eyebrow {
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted);
+}
+h1, h2, h3 { letter-spacing: -0.02em; line-height: 1.12; margin: 0; font-weight: 600; }
+h1 { font-size: clamp(30px, 5vw, 52px); }
+h2 { font-size: clamp(23px, 3.4vw, 32px); }
+h3 { font-size: 17px; letter-spacing: -0.01em; }
+p.lede { font-size: clamp(16px, 2vw, 19px); color: var(--ink-2); max-width: 60ch; }
+.muted { color: var(--muted); }
+section.band { padding: 74px 0; border-top: 1px solid var(--hairline); }
+.section-head { margin-bottom: 34px; }
+.section-head .eyebrow { display:block; margin-bottom: 12px; }
+.section-head p { max-width: 64ch; color: var(--ink-2); margin: 12px 0 0; }
+
+/* ============================================================
+   THE COMPONENTS — "chips" on the board
+   ============================================================ */
+
+/* --- base node chip --- */
+.node {
+  --sig: var(--sig-bool-rest);
+  position: relative;
+  display: inline-flex; flex-direction: column;
+  background: var(--chip);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-chip);
+  font-family: var(--font-mono);
+  min-width: 0;
+  transition: box-shadow .18s ease, border-color .18s ease, transform .18s ease, opacity .25s ease;
+}
+.node:hover { border-color: color-mix(in srgb, var(--sig) 55%, var(--hairline)); }
+.node.is-selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), var(--shadow-chip); }
+
+/* every chip carries a thin left "signal rail" tinted by its output type */
+.node::before {
+  content:""; position:absolute; left: 0; top: 8px; bottom: 8px; width: 3px;
+  border-radius: 3px; background: var(--sig); opacity: 0.85;
+}
+
+.node-head {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 12px 8px 15px;
+}
+.node .eyebrow.cat { font-size: 9.5px; letter-spacing: 0.14em; }
+.node .glyph-badge {
+  width: 20px; height: 20px; border-radius: 6px; display:grid; place-items:center;
+  color: var(--sig); background: color-mix(in srgb, var(--sig) 14%, transparent);
+  font-size: 13px; flex-shrink: 0;
+}
+
+/* --- signal LED (only on boolean gates / branches) --- */
+.led {
+  width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0;
+  border: 1.5px solid var(--sig-bool-rest);
+  background: transparent;
+  box-shadow: none;
+  transition: all .2s ease;
+}
+.led.on-true  { border-color: var(--sig-bool-true);  background: var(--sig-bool-true);  box-shadow: 0 0 0 3px var(--sig-bool-true-bg), 0 0 10px color-mix(in srgb, var(--sig-bool-true) 60%, transparent); }
+.led.on-false { border-color: var(--sig-bool-false); background: var(--sig-bool-false); box-shadow: 0 0 0 3px var(--sig-bool-false-bg); }
+
+/* ---------- GATE (boolean, infix) ---------- */
+.gate { --sig: var(--sig-bool-rest); }
+.gate .node-head { padding: 9px 13px 9px 14px; align-items: center; gap: 10px; }
+.gate .expr { display: flex; align-items: center; gap: 9px; font-size: 13.5px; }
+.gate .op {
+  font-size: 19px; font-weight: 600; color: var(--ink);
+  line-height: 1; padding: 0 1px; cursor: pointer; border-radius: 4px;
+}
+.gate .op:hover { background: var(--surface-2); outline: 1px dashed var(--faint); }
+
+/* operand pills */
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 8px; border-radius: 6px; font-size: 12.5px; font-weight: 500;
+  border: 1px solid transparent; white-space: nowrap;
+}
+.pill .ptag { font-size: 8.5px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.7; font-weight: 600; }
+.pill.tap  { color: var(--sig-data);       background: var(--sig-data-bg);       border-color: color-mix(in srgb, var(--sig-data) 24%, transparent); }
+.pill.num  { color: var(--sig-number);     background: var(--sig-number-bg);     border-color: color-mix(in srgb, var(--sig-number) 22%, transparent); }
+.pill.str  { color: var(--sig-string);     background: var(--sig-string-bg);     border-color: color-mix(in srgb, var(--sig-string) 26%, transparent); }
+.pill.bool { color: var(--sig-bool-true);  background: var(--sig-bool-true-bg);  border-color: color-mix(in srgb, var(--sig-bool-true) 24%, transparent); }
+.pill.coll { color: var(--sig-collection); background: var(--sig-collection-bg); border-color: color-mix(in srgb, var(--sig-collection) 24%, transparent); }
+.pill.nul  { color: var(--sig-null);       background: color-mix(in srgb, var(--sig-null) 12%, transparent); border-color: color-mix(in srgb, var(--sig-null) 22%, transparent); font-style: italic; }
+.pill.tap::before { content:"⌁"; font-size: 12px; opacity: 0.8; }
+
+/* ---------- JUNCTION (and / or) ---------- */
+.junction { --sig: var(--sig-bool-rest); align-items: stretch; }
+.junction .node-head { flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px 14px 10px 15px; }
+.junction .j-top { display:flex; align-items:center; gap: 10px; width: 100%; }
+.junction .op.big { font-size: 22px; font-weight: 700; color: var(--sig-bool-rest); margin-left: auto; }
+.junction .conj-name { font-family: var(--font-ui); font-weight: 600; font-size: 13px; color: var(--ink); }
+
+/* ---------- VALUE (produces number/string/collection) ---------- */
+.value .node-head { gap: 10px; }
+.value .vname { font-family: var(--font-ui); font-weight: 600; font-size: 13px; color: var(--ink); }
+.value .args { display:flex; flex-wrap: wrap; gap: 6px; padding: 0 13px 10px 15px; }
+
+/* ---------- output readout pill (result of a node when data runs) ---------- */
+.readout {
+  align-self: flex-start; margin: 0 12px 10px 15px;
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 11.5px; color: var(--muted);
+}
+.readout .arrow { color: var(--faint); }
+.readout .val { font-weight: 600; }
+.readout.t-num  .val { color: var(--sig-number); }
+.readout.t-str  .val { color: var(--sig-string); }
+.readout.t-bool-true  .val { color: var(--sig-bool-true); }
+.readout.t-bool-false .val { color: var(--sig-bool-false); }
+.readout.t-coll .val { color: var(--sig-collection); }
+.readout.t-null .val { color: var(--sig-null); font-style: italic; }
+
+/* ---------- BRANCH (if / then / else) ---------- */
+.branch { --sig: var(--accent); min-width: 232px; }
+.branch .node-head { border-bottom: 1px solid var(--hairline-2); }
+.branch .branch-title { font-family: var(--font-ui); font-weight: 600; font-size: 13px; }
+.rail {
+  display:flex; align-items:center; gap: 10px;
+  padding: 8px 13px 8px 15px; position: relative;
+  border-bottom: 1px solid var(--hairline-2);
+}
+.rail:last-child { border-bottom: none; }
+.rail .kw {
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+  width: 42px; flex-shrink: 0; color: var(--muted);
+}
+.rail.when .kw { color: var(--sig-bool-rest); }
+.rail.then .kw { color: var(--sig-bool-true); }
+.rail.else .kw { color: var(--sig-bool-false); }
+.rail .rail-body { font-size: 12.5px; flex: 1; min-width: 0; }
+.rail .port.out { position: absolute; right: -6px; top: 50%; transform: translateY(-50%); }
+.rail.is-taken { background: var(--sig-bool-true-bg); }
+.rail.is-taken .kw { color: var(--sig-bool-true); }
+.rail.is-skipped { opacity: 0.4; }
+
+/* ---------- LITERAL (bare constant) ---------- */
+.lit-chip {
+  display:inline-flex; align-items:center; gap: 8px;
+  font-family: var(--font-mono); font-size: 13px; font-weight: 500;
+  padding: 7px 12px 7px 14px; background: var(--chip);
+  border: 1px solid var(--hairline); border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-chip); position: relative;
+}
+.lit-chip::before { content:""; position:absolute; left:0; top:6px; bottom:6px; width:3px; border-radius:3px; background: var(--sig); }
+.lit-chip .ptag { font-size: 8.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.lit-chip.num  { --sig: var(--sig-number);     color: var(--sig-number); }
+.lit-chip.str  { --sig: var(--sig-string);     color: var(--sig-string); }
+.lit-chip.bool { --sig: var(--sig-bool-true);  color: var(--sig-bool-true); }
+.lit-chip.coll { --sig: var(--sig-collection); color: var(--sig-collection); }
+.lit-chip.nul  { --sig: var(--sig-null);       color: var(--sig-null); }
+
+/* ---------- ports ---------- */
+.port {
+  width: 11px; height: 11px; border-radius: 50%;
+  background: var(--surface); border: 2px solid var(--sig-bool-rest);
+  flex-shrink: 0; box-sizing: border-box; z-index: 3;
+}
+.port.out { border-color: var(--sig); background: color-mix(in srgb, var(--sig) 40%, var(--surface)); }
+
+/* empty editable slot */
+.slot-empty {
+  display:inline-flex; align-items:center; gap:6px;
+  padding: 4px 10px; border-radius: 6px; font-size: 12px;
+  border: 1.5px dashed var(--faint); color: var(--muted);
+  background: repeating-linear-gradient(45deg, transparent, transparent 5px, color-mix(in srgb,var(--faint) 8%, transparent) 5px, color-mix(in srgb,var(--faint) 8%, transparent) 10px);
+  cursor: pointer;
+}
+.slot-empty:hover { border-color: var(--accent); color: var(--accent); }
+.add-slot {
+  display:inline-flex; align-items:center; gap:5px; cursor:pointer;
+  padding: 3px 9px; border-radius: 6px; font-size: 11.5px; font-weight: 600;
+  color: var(--muted); border: 1px dashed var(--hairline);
+}
+.add-slot:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+
+/* ============================================================
+   HERO — live signal board
+   ============================================================ */
+.hero { padding: 62px 0 30px; }
+.hero-grid { display: grid; grid-template-columns: 0.82fr 1.7fr; gap: 36px; align-items: center; }
+@media (max-width: 900px) { .hero-grid { grid-template-columns: 1fr; gap: 34px; } }
+.hero h1 { margin: 16px 0 0; }
+.hero h1 .accent { color: var(--accent); }
+.hero .kicker { display:flex; align-items:center; gap: 10px; }
+.hero .kicker .dot { width:7px; height:7px; border-radius:50%; background: var(--sig-bool-true); box-shadow: 0 0 8px var(--sig-bool-true); }
+.hero p.lede { margin: 20px 0 0; }
+.hero .cta-row { margin-top: 26px; display:flex; gap: 12px; flex-wrap: wrap; }
+.btn {
+  font-family: var(--font-ui); font-weight: 600; font-size: 13.5px; cursor: pointer;
+  padding: 11px 18px; border-radius: 9px; border: 1px solid var(--hairline);
+  background: var(--surface); color: var(--ink); display:inline-flex; align-items:center; gap:9px;
+}
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn:hover { border-color: var(--accent); }
+
+/* the board canvas */
+.board-frame {
+  position: relative; border: 1px solid var(--hairline); border-radius: 16px;
+  background:
+    radial-gradient(120% 90% at 15% 0%, color-mix(in srgb, var(--sig-data) 7%, transparent), transparent 55%),
+    var(--surface);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+}
+.board-toolbar {
+  display:flex; align-items:center; gap: 10px; flex-wrap: wrap;
+  padding: 11px 14px; border-bottom: 1px solid var(--hairline);
+  background: var(--surface-2); font-size: 12px;
+}
+.board-toolbar .title { font-family: var(--font-mono); font-weight: 600; color: var(--ink-2); font-size: 12px; }
+.board-toolbar .spacer { flex: 1; }
+.input-chip { display:inline-flex; align-items:center; gap:7px; font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
+.input-chip label { color: var(--muted); }
+.input-chip input[type=number] {
+  width: 52px; font-family: var(--font-mono); font-size: 12px; text-align:center;
+  background: var(--chip); color: var(--sig-number); border: 1px solid var(--hairline);
+  border-radius: 6px; padding: 3px 4px;
+}
+.switch { position: relative; width: 34px; height: 19px; cursor: pointer; }
+.switch input { position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer; }
+.switch .track { position:absolute; inset:0; border-radius: 20px; background: var(--hairline); transition: background .2s; }
+.switch .thumb { position:absolute; top:2px; left:2px; width:15px; height:15px; border-radius:50%; background:#fff; transition: transform .2s; box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+.switch input:checked ~ .track { background: var(--sig-bool-true); }
+.switch input:checked ~ .thumb { transform: translateX(15px); }
+
+.board-canvas {
+  position: relative;
+  padding: 26px 18px;
+  background-image: radial-gradient(var(--board-grid) 1px, transparent 1px);
+  background-size: 20px 20px;
+  min-height: 340px;
+}
+.board-svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:1; overflow: visible; }
+.wire { fill:none; stroke: var(--hairline); stroke-width: 2; transition: stroke .3s ease, opacity .3s ease; }
+.wire.live-true  { stroke: var(--sig-bool-true); stroke-width: 2.5; stroke-dasharray: 6 6; animation: flow 0.7s linear infinite; }
+.wire.live-false { stroke: var(--sig-bool-false); stroke-width: 2; }
+.wire.skipped    { stroke: var(--faint); opacity: 0.35; stroke-dasharray: 2 5; }
+@keyframes flow { to { stroke-dashoffset: -24; } }
+
+.board-layout { position: relative; z-index: 2; display: grid; grid-template-columns: repeat(5, auto); gap: 14px 16px; align-items: center; justify-items: start; }
+.board-layout .col > .node { align-self: start; }   /* gates shrink to content so 5 stages fit */
+.col { display:flex; flex-direction: column; gap: 16px; }
+.col.mid { justify-content: center; }
+
+/* node state rings on the board */
+.node[data-state="true"]  { border-color: color-mix(in srgb, var(--sig-bool-true) 60%, var(--hairline)); }
+.node[data-state="false"] { border-color: color-mix(in srgb, var(--sig-bool-false) 55%, var(--hairline)); }
+.node[data-state="skipped"] { opacity: 0.4; }
+
+/* root result badge */
+.root-badge {
+  position: relative;
+  display:inline-flex; flex-direction: column; gap: 4px; align-items: flex-start;
+  padding: 12px 16px; border-radius: 12px; border: 1px solid var(--hairline);
+  background: var(--chip); box-shadow: var(--shadow-chip); font-family: var(--font-mono);
+}
+.root-badge .eyebrow { font-size: 9px; }
+.root-badge .rv { font-size: 20px; font-weight: 700; }
+.root-badge[data-state="true"]  { border-color: var(--sig-bool-true); background: var(--sig-bool-true-bg); }
+.root-badge[data-state="true"] .rv { color: var(--sig-bool-true); }
+.root-badge[data-state="false"] { border-color: var(--sig-bool-false); background: var(--sig-bool-false-bg); }
+.root-badge[data-state="false"] .rv { color: var(--sig-bool-false); }
+.root-badge[data-state="idle"] .rv { color: var(--muted); }
+
+/* ============================================================
+   Reusable layout helpers
+   ============================================================ */
+.grid { display: grid; gap: 20px; }
+.cols-2 { grid-template-columns: 1fr 1fr; }
+.cols-3 { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 820px){ .cols-2, .cols-3 { grid-template-columns: 1fr; } }
+
+.card {
+  background: var(--surface); border: 1px solid var(--hairline);
+  border-radius: 14px; padding: 22px; box-shadow: var(--shadow-chip);
+}
+.card h3 { margin-bottom: 6px; }
+.card p { color: var(--ink-2); font-size: 14px; margin: 0; }
+.demo-stage {
+  border: 1px dashed var(--hairline); border-radius: 12px; padding: 26px;
+  background:
+    radial-gradient(var(--board-grid) 1px, transparent 1px) 0 0 / 18px 18px,
+    var(--surface-2);
+  display:flex; flex-wrap: wrap; gap: 18px; align-items: center; justify-content: center;
+  min-height: 96px;
+}
+.stage-label { font-family: var(--font-mono); font-size: 11px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+
+/* signal palette swatches */
+.sig-table { display:grid; grid-template-columns: repeat(auto-fill, minmax(240px,1fr)); gap: 14px; }
+.sig-row {
+  display:flex; align-items:center; gap: 14px; padding: 14px 16px;
+  border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface);
+}
+.sig-sw { width: 34px; height: 34px; border-radius: 9px; flex-shrink:0; position: relative; }
+.sig-sw::after { content:""; position:absolute; inset:0; border-radius:9px; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.14); }
+.sig-row .nm { font-weight: 600; font-size: 14px; }
+.sig-row .ds { font-size: 12px; color: var(--muted); }
+.sig-row code { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+
+/* before/after */
+.ba { display:grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: stretch; }
+@media (max-width: 820px){ .ba { grid-template-columns: 1fr; } }
+.ba-panel { border: 1px solid var(--hairline); border-radius: 14px; overflow: hidden; background: var(--surface); }
+.ba-panel .ba-head { padding: 12px 16px; border-bottom: 1px solid var(--hairline); font-size: 13px; display:flex; align-items:center; gap:8px; }
+.ba-panel .ba-head .tag { font-family: var(--font-mono); font-size: 10px; padding: 2px 7px; border-radius: 5px; font-weight: 600; letter-spacing: 0.05em; }
+.ba-panel.old .tag { background: var(--sig-bool-false-bg); color: var(--sig-bool-false); }
+.ba-panel.new .tag { background: var(--sig-bool-true-bg); color: var(--sig-bool-true); }
+.ba-body { padding: 24px 20px; display:flex; flex-direction: column; gap: 12px; align-items: flex-start;
+  background: radial-gradient(var(--board-grid) 1px, transparent 1px) 0 0 / 18px 18px, var(--surface-2); }
+.ba-note { padding: 12px 16px; font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--hairline); background: var(--surface); }
+
+/* OLD-style node (reproduction of current design for contrast) */
+.old-node { border-radius: 8px; border: 2px solid; font-family: var(--font-mono); font-size: 12px; box-shadow: var(--shadow-chip); overflow: hidden; min-width: 150px; }
+.old-head { padding: 4px 10px; color:#fff; font-family: var(--font-ui); font-weight: 600; font-size: 13px; display:flex; align-items:center; gap: 7px; letter-spacing: 0.3px; }
+.old-body { padding: 6px 10px; display:flex; flex-direction:column; gap:4px; }
+.old-row { display:flex; align-items:center; gap:6px; padding: 3px 5px; }
+.old-ico { width: 13px; height: 13px; opacity: .6; }
+
+/* token spec list */
+.spec { width: 100%; border-collapse: collapse; font-size: 13px; }
+.spec th, .spec td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--hairline-2); vertical-align: top; }
+.spec th { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.spec td:first-child { font-family: var(--font-mono); color: var(--accent); white-space: nowrap; }
+.spec td code { font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); }
+
+/* principle list */
+.principles { display:grid; grid-template-columns: repeat(2, 1fr); gap: 2px; border: 1px solid var(--hairline); border-radius: 14px; overflow: hidden; background: var(--hairline); }
+@media (max-width: 820px){ .principles { grid-template-columns: 1fr; } }
+.principle { background: var(--surface); padding: 22px 24px; }
+.principle .n { font-family: var(--font-mono); font-size: 12px; color: var(--accent); font-weight: 600; }
+.principle h3 { margin: 8px 0 6px; }
+.principle p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+
+footer.site { padding: 46px 0 70px; border-top: 1px solid var(--hairline); color: var(--muted); font-size: 13px; }
+footer.site code { font-family: var(--font-mono); color: var(--ink-2); }
+
+.legend { display:flex; gap: 18px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); margin-top: 18px; font-family: var(--font-mono); }
+.legend span { display:inline-flex; align-items:center; gap: 7px; }
+.legend .sw { width: 22px; height: 3px; border-radius: 3px; }
+
+/* ============================================================
+   SHAPE VOCABULARY (v2) — a silhouette per operator role
+   ============================================================ */
+
+/* default port anchoring (nodes are position:relative) */
+.port { position: absolute; }
+.port.out { right: -6px; top: 50%; transform: translateY(-50%); }
+.port.in  { left: -6px;  top: 50%; transform: translateY(-50%); }
+
+/* ---- boolean COMBINE: real AND / OR / NOT gate silhouettes ---- */
+.gate-shape { position: relative; width: 88px; height: 58px; flex-shrink: 0; display: grid; place-items: center; }
+.gate-shape svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.gate-shape .sil { fill: var(--chip); stroke: var(--sig-bool-rest); stroke-width: 1.5; transition: stroke .2s ease, fill .2s ease; }
+.gate-shape .led { position: absolute; z-index: 3; }
+.gate-shape .glabel {
+  position: relative; z-index: 2; font-family: var(--font-mono); font-weight: 700;
+  font-size: 12px; color: var(--sig-bool-rest); letter-spacing: .03em; pointer-events: none;
+  transform: translateX(-7px);
+}
+.gate-shape[data-state="true"]  .sil { stroke: var(--sig-bool-true);  fill: var(--sig-bool-true-bg); }
+.gate-shape[data-state="true"]  .glabel { color: var(--sig-bool-true); }
+.gate-shape[data-state="false"] .sil { stroke: var(--sig-bool-false); fill: var(--sig-bool-false-bg); }
+.gate-shape[data-state="false"] .glabel { color: var(--sig-bool-false); }
+.gate-shape[data-state="skipped"] { opacity: .4; }
+.gate-caption { font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); text-align: center; margin-top: 5px; }
+
+/* ---- control BRANCH: diamond decision ---- */
+.branch-shape { position: relative; width: 112px; height: 112px; flex-shrink: 0; display: grid; place-items: center; }
+.branch-shape svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.branch-shape .dia { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+.branch-shape .dlabel { position: relative; z-index: 2; font-family: var(--font-mono); font-weight: 700; color: var(--accent); font-size: 20px; }
+.branch-shape .btag { position: absolute; font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.branch-shape .btag.t-then { right: -30px; top: 42%; color: var(--sig-bool-true); }
+.branch-shape .btag.t-else { left: 50%; transform: translateX(-50%); bottom: -18px; color: var(--sig-bool-false); }
+.branch-shape .btag.t-when { left: -30px; top: 42%; color: var(--sig-bool-rest); }
+
+/* ---- ARITHMETIC: round operation node ---- */
+.op-circle {
+  --sig: var(--sig-number); position: relative; width: 56px; height: 56px; border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--sig) 55%, var(--hairline));
+  background: color-mix(in srgb, var(--sig) 10%, var(--chip));
+  display: grid; place-items: center; box-shadow: var(--shadow-chip); flex-shrink: 0;
+}
+.op-circle .op-glyph { font-family: var(--font-mono); font-size: 23px; font-weight: 600; color: var(--sig); line-height: 1; }
+
+/* ---- DATA TAP: a source plug (points into the flow) ----
+   clip-path clips a CSS border on the angled edges, so the outline is
+   drawn with a 1px stacked drop-shadow that follows the real silhouette. */
+.tap-src {
+  --tap-line: color-mix(in srgb, var(--sig-data) 60%, var(--chip));
+  position: relative; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+  padding: 8px 22px 8px 15px; font-family: var(--font-mono); font-size: 12.5px; font-weight: 500;
+  color: var(--sig-data);
+  background: color-mix(in srgb, var(--sig-data) 15%, var(--chip));
+  clip-path: polygon(0 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 0 100%);
+  filter:
+    drop-shadow(1px 0 0 var(--tap-line))  drop-shadow(-1px 0 0 var(--tap-line))
+    drop-shadow(0 1px 0 var(--tap-line))  drop-shadow(0 -1px 0 var(--tap-line))
+    drop-shadow(0.8px 0.8px 0 var(--tap-line))  drop-shadow(-0.8px 0.8px 0 var(--tap-line))
+    drop-shadow(0.8px -0.8px 0 var(--tap-line)) drop-shadow(-0.8px -0.8px 0 var(--tap-line));
+}
+.tap-src .tglyph { opacity: .85; }
+.tap-src .tval { color: var(--muted); font-size: 11.5px; }
+.tap-src .tval b { color: var(--sig-collection); }
+
+/* ---- LITERAL: folded-corner constant tag (same outline technique) ---- */
+.lit-tag {
+  --sig: var(--sig-number);
+  --lit-line: color-mix(in srgb, var(--sig) 55%, var(--chip));
+  position: relative; display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; font-family: var(--font-mono); font-size: 12.5px; font-weight: 600;
+  background: color-mix(in srgb, var(--sig) 12%, var(--chip)); color: var(--sig);
+  clip-path: polygon(9px 0, 100% 0, 100% 100%, 0 100%, 0 9px);
+  filter:
+    drop-shadow(1px 0 0 var(--lit-line))  drop-shadow(-1px 0 0 var(--lit-line))
+    drop-shadow(0 1px 0 var(--lit-line))  drop-shadow(0 -1px 0 var(--lit-line))
+    drop-shadow(0.8px 0.8px 0 var(--lit-line))  drop-shadow(-0.8px 0.8px 0 var(--lit-line))
+    drop-shadow(0.8px -0.8px 0 var(--lit-line)) drop-shadow(-0.8px -0.8px 0 var(--lit-line));
+}
+.lit-tag.num { --sig: var(--sig-number); } .lit-tag.str { --sig: var(--sig-string); }
+.lit-tag.bool { --sig: var(--sig-bool-true); } .lit-tag.coll { --sig: var(--sig-collection); }
+.lit-tag .ptag { font-size: 8px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+
+/* ---- ITERATOR: stacked collection frame with a per-item body ---- */
+.iter {
+  position: relative; min-width: 236px; background: var(--chip); border-radius: 12px;
+  border: 1.5px solid color-mix(in srgb, var(--sig-collection) 45%, var(--hairline));
+  box-shadow: var(--shadow-chip);
+}
+.iter::before, .iter::after {
+  content: ""; position: absolute; inset: 0; border-radius: 12px; z-index: -1; background: var(--chip);
+  border: 1.5px solid color-mix(in srgb, var(--sig-collection) 30%, var(--hairline));
+}
+.iter::before { transform: translate(5px, -5px); opacity: .55; }
+.iter::after  { transform: translate(10px, -10px); opacity: .28; }
+.iter-head { display: flex; align-items: center; gap: 8px; padding: 9px 13px; border-bottom: 1px solid var(--hairline-2); font-size: 12.5px; }
+.iter-head .loop { color: var(--sig-collection); font-size: 15px; }
+.iter-head .iname { font-family: var(--font-ui); font-weight: 600; color: var(--ink); }
+.iter-head .isub { color: var(--muted); font-size: 11.5px; }
+.iter-body {
+  margin: 11px 13px; padding: 11px 12px; border-radius: 9px;
+  border: 1.5px dashed color-mix(in srgb, var(--sig-collection) 42%, var(--hairline));
+  background: var(--sig-collection-bg); display: flex; flex-direction: column; gap: 8px;
+}
+.iter-eachtag { font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .13em; text-transform: uppercase; color: var(--sig-collection); font-weight: 700; }
+.iter-body .expr { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 12.5px; }
+.iter-foot { display: flex; align-items: center; gap: 8px; padding: 8px 13px; border-top: 1px solid var(--hairline-2); font-size: 11.5px; color: var(--muted); }
+
+/* ---- inline FORMULA: a collapsed pure-scalar subtree ---- */
+.formula {
+  position: relative; display: inline-flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  padding: 12px 14px 10px; border-radius: 10px; border: 1px dashed var(--hairline);
+  background: var(--surface-2); font-family: var(--font-mono); font-size: 13px;
+}
+.formula .fnote { position: absolute; top: -8px; left: 12px; padding: 0 6px; background: var(--surface-2); font-size: 8.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
+.formula .fop { color: var(--ink-2); }
+.formula .fout { margin-left: 4px; color: var(--sig-number); font-weight: 700; }
+
+/* ---- RESULT: LCD-style readout screen ---- */
+.readout-screen {
+  --sig: var(--sig-number); position: relative; border-radius: 11px; padding: 13px 20px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--sig) 9%, var(--surface-2)), var(--surface-2));
+  border: 1.5px solid color-mix(in srgb, var(--sig) 48%, var(--hairline));
+  box-shadow: var(--shadow-chip), inset 0 1px 0 color-mix(in srgb, var(--sig) 12%, transparent);
+  display: inline-flex; flex-direction: column; gap: 3px;
+}
+.readout-screen .rs-label { font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.readout-screen .rs-val { font-family: var(--font-mono); font-size: 22px; font-weight: 700; color: var(--sig); line-height: 1.1; }
+
+/* ---- signal-coloured wires + value tags (data-flow view) ---- */
+.wire.sig-num  { stroke: var(--sig-number); }
+.wire.sig-coll { stroke: var(--sig-collection); }
+.wire.sig-str  { stroke: var(--sig-string); }
+.wire.sig-bool { stroke: var(--sig-bool-true); }
+.wire.sig-data { stroke: var(--sig-data); opacity: .8; }
+.wire.sig-temp { stroke: var(--sig-temporal); }
+.wire-tag {
+  position: absolute; z-index: 4; transform: translate(-50%, -50%);
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
+  padding: 2px 8px; border-radius: 20px; background: var(--chip);
+  border: 1px solid var(--hairline); white-space: nowrap; pointer-events: none;
+}
+.wire-tag.t-num  { color: var(--sig-number);     border-color: color-mix(in srgb, var(--sig-number) 40%, var(--hairline)); }
+.wire-tag.t-coll { color: var(--sig-collection); border-color: color-mix(in srgb, var(--sig-collection) 40%, var(--hairline)); }
+
+/* ---- segmented view toggle ---- */
+.seg { display: inline-flex; padding: 3px; border-radius: 9px; background: var(--surface-2); border: 1px solid var(--hairline); gap: 2px; }
+.seg button { font-family: var(--font-ui); font-size: 12.5px; font-weight: 600; border: none; background: transparent; color: var(--muted); padding: 6px 15px; border-radius: 6px; cursor: pointer; }
+.seg button.active { background: var(--chip); color: var(--ink); box-shadow: var(--shadow-chip); }
+.seg button:hover:not(.active) { color: var(--ink-2); }
+
+/* ---- pipeline layout ---- */
+.pipe-layout { position: relative; z-index: 2; display: grid; grid-template-columns: auto auto auto auto; gap: 30px 44px; align-items: center; justify-items: start; }
+@media (max-width: 900px) { .pipe-layout { grid-template-columns: 1fr; gap: 26px; } }
+.json-view { font-family: var(--font-mono); font-size: 13px; line-height: 1.75; white-space: pre; overflow-x: auto; padding: 20px 22px; margin: 0; color: var(--ink-2); }
+.json-view .jk { color: var(--sig-data); } .json-view .jop { color: var(--accent); font-weight: 700; }
+.json-view .jnum { color: var(--sig-number); } .json-view .jstr { color: var(--sig-string); } .json-view .jp { color: var(--muted); }
+
+/* ---- large-logic board (scale demo) ---- */
+.scale-canvas { position: relative; padding: 34px 22px 30px; background-image: radial-gradient(var(--board-grid) 1px, transparent 1px); background-size: 20px 20px; overflow-x: auto; }
+.scale-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 1; }
+.scale-main { position: relative; z-index: 2; display: flex; align-items: center; gap: 40px; min-width: 980px; }
+.scale-bands { display: flex; flex-direction: column; gap: 52px; }
+.sflow { display: flex; align-items: center; justify-content: flex-end; gap: 34px; position: relative; }
+.sband-label { position: absolute; left: 0; top: -19px; font-family: var(--font-mono); font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: var(--faint); }
+.scol { display: flex; flex-direction: column; gap: 13px; justify-content: center; }
+.scale-legend { display: flex; gap: 20px; flex-wrap: wrap; font-family: var(--font-mono); font-size: 11px; color: var(--muted); padding: 12px 16px; border-top: 1px solid var(--hairline); }
+.scale-legend b { font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ============================================================
+   v3 ADDITIONS — coverage, readability, LTR flow, debug
+   ============================================================ */
+
+/* readability: numbers align, headings balance */
+h1, h2, p.lede { text-wrap: balance; }
+.rv, .rs-val, .readout .val, .wire-tag, .tval, .tcount, input[type=number] { font-variant-numeric: tabular-nums; }
+
+/* ---- 7th signal: TEMPORAL (datetime / duration) ---- */
+.pill.temp { color: var(--sig-temporal); background: var(--sig-temporal-bg); border-color: color-mix(in srgb, var(--sig-temporal) 24%, transparent); }
+.pill.temp::before { content:"◷"; font-size: 11px; opacity: .85; }
+.lit-tag.temp { --sig: var(--sig-temporal); }
+.readout.t-temp .val { color: var(--sig-temporal); }
+.wire.sig-temp { stroke: var(--sig-temporal); }
+.wire-tag.t-temp { color: var(--sig-temporal); border-color: color-mix(in srgb, var(--sig-temporal) 40%, var(--hairline)); }
+
+/* ---- CVD-safe LEDs: a shape inside the dot, not colour alone ---- */
+.led { position: relative; display: grid; place-items: center; }
+.led::after { font-size: 8px; font-weight: 800; line-height: 1; color: var(--chip); font-family: var(--font-ui); }
+.led.on-true::after  { content: "✓"; }
+.led.on-false::after { content: "✕"; }
+.led.on-error::after { content: "!"; color:#fff; }
+
+/* ---- directional ports: out = nub (points right), in = socket ---- */
+.port.out::after {
+  content:""; position:absolute; left: 50%; top: 50%;
+  width: 0; height: 0; transform: translate(-30%, -50%);
+  border-top: 3px solid transparent; border-bottom: 3px solid transparent;
+  border-left: 4px solid var(--chip); pointer-events: none;
+}
+.port.in { box-shadow: inset 0 0 0 2px var(--surface); }
+
+/* ---- flow stage lanes + directional wash ---- */
+.stage-strip {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 9px 16px; border-bottom: 1px solid var(--hairline);
+  background: var(--surface-2); font-family: var(--font-ui);
+  font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--muted);
+}
+.stage-strip .st { display:inline-flex; align-items:center; gap: 8px; text-transform: uppercase; }
+.stage-strip .st .num { font-family: var(--font-mono); color: var(--accent); font-weight: 700; }
+.stage-strip .sep { color: var(--faint); }
+.board-canvas.flow, .scale-canvas.flow {
+  background-image:
+    linear-gradient(90deg, transparent, color-mix(in srgb, var(--sig-data) 5%, transparent) 92%),
+    radial-gradient(var(--board-grid) 1px, transparent 1px);
+  background-size: 100% 100%, 20px 20px;
+}
+/* far-left input rail marker */
+.flow-rail { position: relative; }
+.flow-rail::before {
+  content:""; position:absolute; left: -13px; top: 4px; bottom: 4px; width: 2px;
+  border-radius: 2px; background: linear-gradient(180deg, transparent, color-mix(in srgb,var(--sig-data) 45%, transparent), transparent);
+}
+.rail-cap { font-family: var(--font-ui); font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); writing-mode: vertical-rl; transform: rotate(180deg); }
+
+/* wire arrowheads coloured to signal (markers injected in JS) */
+.wire.faulted { stroke: var(--sig-bool-false); opacity: .55; stroke-dasharray: 2 4; }
+
+/* ============================================================
+   NEW SHAPES — one silhouette per remaining role
+   ============================================================ */
+
+/* ---- MULTI-BRANCH SELECTOR (switch / match / if-elif ladder) ---- */
+.selector {
+  --sig: var(--accent); position: relative; min-width: 264px; background: var(--chip);
+  border: 1px solid var(--hairline); border-radius: var(--radius); box-shadow: var(--shadow-chip);
+  overflow: hidden;
+}
+.selector .node-head { border-bottom: 1px solid var(--hairline-2); }
+.selector .sel-title { font-family: var(--font-ui); font-weight: 600; font-size: 15px; }
+.selector .case {
+  position: relative; display: grid; grid-template-columns: 74px 1fr auto;
+  align-items: center; gap: 10px; padding: 8px 14px 8px 26px;
+  border-bottom: 1px solid var(--hairline-2); font-size: 12.5px;
+}
+.selector .case:last-child { border-bottom: none; }
+/* accent spine + diamond bullet per case */
+.selector::before { content:""; position:absolute; left: 15px; top: 44px; bottom: 12px; width: 1.5px; background: color-mix(in srgb, var(--accent) 45%, var(--hairline)); }
+.selector .case::before {
+  content:""; position:absolute; left: 11px; top: 50%; width: 8px; height: 8px;
+  transform: translateY(-50%) rotate(45deg); background: var(--chip);
+  border: 1.5px solid var(--accent); border-radius: 1px;
+}
+.selector .case.default::before { border-radius: 50%; }
+.selector .case .cw { font-family: var(--font-ui); font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.selector .case.default .cw { color: var(--sig-bool-rest); }
+.selector .case.is-matched { background: var(--sig-bool-true-bg); }
+.selector .case.is-matched::before { background: var(--sig-bool-true); border-color: var(--sig-bool-true); }
+.selector .case.is-matched .cw { color: var(--sig-bool-true); }
+.selector .case.is-skipped { opacity: .42; }
+.selector .case .port.out { right: -6px; }
+
+/* ---- QUANTIFIER (all / some / none → boolean) ---- */
+.iter.quant .iter-foot b { color: var(--sig-bool-true); }
+.iter.quant .iname .q { color: var(--sig-collection); font-size: 15px; margin-right: 2px; }
+.iter.quant[data-state="true"]  { border-color: color-mix(in srgb, var(--sig-bool-true) 55%, var(--hairline)); }
+.iter.quant[data-state="false"] { border-color: color-mix(in srgb, var(--sig-bool-false) 50%, var(--hairline)); }
+.iter.quant[data-state="false"] .iter-foot b { color: var(--sig-bool-false); }
+
+/* ---- COLLECTION TRANSFORM (merge / sort / slice) — stacked frame, SOLID op row ---- */
+.iter.transform .iter-body {
+  border-style: solid; border-color: color-mix(in srgb, var(--sig-collection) 34%, var(--hairline));
+  background: var(--surface-2);
+}
+.iter.transform .iter-eachtag { display: none; }
+.iter.transform .iter-body .tglyph-op { font-size: 16px; color: var(--sig-collection); font-weight: 700; }
+
+/* ---- DATETIME source plug (now) + temporal value chips ---- */
+.tap-src.clock {
+  --tap-line: color-mix(in srgb, var(--sig-temporal) 60%, var(--chip));
+  color: var(--sig-temporal);
+  background: color-mix(in srgb, var(--sig-temporal) 15%, var(--chip));
+}
+.tap-src.clock .tval b { color: var(--sig-temporal); }
+
+/* ---- ERROR GUARD (try) + THROW terminal ---- */
+.node.guard { --sig: var(--sig-bool-false); min-width: 220px; }
+.node.guard .node-head { border-bottom: 1px solid var(--hairline-2); }
+.node.guard .g-title { font-family: var(--font-ui); font-weight: 600; font-size: 15px; }
+.node.guard .rail.body   .kw { color: var(--sig-bool-rest); }
+.node.guard .rail.catch  { background: var(--sig-bool-false-bg); }
+.node.guard .rail.catch  .kw { color: var(--sig-bool-false); }
+
+.throw-shape { position: relative; width: 92px; height: 66px; flex-shrink: 0; display: grid; place-items: center; }
+.throw-shape svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.throw-shape .oct {
+  fill: var(--sig-bool-false-bg); stroke: var(--sig-bool-false); stroke-width: 1.75;
+}
+.throw-shape .hatch { fill: url(#hazard); opacity: .5; }
+.throw-shape .tlabel { position: relative; z-index: 2; font-family: var(--font-mono); font-weight: 700; font-size: 12px; color: var(--sig-bool-false); }
+
+/* ---- STRUCTURE / TEMPLATE object node ---- */
+.structure {
+  --sig: var(--sig-collection); position: relative; min-width: 260px;
+  padding: 14px 18px 14px 26px; background: var(--chip);
+  border: 1px solid var(--hairline); border-radius: var(--radius); box-shadow: var(--shadow-chip);
+}
+.structure::before { content:"{"; position:absolute; left: 8px; top: 6px; font-family: var(--font-mono); font-size: 34px; line-height: 1; color: color-mix(in srgb, var(--sig-collection) 55%, transparent); }
+.structure::after  { content:"}"; position:absolute; right: 10px; bottom: 2px; font-family: var(--font-mono); font-size: 34px; line-height: 1; color: color-mix(in srgb, var(--sig-collection) 55%, transparent); }
+.structure .st-head { display:flex; align-items:center; gap: 8px; margin-bottom: 10px; }
+.structure .st-head .iname { font-family: var(--font-ui); font-weight: 600; font-size: 14px; color: var(--ink); }
+.structure .kv-row { display:grid; grid-template-columns: auto 1fr; align-items: center; gap: 9px; padding: 4px 0; }
+.structure .kv-row + .kv-row { border-top: 1px dashed var(--hairline-2); }
+.structure .kv-key { font-family: var(--font-mono); font-size: 12.5px; color: var(--sig-data); }
+.structure .kv-key::after { content:":"; color: var(--muted); margin-left: 1px; }
+
+/* ---- NULL-COALESCE (?? fall-through) ---- */
+.coalesce {
+  display:inline-flex; align-items:center; gap: 8px; padding: 7px 12px;
+  border-radius: var(--radius-sm); border: 1px solid var(--hairline); background: var(--chip);
+  box-shadow: var(--shadow-chip); font-family: var(--font-mono); font-size: 12.5px;
+}
+.coalesce .qq { color: var(--sig-null); font-weight: 700; font-size: 15px; }
+.coalesce .guard { width: 7px; height: 7px; transform: rotate(45deg); border: 1.5px solid var(--sig-null); border-radius: 1px; flex-shrink: 0; }
+
+/* ---- NAMED / UNARY MATH ---- */
+.op-capsule {
+  --sig: var(--sig-number); display:inline-flex; align-items:center; gap: 7px;
+  padding: 6px 14px; border-radius: 999px; font-family: var(--font-mono); font-size: 13px; font-weight: 600;
+  color: var(--sig-number); background: color-mix(in srgb, var(--sig-number) 10%, var(--chip));
+  border: 1.5px solid color-mix(in srgb, var(--sig-number) 45%, var(--hairline)); box-shadow: var(--shadow-chip);
+}
+.op-bracket {
+  display:inline-flex; align-items:center; gap: 4px; font-family: var(--font-mono);
+  font-size: 20px; font-weight: 500; color: var(--sig-number);
+}
+.op-bracket .inner { font-size: 12.5px; padding: 0 2px; }
+
+/* ---- MISSING probe (validation) — gapped plug ---- */
+.tap-src.probe {
+  --tap-line: color-mix(in srgb, var(--sig-null) 65%, var(--chip));
+  color: var(--sig-null); background: color-mix(in srgb, var(--sig-null) 10%, var(--chip));
+  border: none;
+}
+.tap-src.probe .tval b { color: var(--sig-collection); }
+
+/* ============================================================
+   DEBUG UI — transport, step popover, side panel, error state
+   ============================================================ */
+
+/* ---- transport bar (floating + inline) ---- */
+.board-transport { padding: 14px; border-top: 1px solid var(--hairline); display: flex; flex-direction: column; gap: 10px; align-items: center; background: var(--surface-2); }
+.transport {
+  position: relative; display: inline-flex; align-items: center; gap: 12px;
+  height: 48px; padding: 0 12px 0 15px; border-radius: 13px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(14px); border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-pop); font-family: var(--font-ui);
+}
+.transport::before { content:""; position:absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 3px; background: var(--sig-bool-rest); }
+.transport.is-playing::before { background: var(--accent); }
+.transport .tbug { display:inline-flex; align-items:center; gap: 7px; color: var(--sig-string); }
+.transport .tbug .led { border-color: var(--sig-bool-rest); }
+.transport.is-playing .tbug .led { border-color: var(--sig-bool-true); background: var(--sig-bool-true); box-shadow: 0 0 0 3px var(--sig-bool-true-bg), 0 0 8px color-mix(in srgb, var(--sig-bool-true) 60%, transparent); }
+.transport .tdiv { width: 1px; height: 22px; background: var(--hairline-2); }
+.tkeys { display:inline-flex; align-items:center; gap: 6px; }
+.tkey {
+  width: 34px; height: 34px; border-radius: 8px; display:grid; place-items:center; cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--hairline); color: var(--ink-2);
+  transition: border-color .15s ease, transform .1s ease, background .15s ease;
+}
+.tkey:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--hairline)); color: var(--ink); }
+.tkey:active { transform: scale(.94); }
+.tkey:disabled { opacity: .35; cursor: default; }
+.tkey.primary { width: 40px; height: 40px; background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
+.tkey.primary:hover { filter: brightness(1.08); }
+.tkey { font-family: var(--font-ui); font-size: 14px; line-height: 1; }
+.tkey svg { width: 16px; height: 16px; }
+.tkey.primary svg { width: 18px; height: 18px; }
+.tcount {
+  display:inline-flex; align-items: baseline; gap: 3px; min-width: 60px; position: relative;
+  padding: 6px 12px 8px; border-radius: 8px; font-family: var(--font-mono);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 8%, var(--surface-2)), var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--hairline));
+}
+.tcount .cur { font-size: 15px; font-weight: 700; color: var(--ink); }
+.transport.is-playing .tcount .cur { color: var(--accent); }
+.tcount .sl { color: var(--muted); font-size: 12px; }
+.tcount .tot { color: var(--muted); font-size: 12px; }
+.tcount .bar { position:absolute; left: 0; bottom: 0; height: 2px; background: var(--accent); border-radius: 2px; transition: width .2s ease; }
+.tspeed { display:inline-flex; align-items:center; gap: 8px; }
+.tspeed .eyebrow { font-size: 9.5px; }
+.tspeed input[type=range] { -webkit-appearance: none; appearance: none; width: 84px; height: 4px; border-radius: 3px; background: var(--hairline); cursor: pointer; }
+.tspeed input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--chip); border: 2px solid var(--sig-number); }
+.tspeed input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--chip); border: 2px solid var(--sig-number); }
+.tkbd { display:inline-flex; gap: 6px; }
+.kbd { font-family: var(--font-mono); font-size: 9.5px; color: var(--muted); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--hairline); background: var(--surface-2); }
+.kbd b { color: var(--ink-2); font-weight: 600; }
+/* inline variant — chrome stripped, lives in a toolbar */
+.transport.inline { background: none; backdrop-filter: none; border: none; box-shadow: none; height: auto; padding: 0; gap: 10px; }
+.transport.inline::before { display: none; }
+.transport.inline .tkey { width: 30px; height: 30px; }
+.transport.inline .tkey.primary { width: 34px; height: 34px; }
+
+/* ---- per-node STEP POPOVER (DebugInfoBubble) ---- */
+.pop {
+  --sig: var(--sig-number); position: relative; width: 264px; background: var(--chip);
+  border: 1px solid var(--hairline); border-radius: 11px; box-shadow: var(--shadow-pop);
+  font-family: var(--font-mono); overflow: hidden;
+}
+.pop::before { content:""; position:absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 3px; background: var(--sig); }
+.pop-head {
+  display:flex; align-items:center; gap: 9px; padding: 8px 12px 8px 14px;
+  border-bottom: 1px solid var(--hairline-2); background: var(--surface-2);
+}
+.pop-head .glyph-badge { width: 20px; height: 20px; }
+.pop-head .op-name { font-family: var(--font-ui); font-weight: 600; font-size: 12.5px; color: var(--ink); }
+.pop-head .step-tag { margin-left: auto; font-size: 10.5px; color: var(--muted); }
+.pop-iter { display:inline-flex; align-items:center; gap: 5px; margin-left: auto; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; color: var(--sig-collection); background: var(--sig-collection-bg); padding: 2px 8px; border-radius: 20px; }
+.pop-sec { padding: 9px 12px 9px 14px; border-bottom: 1px solid var(--hairline-2); }
+.pop-sec:last-child { border-bottom: none; }
+.pop-label { display:flex; align-items:center; gap: 6px; font-family: var(--font-ui); font-size: 9.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.pop-label .tap-in { color: var(--sig-data); }
+.pop-label .out-arrow { color: var(--faint); }
+.pop-label .type-tag { margin-left: auto; font-family: var(--font-mono); font-size: 8.5px; letter-spacing: .06em; padding: 1px 6px; border-radius: 4px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--hairline-2); }
+.pop-json { margin: 0; font-size: 10.5px; line-height: 1.6; white-space: pre; overflow-x: auto; padding: 7px 9px; border-radius: 7px; background: var(--surface-2); border: 1px solid var(--hairline-2); color: var(--ink-2); max-height: 116px; }
+.pop-result { display:inline-flex; align-items:center; gap: 8px; }
+.pop-result .rv-mini { font-size: 18px; font-weight: 700; color: var(--sig); }
+.pop.err::before { background: var(--sig-bool-false); }
+.pop-err { display:flex; align-items:flex-start; gap: 7px; font-size: 11.5px; color: var(--sig-bool-false); }
+/* pointer nub */
+.pop.at-right::after, .pop.at-top::after { content:""; position:absolute; width: 10px; height: 10px; background: var(--chip); border: 1px solid var(--hairline); transform: rotate(45deg); }
+.pop.at-right::after { left: -6px; top: 30px; border-right: none; border-top: none; }
+.pop.at-top::after   { bottom: -6px; left: 32px; border-left: none; border-top: none; }
+/* json token colours reused inside popovers/panels */
+.jk2 { color: var(--sig-data); } .jn2 { color: var(--sig-number); } .js2 { color: var(--sig-string); }
+.jb2 { color: var(--sig-bool-true); } .jz2 { color: var(--sig-null); font-style: italic; } .jp2 { color: var(--muted); }
+
+/* ---- debug SIDE PANEL (DebugPanel) ---- */
+.dpanel { width: 340px; border: 1px solid var(--hairline); border-radius: var(--radius-lg); overflow: hidden; background: var(--surface); box-shadow: var(--shadow-chip); }
+.dsec { position: relative; border-bottom: 1px solid var(--hairline); }
+.dsec:last-child { border-bottom: none; }
+.dsec::before { content:""; position:absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+.dsec.logic::before  { background: var(--accent); }
+.dsec.data::before   { background: var(--sig-data); }
+.dsec.result::before { background: var(--sig); }
+.dsec-head { display:flex; align-items:center; gap: 8px; padding: 9px 13px 9px 15px; background: var(--surface-2); border-bottom: 1px solid var(--hairline-2); }
+.dsec-head h4 { margin: 0; font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.dsec-head .actions { margin-left: auto; display:flex; gap: 6px; }
+.btn-lite { font-family: var(--font-ui); font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 7px; border: 1px solid var(--hairline); background: var(--chip); color: var(--ink-2); cursor: pointer; display:inline-flex; align-items:center; gap: 5px; }
+.btn-lite:hover { border-color: var(--accent); color: var(--ink); }
+.dsec-body { padding: 11px 14px; font-family: var(--font-mono); font-size: 12px; line-height: 1.7; white-space: pre; overflow-x: auto; color: var(--ink-2); }
+.dsec.result.ok   { }
+.dsec.result.true  .dsec-body { background: var(--sig-bool-true-bg); }
+.dsec.result.true  .dsec-body .rbig { color: var(--sig-bool-true); font-size: 15px; font-weight: 700; }
+.err-strip { display:flex; align-items:center; flex-wrap: wrap; gap: 8px; padding: 10px 14px; background: var(--sig-bool-false-bg); border-top: 1px solid color-mix(in srgb, var(--sig-bool-false) 30%, var(--hairline)); font-family: var(--font-mono); font-size: 12px; }
+.err-strip .ei { width: 17px; height: 17px; border-radius: 50%; background: var(--sig-bool-false); color: #fff; display:grid; place-items:center; font-weight: 800; font-size: 12px; flex-shrink: 0; }
+.err-pill { font-family: var(--font-mono); font-size: 9.5px; font-weight: 700; padding: 2px 7px; border-radius: 5px; letter-spacing: .04em; }
+.err-pill[data-kind="type"], .err-pill[data-kind="nan"], .err-pill[data-kind="runtime"] { color: var(--sig-bool-false); background: var(--sig-bool-false-bg); border: 1px solid color-mix(in srgb, var(--sig-bool-false) 40%, transparent); }
+.err-pill[data-kind="thrown"] { color: var(--sig-string); background: var(--sig-string-bg); border: 1px solid color-mix(in srgb, var(--sig-string) 40%, transparent); }
+.err-pill[data-kind="parse"] { color: var(--sig-bool-false); background: transparent; border: 1px dashed color-mix(in srgb, var(--sig-bool-false) 55%, transparent); }
+.err-msg { color: var(--ink-2); }
+.err-op-chip { font-family: var(--font-mono); font-size: 9.5px; padding: 1px 6px; border-radius: 5px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--hairline); }
+
+/* ---- ERROR node state (7th state) ---- */
+.node[data-state="error"] { border-color: color-mix(in srgb, var(--sig-bool-false) 65%, var(--hairline)); box-shadow: 0 0 0 3px var(--sig-bool-false-bg), var(--shadow-chip); --sig: var(--sig-bool-false); }
+.fault-badge { position:absolute; top: -7px; right: -7px; width: 17px; height: 17px; border-radius: 50%; background: var(--sig-bool-false); color: #fff; display:grid; place-items:center; font-size: 11px; font-weight: 800; z-index: 5; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.led.on-error { border-color: var(--sig-bool-false); background: var(--sig-bool-false); box-shadow: 0 0 0 3px var(--sig-bool-false-bg); animation: fault-pulse 1.4s ease-in-out infinite; }
+@keyframes fault-pulse { 0%,100% { box-shadow: 0 0 0 3px var(--sig-bool-false-bg); } 50% { box-shadow: 0 0 0 5px var(--sig-bool-false-bg), 0 0 10px color-mix(in srgb, var(--sig-bool-false) 55%, transparent); } }
+.root-badge[data-state="error"] { border-color: var(--sig-bool-false); background: var(--sig-bool-false-bg); }
+.root-badge[data-state="error"] .rv { color: var(--sig-bool-false); }
+.readout-screen.is-error { --sig: var(--sig-bool-false); background: linear-gradient(180deg, var(--sig-bool-false-bg), var(--surface-2)); }
+
+/* hazard hatch swatch (used by throw + error washes) */
+.hazard-hatch { background-image: repeating-linear-gradient(45deg, transparent, transparent 5px, color-mix(in srgb, var(--sig-bool-false) 14%, transparent) 5px, color-mix(in srgb, var(--sig-bool-false) 14%, transparent) 10px); }
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap site-inner">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <span><b>Datalogic Studio</b><small>signal-board proposal · v0</small></span>
+    </div>
+    <nav class="site-nav">
+      <a href="#why">Why</a>
+      <a href="#dataflow">Data flow</a>
+      <a href="#signals">Signals</a>
+      <a href="#components">Shapes</a>
+      <a href="#scale">At scale</a>
+      <a href="#debug">Debug</a>
+      <a href="#states">States</a>
+      <a href="#editing">Editing</a>
+      <a href="#map">Mapping</a>
+    </nav>
+    <button class="toggle-theme" id="themeToggle" aria-label="Toggle colour theme">
+      <span id="themeIcon">◑</span><span id="themeLabel">Dark</span>
+    </button>
+  </div>
+</header>
+
+<!-- ============================ HERO ============================ -->
+<div class="wrap hero">
+  <div class="hero-grid">
+    <div>
+      <div class="kicker"><span class="dot" aria-hidden="true"></span><span class="eyebrow">A visual language for JSONLogic</span></div>
+      <h1>Read logic like a <span class="accent">circuit</span>, not a colour&nbsp;chart.</h1>
+      <p class="lede">A rule is signal flowing through gates to a decision. This system colours nodes by the <strong>value that flows out of them</strong> — boolean, number, string, collection, data — so you can trace <em>why</em> a rule resolves the way it does. Flip the inputs and watch the board light up.</p>
+      <div class="cta-row">
+        <button class="btn primary" id="runBtn">▶ Run with data</button>
+        <button class="btn" id="resetBtn">Reset</button>
+      </div>
+      <p class="muted" style="margin:16px 0 0; font-size:13px; max-width:46ch">Or scrub the <strong style="color:var(--ink-2)">step debugger</strong> under the board — play, step, and rewind the evaluation; each stop parks a probe on the active node showing its context and result.</p>
+      <div class="legend" aria-hidden="true">
+        <span><i class="sw" style="background:var(--sig-bool-true)"></i> current / true</span>
+        <span><i class="sw" style="background:var(--sig-bool-false)"></i> false</span>
+        <span><i class="sw" style="background:var(--faint)"></i> not evaluated</span>
+      </div>
+    </div>
+
+    <!-- live board -->
+    <div class="board-frame">
+      <div class="board-toolbar">
+        <span class="title">rule · age-eligibility</span>
+        <span class="spacer"></span>
+        <span class="input-chip"><label for="inAge">age</label><input type="number" id="inAge" value="30" min="0" max="120"></span>
+        <span class="input-chip"><label>hasID</label>
+          <span class="switch"><input type="checkbox" id="inHasId" checked><span class="track"></span><span class="thumb"></span></span>
+        </span>
+        <span class="input-chip"><label>passport</label>
+          <span class="switch"><input type="checkbox" id="inHasPass"><span class="track"></span><span class="thumb"></span></span>
+        </span>
+      </div>
+
+      <div class="stage-strip" aria-hidden="true">
+        <span class="st"><span class="num">1</span> Inputs</span><span class="sep">▸</span>
+        <span class="st"><span class="num">2</span> Conditions</span><span class="sep">▸</span>
+        <span class="st"><span class="num">3</span> Combine</span><span class="sep">▸</span>
+        <span class="st"><span class="num">4</span> Decide</span>
+      </div>
+
+      <div class="board-canvas flow" id="boardCanvas">
+        <svg class="board-svg" id="boardSvg" aria-hidden="true"></svg>
+        <div class="board-layout">
+
+          <!-- stage 1 · input rail: data taps flow rightward -->
+          <div class="col flow-rail">
+            <div class="tap-src" style="margin-bottom:4px"><span class="tglyph">⌁</span>age<span class="tval">= <b id="tv-age">30</b></span><span class="port out" id="p-tage"></span></div>
+            <div class="tap-src" style="margin:4px 0"><span class="tglyph">⌁</span>hasID<span class="tval">= <b id="tv-hasid">true</b></span><span class="port out" id="p-thasid"></span></div>
+            <div class="tap-src" style="margin-top:4px"><span class="tglyph">⌁</span>passport<span class="tval">= <b id="tv-pass">false</b></span><span class="port out" id="p-tpass"></span></div>
+          </div>
+
+          <!-- stage 2 · comparison gates -->
+          <div class="col">
+            <div class="node gate" id="g1" data-state="idle">
+              <div class="node-head">
+                <span class="led"></span>
+                <div class="expr"><span class="pill tap">age</span><span class="op" title="&gt;=">≥</span><span class="pill num">18</span></div>
+                <span class="port in" id="p-g1i"></span><span class="port out" id="p-g1"></span>
+              </div>
+            </div>
+            <div class="node gate" id="g2" data-state="idle">
+              <div class="node-head">
+                <span class="led"></span>
+                <div class="expr"><span class="pill tap">age</span><span class="op" title="&lt;=">≤</span><span class="pill num">65</span></div>
+                <span class="port in" id="p-g2i"></span><span class="port out" id="p-g2"></span>
+              </div>
+            </div>
+            <div class="node gate" id="g3" data-state="idle" style="margin-top:18px">
+              <div class="node-head">
+                <span class="led"></span>
+                <div class="expr"><span class="pill tap">hasID</span><span class="op" title="==">=</span><span class="pill bool">true</span></div>
+                <span class="port in" id="p-g3i"></span><span class="port out" id="p-g3"></span>
+              </div>
+            </div>
+            <div class="node gate" id="g4" data-state="idle">
+              <div class="node-head">
+                <span class="led"></span>
+                <div class="expr"><span class="pill tap">passport</span><span class="op" title="==">=</span><span class="pill bool">true</span></div>
+                <span class="port in" id="p-g4i"></span><span class="port out" id="p-g4"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- stage 3 · combine: OR (any of) then AND (all of) -->
+          <div class="col mid" style="align-self:end; margin-bottom:14px">
+            <div class="gate-shape or" id="orGate" data-state="idle">
+              <svg viewBox="0 0 88 58" aria-hidden="true"><path class="sil" d="M6,4 Q30,29 6,54 Q46,52 80,29 Q46,6 6,4 Z"/></svg>
+              <span class="led" style="left:19px; top:9px"></span>
+              <span class="glabel">OR</span>
+              <span class="port in" id="p-or-1" style="left:5px; top:34%"></span>
+              <span class="port in" id="p-or-2" style="left:5px; top:66%"></span>
+              <span class="port out" id="p-or" style="left:71px; top:50%"></span>
+            </div>
+            <div class="gate-caption">any of</div>
+          </div>
+
+          <div class="col mid">
+            <div class="gate-shape and" id="andGate" data-state="idle">
+              <svg viewBox="0 0 88 58" aria-hidden="true"><path class="sil" d="M8,4 H47 A25,25 0 0 1 47,54 H8 Z"/></svg>
+              <span class="led" style="left:15px; top:9px"></span>
+              <span class="glabel">AND</span>
+              <span class="port in" id="p-and-1" style="left:5px; top:30%"></span>
+              <span class="port in" id="p-and-2" style="left:5px; top:50%"></span>
+              <span class="port in" id="p-and-3" style="left:5px; top:70%"></span>
+              <span class="port out" id="p-and" style="left:67px; top:50%"></span>
+            </div>
+            <div class="gate-caption">all of</div>
+          </div>
+
+          <!-- stage 4 · decide -->
+          <div class="col mid">
+            <div class="root-badge" id="rootBadge" data-state="idle">
+              <span class="eyebrow">eligible?</span>
+              <span class="rv" id="rootVal">—</span>
+              <span class="port in" id="p-root" style="position:absolute; left:-6px; top:50%; transform:translateY(-50%)"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- step popover: parked on the active node while stepping -->
+        <div class="pop at-right" id="heroPop" hidden style="position:absolute; z-index:20">
+          <div class="pop-head">
+            <span class="glyph-badge" id="hp-badge" style="--sig:var(--sig-bool-true)">≥</span>
+            <span class="op-name" id="hp-op">age ≥ 18</span>
+            <span class="step-tag" id="hp-step">step 1</span>
+          </div>
+          <div class="pop-sec">
+            <div class="pop-label"><span class="tap-in">⌁</span> Context</div>
+            <pre class="pop-json" id="hp-ctx">{ "age": 30 }</pre>
+          </div>
+          <div class="pop-sec">
+            <div class="pop-label"><span class="out-arrow">→</span> Result <span class="type-tag" id="hp-type">boolean</span></div>
+            <div class="pop-result" id="hp-res"><span class="led on-true"></span><span class="rv-mini" style="color:var(--sig-bool-true)">true</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- debugger transport (the control panel) -->
+      <div class="board-transport">
+        <div class="transport" id="heroTransport">
+          <span class="tbug" title="Step debugger">
+            <span class="led"></span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true"><path d="M12 20a6 6 0 0 0 6-6v-2a6 6 0 0 0-12 0v2a6 6 0 0 0 6 6Z"/><path d="M12 8V6M9.5 5 8 3.2M14.5 5 16 3.2M6 12H3.2M6 16H3.6M18 12h2.8M18 16h2.4"/></svg>
+          </span>
+          <span class="tdiv"></span>
+          <div class="tkeys">
+            <button class="tkey" id="tp-reset" title="Reset · Home" aria-label="Reset">⏮</button>
+            <button class="tkey" id="tp-back" title="Step back · ←" aria-label="Step back">◁</button>
+            <button class="tkey primary" id="tp-play" title="Play / Pause · Space" aria-label="Play"><span id="tp-play-ico">▶</span></button>
+            <button class="tkey" id="tp-fwd" title="Step forward · →" aria-label="Step forward">▷</button>
+            <button class="tkey" id="tp-end" title="Jump to end · End" aria-label="Jump to end">⏭</button>
+          </div>
+          <span class="tdiv"></span>
+          <div class="tcount"><span class="cur" id="tp-cur">0</span><span class="sl">/</span><span class="tot" id="tp-tot">6</span><span class="bar" id="tp-bar" style="width:0"></span></div>
+          <span class="tdiv"></span>
+          <div class="tspeed"><span class="eyebrow">Speed</span><input type="range" id="tp-speed" min="100" max="2000" step="100" value="1400" aria-label="Playback speed"></div>
+        </div>
+        <div class="tkbd" aria-hidden="true">
+          <span class="kbd"><b>Space</b> play</span><span class="kbd"><b>←</b> back</span><span class="kbd"><b>→</b> fwd</span><span class="kbd"><b>Home</b> reset</span><span class="kbd"><b>End</b> last</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ WHY ============================ -->
+<section class="band" id="why">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">The problem with today's view</span>
+      <h2>Eleven saturated hues, one hidden meaning</h2>
+      <p>Today every operator category owns a colour and a full-width coloured header. With 15+ nodes the canvas becomes a rainbow where nothing recedes — and three of the eleven hues are near-identical purples, three more are near-identical cyans. Colour signals <em>which family an operator belongs to</em>, which is rarely the question you're asking. The question is almost always: <strong>what value does this produce, and is my condition true?</strong></p>
+    </div>
+
+    <div class="ba">
+      <div class="ba-panel old">
+        <div class="ba-head"><span class="tag">TODAY</span> Colour = operator category</div>
+        <div class="ba-body">
+          <div class="old-node" style="border-color:#8b5cf6; background:#8b5cf610">
+            <div class="old-head" style="background:#8b5cf6"><span>◇</span> And</div>
+            <div class="old-body">
+              <div class="old-row" style="border:1px solid var(--hairline-2);border-radius:5px">age &gt;= 18</div>
+              <div class="old-row" style="border:1px solid var(--hairline-2);border-radius:5px">age &lt;= 65</div>
+            </div>
+          </div>
+          <div class="old-node" style="border-color:#14b8a6; background:#14b8a610">
+            <div class="old-head" style="background:#14b8a6"><span>⚖</span> Greater Than Or Equal</div>
+            <div class="old-body"><div class="old-row">var age · 18</div></div>
+          </div>
+          <div class="old-node" style="border-color:#6366f1; background:#6366f110">
+            <div class="old-head" style="background:#6366f1"><span>▤</span> Variable</div>
+            <div class="old-body"><div class="old-row">age</div></div>
+          </div>
+        </div>
+        <div class="ba-note">Every card shouts equally. "Greater Than Or Equal" costs 3× the width of <code>≥</code>. Truthiness is invisible until you enter debug mode.</div>
+      </div>
+
+      <div class="ba-panel new">
+        <div class="ba-head"><span class="tag">PROPOSED</span> Colour = signal type · shape = role</div>
+        <div class="ba-body">
+          <div class="node junction" style="--sig:var(--sig-bool-rest)">
+            <div class="node-head"><div class="j-top"><span class="led"></span><span class="conj-name">all of</span><span class="op big">∧</span></div></div>
+          </div>
+          <div class="node gate">
+            <div class="node-head"><span class="led"></span><div class="expr"><span class="pill tap">age</span><span class="op">≥</span><span class="pill num">18</span></div></div>
+          </div>
+          <div class="pill tap" style="font-size:13px"><span class="ptag">data</span>age</div>
+        </div>
+        <div class="ba-note">Quiet chips on a calm board. A boolean gate reads as <code>age ≥ 18</code>. The teal <span style="color:var(--sig-data)">tap</span> means "reads from data." Structure is legible before you run anything.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ DATA FLOW ============================ -->
+<section class="band" id="dataflow">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Reading nested logic</span>
+      <h2>Follow the data, not the JSON</h2>
+      <p>A deeply nested rule is hard to read when the diagram mirrors the JSON declaration: the root operator sits on the <em>outside</em> and you descend inward — the opposite of how the value is computed. The data-flow view inverts it. Sources enter on the left, the result leaves on the right, and every wire is <strong>coloured by the type it carries and tagged with its value</strong>. Sub-expressions that are just scalar maths collapse into one formula so the real joints stand out. This is <code>Order Total</code> from the sample set: <code class="muted">reduce the cart, then apply a discount</code>.</p>
+      <div style="margin-top:20px">
+        <span class="seg" role="tablist">
+          <button class="active" data-view="flow">Data flow</button>
+          <button data-view="json">JSON declaration</button>
+        </span>
+      </div>
+    </div>
+
+    <div class="board-frame">
+      <div class="board-toolbar">
+        <span class="title">rule · order-total</span>
+        <span class="spacer"></span>
+        <span class="muted" style="font-family:var(--font-mono);font-size:11px">cart · 3 items · discount 10%</span>
+      </div>
+
+      <!-- FLOW VIEW -->
+      <div id="flowView">
+        <div class="board-canvas" id="pipeCanvas" style="min-height:320px">
+          <svg class="board-svg" id="pipeSvg" aria-hidden="true"></svg>
+          <div class="pipe-layout">
+            <!-- col 1: data sources -->
+            <div class="col">
+              <div class="tap-src"><span class="tglyph">⌁</span>cart.items<span class="tval">= <b>[3]</b></span><span class="port out" id="ps-items"></span></div>
+              <div class="tap-src" style="margin-top:120px; color:var(--sig-data)"><span class="tglyph">⌁</span>discountPercent<span class="tval" style="color:var(--muted)">= <b style="color:var(--sig-number)">10</b></span><span class="port out" id="ps-disc"></span></div>
+            </div>
+
+            <!-- col 2: transforms -->
+            <div class="col">
+              <div class="iter">
+                <span class="port in" id="ps-reduce-in"></span>
+                <div class="iter-head"><span class="loop">⟳</span><span class="iname">reduce</span><span class="isub">— running total</span></div>
+                <div class="iter-body">
+                  <span class="iter-eachtag">for each item →</span>
+                  <div class="expr"><span class="pill tap">acc</span><span class="op" style="font-size:16px">+</span><span class="pill tap">price</span><span class="op" style="font-size:16px">×</span><span class="pill tap">qty</span></div>
+                </div>
+                <div class="iter-foot">seed <span class="lit-tag num" style="padding:2px 8px">0</span><span class="arrow" style="color:var(--faint)">→ emits a</span><b style="color:var(--sig-number)">number</b><span class="port out" id="ps-reduce-out"></span></div>
+              </div>
+
+              <div class="formula" style="margin-top:26px">
+                <span class="port in" id="ps-formula-in"></span>
+                <span class="fnote">discount multiplier</span>
+                <span class="pill num">1</span><span class="fop">−</span><span class="pill tap">discount</span><span class="fop">÷</span><span class="pill num">100</span><span class="fout">= 0.9</span>
+                <span class="port out" id="ps-formula-out"></span>
+              </div>
+            </div>
+
+            <!-- col 3: converge -->
+            <div class="col mid">
+              <div class="op-circle">
+                <span class="op-glyph">×</span>
+                <span class="port in" id="ps-mul-a" style="left:-6px; top:28%"></span>
+                <span class="port in" id="ps-mul-b" style="left:-6px; top:72%"></span>
+                <span class="port out" id="ps-mul-out"></span>
+              </div>
+            </div>
+
+            <!-- col 4: result -->
+            <div class="col mid">
+              <div class="readout-screen">
+                <span class="rs-label">order total</span>
+                <span class="rs-val">130.50</span>
+                <span class="port in" id="ps-result"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="ba-note" style="border-top:1px solid var(--hairline)">Read left → right, the order it evaluates. Two sources flow in; the <span style="color:var(--sig-collection)">reduce</span> folds the cart into <b style="color:var(--sig-number)">145</b>; the discount branch resolves to <b style="color:var(--sig-number)">0.9</b>; they meet at <b>×</b> → <b style="color:var(--sig-number)">130.50</b>. The whole <code>1 − discount ÷ 100</code> subtree is one formula, not four wired cards.</div>
+      </div>
+
+      <!-- JSON VIEW -->
+      <div id="jsonView" hidden>
+<pre class="json-view"><span class="jp">{</span>
+  <span class="jop">"*"</span><span class="jp">: [</span>
+    <span class="jp">{</span> <span class="jop">"reduce"</span><span class="jp">: [</span>
+        <span class="jp">{</span> <span class="jop">"var"</span><span class="jp">:</span> <span class="jstr">"cart.items"</span> <span class="jp">},</span>
+        <span class="jp">{</span> <span class="jop">"+"</span><span class="jp">: [</span>
+            <span class="jp">{</span> <span class="jop">"var"</span><span class="jp">:</span> <span class="jstr">"accumulator"</span> <span class="jp">},</span>
+            <span class="jp">{</span> <span class="jop">"*"</span><span class="jp">: [</span> <span class="jp">{</span> <span class="jop">"var"</span><span class="jp">:</span> <span class="jstr">"current.price"</span> <span class="jp">},</span>
+                     <span class="jp">{</span> <span class="jop">"var"</span><span class="jp">:</span> <span class="jstr">"current.quantity"</span> <span class="jp">} ] }</span>
+        <span class="jp">] },</span>
+        <span class="jnum">0</span>
+    <span class="jp">] },</span>
+    <span class="jp">{</span> <span class="jop">"-"</span><span class="jp">: [</span> <span class="jnum">1</span><span class="jp">,</span> <span class="jp">{</span> <span class="jop">"/"</span><span class="jp">: [</span> <span class="jp">{</span> <span class="jop">"var"</span><span class="jp">:</span> <span class="jstr">"cart.discountPercent"</span> <span class="jp">},</span> <span class="jnum">100</span> <span class="jp">] } ] }</span>
+  <span class="jp">]</span>
+<span class="jp">}</span></pre>
+        <div class="ba-note" style="border-top:1px solid var(--hairline)">The declaration nests outside-in: to find where the data enters you read down to the deepest <span class="jop" style="color:var(--sig-data)">"var"</span>, then unwind back up through <span class="jop">*</span>, <span class="jop">+</span>, <span class="jop">reduce</span>, <span class="jop">*</span>. Correct, but it hides the flow. The data-flow view above is the same rule, evaluation-ordered.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ SIGNALS ============================ -->
+<section class="band" id="signals">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">The one colour axis</span>
+      <h2>Colour by the signal on the wire</h2>
+      <p>Seven signal types instead of eleven operator families. Each maps to something you actually reason about while debugging: the type of value flowing out of a node. The palette is derived from GitHub Primer's syntax colours, proven legible on light and dark.</p>
+      <p class="muted" style="margin-top:8px">Operator <em>category</em> doesn't disappear — it moves to a monochrome glyph and a small-caps label, so power users keep the taxonomy without paying for it in colour.</p>
+    </div>
+    <div class="sig-table">
+      <div class="sig-row"><span class="sig-sw" style="background:var(--sig-bool-true)"></span><div><div class="nm">Boolean · true</div><div class="ds">a condition that holds · <code>== &gt; and</code></div></div></div>
+      <div class="sig-row"><span class="sig-sw" style="background:var(--sig-bool-false)"></span><div><div class="nm">Boolean · false / error</div><div class="ds">a condition that fails, or a thrown fault</div></div></div>
+      <div class="sig-row"><span class="sig-sw" style="background:var(--sig-number)"></span><div><div class="nm">Number</div><div class="ds"><code>+ − × ÷</code>, counts, scores</div></div></div>
+      <div class="sig-row"><span class="sig-sw" style="background:var(--sig-string)"></span><div><div class="nm">String</div><div class="ds"><code>cat, substr, upper</code> — text</div></div></div>
+      <div class="sig-row"><span class="sig-sw" style="background:var(--sig-collection)"></span><div><div class="nm">Collection</div><div class="ds">arrays &amp; objects · <code>map, sort, merge</code></div></div></div>
+      <div class="sig-row"><span class="sig-sw" style="background:var(--sig-temporal)"></span><div><div class="nm">Temporal</div><div class="ds"><code>datetime, now, date_diff</code> — dates &amp; durations</div></div></div>
+      <div class="sig-row"><span class="sig-sw" style="background:var(--sig-data)"></span><div><div class="nm">Data tap</div><div class="ds"><code>var, val</code> — reads context</div></div></div>
+      <div class="sig-row"><span class="sig-sw" style="background:var(--sig-null)"></span><div><div class="nm">Null / absent</div><div class="ds">missing or empty · <code>?? missing</code></div></div></div>
+      <div class="sig-row"><span class="sig-sw" style="background:var(--accent)"></span><div><div class="nm">Structure</div><div class="ds">the <em>only</em> non-signal accent · selection, root, control-flow spine</div></div></div>
+    </div>
+    <div class="card" style="margin-top:20px; display:flex; align-items:center; gap:16px; flex-wrap:wrap">
+      <div style="display:flex; gap:12px">
+        <span class="led on-true" style="width:16px;height:16px"></span>
+        <span class="led on-false" style="width:16px;height:16px"></span>
+        <span class="led" style="width:16px;height:16px"></span>
+      </div>
+      <p style="margin:0; flex:1; min-width:240px"><strong>Never colour alone.</strong> True carries a <strong style="color:var(--sig-bool-true)">✓</strong>, false an <strong style="color:var(--sig-bool-false)">✕</strong>; taken wires are solid-and-flowing, skipped ones dashed. Red/green truth survives deuteranopia because the shape inside the LED, not just its hue, tells you the answer.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ PRINCIPLES ============================ -->
+<section class="band">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Six rules the system follows</span>
+      <h2>Shape encodes role. Colour encodes type.</h2>
+    </div>
+    <div class="principles">
+      <div class="principle"><span class="n">01</span><h3>Role is a silhouette</h3><p>A boolean <strong>gate</strong> carries a signal LED and reads as infix math. A <strong>junction</strong> (and/or) is a compact connective with input ports. A <strong>branch</strong> has When / Then / Else rails. A <strong>value</strong> shows a typed output. You know what a node <em>does</em> before you read a word.</p></div>
+      <div class="principle"><span class="n">02</span><h3>Operators are math glyphs</h3><p><code>≥ ≤ ≠ ∧ ∨ ¬ ∈ ×</code> render at display size; the verbose label moves to a small-caps eyebrow. <code>age ≥ 18</code> beats a stack of cards labelled "Greater Than Or Equal."</p></div>
+      <div class="principle"><span class="n">03</span><h3>The board stays quiet</h3><p>Chips are near-neutral with a 3px signal rail. Saturation is spent on the two things that matter: the <em>type pill</em> on an operand and the <em>live state</em> when data runs. Everything else recedes.</p></div>
+      <div class="principle"><span class="n">04</span><h3>Truth is visible at rest</h3><p>You don't need debug mode to see structure. When data <em>is</em> present, LEDs light true/false, taken wires carry animated current, and short-circuited branches visibly dim — the evaluation model becomes the diagram.</p></div>
+      <div class="principle"><span class="n">05</span><h3>Slots are first-class</h3><p>Every argument is a slot. Empty slots are dashed drop targets with a type hint. Leaves edit inline; the operator glyph is a click-to-swap target. Viewing and editing are the same surface at two zoom levels.</p></div>
+      <div class="principle"><span class="n">06</span><h3>Both themes, one identity</h3><p>Dark is a <em>lit board</em>; light is a <em>schematic on paper</em>. Same signal semantics, re-tuned for contrast — not a mechanical invert.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ SHAPES ============================ -->
+<section class="band" id="components">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">The shape vocabulary</span>
+      <h2>A silhouette for every role — not one card for all</h2>
+      <p>When every operator is a rectangle, shape carries no meaning and you read every node from scratch. Here each family has its own outline, borrowed from the notations engineers already know: logic-gate symbols for boolean combine, a flowchart diamond for branching, a round node for arithmetic, a stacked frame for iteration, a plug for data. You recognise the role from across the canvas, before reading a single glyph.</p>
+    </div>
+
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">
+      <!-- data tap -->
+      <div class="card">
+        <h3>Data tap · <span class="muted" style="font-weight:400">var / val / exists</span></h3>
+        <p>A <strong>plug</strong> pointing into the flow — the only shape that reads from context. Always teal.</p>
+        <div class="demo-stage" style="margin-top:16px">
+          <div class="tap-src"><span class="tglyph">⌁</span>user.age</div>
+          <div class="tap-src"><span class="tglyph">⌁</span>cart.items<span class="tval">= <b>[3]</b></span></div>
+        </div>
+      </div>
+
+      <!-- literal -->
+      <div class="card">
+        <h3>Literal · <span class="muted" style="font-weight:400">bare constant</span></h3>
+        <p>A <strong>folded tag</strong>, the smallest and quietest shape. Colour = its type.</p>
+        <div class="demo-stage" style="margin-top:16px">
+          <span class="lit-tag num"><span class="ptag">num</span>18</span>
+          <span class="lit-tag str"><span class="ptag">str</span>"active"</span>
+          <span class="lit-tag bool"><span class="ptag">bool</span>true</span>
+          <span class="lit-tag coll"><span class="ptag">arr</span>[1,2,3]</span>
+        </div>
+      </div>
+
+      <!-- compare -->
+      <div class="card">
+        <h3>Compare · <span class="muted" style="font-weight:400">== != &gt; &gt;= &lt; &lt;= in</span></h3>
+        <p>Kept as a readable <strong>infix chip</strong> with a signal LED — legibility beats novelty for the most common node.</p>
+        <div class="demo-stage" style="margin-top:16px">
+          <div class="node gate"><div class="node-head"><span class="led"></span><div class="expr"><span class="pill tap">score</span><span class="op">≥</span><span class="pill num">60</span></div></div></div>
+          <div class="node gate"><div class="node-head"><span class="led"></span><div class="expr"><span class="pill tap">status</span><span class="op">=</span><span class="pill str">"active"</span></div></div></div>
+        </div>
+      </div>
+
+      <!-- combine gates -->
+      <div class="card">
+        <h3>Combine · <span class="muted" style="font-weight:400">and / or / not</span></h3>
+        <p>Real <strong>logic-gate silhouettes</strong>. The one place the circuit metaphor is literally true.</p>
+        <div class="demo-stage" style="margin-top:16px; gap:26px">
+          <div style="text-align:center">
+            <div class="gate-shape and"><svg viewBox="0 0 88 58" aria-hidden="true"><path class="sil" d="M8,4 H47 A25,25 0 0 1 47,54 H8 Z"/></svg><span class="glabel">AND</span></div>
+            <div class="gate-caption">all of</div>
+          </div>
+          <div style="text-align:center">
+            <div class="gate-shape or"><svg viewBox="0 0 88 58" aria-hidden="true"><path class="sil" d="M6,4 Q30,29 6,54 Q46,52 80,29 Q46,6 6,4 Z"/></svg><span class="glabel">OR</span></div>
+            <div class="gate-caption">any of</div>
+          </div>
+          <div style="text-align:center">
+            <div class="gate-shape not"><svg viewBox="0 0 88 58" aria-hidden="true"><path class="sil" d="M12,6 L12,52 L60,29 Z"/><circle class="sil" cx="68" cy="29" r="5"/></svg><span class="glabel" style="transform:translateX(-9px)">NOT</span></div>
+            <div class="gate-caption">negate</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- branch -->
+      <div class="card">
+        <h3>Branch · <span class="muted" style="font-weight:400">if / then / else</span></h3>
+        <p>The universal flowchart <strong>diamond</strong>: one condition in, two paths out.</p>
+        <div class="demo-stage" style="margin-top:16px; padding-top:34px; padding-bottom:34px">
+          <div class="branch-shape">
+            <svg viewBox="0 0 112 112" aria-hidden="true"><path class="dia" d="M56,6 L106,56 L56,106 L6,56 Z"/></svg>
+            <span class="dlabel">if</span>
+            <span class="btag t-when">when</span><span class="btag t-then">then</span><span class="btag t-else">else</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- arithmetic -->
+      <div class="card">
+        <h3>Arithmetic · <span class="muted" style="font-weight:400">+ − × ÷ %</span></h3>
+        <p>A round <strong>operation node</strong> — the compositor convention for "compute a value."</p>
+        <div class="demo-stage" style="margin-top:16px; gap:18px">
+          <div class="op-circle"><span class="op-glyph">+</span></div>
+          <div class="op-circle"><span class="op-glyph">×</span></div>
+          <div class="op-circle"><span class="op-glyph">÷</span></div>
+          <div class="op-circle"><span class="op-glyph">%</span></div>
+        </div>
+      </div>
+
+      <!-- value -->
+      <div class="card">
+        <h3>Value · <span class="muted" style="font-weight:400">cat / substr / merge</span></h3>
+        <p>Non-numeric producers stay a <strong>rounded chip</strong> with a typed output readout.</p>
+        <div class="demo-stage" style="margin-top:16px">
+          <div class="node value" style="--sig:var(--sig-string)">
+            <div class="node-head"><span class="glyph-badge">⋯</span><span class="eyebrow cat">string</span><span class="vname">concat</span></div>
+            <div class="args"><span class="pill str">"Dr. "</span><span class="pill tap">name</span></div>
+            <div class="readout t-str"><span class="arrow">→</span><span class="val">"Dr. Smith"</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- iterator -->
+      <div class="card">
+        <h3>Iterator · <span class="muted" style="font-weight:400">map / filter / reduce</span></h3>
+        <p>A <strong>stacked frame</strong> — the offset back cards say "a collection," the dashed inner frame is the per-item body. Produces a collection.</p>
+        <div class="demo-stage" style="margin-top:16px; padding:26px 30px">
+          <div class="iter" style="min-width:210px">
+            <div class="iter-head"><span class="loop">⟳</span><span class="iname">map</span><span class="isub">— over items</span></div>
+            <div class="iter-body">
+              <span class="iter-eachtag">for each item →</span>
+              <div class="expr"><span class="pill tap">price</span><span class="op" style="font-size:15px">×</span><span class="pill num">1.2</span></div>
+            </div>
+            <div class="iter-foot">emits a <b style="color:var(--sig-collection)">collection</b></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- result -->
+      <div class="card">
+        <h3>Result · <span class="muted" style="font-weight:400">the root</span></h3>
+        <p>An <strong>LCD readout</strong>. The one terminal that shows the whole rule's answer.</p>
+        <div class="demo-stage" style="margin-top:16px; gap:16px">
+          <div class="readout-screen" style="--sig:var(--sig-number)"><span class="rs-label">order total</span><span class="rs-val">130.50</span></div>
+          <div class="readout-screen" style="--sig:var(--sig-bool-true)"><span class="rs-label">eligible?</span><span class="rs-val" style="color:var(--sig-bool-true)">true</span></div>
+        </div>
+      </div>
+
+      <!-- multi-branch selector -->
+      <div class="card">
+        <h3>Multi-branch · <span class="muted" style="font-weight:400">switch / match / if…else if</span></h3>
+        <p>A <strong>case ladder</strong>: an accent spine with a diamond bullet per case. One input, many outcomes — where the binary diamond can't reach.</p>
+        <div class="demo-stage" style="margin-top:16px">
+          <div class="selector">
+            <div class="node-head"><span class="glyph-badge" style="--sig:var(--accent); color:var(--accent); background:var(--accent-soft)">◇</span><span class="eyebrow cat">control</span><span class="sel-title">grade</span></div>
+            <div class="case is-matched"><span class="cw">when</span><span><span class="pill tap">score</span> ≥ <span class="pill num">90</span></span><span class="pill str">"A"</span></div>
+            <div class="case"><span class="cw">else if</span><span><span class="pill tap">score</span> ≥ <span class="pill num">80</span></span><span class="pill str">"B"</span></div>
+            <div class="case"><span class="cw">else if</span><span><span class="pill tap">score</span> ≥ <span class="pill num">70</span></span><span class="pill str">"C"</span></div>
+            <div class="case default"><span class="cw">else</span><span class="muted">fall through</span><span class="pill str">"F"</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- quantifier -->
+      <div class="card">
+        <h3>Quantifier · <span class="muted" style="font-weight:400">all / some / none</span></h3>
+        <p>Reads a <strong style="color:var(--sig-collection)">collection</strong>, but carries a truth LED and <strong>emits a boolean</strong> — so a whole-array test can feed a gate.</p>
+        <div class="demo-stage" style="margin-top:16px">
+          <div class="iter quant" data-state="true" style="min-width:214px">
+            <div class="iter-head"><span class="led on-true"></span><span class="iname"><span class="q">∀</span>all</span><span class="isub">— over products</span></div>
+            <div class="iter-body"><span class="iter-eachtag">every item →</span><div class="expr"><span class="pill tap">stock</span><span class="op" style="font-size:15px">&gt;</span><span class="pill num">0</span></div></div>
+            <div class="iter-foot">emits a <b>boolean</b></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- collection transform -->
+      <div class="card">
+        <h3>Transform · <span class="muted" style="font-weight:400">merge / sort / slice</span></h3>
+        <p>The same collection frame, but a <strong>solid op-row</strong> instead of a per-item loop — the whole array in, a new array out.</p>
+        <div class="demo-stage" style="margin-top:16px">
+          <div class="iter transform" style="min-width:200px">
+            <div class="iter-head"><span class="loop">⇅</span><span class="iname">sort</span><span class="isub">— ascending</span></div>
+            <div class="iter-body"><div class="expr"><span class="tglyph-op">⇅</span><span class="pill tap">scores</span><span class="muted">by value ↑</span></div></div>
+            <div class="iter-foot">emits a <b style="color:var(--sig-collection)">collection</b></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- temporal -->
+      <div class="card">
+        <h3>Temporal · <span class="muted" style="font-weight:400">now / datetime / date_diff</span></h3>
+        <p>A <strong>rose plug</strong> is the clock source; date maths flows on rose wires. The seventh signal, so time never masquerades as a number.</p>
+        <div class="demo-stage" style="margin-top:16px; gap:14px">
+          <div class="tap-src clock"><span class="tglyph">◷</span>now<span class="tval">= <b>2026-07-04</b></span></div>
+          <div class="node value" style="--sig:var(--sig-number)">
+            <div class="node-head"><span class="glyph-badge" style="color:var(--sig-temporal); background:var(--sig-temporal-bg)">◷</span><span class="eyebrow cat">datetime</span><span class="vname">date_diff</span></div>
+            <div class="args"><span class="pill temp">signup</span><span class="pill temp">now</span></div>
+            <div class="readout t-num"><span class="arrow">→</span><span class="val">42 days</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- error: try + throw -->
+      <div class="card">
+        <h3>Error · <span class="muted" style="font-weight:400">try / throw</span></h3>
+        <p>A <strong>guard frame</strong> with a red catch rail, and a <strong>hazard octagon</strong> for throw — the one shape with no output port. A dead end.</p>
+        <div class="demo-stage" style="margin-top:16px; gap:22px">
+          <div class="node guard">
+            <div class="node-head"><span class="glyph-badge" style="--sig:var(--sig-bool-false)">!</span><span class="eyebrow cat">error</span><span class="g-title">try</span></div>
+            <div class="rail body"><span class="kw">try</span><span class="rail-body"><span class="pill num">amount ÷ n</span></span></div>
+            <div class="rail catch"><span class="kw">catch</span><span class="rail-body"><span class="pill num">0</span></span></div>
+          </div>
+          <div style="text-align:center">
+            <div class="throw-shape">
+              <svg viewBox="0 0 92 66" aria-hidden="true"><path class="oct" d="M28,5 H64 L87,28 V38 L64,61 H28 L5,38 V28 Z"/></svg>
+              <span class="tlabel">throw</span>
+            </div>
+            <div class="gate-caption">raise a fault</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- structure / template -->
+      <div class="card">
+        <h3>Structure · <span class="muted" style="font-weight:400">object / array template</span></h3>
+        <p>A <strong>brace manifold</strong> — key : value rows, each slot tinted by its own field's type. The templating output nothing else can hold.</p>
+        <div class="demo-stage" style="margin-top:16px">
+          <div class="structure">
+            <div class="st-head"><span class="glyph-badge" style="color:var(--sig-collection); background:var(--sig-collection-bg)">{ }</span><span class="eyebrow cat">template</span><span class="iname">party</span></div>
+            <div class="kv-row"><span class="kv-key">party_identifier</span><span class="pill str">cat("//", …)</span></div>
+            <div class="kv-row"><span class="kv-key">name_and_address</span><span class="pill coll">[ ]</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- null-coalesce -->
+      <div class="card">
+        <h3>Fallback · <span class="muted" style="font-weight:400">?? default</span></h3>
+        <p>A <strong>fall-through chip</strong>: each null-guard diamond lets the value drop to the next option until one is present.</p>
+        <div class="demo-stage" style="margin-top:16px">
+          <div class="coalesce">
+            <span class="guard"></span><span class="pill tap">nickname</span>
+            <span class="qq">??</span>
+            <span class="guard"></span><span class="pill tap">name</span>
+            <span class="qq">??</span>
+            <span class="pill str">"friend"</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- named / unary math -->
+      <div class="card">
+        <h3>Named math · <span class="muted" style="font-weight:400">max min abs ceil floor</span></h3>
+        <p>A number <strong>capsule</strong> for named reducers; the conventional <strong>bracket glyph</strong> is the whole shape for abs, ceil and floor.</p>
+        <div class="demo-stage" style="margin-top:16px; gap:16px">
+          <div class="op-capsule">max <span class="muted" style="font-weight:400">(a, b)</span></div>
+          <div class="op-bracket">⌈<span class="inner"><span class="pill num">x</span></span>⌉</div>
+          <div class="op-bracket">|<span class="inner"><span class="pill num">n</span></span>|</div>
+        </div>
+      </div>
+
+      <!-- validation probe -->
+      <div class="card">
+        <h3>Validation · <span class="muted" style="font-weight:400">missing / missing_some</span></h3>
+        <p>A <strong>probe</strong> — reads context like a tap, but hunts for <em>holes</em> and returns the list of absent keys.</p>
+        <div class="demo-stage" style="margin-top:16px">
+          <div class="tap-src probe"><span class="tglyph">⌕</span>missing<span class="tval">→ <b>[ "email" ]</b></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ AT SCALE ============================ -->
+<section class="band" id="scale">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">The whole vocabulary, one rule</span>
+      <h2>Does it hold up on a real, large logic?</h2>
+      <p>A checkout rule built from the complex sample expressions — the <code>reduce</code>-then-discount from <code>Order&nbsp;Total</code>, the nested <code>and / or / ≥ / in / ==</code> from <code>Loan&nbsp;Eligibility</code>, a <code>!</code> guard, an <code>if</code> branch, and a <code>cat</code> message. It exercises every shape in the vocabulary at once. The board splits into two streams that read left→right in evaluation order and converge at the branch: a <strong style="color:var(--sig-bool-true)">boolean</strong> eligibility test and a <strong style="color:var(--sig-number)">number→string</strong> price calculation. Shown evaluated with sample data.</p>
+    </div>
+
+    <div class="board-frame">
+      <div class="board-toolbar">
+        <span class="title">rule · checkout</span>
+        <span class="spacer"></span>
+        <span class="muted" style="font-family:var(--font-mono);font-size:11px">age 34 · US · gold · cart 3 items · discount 10%</span>
+      </div>
+
+      <div class="scale-canvas" id="scaleCanvas">
+        <svg class="scale-svg" id="scaleSvg" aria-hidden="true"></svg>
+        <div class="scale-main">
+          <div class="scale-bands">
+
+            <!-- ELIGIBILITY STREAM (boolean) -->
+            <div class="sflow">
+              <span class="sband-label">eligibility → boolean</span>
+              <div class="scol">
+                <div class="node gate" data-state="true"><div class="node-head"><span class="led on-true"></span><div class="expr"><span class="pill tap">age</span><span class="op">≥</span><span class="pill num">18</span></div></div><span class="port out" id="sp-g1"></span></div>
+                <div class="node gate" data-state="true"><div class="node-head"><span class="led on-true"></span><div class="expr"><span class="pill tap">country</span><span class="op" title="in">∈</span><span class="pill coll">[US,CA,UK]</span></div></div><span class="port out" id="sp-g2"></span></div>
+                <div class="node gate" data-state="true"><div class="node-head"><span class="led on-true"></span><div class="expr"><span class="pill tap">tier</span><span class="op">=</span><span class="pill str">"gold"</span></div></div><span class="port out" id="sp-g3"></span></div>
+                <div class="node gate" data-state="skipped"><div class="node-head"><span class="led"></span><div class="expr"><span class="pill tap">loyaltyYrs</span><span class="op">≥</span><span class="pill num">3</span></div></div><span class="port out" id="sp-g4"></span></div>
+              </div>
+              <div class="scol">
+                <div class="gate-shape or" data-state="true">
+                  <svg viewBox="0 0 88 58" aria-hidden="true"><path class="sil" d="M6,4 Q30,29 6,54 Q46,52 80,29 Q46,6 6,4 Z"/></svg>
+                  <span class="led on-true" style="left:19px; top:9px"></span><span class="glabel">OR</span>
+                  <span class="port in" id="sp-or-1" style="left:5px; top:34%"></span><span class="port in" id="sp-or-2" style="left:5px; top:66%"></span>
+                  <span class="port out" id="sp-or" style="left:71px; top:50%"></span>
+                </div>
+                <div class="node gate" data-state="true" style="margin-top:6px"><div class="node-head"><span class="led on-true"></span><div class="expr"><span class="op" title="not">¬</span><span class="pill tap">cart.flagged</span></div></div><span class="port out" id="sp-n1"></span></div>
+              </div>
+              <div class="scol">
+                <div class="gate-shape and" data-state="true">
+                  <svg viewBox="0 0 88 58" aria-hidden="true"><path class="sil" d="M8,4 H47 A25,25 0 0 1 47,54 H8 Z"/></svg>
+                  <span class="led on-true" style="left:15px; top:9px"></span><span class="glabel">AND</span>
+                  <span class="port in" id="sp-and-1" style="left:5px; top:16%"></span><span class="port in" id="sp-and-2" style="left:5px; top:39%"></span>
+                  <span class="port in" id="sp-and-3" style="left:5px; top:61%"></span><span class="port in" id="sp-and-4" style="left:5px; top:83%"></span>
+                  <span class="port out" id="sp-and" style="left:67px; top:50%"></span>
+                </div>
+                <div class="gate-caption">all of</div>
+              </div>
+            </div>
+
+            <!-- PRICING STREAM (number → string) -->
+            <div class="sflow">
+              <span class="sband-label">pricing → number → string</span>
+              <div class="scol">
+                <div class="iter">
+                  <div class="iter-head"><span class="loop">⟳</span><span class="iname">reduce</span><span class="isub">over cart.items</span></div>
+                  <div class="iter-body"><span class="iter-eachtag">for each item →</span><div class="expr"><span class="pill tap">acc</span><span class="op" style="font-size:15px">+</span><span class="pill tap">price</span><span class="op" style="font-size:15px">×</span><span class="pill tap">qty</span></div></div>
+                  <div class="iter-foot">seed <span class="lit-tag num" style="padding:2px 7px">0</span><span style="color:var(--faint)">→</span><b style="color:var(--sig-number)">145</b><span class="port out" id="sp-r1"></span></div>
+                </div>
+                <div class="formula" style="margin-top:2px"><span class="fnote">discount multiplier</span><span class="pill num">1</span><span class="fop">−</span><span class="pill tap">discountPct</span><span class="fop">÷</span><span class="pill num">100</span><span class="fout">= 0.9</span><span class="port out" id="sp-fm"></span></div>
+              </div>
+              <div class="scol">
+                <div class="op-circle"><span class="op-glyph">×</span>
+                  <span class="port in" id="sp-m1-a" style="left:-6px; top:30%"></span><span class="port in" id="sp-m1-b" style="left:-6px; top:70%"></span>
+                  <span class="port out" id="sp-m1" style="right:-6px; top:50%"></span>
+                </div>
+              </div>
+              <div class="scol">
+                <div class="node value" style="--sig:var(--sig-string)">
+                  <span class="port in" id="sp-cat-in" style="left:-6px; top:50%"></span>
+                  <div class="node-head"><span class="glyph-badge">⋯</span><span class="eyebrow cat">string</span><span class="vname">concat</span></div>
+                  <div class="args"><span class="pill str">"Total: $"</span><span class="pill num">130.50</span></div>
+                  <div class="readout t-str"><span class="arrow">→</span><span class="val">"Total: $130.50"</span></div>
+                  <span class="port out" id="sp-cat" style="right:-6px; top:50%"></span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- CONVERGE: branch -->
+          <div class="scol">
+            <div class="node branch">
+              <div class="node-head"><span class="glyph-badge" style="color:var(--accent);background:var(--accent-soft)">◇</span><span class="eyebrow cat">control</span><span class="branch-title">if</span></div>
+              <div class="rail when is-taken"><span class="kw">when</span><span class="rail-body"><span class="pill bool">eligible</span></span><span class="port in" id="sp-if-when" style="left:-6px"></span></div>
+              <div class="rail then is-taken"><span class="kw">then</span><span class="rail-body"><span class="pill str">total msg</span></span><span class="port in" id="sp-if-then" style="left:-6px"></span></div>
+              <div class="rail else is-skipped"><span class="kw">else</span><span class="rail-body"><span class="pill str">"Blocked"</span></span></div>
+              <span class="port out" id="sp-if" style="right:-6px; top:50%"></span>
+            </div>
+          </div>
+
+          <!-- result -->
+          <div class="scol">
+            <div class="readout-screen" style="--sig:var(--sig-string)">
+              <span class="rs-label">checkout</span>
+              <span class="rs-val" style="font-size:15px">"Total: $130.50"</span>
+              <span class="port in" id="sp-res" style="left:-6px; top:50%"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="scale-legend">
+        <span><b style="color:var(--sig-bool-true)">━</b> boolean / taken</span>
+        <span><b style="color:var(--faint)">┄</b> not evaluated (short-circuit)</span>
+        <span><b style="color:var(--sig-number)">━</b> number · tagged with its value</span>
+        <span><b style="color:var(--sig-string)">━</b> string</span>
+        <span class="muted">13 operators · every shape in the set</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ DEBUG ============================ -->
+<section class="band" id="debug">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Reading a run, step by step</span>
+      <h2>The debugger speaks the same language</h2>
+      <p>Evaluation isn't a separate mode with its own palette. A transport scrubs the trace; each stop parks a probe on the active node; a side panel holds the raw logic, data and result. Every value keeps its signal colour from the board, to the probe, to the JSON.</p>
+    </div>
+
+    <!-- transport: the control panel -->
+    <div class="eyebrow" style="display:block; margin-bottom:14px">The control panel · transport</div>
+    <div class="grid cols-2" style="align-items:stretch; margin-bottom:34px">
+      <div class="card">
+        <div class="stage-label">FLOATING — over the canvas</div>
+        <div class="demo-stage" style="margin-top:14px; background:none; border-style:solid; border-color:var(--hairline-2)">
+          <div class="transport is-playing" style="position:relative">
+            <span class="tbug" title="Step debugger"><span class="led on-true"></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true"><path d="M12 20a6 6 0 0 0 6-6v-2a6 6 0 0 0-12 0v2a6 6 0 0 0 6 6Z"/><path d="M12 8V6M9.5 5 8 3.2M14.5 5 16 3.2M6 12H3.2M6 16H3.6M18 12h2.8M18 16h2.4"/></svg></span>
+            <span class="tdiv"></span>
+            <div class="tkeys">
+              <button class="tkey" aria-label="Reset">⏮</button>
+              <button class="tkey" aria-label="Step back">◁</button>
+              <button class="tkey primary" aria-label="Pause">⏸</button>
+              <button class="tkey" aria-label="Step forward">▷</button>
+              <button class="tkey" aria-label="Jump to end">⏭</button>
+            </div>
+            <span class="tdiv"></span>
+            <div class="tcount"><span class="cur" style="color:var(--accent)">3</span><span class="sl">/</span><span class="tot">7</span><span class="bar" style="width:43%"></span></div>
+            <span class="tdiv"></span>
+            <div class="tspeed"><span class="eyebrow">Speed</span><input type="range" min="100" max="2000" value="1400" aria-label="Speed"></div>
+          </div>
+        </div>
+        <p class="muted" style="margin:14px 0 0; font-size:12.5px">A blurred bar that floats over the board. The step counter doubles as a scrubber — its underline fills with progress. Keys mirror the shortcuts <span class="kbd"><b>Space</b></span> <span class="kbd"><b>←</b></span> <span class="kbd"><b>→</b></span> <span class="kbd"><b>Home</b></span> <span class="kbd"><b>End</b></span>.</p>
+      </div>
+      <div class="card">
+        <div class="stage-label">INLINE — docked in the editor toolbar</div>
+        <div class="demo-stage" style="margin-top:14px; padding:0; background:none; border-style:solid; border-color:var(--hairline-2); overflow:hidden; align-items:stretch">
+          <div class="board-toolbar" style="width:100%; border-bottom:none">
+            <span class="title">rule · order-total</span>
+            <span class="spacer"></span>
+            <div class="transport inline">
+              <div class="tkeys">
+                <button class="tkey" aria-label="Reset">⏮</button>
+                <button class="tkey" aria-label="Step back">◁</button>
+                <button class="tkey primary" aria-label="Play">▶</button>
+                <button class="tkey" aria-label="Step forward">▷</button>
+                <button class="tkey" aria-label="Jump to end">⏭</button>
+              </div>
+              <div class="tcount"><span class="cur">5</span><span class="sl">/</span><span class="tot">7</span><span class="bar" style="width:71%"></span></div>
+            </div>
+          </div>
+        </div>
+        <p class="muted" style="margin:14px 0 0; font-size:12.5px">Same controls, chrome stripped — it lives in the toolbar strip when the board has no room to float. The primary key stays the one saturated element.</p>
+      </div>
+    </div>
+
+    <!-- step popover on an operator -->
+    <div class="eyebrow" style="display:block; margin-bottom:14px">The probe · a popover on the active node</div>
+    <div class="grid cols-3" style="align-items:start; margin-bottom:34px">
+      <div class="demo-stage" style="justify-content:flex-start; align-items:flex-start">
+        <div class="pop at-right" style="position:relative; --sig:var(--sig-number); width:100%; max-width:280px">
+          <div class="pop-head"><span class="glyph-badge" style="--sig:var(--sig-number)">+</span><span class="op-name">reduce · running total</span><span class="pop-iter">⟳ 2 of 3</span></div>
+          <div class="pop-sec"><div class="pop-label"><span class="tap-in">⌁</span> Context</div><pre class="pop-json"><span class="jk2">"accumulator"</span><span class="jp2">: </span><span class="jn2">75</span><span class="jp2">,</span>
+<span class="jk2">"current"</span><span class="jp2">: { </span><span class="jk2">"price"</span><span class="jp2">: </span><span class="jn2">15</span><span class="jp2">, </span><span class="jk2">"qty"</span><span class="jp2">: </span><span class="jn2">3</span><span class="jp2"> }</span></pre></div>
+          <div class="pop-sec"><div class="pop-label"><span class="out-arrow">→</span> Result <span class="type-tag">number</span></div><div class="pop-result"><span class="rv-mini">120</span></div></div>
+        </div>
+      </div>
+      <div class="demo-stage" style="justify-content:flex-start; align-items:flex-start">
+        <div class="pop at-right" style="position:relative; --sig:var(--sig-bool-true); width:100%; max-width:280px">
+          <div class="pop-head"><span class="glyph-badge" style="--sig:var(--sig-bool-true)">≥</span><span class="op-name">age ≥ 18</span><span class="step-tag">step 1</span></div>
+          <div class="pop-sec"><div class="pop-label"><span class="tap-in">⌁</span> Context</div><pre class="pop-json"><span class="jk2">"age"</span><span class="jp2">: </span><span class="jn2">34</span></pre></div>
+          <div class="pop-sec"><div class="pop-label"><span class="out-arrow">→</span> Result <span class="type-tag">boolean</span></div><div class="pop-result"><span class="led on-true"></span><span class="rv-mini" style="color:var(--sig-bool-true)">true</span></div></div>
+        </div>
+      </div>
+      <div class="demo-stage" style="justify-content:flex-start; align-items:flex-start">
+        <div class="pop err at-right" style="position:relative; width:100%; max-width:280px">
+          <div class="pop-head"><span class="glyph-badge" style="--sig:var(--sig-bool-false)">÷</span><span class="op-name">divide</span><span class="step-tag">step 4</span></div>
+          <div class="pop-sec"><div class="pop-label"><span class="tap-in">⌁</span> Context</div><pre class="pop-json"><span class="jk2">"amount"</span><span class="jp2">: </span><span class="jn2">100</span><span class="jp2">, </span><span class="jk2">"n"</span><span class="jp2">: </span><span class="jn2">0</span></pre></div>
+          <div class="pop-sec"><div class="pop-label" style="color:var(--sig-bool-false)">⚠ Error <span class="err-pill" data-kind="type" style="margin-left:auto">NaN</span></div><div class="pop-err"><span>Division by zero is not a number.</span></div></div>
+        </div>
+      </div>
+    </div>
+    <p class="muted" style="margin:-18px 0 34px; font-size:12.5px">The probe's left rail is the colour of the value this node will drive: <span style="color:var(--sig-number)">number</span>, <span style="color:var(--sig-bool-true)">boolean</span>, or <span style="color:var(--sig-bool-false)">error</span>. Iterators add a <span style="color:var(--sig-collection)">⟳ k of n</span> pill; a boolean result pairs its LED so it reads the same as a gate on the board.</p>
+
+    <!-- side panel -->
+    <div class="eyebrow" style="display:block; margin-bottom:14px">The side panel · logic, data, result</div>
+    <div class="grid cols-2" style="align-items:start">
+      <div class="demo-stage" style="justify-content:center">
+        <div class="dpanel">
+          <div class="dsec logic">
+            <div class="dsec-head"><h4>Logic</h4><div class="actions"><button class="btn-lite">Format</button></div></div>
+<pre class="dsec-body"><span class="jp2">{ </span><span class="jop" style="color:var(--accent);font-weight:700">"and"</span><span class="jp2">: [</span>
+  <span class="jp2">{ </span><span class="jop" style="color:var(--accent);font-weight:700">"&gt;="</span><span class="jp2">: [{</span><span class="jk2">"var"</span><span class="jp2">:</span><span class="js2">"age"</span><span class="jp2">}, </span><span class="jn2">18</span><span class="jp2">] }</span>
+<span class="jp2">] }</span></pre>
+          </div>
+          <div class="dsec data">
+            <div class="dsec-head"><h4>Data</h4><div class="actions"><button class="btn-lite">Format</button></div></div>
+<pre class="dsec-body"><span class="jp2">{ </span><span class="jk2">"age"</span><span class="jp2">: </span><span class="jn2">34</span><span class="jp2"> }</span></pre>
+          </div>
+          <div class="dsec result true" style="--sig:var(--sig-bool-true)">
+            <div class="dsec-head"><h4>Result</h4><div class="actions"><button class="btn-lite">⧉ Copy</button></div></div>
+            <div class="dsec-body"><span class="rbig">true</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="demo-stage" style="justify-content:center">
+        <div class="dpanel">
+          <div class="dsec logic">
+            <div class="dsec-head"><h4>Logic</h4><div class="actions"><button class="btn-lite">Format</button></div></div>
+<pre class="dsec-body"><span class="jp2">{ </span><span class="jop" style="color:var(--accent);font-weight:700">"/"</span><span class="jp2">: [{</span><span class="jk2">"var"</span><span class="jp2">:</span><span class="js2">"amount"</span><span class="jp2">}, {</span><span class="jk2">"var"</span><span class="jp2">:</span><span class="js2">"n"</span><span class="jp2">}] }</span></pre>
+          </div>
+          <div class="dsec data">
+            <div class="dsec-head"><h4>Data</h4><div class="actions"><button class="btn-lite">Format</button></div></div>
+<pre class="dsec-body"><span class="jp2">{ </span><span class="jk2">"amount"</span><span class="jp2">: </span><span class="jn2">100</span><span class="jp2">, </span><span class="jk2">"n"</span><span class="jp2">: </span><span class="jn2">0</span><span class="jp2"> }</span></pre>
+          </div>
+          <div class="dsec result" style="--sig:var(--sig-bool-false)">
+            <div class="dsec-head"><h4>Result</h4></div>
+            <div class="err-strip"><span class="ei">!</span><span class="err-pill" data-kind="type">NaN</span><span class="err-msg">/ by zero is not a number</span><span class="err-op-chip">op: /</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="muted" style="margin:20px 0 0; font-size:12.5px">Each section carries a signal rail — <span style="color:var(--accent)">indigo</span> for the logic you author, <span style="color:var(--sig-data)">teal</span> for the data tap, and the <em>result's own colour</em> for the answer. A boolean result tints its bay exactly like the root badge on the board; an error surfaces a type pill and the operator that raised it.</p>
+  </div>
+</section>
+
+<!-- ============================ STATES ============================ -->
+<section class="band" id="states">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">One node, every state</span>
+      <h2>Resting, live, and being edited</h2>
+      <p>The same gate across the lifecycle. States change the LED, the border and the wire — never the layout — so nothing jumps as you step through an evaluation.</p>
+    </div>
+    <div class="grid cols-3">
+      <div class="card" style="text-align:center">
+        <div class="stage-label">RESTING</div>
+        <div class="demo-stage" style="margin-top:12px">
+          <div class="node gate"><div class="node-head"><span class="led"></span><div class="expr"><span class="pill tap">age</span><span class="op">≥</span><span class="pill num">18</span></div></div></div>
+        </div>
+      </div>
+      <div class="card" style="text-align:center">
+        <div class="stage-label" style="color:var(--sig-bool-true)">TRUE (evaluated)</div>
+        <div class="demo-stage" style="margin-top:12px">
+          <div class="node gate" data-state="true"><div class="node-head"><span class="led on-true"></span><div class="expr"><span class="pill tap">age</span><span class="op">≥</span><span class="pill num">18</span></div></div></div>
+        </div>
+      </div>
+      <div class="card" style="text-align:center">
+        <div class="stage-label" style="color:var(--sig-bool-false)">FALSE (evaluated)</div>
+        <div class="demo-stage" style="margin-top:12px">
+          <div class="node gate" data-state="false"><div class="node-head"><span class="led on-false"></span><div class="expr"><span class="pill tap">age</span><span class="op">≥</span><span class="pill num">18</span></div></div></div>
+        </div>
+      </div>
+      <div class="card" style="text-align:center">
+        <div class="stage-label">SELECTED</div>
+        <div class="demo-stage" style="margin-top:12px">
+          <div class="node gate is-selected"><div class="node-head"><span class="led"></span><div class="expr"><span class="pill tap">age</span><span class="op">≥</span><span class="pill num">18</span></div></div></div>
+        </div>
+      </div>
+      <div class="card" style="text-align:center">
+        <div class="stage-label" style="color:var(--muted)">SKIPPED (short-circuit)</div>
+        <div class="demo-stage" style="margin-top:12px">
+          <div class="node gate" data-state="skipped"><div class="node-head"><span class="led"></span><div class="expr"><span class="pill tap">age</span><span class="op">≥</span><span class="pill num">18</span></div></div></div>
+        </div>
+      </div>
+      <div class="card" style="text-align:center">
+        <div class="stage-label" style="color:var(--accent)">EDITING · operand slot</div>
+        <div class="demo-stage" style="margin-top:12px">
+          <div class="node gate is-selected"><div class="node-head"><span class="led"></span><div class="expr"><span class="pill tap">age</span><span class="op">≥</span><span class="slot-empty">value…</span></div></div></div>
+        </div>
+      </div>
+      <div class="card" style="text-align:center">
+        <div class="stage-label" style="color:var(--sig-bool-false)">ERROR (threw)</div>
+        <div class="demo-stage" style="margin-top:12px">
+          <div class="node gate" data-state="error">
+            <span class="fault-badge">!</span>
+            <div class="node-head"><span class="led on-error"></span><div class="expr"><span class="pill num">amount</span><span class="op">÷</span><span class="pill num">0</span></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ EDITING ============================ -->
+<section class="band" id="editing">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">Built for editing, not just viewing</span>
+      <h2>The reading view <em>is</em> the editing view</h2>
+      <p>Nothing switches into a separate "edit mode." Every visible token is a target: swap an operator, retype a path, fill an empty slot, or add an argument — all in place.</p>
+    </div>
+    <div class="grid cols-2">
+      <div class="card">
+        <h3>Swap the operator in place</h3>
+        <p>The glyph is a menu. A <code>&gt;</code> becomes a <code>&gt;=</code> without rewiring the operands — role stays "gate," so the shape never changes.</p>
+        <div class="demo-stage" style="margin-top:16px; gap:10px">
+          <div class="node gate is-selected"><div class="node-head"><span class="led"></span><div class="expr"><span class="pill tap">age</span><span class="op" style="background:var(--surface-2);outline:1px dashed var(--faint)">≥</span><span class="pill num">18</span></div></div></div>
+          <span class="muted" style="font-family:var(--font-mono);font-size:12px">◂ click ≥ → = ≠ &gt; &lt; ≤</span>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Fill an empty slot</h3>
+        <p>An incomplete rule shows dashed slots with the expected type — a self-documenting to-do list, not a validation error after the fact.</p>
+        <div class="demo-stage" style="margin-top:16px">
+          <div class="node junction">
+            <div class="node-head"><div class="j-top"><span class="led"></span><span class="conj-name">all of</span><span class="op big">∧</span></div></div>
+            <div style="padding:4px 13px 12px 15px; display:flex; flex-direction:column; gap:8px; width:100%">
+              <span class="pill bool" style="align-self:flex-start">age ≥ 18</span>
+              <span class="slot-empty">condition…</span>
+              <span class="add-slot">＋ add condition</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Retarget a data tap</h3>
+        <p>Type a path with autocomplete against the data shape. The tap keeps its teal identity so you always know it reads from context.</p>
+        <div class="demo-stage" style="margin-top:16px; gap:10px">
+          <span class="pill tap" style="font-size:14px; outline:2px solid var(--sig-data); outline-offset:1px">user.<b style="border-right:1.5px solid var(--sig-data); padding-right:1px">a</b></span>
+          <span class="muted" style="font-family:var(--font-mono);font-size:12px">age · address · account</span>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Add an argument</h3>
+        <p>Variadic gates and values grow with an inline <code>＋</code> slot — no context menu round-trip for the common case.</p>
+        <div class="demo-stage" style="margin-top:16px">
+          <div class="node value" style="--sig:var(--sig-string)">
+            <div class="node-head"><span class="glyph-badge">⋯</span><span class="eyebrow cat">string</span><span class="vname">concat</span></div>
+            <div class="args"><span class="pill str">"Hi "</span><span class="pill tap">name</span><span class="add-slot">＋</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ MAPPING ============================ -->
+<section class="band" id="map">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">How it lands in the codebase</span>
+      <h2>An evolution of the React Flow renderer, not a rewrite</h2>
+      <p>The graph engine (<code>@xyflow/react</code> + dagre LR), the node/cell data model, the debug trace and the step-through controls all stay. What changes is the token layer and how a node decides its colour. Concretely:</p>
+    </div>
+    <table class="spec">
+      <thead><tr><th>Area</th><th>Today</th><th>Proposed</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>colour source</td>
+          <td><code>CATEGORY_COLORS[data.category]</code> — 11 hues drive header + border + tint</td>
+          <td>Add <code>data.returnType</code> → <code>SIGNAL_COLORS</code>. Category collapses to a monochrome <code>glyph-badge</code> + <code>eyebrow.cat</code> label.</td>
+        </tr>
+        <tr>
+          <td>node header</td>
+          <td>Solid saturated <code>.vertical-cell-header</code>, full-width, white text, long label</td>
+          <td>Near-neutral chip + 3px left signal rail (<code>.node::before</code>). Operator shown as a display math glyph; label demoted to eyebrow.</td>
+        </tr>
+        <tr>
+          <td>comparisons</td>
+          <td>Card titled "Greater Than Or Equal" with stacked <code>var</code>/literal cells</td>
+          <td>Infix <code>gate</code>: <code>age ≥ 18</code> with a signal LED. Uses the existing <code>ui.shortLabel</code>, upgraded to math glyphs.</td>
+        </tr>
+        <tr>
+          <td>truthiness</td>
+          <td>Only in debug: edge colour + amber pulse + result badge</td>
+          <td>LED + border state on every boolean gate; short-circuited nodes dim (<code>data-state="skipped"</code>). Same trace data.</td>
+        </tr>
+        <tr>
+          <td>two colour tables</td>
+          <td><code>constants/colors.ts</code> and <code>config/categories.ts</code> duplicated</td>
+          <td>Unify. Category keeps a glyph + name only; a single <code>SIGNAL_COLORS</code> owns the palette.</td>
+        </tr>
+        <tr>
+          <td>theme tokens</td>
+          <td><code>styles/theme.css</code> scoped to <code>.logic-editor</code></td>
+          <td>Same mechanism. Replace category vars with <code>--sig-*</code> signal vars; retune neutrals to the board/schematic pair.</td>
+        </tr>
+        <tr>
+          <td>edit affordances</td>
+          <td>Properties panel + hidden handles</td>
+          <td>Inline slots, glyph-as-menu, tap autocomplete — layered on the existing node without removing the panel.</td>
+        </tr>
+        <tr>
+          <td>return type</td>
+          <td>Not surfaced — <code>all/some/none</code> look like collections; <code>datetime</code> like a number</td>
+          <td>Each operator declares a <code>returnType</code> already in <code>operators.types.ts</code>. Drive the rail from it, add <code>--sig-temporal</code> for the 8th; quantifiers gain a truth LED.</td>
+        </tr>
+        <tr>
+          <td>node shape</td>
+          <td><code>UnifiedOperatorNode</code> — one card for every operator; <code>nodeType</code> unused for silhouette</td>
+          <td>Map the existing <code>ui.nodeType</code> (decision, iterator, vertical, structure…) to a silhouette: case-ladder, quantifier frame, brace manifold, guard/octagon.</td>
+        </tr>
+        <tr>
+          <td>debugger UI</td>
+          <td><code>DebuggerControls</code>, <code>DebugInfoBubble</code>, <code>DebugPanel</code> on a separate token set (<code>--debug-*</code>, <code>--accent-amber</code>)</td>
+          <td>Re-skin over the same JSX onto <code>--sig-*</code>: transport with a scrubber counter, node-anchored probe, signal-railed panel. A value is one colour board→probe→JSON.</td>
+        </tr>
+        <tr>
+          <td>error handling</td>
+          <td>Only idle/true/false/skipped states; errors live in a panel</td>
+          <td>Add <code>data-state="error"</code> (red halo + ⚠ badge + faulted wire), a <code>try</code> guard and a <code>throw</code> octagon. Error stays in the red family — told apart from false by <em>form</em>.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="muted" style="margin-top:22px; font-size:13.5px">The one real bet: <strong>spend the entire colour budget on the value flowing through the wire, and demote operator category to monochrome.</strong> Node-graph editors (n8n, Node-RED, Retool) all colour by category; colouring by <em>signal type</em> is the opinionated departure, and it's the version that answers the question users actually ask while debugging a rule.</p>
+  </div>
+</section>
+
+<footer class="site">
+  <div class="wrap">
+    <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:baseline; justify-content:space-between">
+      <div><strong style="color:var(--ink)">Datalogic Studio — signal-board proposal</strong><br>A visual language for reading &amp; editing JSONLogic · prototype in <code>ui/design-system.html</code></div>
+      <div>Type: <code>Space Grotesk</code> + <code>JetBrains Mono</code> · Signal palette from GitHub Primer</div>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* ---------------- theme toggle ---------------- */
+const root = document.documentElement;
+const tIcon = document.getElementById('themeIcon');
+const tLabel = document.getElementById('themeLabel');
+function setTheme(t){
+  root.setAttribute('data-theme', t);
+  tIcon.textContent = t === 'dark' ? '◑' : '◒';
+  tLabel.textContent = t === 'dark' ? 'Dark' : 'Light';
+  requestAnimationFrame(redrawAll);
+}
+document.getElementById('themeToggle').addEventListener('click', () => {
+  setTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+});
+
+/* ---------------- generic wiring ---------------- */
+const NS = 'http://www.w3.org/2000/svg';
+
+/* one shared arrowhead marker — inherits each wire's stroke via context-stroke,
+   so direction is explicit at rest (no motion needed) on every board. */
+(function injectArrowMarker(){
+  const s = document.createElementNS(NS, 'svg');
+  s.setAttribute('width', '0'); s.setAttribute('height', '0');
+  s.setAttribute('aria-hidden', 'true');
+  s.style.cssText = 'position:absolute;width:0;height:0';
+  s.innerHTML = '<defs><marker id="wire-arrow" viewBox="0 0 10 10" refX="8.5" refY="5" ' +
+    'markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">' +
+    '<path d="M0,0 L10,5 L0,10 z" fill="context-stroke" stroke="none"/></marker></defs>';
+  document.body.appendChild(s);
+})();
+
+function centerIn(el, cv){
+  const r = el.getBoundingClientRect(), b = cv.getBoundingClientRect();
+  return { x: r.left + r.width/2 - b.left, y: r.top + r.height/2 - b.top };
+}
+function drawEdges(svgEl, cv, edges, store){
+  edges.forEach(e => {
+    let p = store[e.id];
+    if(!p){
+      p = document.createElementNS(NS, 'path');
+      p.setAttribute('id', e.id);
+      p.setAttribute('class', 'wire ' + (e.cls || ''));   // class set once; wire()/e.cls own it afterwards
+      p.setAttribute('marker-end', 'url(#wire-arrow)');    // directional arrowhead at the target
+      svgEl.appendChild(p); store[e.id] = p;
+    }
+    const a = document.getElementById(e.from), b = document.getElementById(e.to);
+    if(!a || !b) return;
+    const s = centerIn(a, cv), t = centerIn(b, cv);
+    const dx = Math.max(28, Math.abs(t.x - s.x) * 0.5);
+    p.setAttribute('d', `M ${s.x} ${s.y} C ${s.x+dx} ${s.y}, ${t.x-dx} ${t.y}, ${t.x} ${t.y}`);
+    if(e.tag){
+      let tag = store['t_' + e.id];
+      if(!tag){
+        tag = document.createElement('div');
+        tag.className = 'wire-tag ' + (e.tagcls || '');
+        tag.textContent = e.tag;
+        cv.appendChild(tag); store['t_' + e.id] = tag;
+      }
+      tag.style.left = ((s.x + t.x) / 2) + 'px';
+      tag.style.top  = ((s.y + t.y) / 2) + 'px';
+    }
+  });
+}
+
+/* ---------------- hero board (age eligibility) ---------------- */
+const svg = document.getElementById('boardSvg');
+const canvas = document.getElementById('boardCanvas');
+const T = id => document.getElementById(id);
+const EDGES = [
+  // stage 1 → 2 : data taps feed the gates (always teal, direction of flow)
+  { id:'we1', from:'p-tage',   to:'p-g1i', cls:'sig-data' },
+  { id:'we2', from:'p-tage',   to:'p-g2i', cls:'sig-data' },
+  { id:'we3', from:'p-thasid', to:'p-g3i', cls:'sig-data' },
+  { id:'we4', from:'p-tpass',  to:'p-g4i', cls:'sig-data' },
+  // stage 2 → 3 → 4
+  { id:'w1', from:'p-g1', to:'p-and-1' },
+  { id:'w2', from:'p-g2', to:'p-and-2' },
+  { id:'w3', from:'p-g3', to:'p-or-1'  },
+  { id:'w4', from:'p-g4', to:'p-or-2'  },
+  { id:'w5', from:'p-or', to:'p-and-3' },
+  { id:'w6', from:'p-and', to:'p-root' },
+];
+const paths = {};
+function drawWires(){ drawEdges(svg, canvas, EDGES, paths); }
+
+/* ---- board primitives (shared by the stepper) ---- */
+function applyNode(id, state){
+  const n = T(id); if(!n) return;
+  n.setAttribute('data-state', state);
+  const led = n.querySelector('.led');
+  if(led) led.className = 'led' + (state === 'true' ? ' on-true' : state === 'false' ? ' on-false' : '');
+}
+function wire(id, state){
+  if(!paths[id]) return;
+  const cls = state === 'true' ? 'wire live-true' : state === 'false' ? 'wire live-false' : 'wire skipped';
+  paths[id].setAttribute('class', cls);
+  paths[id].setAttribute('marker-end', 'url(#wire-arrow)');
+}
+
+/* ---- ordered evaluation steps, modelling real short-circuit ---- */
+function heroInputs(){
+  return {
+    age:  Number(T('inAge').value),
+    hasId: T('inHasId').checked,
+    hasPass: T('inHasPass').checked,
+  };
+}
+function computeHeroSteps(){
+  const { age, hasId, hasPass } = heroInputs();
+  const S = [];
+  const add = (id, res, op, ctx) => S.push({ id, state: res ? 'true' : 'false', op, ctx, result: res });
+  const g1 = age >= 18;  add('g1', g1, 'age ≥ 18', { age });
+  let root = false, orRes = false;
+  if (g1) {
+    const g2 = age <= 65; add('g2', g2, 'age ≤ 65', { age });
+    if (g2) {
+      const g3 = hasId === true; add('g3', g3, 'hasID = true', { hasID: hasId });
+      if (g3) { orRes = true; add('orGate', true, 'any of · hasID | passport', { hasID: true }); }
+      else {
+        const g4 = hasPass === true; add('g4', g4, 'passport = true', { passport: hasPass });
+        orRes = g4; add('orGate', orRes, 'any of · hasID | passport', { hasID: false, passport: hasPass });
+      }
+      root = orRes; add('andGate', root, 'all of · 3 conditions', { 'age≥18': true, 'age≤65': true, 'any of': orRes });
+    } else { add('andGate', false, 'all of · 3 conditions', { 'age≤65': false }); }
+  } else { add('andGate', false, 'all of · 3 conditions', { 'age≥18': false }); }
+  return { steps: S, root };
+}
+
+const HERO = { steps: [], root: false, idx: -1, playing: false, timer: null, speed: 700,
+  wireOf: { g1:'w1', g2:'w2', g3:'w3', g4:'w4', orGate:'w5', andGate:'w6' },
+  glyph:  { g1:'≥', g2:'≤', g3:'=', g4:'=', orGate:'∨', andGate:'∧' } };
+
+function heroClearBoard(){
+  ['g1','g2','g3','g4','orGate','andGate'].forEach(id => applyNode(id, 'idle'));
+  ['w1','w2','w3','w4','w5','w6'].forEach(w => paths[w] && paths[w].setAttribute('class','wire'));
+  T('rootBadge').setAttribute('data-state','idle'); T('rootVal').textContent = '—';
+}
+function heroRebuild(){ const r = computeHeroSteps(); HERO.steps = r.steps; HERO.root = r.root; }
+function ctxHtml(obj){
+  const cell = v => typeof v === 'boolean' ? '<span class="jb2">'+v+'</span>'
+    : typeof v === 'number' ? '<span class="jn2">'+v+'</span>'
+    : '<span class="js2">"'+v+'"</span>';
+  const parts = Object.entries(obj).map(([k,v]) =>
+    '<span class="jk2">"'+k+'"</span><span class="jp2">: </span>'+cell(v));
+  return '<span class="jp2">{ </span>'+parts.join('<span class="jp2">, </span>')+'<span class="jp2"> }</span>';
+}
+function positionPop(pop, node){
+  pop.hidden = false;
+  const cv = canvas.getBoundingClientRect(), nr = node.getBoundingClientRect();
+  const nx = nr.left - cv.left, ny = nr.top - cv.top, nw = nr.width, nh = nr.height;
+  const pw = pop.offsetWidth || 264, ph = pop.offsetHeight || 150;
+  let left, top, cls;
+  if (nx + nw + 16 + pw <= canvas.clientWidth) { left = nx + nw + 14; top = ny + nh/2 - 26; cls = 'at-right'; }
+  else { left = Math.min(Math.max(nx + nw/2 - pw/2, 8), canvas.clientWidth - pw - 8); top = ny - ph - 12; if (top < 6) top = ny + nh + 12; cls = 'at-top'; }
+  top = Math.min(Math.max(top, 6), Math.max(6, canvas.clientHeight - ph - 6));
+  pop.style.left = left + 'px'; pop.style.top = top + 'px';
+  pop.classList.remove('at-right','at-top'); pop.classList.add(cls);
+}
+function heroShowPop(s, i){
+  const pop = T('heroPop'), node = T(s.id);
+  const sig = s.result ? 'var(--sig-bool-true)' : 'var(--sig-bool-false)';
+  pop.style.setProperty('--sig', sig);
+  T('hp-badge').textContent = HERO.glyph[s.id] || '·'; T('hp-badge').style.setProperty('--sig', sig);
+  T('hp-op').textContent = s.op; T('hp-step').textContent = 'step ' + (i+1);
+  T('hp-ctx').innerHTML = ctxHtml(s.ctx); T('hp-type').textContent = 'boolean';
+  T('hp-res').innerHTML = '<span class="led '+(s.result?'on-true':'on-false')+'"></span>' +
+    '<span class="rv-mini" style="color:'+sig+'">'+(s.result?'true':'false')+'</span>';
+  positionPop(pop, node);
+}
+function heroRender(){
+  heroClearBoard();
+  const S = HERO.steps, reached = new Set(S.map(s => s.id));
+  for (let i = 0; i <= HERO.idx; i++){ const s = S[i]; applyNode(s.id, s.state); const w = HERO.wireOf[s.id]; if (w) wire(w, s.state); }
+  if (HERO.idx === S.length - 1 && HERO.idx >= 0){
+    ['g1','g2','g3','g4','orGate'].forEach(id => { if (!reached.has(id)){ applyNode(id, 'skipped'); const w = HERO.wireOf[id]; if (w && paths[w]) paths[w].setAttribute('class','wire skipped'); } });
+    T('rootBadge').setAttribute('data-state', HERO.root ? 'true' : 'false');
+    T('rootVal').textContent = HERO.root ? 'true' : 'false';
+  }
+  if (HERO.idx >= 0) heroShowPop(S[HERO.idx], HERO.idx); else T('heroPop').hidden = true;
+  T('tp-cur').textContent = HERO.idx < 0 ? 0 : HERO.idx + 1;
+  T('tp-tot').textContent = S.length;
+  T('tp-bar').style.width = (S.length ? ((HERO.idx + 1) / S.length * 100) : 0) + '%';
+  T('heroTransport').classList.toggle('is-playing', HERO.playing);
+  T('tp-play-ico').textContent = HERO.playing ? '⏸' : '▶';
+  T('tp-play').setAttribute('aria-label', HERO.playing ? 'Pause' : 'Play');
+  T('tp-back').disabled = HERO.idx < 0; T('tp-reset').disabled = HERO.idx < 0;
+  T('tp-fwd').disabled = HERO.idx >= S.length - 1; T('tp-end').disabled = HERO.idx >= S.length - 1;
+}
+function heroGo(i){ HERO.idx = Math.max(-1, Math.min(i, HERO.steps.length - 1)); heroRender(); }
+function heroPause(){ HERO.playing = false; clearInterval(HERO.timer); HERO.timer = null; }
+function heroPlay(){
+  if (HERO.idx >= HERO.steps.length - 1) HERO.idx = -1;
+  HERO.playing = true;
+  clearInterval(HERO.timer);
+  HERO.timer = setInterval(() => { if (HERO.idx >= HERO.steps.length - 1){ heroPause(); heroRender(); return; } heroGo(HERO.idx + 1); }, HERO.speed);
+  heroRender();
+}
+function heroStep(d){ heroPause(); heroGo(HERO.idx + d); }
+function heroReset(){ heroPause(); heroRebuild(); HERO.idx = -1; heroRender(); }
+
+/* transport wiring */
+T('tp-play').addEventListener('click', () => HERO.playing ? (heroPause(), heroRender()) : heroPlay());
+T('tp-fwd').addEventListener('click', () => heroStep(1));
+T('tp-back').addEventListener('click', () => heroStep(-1));
+T('tp-reset').addEventListener('click', heroReset);
+T('tp-end').addEventListener('click', () => { heroPause(); heroRebuild(); heroGo(HERO.steps.length - 1); });
+T('tp-speed').addEventListener('input', e => { HERO.speed = 2100 - Number(e.target.value); if (HERO.playing) heroPlay(); });
+
+/* the marketing buttons: Run = jump to end, Reset = back to rest */
+T('runBtn').addEventListener('click', () => { heroPause(); heroRebuild(); heroGo(HERO.steps.length - 1); });
+T('resetBtn').addEventListener('click', heroReset);
+
+/* inputs: mirror into the tap rail; re-run in place if mid-trace */
+['inAge','inHasId','inHasPass'].forEach(id =>
+  T(id).addEventListener('input', () => {
+    T('tv-age').textContent = T('inAge').value;
+    T('tv-hasid').textContent = T('inHasId').checked;
+    T('tv-pass').textContent = T('inHasPass').checked;
+    const wasAt = HERO.idx;
+    heroRebuild();
+    if (wasAt >= 0) heroGo(Math.min(wasAt, HERO.steps.length - 1));
+  })
+);
+
+/* keyboard — only while the pointer is over the hero board (never hijack page scroll) */
+let heroActive = false;
+const heroFrame = canvas.closest('.board-frame');
+heroFrame.addEventListener('mouseenter', () => heroActive = true);
+heroFrame.addEventListener('mouseleave', () => heroActive = false);
+window.addEventListener('keydown', e => {
+  if (!heroActive) return;
+  if (e.target.matches && e.target.matches('input,textarea,select')) return;
+  switch (e.key){
+    case ' ': e.preventDefault(); HERO.playing ? (heroPause(), heroRender()) : heroPlay(); break;
+    case 'ArrowLeft': e.preventDefault(); heroStep(-1); break;
+    case 'ArrowRight': e.preventDefault(); heroStep(1); break;
+    case 'Home': e.preventDefault(); heroReset(); break;
+    case 'End': e.preventDefault(); heroPause(); heroRebuild(); heroGo(HERO.steps.length - 1); break;
+  }
+});
+
+heroRebuild(); heroRender();
+
+/* ---------------- pipeline board (order total) ---------------- */
+const pipeStore = {};
+const PIPE_EDGES = [
+  { id:'pw1', from:'ps-items',       to:'ps-reduce-in',  cls:'sig-coll', tag:'[3 items]', tagcls:'t-coll' },
+  { id:'pw2', from:'ps-reduce-out',  to:'ps-mul-a',      cls:'sig-num',  tag:'145',       tagcls:'t-num'  },
+  { id:'pw3', from:'ps-disc',        to:'ps-formula-in', cls:'sig-num',  tag:'10',        tagcls:'t-num'  },
+  { id:'pw4', from:'ps-formula-out', to:'ps-mul-b',      cls:'sig-num',  tag:'0.9',       tagcls:'t-num'  },
+  { id:'pw5', from:'ps-mul-out',     to:'ps-result',     cls:'sig-num',  tag:'130.5',     tagcls:'t-num'  },
+];
+const pipeSvg = document.getElementById('pipeSvg');
+const pipeCanvas = document.getElementById('pipeCanvas');
+const flowView = document.getElementById('flowView');
+function drawPipe(){ if(pipeSvg && pipeCanvas && flowView && !flowView.hidden) drawEdges(pipeSvg, pipeCanvas, PIPE_EDGES, pipeStore); }
+
+/* ---------------- view toggle (data flow ⇄ JSON) ---------------- */
+document.querySelectorAll('.seg button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    btn.closest('.seg').querySelectorAll('button').forEach(x => x.classList.toggle('active', x === btn));
+    const flow = btn.dataset.view === 'flow';
+    document.getElementById('flowView').hidden = !flow;
+    document.getElementById('jsonView').hidden = flow;
+    if(flow) requestAnimationFrame(drawPipe);
+  });
+});
+
+/* ---------------- large-logic board (checkout) ---------------- */
+const scaleStore = {};
+const SCALE_EDGES = [
+  { id:'sw-g1',  from:'sp-g1',  to:'sp-and-1',  cls:'live-true' },
+  { id:'sw-g2',  from:'sp-g2',  to:'sp-and-2',  cls:'live-true' },
+  { id:'sw-g3',  from:'sp-g3',  to:'sp-or-1',   cls:'live-true' },
+  { id:'sw-g4',  from:'sp-g4',  to:'sp-or-2',   cls:'skipped'   },
+  { id:'sw-or',  from:'sp-or',  to:'sp-and-3',  cls:'live-true' },
+  { id:'sw-n1',  from:'sp-n1',  to:'sp-and-4',  cls:'live-true' },
+  { id:'sw-r1',  from:'sp-r1',  to:'sp-m1-a',   cls:'sig-num', tag:'145',    tagcls:'t-num' },
+  { id:'sw-fm',  from:'sp-fm',  to:'sp-m1-b',   cls:'sig-num', tag:'0.9',    tagcls:'t-num' },
+  { id:'sw-m1',  from:'sp-m1',  to:'sp-cat-in', cls:'sig-num', tag:'130.50', tagcls:'t-num' },
+  { id:'sw-and', from:'sp-and', to:'sp-if-when',cls:'live-true' },
+  { id:'sw-cat', from:'sp-cat', to:'sp-if-then',cls:'sig-str'   },
+  { id:'sw-if',  from:'sp-if',  to:'sp-res',    cls:'sig-str'   },
+];
+const scaleSvg = document.getElementById('scaleSvg');
+const scaleCanvas = document.getElementById('scaleCanvas');
+function drawScale(){ if(scaleSvg && scaleCanvas) drawEdges(scaleSvg, scaleCanvas, SCALE_EDGES, scaleStore); }
+
+/* ---------------- layout ---------------- */
+function redrawAll(){ drawWires(); drawPipe(); drawScale(); }
+window.addEventListener('resize', redrawAll);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(redrawAll);
+window.addEventListener('load', () => { redrawAll(); setTimeout(redrawAll, 140); });
+new ResizeObserver(redrawAll).observe(canvas);
+if(pipeCanvas) new ResizeObserver(drawPipe).observe(pipeCanvas);
+if(scaleCanvas) new ResizeObserver(drawScale).observe(scaleCanvas);
+redrawAll();
+</script>
+</body>
+</html>

@@ -11,7 +11,7 @@ import type {
 import type { IconName } from './icons';
 import type { ParentInfo } from './converters/types';
 import { getValueType } from './type-helpers';
-import { formatOperandLabel } from './formatting';
+import { formatOperandLabel, CONTEXT_LABEL } from './formatting';
 
 
 // Factory function to create a literal node
@@ -58,6 +58,7 @@ export function buildVariableCells(options: BuildVariableCellsOptions): CellData
       fieldId: 'path',
       fieldType: 'text',
       value: path,
+      label: path || CONTEXT_LABEL,
       placeholder: 'user.profile.name',
       index: 0,
     });
@@ -89,6 +90,7 @@ export function buildVariableCells(options: BuildVariableCellsOptions): CellData
       fieldId: 'path',
       fieldType: 'text',
       value: pathComponents?.join('.') ?? path,
+      label: (pathComponents?.join('.') || path) || CONTEXT_LABEL,
       placeholder: 'field1.field2',
       index: 1,
     });
@@ -100,6 +102,7 @@ export function buildVariableCells(options: BuildVariableCellsOptions): CellData
       fieldId: 'path',
       fieldType: 'text',
       value: path,
+      label: path || CONTEXT_LABEL,
       placeholder: 'user.profile.name',
       index: 0,
     });

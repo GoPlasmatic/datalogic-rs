@@ -10,8 +10,27 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  position: relative;
   border-bottom: 1px solid var(--border-primary);
 }
+
+/* Signal rail per section (design-system .dsec::before): logic = accent,
+   data = data-teal, result = outcome colour (neutral / true / false / error). */
+.debug-section::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  z-index: 2;
+}
+.debug-section.logic-section::before { background: var(--accent); }
+.debug-section.data-section::before { background: var(--sig-data); }
+.debug-section.result-section::before { background: var(--sig-bool-rest); }
+.debug-section.result-section.has-true::before { background: var(--sig-bool-true); }
+.debug-section.result-section.has-false::before,
+.debug-section.result-section.has-error::before { background: var(--sig-bool-false); }
 
 /* Desktop: all sections visible with proportional flex */
 .debug-section.logic-section:not(.expanded):not(.collapsed) {
@@ -45,10 +64,10 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 8px 12px;
-  background: var(--bg-tertiary);
+  padding: 9px 13px 9px 15px;
+  background: var(--surface-2);
   border: none;
-  border-bottom: 1px solid var(--border-primary);
+  border-bottom: 1px solid var(--hairline-2);
   flex-shrink: 0;
   cursor: default;
   font-family: inherit;
@@ -77,6 +96,21 @@
   gap: 6px;
 }
 
+/* accordion toggle — reset button chrome so it reads as the header title */
+.debug-section-toggle {
+  background: none;
+  border: none;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .debug-section-header-right {
   display: flex;
   align-items: center;
@@ -95,11 +129,12 @@
 
 .debug-section-header h3 {
   margin: 0;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.14em;
 }
 
 .format-btn {
@@ -186,7 +221,7 @@
   padding: 10px;
   border: none;
   resize: none;
-  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
   color: var(--text-primary);
@@ -234,7 +269,7 @@
 .debug-result {
   margin: 0;
   padding: 10px;
-  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.4;
   color: var(--text-primary);
@@ -244,13 +279,13 @@
 }
 
 .debug-result.truthy {
-  background: var(--success-bg);
-  color: var(--success-text);
+  background: var(--sig-bool-true-bg);
+  color: var(--sig-bool-true);
 }
 
 .debug-result.falsy {
-  background: var(--error-bg-light);
-  color: var(--error-text);
+  background: var(--sig-bool-false-bg);
+  color: var(--sig-bool-false);
 }
 
 .debug-result.error {
@@ -292,7 +327,7 @@
   color: var(--text-primary);
   border: 1px solid var(--border-primary);
   font-size: 10px;
-  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-family: var(--font-mono);
   flex-shrink: 0;
 }
 
@@ -355,7 +390,7 @@
   bottom: 0;
   padding: 10px;
   pointer-events: none;
-  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;
@@ -382,7 +417,7 @@
   padding: 10px;
   border: none;
   resize: none;
-  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
   color: transparent;
@@ -435,7 +470,7 @@
 .json-result-display {
   margin: 0;
   padding: 10px;
-  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.4;
   background: var(--code-bg);
@@ -446,19 +481,21 @@
 }
 
 .json-result-display.truthy {
-  background: var(--success-bg);
+  background: var(--sig-bool-true-bg);
 }
 
 .json-result-display.truthy .json-boolean {
-  color: var(--success-text);
+  color: var(--sig-bool-true);
+  font-weight: 700;
 }
 
 .json-result-display.falsy {
-  background: var(--error-bg-light);
+  background: var(--sig-bool-false-bg);
 }
 
 .json-result-display.falsy .json-boolean {
-  color: var(--error-text);
+  color: var(--sig-bool-false);
+  font-weight: 700;
 }
 
 /* Mobile adjustments */

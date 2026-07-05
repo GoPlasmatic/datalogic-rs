@@ -206,7 +206,7 @@
 }
 
 .help-badge code {
-  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+  font-family: var(--font-mono);
 }
 
 .help-badge-arity {
@@ -321,7 +321,7 @@
 .help-example-code {
   margin: 0;
   padding: 8px;
-  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.5;
   background: var(--dl-bg-code, #fff);
@@ -358,7 +358,7 @@
 
 .help-example-data code,
 .help-example-result code {
-  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+  font-family: var(--font-mono);
   color: var(--dl-text-primary, #1a1a1a);
 }
 
@@ -368,7 +368,7 @@
 }
 
 .help-example-error code {
-  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+  font-family: var(--font-mono);
   color: var(--dl-error, #ef4444);
 }
 
@@ -587,7 +587,7 @@
   flex: 1;
   padding: 4px 8px;
   font-size: 12px;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-family: var(--font-mono);
   color: var(--text-primary, #1a1a1a);
   background: transparent;
   border: none;
@@ -705,7 +705,7 @@
   width: 100%;
   padding: 6px 8px;
   font-size: 12px;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-family: var(--font-mono);
   color: var(--text-primary, #1a1a1a);
   background: var(--bg-primary, #ffffff);
   border: 1px solid var(--border-color, #d0d0d0);
@@ -787,7 +787,7 @@
   flex: 1;
   padding: 6px 8px;
   font-size: 12px;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-family: var(--font-mono);
   color: var(--color-primary, #2563eb);
   background: var(--bg-primary, #ffffff);
   border: 1px solid var(--border-color, #d0d0d0);
@@ -827,7 +827,7 @@
   width: 100%;
   padding: 6px 8px;
   font-size: 12px;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-family: var(--font-mono);
   color: var(--text-secondary, #666);
   background: var(--bg-tertiary, #f5f5f5);
   border: 1px solid var(--border-color, #e0e0e0);
@@ -1002,7 +1002,7 @@
 }
 
 .properties-panel-operator-symbol {
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-tertiary, #999);
   padding: 2px 6px;

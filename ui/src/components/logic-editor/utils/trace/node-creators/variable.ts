@@ -7,6 +7,7 @@ import type { ExpressionNode } from '../../../types/trace';
 import type { ParentInfo } from '../../converters/types';
 import type { TraceContext } from '../types';
 import { createArgEdge } from '../../node-factory';
+import { formatVarValPath } from '../../formatting';
 import { mapInlinedChildren } from '../inline-mapping';
 
 /**
@@ -40,7 +41,7 @@ export function createVariableNodeFromTrace(
 
   // Build cells for the variable operator
   const cells: { type: 'editable'; fieldId: string; fieldType: 'text'; value: unknown; placeholder: string; label: string; index: number }[] = [
-    { type: 'editable', fieldId: 'path', fieldType: 'text', value: path, placeholder: 'path', label: path || '', index: 0 },
+    { type: 'editable', fieldId: 'path', fieldType: 'text', value: path, placeholder: 'path', label: formatVarValPath(operator, operands as JsonLogicValue), index: 0 },
   ];
   if (defaultValue !== undefined) {
     cells.push({ type: 'editable', fieldId: 'default', fieldType: 'text', value: defaultValue, placeholder: 'default', label: String(defaultValue), index: 1 });

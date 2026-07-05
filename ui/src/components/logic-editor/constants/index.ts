@@ -8,6 +8,9 @@ export {
   DAGRE_OPTIONS,
   FIXED_WIDTHS,
   DECISION_NODE_DIMENSIONS,
+  GATE_NODE,
+  gateNodeHeight,
+  DECISION_NODE,
   REACT_FLOW_OPTIONS,
 } from './layout';
 export { HANDLE_IDS, HANDLE_POSITIONS, EDGE_IDS } from './handles';

@@ -90,7 +90,7 @@
 .panel-input-textarea {
   resize: vertical;
   min-height: 60px;
-  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+  font-family: var(--font-mono);
 }
 
 /* ==========================================================================
@@ -214,7 +214,7 @@
 .panel-input-path-prefix {
   padding: 8px 0 8px 10px;
   font-size: 13px;
-  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+  font-family: var(--font-mono);
   color: var(--dl-text-tertiary, #999);
   user-select: none;
 }
@@ -222,7 +222,7 @@
 .panel-input-path {
   border: none;
   padding-left: 4px;
-  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+  font-family: var(--font-mono);
 }
 
 .panel-input-path:focus {
@@ -247,7 +247,7 @@
 
 .panel-input-segment {
   flex: 1;
-  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+  font-family: var(--font-mono);
 }
 
 .panel-input-segment-remove {
@@ -301,7 +301,7 @@
 
 .panel-input-path-preview {
   font-size: 11px;
-  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+  font-family: var(--font-mono);
   color: var(--dl-text-tertiary, #999);
   padding: 4px 0;
 }
@@ -334,7 +334,7 @@
 }
 
 .panel-input-expression-summary {
-  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+  font-family: var(--font-mono);
   color: var(--dl-text-primary, #1a1a1a);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -362,7 +362,7 @@
 }
 
 .panel-input-json {
-  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
   resize: vertical;
@@ -470,7 +470,7 @@
 }
 
 .panel-hint-description code {
-  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+  font-family: var(--font-mono);
   font-size: 11px;
   background: var(--dl-bg-code, #e8e8e8);
   padding: 1px 4px;
@@ -505,7 +505,7 @@
 }
 
 .panel-context-example {
-  font-family: var(--dl-font-mono, 'SF Mono', 'Monaco', 'Inconsolata', monospace);
+  font-family: var(--font-mono);
   font-size: 11px;
   background: var(--dl-bg-code, rgba(0, 0, 0, 0.06));
   padding: 2px 6px;

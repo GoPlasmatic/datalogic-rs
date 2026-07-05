@@ -1,24 +1,6 @@
-/* Inline variant (used in toolbar) */
-.dl-debugger-controls--inline {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
+/* Transport bar — floating over the board, or chrome-stripped inline in the toolbar.
+   Mirrors the design-system .transport. */
 
-.dl-debugger-controls--inline .dl-debugger-controls-inner {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 0;
-  background: none;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-  backdrop-filter: none;
-  flex-shrink: 0;
-}
-
-/* Floating overlay variant (legacy, used inside ReactFlow) */
 .dl-debugger-controls--floating {
   position: absolute;
   top: 12px;
@@ -28,188 +10,205 @@
   pointer-events: auto;
 }
 
-.dl-debugger-controls--floating .dl-debugger-controls-inner {
-  display: flex;
+.dl-debugger-controls-inner {
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  gap: 16px;
-  padding: 8px 16px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px var(--node-shadow);
-  backdrop-filter: blur(8px);
+  gap: 12px;
+  height: 48px;
+  padding: 0 12px 0 15px;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--shadow-lg);
+  font-family: var(--font-ui);
 }
 
-/* Bug icon indicator */
+/* left rail — resting slate, accent while playing */
+.dl-debugger-controls-inner::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--sig-bool-rest);
+}
+.dl-debugger-controls-inner.is-playing::before {
+  background: var(--accent);
+}
+
 .dl-debugger-icon {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  color: var(--accent-amber);
+  color: var(--sig-string);
 }
 
-/* Navigation buttons */
 .dl-debugger-buttons {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
 .dl-debugger-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: var(--bg-hover);
-  color: var(--text-secondary);
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
   cursor: pointer;
-  transition: background-color 0.15s, color 0.15s, transform 0.1s;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  color: var(--ink-2);
+  transition: border-color 0.15s ease, transform 0.1s ease, background 0.15s ease, color 0.15s ease;
 }
-
 .dl-debugger-btn:hover:not(:disabled) {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--hairline));
+  color: var(--ink);
 }
-
 .dl-debugger-btn:active:not(:disabled) {
-  transform: scale(0.95);
+  transform: scale(0.94);
 }
-
 .dl-debugger-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+  opacity: 0.35;
+  cursor: default;
 }
-
 .dl-debugger-btn-primary {
-  width: 36px;
-  height: 36px;
-  background: var(--accent-blue);
-  color: white;
+  width: 40px;
+  height: 40px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
-
 .dl-debugger-btn-primary:hover:not(:disabled) {
-  background: var(--accent-blue-hover);
-  color: white;
+  filter: brightness(1.08);
+  color: #fff;
+  border-color: var(--accent);
 }
 
-/* Step counter */
+/* step counter — a mono readout whose underline fills with progress */
 .dl-debugger-step-counter {
-  display: flex;
+  position: relative;
+  display: inline-flex;
   align-items: baseline;
-  gap: 2px;
-  font-family: 'SF Mono', 'Consolas', monospace;
-  font-size: 13px;
-  min-width: 60px;
+  gap: 3px;
+  min-width: 58px;
   justify-content: center;
+  padding: 6px 12px 8px;
+  border-radius: 8px;
+  overflow: hidden;
   flex-shrink: 0;
+  font-family: var(--font-mono);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 8%, var(--surface-2)), var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--hairline));
 }
-
 .dl-step-current {
-  color: var(--text-primary);
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
 }
-
-.dl-step-separator {
-  color: var(--text-muted);
-  margin: 0 2px;
+.dl-debugger-controls-inner.is-playing .dl-step-current {
+  color: var(--accent);
 }
-
+.dl-step-separator,
 .dl-step-total {
-  color: var(--text-secondary);
+  color: var(--muted);
+  font-size: 12px;
+}
+.dl-step-progress {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.2s ease;
 }
 
-/* Speed control */
+/* speed slider */
 .dl-debugger-speed {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
 }
-
 .dl-speed-label {
-  font-size: 12px;
-  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
   white-space: nowrap;
 }
-
 .dl-speed-slider {
-  width: 80px;
-  height: 4px;
   -webkit-appearance: none;
   appearance: none;
-  background: var(--bg-tertiary);
-  border-radius: 2px;
+  width: 84px;
+  height: 4px;
+  border-radius: 3px;
+  background: var(--hairline);
   cursor: pointer;
 }
-
 .dl-speed-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 14px;
   height: 14px;
-  background: var(--accent-blue);
   border-radius: 50%;
+  background: var(--chip);
+  border: 2px solid var(--sig-number);
   cursor: pointer;
-  transition: transform 0.1s;
 }
-
-.dl-speed-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.15);
-}
-
 .dl-speed-slider::-moz-range-thumb {
   width: 14px;
   height: 14px;
-  background: var(--accent-blue);
   border-radius: 50%;
-  border: none;
+  background: var(--chip);
+  border: 2px solid var(--sig-number);
   cursor: pointer;
 }
 
-/* Dark mode adjustments */
-.logic-editor[data-theme="dark"] .dl-debugger-controls--floating .dl-debugger-controls-inner {
-  background: rgba(31, 41, 55, 0.95);
-  border-color: var(--border-light);
+/* inline variant — chrome stripped, lives in the toolbar strip */
+.dl-debugger-controls--inline {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.dl-debugger-controls--inline .dl-debugger-controls-inner {
+  background: none;
+  backdrop-filter: none;
+  border: none;
+  box-shadow: none;
+  height: auto;
+  padding: 0;
+  gap: 10px;
+}
+.dl-debugger-controls--inline .dl-debugger-controls-inner::before {
+  display: none;
+}
+.dl-debugger-controls--inline .dl-debugger-icon,
+.dl-debugger-controls--inline .dl-debugger-speed {
+  display: none;
+}
+.dl-debugger-controls--inline .dl-debugger-btn {
+  width: 30px;
+  height: 30px;
+}
+.dl-debugger-controls--inline .dl-debugger-btn-primary {
+  width: 34px;
+  height: 34px;
 }
 
-.logic-editor[data-theme="dark"] .dl-debugger-btn {
-  background: rgba(55, 65, 81, 0.8);
-}
-
-.logic-editor[data-theme="dark"] .dl-debugger-btn:hover:not(:disabled) {
-  background: rgba(75, 85, 99, 0.9);
-}
-
-.logic-editor[data-theme="dark"] .dl-speed-slider {
-  background: rgba(75, 85, 99, 0.8);
-}
-
-/* Mobile adjustments */
 @media (max-width: 1024px) {
   .dl-debugger-controls--inline .dl-debugger-controls-inner {
     gap: 8px;
   }
-
-  .dl-debugger-btn {
-    width: 36px;
-    height: 36px;
-  }
-
-  .dl-debugger-btn-primary {
-    width: 40px;
-    height: 40px;
-  }
-
-  .dl-debugger-step-counter {
-    min-width: 50px;
-    font-size: 12px;
-  }
-
   .dl-speed-slider {
     width: 60px;
   }

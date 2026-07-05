@@ -1,4 +1,527 @@
 /* ============================================
+   Signal Board — operand pills, LEDs, op glyphs, shape silhouettes
+   ============================================ */
+
+/* type-coloured operand pills (colour = the operand's value type) */
+.dl-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.dl-pill-tap  { color: var(--sig-data);       background: var(--sig-data-bg);       border-color: color-mix(in srgb, var(--sig-data) 24%, transparent); }
+.dl-pill-tap::before { content: "\2041"; font-size: 11px; opacity: 0.8; }
+.dl-pill-num  { color: var(--sig-number);     background: var(--sig-number-bg);     border-color: color-mix(in srgb, var(--sig-number) 22%, transparent); }
+.dl-pill-str  { color: var(--sig-string);     background: var(--sig-string-bg);     border-color: color-mix(in srgb, var(--sig-string) 26%, transparent); }
+.dl-pill-bool { color: var(--sig-bool-true);  background: var(--sig-bool-true-bg);  border-color: color-mix(in srgb, var(--sig-bool-true) 24%, transparent); }
+.dl-pill-coll { color: var(--sig-collection); background: var(--sig-collection-bg); border-color: color-mix(in srgb, var(--sig-collection) 24%, transparent); }
+.dl-pill-temp { color: var(--sig-temporal);   background: var(--sig-temporal-bg);   border-color: color-mix(in srgb, var(--sig-temporal) 24%, transparent); }
+.dl-pill-nul  { color: var(--sig-null);       background: var(--sig-null-bg);       border-color: color-mix(in srgb, var(--sig-null) 22%, transparent); font-style: italic; }
+
+/* boolean gate/quantifier LED */
+.dl-led {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1.5px solid var(--sig-bool-rest);
+  background: transparent;
+}
+.dl-node.debug-executed .dl-led {
+  border-color: var(--sig-bool-true);
+  background: var(--sig-bool-true);
+  box-shadow: 0 0 0 3px var(--sig-bool-true-bg);
+}
+.dl-node.debug-error .dl-led {
+  border-color: var(--sig-bool-false);
+  background: var(--sig-bool-false);
+}
+
+/* operator math glyph (gate / arithmetic) */
+.dl-op-glyph {
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--dl-sig);
+  flex-shrink: 0;
+  min-width: 14px;
+  text-align: center;
+}
+
+/* gate & arithmetic: the op-glyph carries the meaning, so drop the category
+   badge and demote the verbose label to a small-caps eyebrow */
+.dl-shape-gate .vertical-cell-icon,
+.dl-shape-arith .vertical-cell-icon {
+  display: none;
+}
+.dl-shape-gate .vertical-cell-label,
+.dl-shape-arith .vertical-cell-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* data tap (var / val / exists): a teal PLUG that reads from the data and points
+   into the flow. The node box itself is transparent; the inner .dl-tap carries the
+   silhouette (clip-path), so the ReactFlow output handle — a sibling of .dl-tap —
+   stays at the plug's tip and is never clipped. */
+.dl-shape-tap { --dl-sig: var(--sig-data); }
+.dl-node.dl-shape-tap {
+  background: transparent !important;
+  border: none;
+  box-shadow: none;
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  overflow: visible;
+}
+.dl-node.dl-shape-tap::before { display: none; } /* no left rail — the plug is fully tinted */
+.dl-node.dl-shape-tap:hover { box-shadow: none; }
+/* keep the plug's 1px drop-shadow outline from being clipped in debug states */
+.dl-node.dl-shape-tap[class*="debug-"]:not(.debug-current) { overflow: visible; }
+
+.dl-tap {
+  --tap-line: color-mix(in srgb, var(--sig-data) 55%, var(--node-bg));
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  padding: 6px 19px 6px 12px; /* extra right padding leaves room for the plug point */
+  font-family: var(--font-mono);
+  font-size: 12px; /* matches the operand pills so operands read at one size */
+  font-weight: 500;
+  color: var(--sig-data);
+  background: color-mix(in srgb, var(--sig-data) 15%, var(--node-bg));
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 0 100%);
+  filter:
+    drop-shadow(1px 0 0 var(--tap-line)) drop-shadow(-1px 0 0 var(--tap-line))
+    drop-shadow(0 1px 0 var(--tap-line)) drop-shadow(0 -1px 0 var(--tap-line))
+    drop-shadow(0.8px 0.8px 0 var(--tap-line)) drop-shadow(-0.8px 0.8px 0 var(--tap-line))
+    drop-shadow(0.8px -0.8px 0 var(--tap-line)) drop-shadow(-0.8px -0.8px 0 var(--tap-line));
+  transition: filter var(--motion-base) var(--ease-out);
+}
+.dl-tap-glyph { opacity: 0.85; font-size: 11px; }
+.dl-tap-path { color: var(--sig-data); font-weight: 600; }
+.dl-tap-val { color: var(--muted); font-size: 11px; }
+
+/* hover: deepen the plug outline (parallels the border-tint hover on card nodes) */
+.dl-node.dl-shape-tap:hover .dl-tap {
+  --tap-line: color-mix(in srgb, var(--sig-data) 82%, var(--node-bg));
+}
+
+/* selection ring FOLLOWS the plug silhouette: an accent copy of the plug shape
+   rendered 2px larger BEHIND the plug, on the un-clipped node wrapper. (A
+   box-shadow / drop-shadow on the plug itself is swallowed by its own clip-path.) */
+.dl-node.dl-shape-tap.selected { box-shadow: none; }
+.dl-node.dl-shape-tap .dl-tap { z-index: 1; }
+.dl-node.dl-shape-tap.selected::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: 0;
+  background: var(--accent);
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%);
+  pointer-events: none;
+}
+
+/* debug rings: an accent-free copy of the plug silhouette, tinted per state, so the
+   highlight follows the plug SHAPE. The node box is transparent, so the generic
+   rectangular box-shadow debug rings would halo empty space — suppress them here
+   and let the clip-path ::after ring carry every debug state instead. */
+.dl-node.dl-shape-tap[class*="debug-"] {
+  box-shadow: none !important;
+  animation: none !important;
+}
+.dl-node.dl-shape-tap[class*="debug-"]::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: 0;
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%);
+  pointer-events: none;
+}
+.dl-node.dl-shape-tap.debug-executed::after { background: var(--debug-executed-color); }
+.dl-node.dl-shape-tap.debug-on-path::after  { background: var(--debug-current-color); opacity: 0.55; }
+.dl-node.dl-shape-tap.debug-error::after    { background: var(--debug-error-color); }
+.dl-node.dl-shape-tap.debug-current::after {
+  background: var(--debug-current-color);
+  animation: debug-pulse-plug 1.5s ease-in-out infinite;
+}
+.dl-node.dl-shape-tap.debug-error.debug-current::after { background: var(--debug-error-color); }
+
+/* box-shadow can't follow the clip-path, so pulse the silhouette ring's own
+   size/opacity to echo the card nodes' debug-current pulse. */
+@keyframes debug-pulse-plug {
+  0%, 100% { inset: -2px; opacity: 1; }
+  50%      { inset: -4px; opacity: 0.7; }
+}
+
+/* branch (if / switch / match): structural accent */
+.dl-shape-branch { --dl-sig: var(--accent); }
+.dl-shape-branch .vertical-cell-icon {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* iterator / quantifier: stacked "collection" frame — an offset card outline
+   behind the node (drawn with layered box-shadows so it renders above canvas) */
+.dl-shape-iterator,
+.dl-shape-quantifier { --dl-sig: var(--sig-collection); }
+.dl-shape-iterator,
+.dl-shape-quantifier {
+  box-shadow:
+    5px -5px 0 -1px var(--node-bg),
+    5px -5px 0 0 color-mix(in srgb, var(--sig-collection) 38%, var(--hairline)),
+    var(--node-shadow);
+}
+.dl-shape-iterator:hover,
+.dl-shape-quantifier:hover {
+  box-shadow:
+    5px -5px 0 -1px var(--node-bg),
+    5px -5px 0 0 color-mix(in srgb, var(--sig-collection) 50%, var(--hairline)),
+    var(--node-shadow-hover);
+}
+.dl-shape-quantifier { --dl-sig: var(--sig-bool-rest); }
+.dl-shape-quantifier .vertical-cell-icon {
+  color: var(--sig-collection);
+  background: color-mix(in srgb, var(--sig-collection) 14%, transparent);
+}
+
+/* literal: a folded-corner CONSTANT TAG, tinted by its value type. The fold +
+   outline live on the inner .dl-lit (clip-path); the .dl-node wrapper stays
+   UNCLIPPED and transparent so it can host a selection / debug ring (::after)
+   that follows the fold shape — a box-shadow ring is swallowed by the clip.
+   Mirrors the data-tap plug. */
+.dl-node.dl-shape-literal {
+  background: transparent !important;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  overflow: visible;
+}
+.dl-node.dl-shape-literal::before { display: none; } /* no left rail — the tag is fully tinted */
+.dl-node.dl-shape-literal:hover { box-shadow: none; }
+.dl-node.dl-shape-literal[class*="debug-"]:not(.debug-current) { overflow: visible; }
+
+.dl-lit {
+  --lit-line: color-mix(in srgb, var(--dl-sig) 55%, var(--node-bg));
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  font-family: var(--font-mono);
+  font-size: 12px; /* matches the operand pills / data taps */
+  font-weight: 600;
+  color: var(--dl-sig);
+  background: color-mix(in srgb, var(--dl-sig) 12%, var(--node-bg));
+  clip-path: polygon(9px 0, 100% 0, 100% 100%, 0 100%, 0 9px);
+  filter:
+    drop-shadow(1px 0 0 var(--lit-line)) drop-shadow(-1px 0 0 var(--lit-line))
+    drop-shadow(0 1px 0 var(--lit-line)) drop-shadow(0 -1px 0 var(--lit-line))
+    drop-shadow(0.8px 0.8px 0 var(--lit-line)) drop-shadow(-0.8px 0.8px 0 var(--lit-line))
+    drop-shadow(0.8px -0.8px 0 var(--lit-line)) drop-shadow(-0.8px -0.8px 0 var(--lit-line));
+  transition: filter var(--motion-base) var(--ease-out);
+}
+/* hover: deepen the fold outline (parallels the card border-tint hover) */
+.dl-node.dl-shape-literal:hover .dl-lit {
+  --lit-line: color-mix(in srgb, var(--dl-sig) 82%, var(--node-bg));
+}
+
+/* selection ring FOLLOWS the fold silhouette: an accent copy of the tag shape,
+   2px larger, BEHIND the tag (a box-shadow ring is swallowed by the clip-path). */
+.dl-node.dl-shape-literal.selected { box-shadow: none; }
+.dl-node.dl-shape-literal.selected::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: 0;
+  background: var(--accent);
+  clip-path: polygon(11px 0, 100% 0, 100% 100%, 0 100%, 0 11px);
+  pointer-events: none;
+}
+
+/* debug rings: the same folded silhouette tinted per state — the transparent box
+   would otherwise halo empty space with the generic rectangular ring. */
+.dl-node.dl-shape-literal[class*="debug-"] {
+  box-shadow: none !important;
+  animation: none !important;
+}
+.dl-node.dl-shape-literal[class*="debug-"]::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: 0;
+  clip-path: polygon(11px 0, 100% 0, 100% 100%, 0 100%, 0 11px);
+  pointer-events: none;
+}
+.dl-node.dl-shape-literal.debug-executed::after { background: var(--debug-executed-color); }
+.dl-node.dl-shape-literal.debug-on-path::after  { background: var(--debug-current-color); opacity: 0.55; }
+.dl-node.dl-shape-literal.debug-error::after    { background: var(--debug-error-color); }
+.dl-node.dl-shape-literal.debug-current::after {
+  background: var(--debug-current-color);
+  animation: debug-pulse-plug 1.5s ease-in-out infinite;
+}
+.dl-node.dl-shape-literal.debug-error.debug-current::after { background: var(--debug-error-color); }
+.dl-lit-ptag {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+  margin-left: 3px; /* clear the folded corner */
+}
+.dl-shape-literal .literal-value {
+  color: var(--dl-sig);
+  font-weight: 600;
+  font-size: 12px; /* override the legacy .literal-value 13px so operands read at one size */
+  word-break: break-word;
+}
+
+/* ============================================
+   Infix operator chips — the readable "shape = role" forms for the two most
+   common families:
+     • compare (== != < > in …): a chip with a boolean LED + infix glyph
+     • arithmetic (+ − × ÷ …):   the op glyph in a round number-tinted badge
+   Both keep the .dl-node chip (border, signal rail, shadow); only the BODY is
+   a horizontal infix run of operand pills instead of stacked cell rows.
+   ============================================ */
+.dl-node.dl-infix-node {
+  display: inline-flex;
+  align-items: center;
+  width: max-content; /* size to the unwrapped infix run, not the RF wrapper width */
+  max-width: 520px;
+}
+.dl-infix {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  padding: 7px 13px 7px 15px;
+  min-width: 0;
+}
+
+/* operator glyph */
+.dl-inop {
+  font-family: var(--font-mono);
+  line-height: 1;
+  flex-shrink: 0;
+}
+.dl-infix-gate .dl-inop {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+  padding: 0 1px;
+}
+/* arithmetic op glyph rides in a round badge — the "operation node" convention */
+.dl-infix-arith .dl-inop {
+  display: inline-grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--sig-number);
+  background: color-mix(in srgb, var(--sig-number) 13%, var(--node-bg));
+  border: 1px solid color-mix(in srgb, var(--sig-number) 42%, var(--hairline));
+}
+
+/* the boolean LED leads the compare chip */
+.dl-infix-gate .dl-led { margin-right: 2px; }
+
+/* the (single) wired operand connects at the chip's LEFT edge, centred, so the
+   arrow points at the edge instead of into the middle of the chip */
+.dl-node.dl-infix-node .dl-infix-in.react-flow__handle {
+  left: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.dl-pill-expr {
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border-color: var(--hairline);
+  font-family: var(--font-mono);
+  max-width: 210px;
+}
+
+/* ============================================
+   Boolean logic-gate silhouettes — AND / OR / NOT
+   Rendered when a logical op's operands are ALL wired children. The node box is
+   transparent; the SVG silhouette carries the shape, input ports spread down the
+   left edge, output on the right. The child nodes carry the logic.
+   ============================================ */
+.dl-node.dl-gate-node {
+  background: transparent !important;
+  border: none;
+  box-shadow: none;
+  width: fit-content;
+  min-width: 84px;
+  /* floor only; the true height is pinned inline (gateNodeHeight) so the drawn
+     silhouette matches the footprint the layout reserved for it. */
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  position: relative;
+  padding: 2px 8px;
+}
+.dl-node.dl-gate-node::before { display: none; }
+.dl-node.dl-gate-node:hover { box-shadow: none; }
+.dl-gate-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.dl-gate-sil {
+  fill: color-mix(in srgb, var(--dl-sig) 12%, var(--node-bg));
+  stroke: var(--dl-sig);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.dl-gate-label {
+  position: relative;
+  z-index: 2;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--dl-sig);
+  pointer-events: none;
+  transform: translateX(-8px);
+}
+.dl-node.dl-gate-node .dl-gate-in.react-flow__handle {
+  width: 8px;
+  height: 8px;
+}
+/* selection follows the gate silhouette — suppress the generic rectangular ring */
+.dl-node.dl-gate-node.selected { box-shadow: none; }
+.dl-node.dl-gate-node.selected .dl-gate-sil { stroke: var(--accent); stroke-width: 2.5; }
+.dl-node.dl-gate-node.selected .dl-gate-svg {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--accent) 45%, transparent));
+}
+.dl-node.dl-gate-node[class*="debug-"] { box-shadow: none !important; }
+.dl-node.dl-gate-node.debug-executed .dl-gate-sil { stroke: var(--debug-executed-color); }
+.dl-node.dl-gate-node.debug-error .dl-gate-sil { stroke: var(--debug-error-color); }
+.dl-node.dl-gate-node.debug-current .dl-gate-sil { stroke: var(--debug-current-color); }
+
+/* ============================================
+   Decision diamond — if / else-if
+   Each condition is its own standalone flowchart diamond. Three inputs on the
+   left (when / then / else, colour-coded); an else-if chains into the else input.
+   ============================================ */
+.dl-node.dl-decision-node {
+  background: transparent !important;
+  border: none;
+  box-shadow: none;
+  width: fit-content;
+  /* 72px square (was 90) — reserved to match in getNodeDimensions/DECISION_NODE,
+     so the diamond sits as tight to its neighbours as any other node. */
+  min-width: 72px;
+  min-height: 72px;
+  display: grid;
+  place-items: center;
+  position: relative;
+  padding: 2px;
+}
+.dl-node.dl-decision-node::before { display: none; }
+.dl-node.dl-decision-node:hover { box-shadow: none; }
+.dl-dec-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.dl-dec-sil {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.dl-dec-label {
+  position: relative;
+  z-index: 2;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--accent);
+  pointer-events: none;
+}
+.dl-node.dl-decision-node .dl-dec-port.react-flow__handle {
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid var(--node-bg);
+}
+.dl-node.dl-decision-node .dl-dec-when.react-flow__handle { background: var(--sig-bool-rest); }
+.dl-node.dl-decision-node .dl-dec-then.react-flow__handle { background: var(--sig-bool-true); }
+.dl-node.dl-decision-node .dl-dec-else.react-flow__handle { background: var(--sig-bool-false); }
+/* selection follows the diamond silhouette — suppress the generic rectangular ring */
+.dl-node.dl-decision-node.selected { box-shadow: none; }
+.dl-node.dl-decision-node.selected .dl-dec-sil {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  fill: color-mix(in srgb, var(--accent) 20%, var(--node-bg));
+}
+.dl-node.dl-decision-node.selected .dl-dec-svg {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--accent) 45%, transparent));
+}
+.dl-node.dl-decision-node[class*="debug-"] { box-shadow: none !important; }
+.dl-node.dl-decision-node.debug-executed .dl-dec-sil { stroke: var(--debug-executed-color); }
+.dl-node.dl-decision-node.debug-error .dl-dec-sil { stroke: var(--debug-error-color); }
+.dl-node.dl-decision-node.debug-current .dl-dec-sil { stroke: var(--debug-current-color); }
+
+/* ============================================
+   Direction: hierarchy (root on the left)
+   Mirrors the compact directional cues so plugs/chips point toward their
+   consumer, which now sits on the LEFT. Layout, handles and edges are flipped
+   in JS (see utils/layout, edge-builder, and the handle components); only the
+   pure-visual silhouettes are mirrored here.
+   ============================================ */
+.logic-editor[data-direction="hierarchy"] .dl-tap {
+  padding: 6px 12px 6px 19px; /* room for the plug point on the LEFT */
+  clip-path: polygon(10px 0, 100% 0, 100% 100%, 10px 100%, 0 50%);
+}
+.logic-editor[data-direction="hierarchy"] .dl-node.dl-shape-tap.selected::after,
+.logic-editor[data-direction="hierarchy"] .dl-node.dl-shape-tap[class*="debug-"]::after {
+  clip-path: polygon(12px 0, 100% 0, 100% 100%, 12px 100%, 0 50%);
+}
+.logic-editor[data-direction="hierarchy"] .dl-node.dl-infix-node .dl-infix-in.react-flow__handle {
+  left: auto;
+  right: -6px;
+}
+/* gate points toward its output, which is on the LEFT in hierarchy → mirror it */
+.logic-editor[data-direction="hierarchy"] .dl-gate-svg {
+  transform: scaleX(-1);
+}
+.logic-editor[data-direction="hierarchy"] .dl-gate-label {
+  transform: translateX(8px);
+}
+
+/* ============================================
    CSS Variables - Debug Colors
    ============================================ */
 
@@ -25,25 +548,45 @@
    ============================================ */
 
 .dl-node {
+  --dl-sig: var(--sig-bool-rest); /* set per-node from its signal (return type) */
   border-radius: var(--radius-md);
-  border: 2px solid;
+  border: 1px solid var(--hairline);
   font-family: inherit;
   font-size: 13px;
   width: 100%;
   box-sizing: border-box;
   box-shadow: var(--node-shadow);
   transition: box-shadow var(--motion-base) var(--ease-out),
+              border-color var(--motion-base) var(--ease-out),
               transform var(--motion-fast) var(--ease-out);
   background: var(--node-bg) !important;
   position: relative;
 }
 
+/* thin left "signal rail" — tinted by the value type this node outputs.
+   Quiet by default; the chip stays near-neutral so colour reads as meaning. */
+.dl-node::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--dl-sig);
+  opacity: 0.9;
+  z-index: 1;
+  pointer-events: none;
+}
+
 .dl-node:hover {
+  border-color: color-mix(in srgb, var(--dl-sig) 45%, var(--hairline));
   box-shadow: var(--node-shadow-hover);
 }
 
 .dl-node.selected {
-  box-shadow: 0 0 0 2px var(--accent-blue), var(--node-shadow-hover);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent), var(--node-shadow-hover);
 }
 
 /* ============================================
@@ -125,12 +668,12 @@
    ============================================ */
 
 .vertical-cell-header {
-  padding: 4px 10px;
-  border-radius: calc(var(--radius-md) - 2px) calc(var(--radius-md) - 2px) 0 0;
-  color: white;
+  padding: 7px 12px 7px 15px;
+  color: var(--ink);
   display: flex;
   align-items: center;
   gap: 8px;
+  border-bottom: 1px solid var(--hairline-2);
 }
 
 .vertical-cell-header .vertical-cell-label {
@@ -141,15 +684,24 @@
   margin-left: auto;
 }
 
+/* category glyph reads as a monochrome badge tinted by the node's signal */
 .vertical-cell-icon {
-  font-size: 16px;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--dl-sig);
+  background: color-mix(in srgb, var(--dl-sig) 14%, transparent);
 }
 
 .vertical-cell-label {
   font-weight: 600;
-  font-size: 16px;
-  letter-spacing: 0.5px;
+  font-size: 13px;
+  letter-spacing: -0.01em;
   white-space: nowrap;
+  color: var(--ink);
 }
 
 .vertical-cell-body {
@@ -157,7 +709,7 @@
 }
 
 .vertical-cell-row {
-  padding: 6px 12px;
+  padding: 6px 12px 6px 15px;
   border-bottom: 1px solid var(--border-light);
   display: flex;
   align-items: center;
@@ -165,10 +717,11 @@
   position: relative;
 }
 
-/* Handle positioned inside cell row */
+/* Handle positioned inside cell row — LEFT edge (children/operands flow in from
+   the left in the Signal Board left->right data flow) */
 .vertical-cell-row .cell-handle {
   position: absolute;
-  right: -5px;
+  left: -5px;
   top: 50%;
   transform: translateY(-50%);
 }
@@ -204,7 +757,7 @@
 }
 
 .vertical-cell-inline {
-  font-family: 'SF Mono', 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-primary);
   word-break: break-word;
@@ -230,6 +783,91 @@
   border-left-color: #64748b;
 }
 
+/* Branch rails — a wired child operand. The child's logic lives in its own node,
+   so the row shows a compact type-tinted "extends to child" chip (dl-child-link
+   reuses the dl-pill tint) instead of repeating the expression. */
+.dl-child-link {
+  flex-shrink: 0;
+  padding: 1px 9px;
+  cursor: default;
+}
+.dl-child-glyph {
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.9;
+}
+
+/* If / Then / Else rows read as coloured rails (design-system When/Then/Else). */
+.branch-rail .vertical-cell-row-label {
+  letter-spacing: 0.03em;
+}
+.branch-rail-when .vertical-cell-row-label { color: var(--sig-bool-rest); }
+.branch-rail-then .vertical-cell-row-label { color: var(--sig-bool-true); }
+.branch-rail-else .vertical-cell-row-label { color: var(--sig-bool-false); }
+
+/* If as a chained decision — flowchart diamonds ("if" / "elif") down a spine,
+   with the Then / Else rails indented beneath each (design-system diamond). */
+.dl-shape-branch .vertical-cell-body {
+  position: relative;
+}
+.dl-shape-branch .vertical-cell-body::before {
+  content: "";
+  position: absolute;
+  left: 34px; /* through the diamond centres */
+  top: 12px;
+  bottom: 12px;
+  width: 1.5px;
+  background: color-mix(in srgb, var(--accent) 30%, var(--hairline));
+  z-index: 0;
+}
+.dl-shape-branch .vertical-cell-row {
+  z-index: 1;
+}
+/* condition diamond — the decision shape, "if" / "elif" chained down the spine */
+.dl-cond-diamond {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  margin: -3px 4px -3px 0;
+}
+.dl-cond-diamond svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.dl-cond-diamond svg path {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+.dl-cond-label {
+  position: relative;
+  z-index: 1;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+}
+/* Then / Else rails sit indented under the diamond, colour-coded */
+.vertical-cell-row.branch-rail-then,
+.vertical-cell-row.branch-rail-else {
+  padding-left: 48px;
+}
+.branch-rail-then .vertical-cell-row-icon { color: var(--sig-bool-true); }
+.branch-rail-else .vertical-cell-row-icon { color: var(--sig-bool-false); }
+.branch-rail-then .vertical-cell-row-label,
+.branch-rail-else .vertical-cell-row-label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 9.5px;
+}
+
 /* Header right section for result badge and collapse toggle */
 .header-right {
   display: flex;
@@ -242,7 +880,7 @@
 .collapse-toggle {
   background: transparent;
   border: none;
-  color: white;
+  color: var(--muted);
   font-size: 10px;
   cursor: pointer;
   padding: 2px 6px;
@@ -257,7 +895,7 @@
 
 /* Expression text for collapsed nodes */
 .expression-text {
-  font-family: 'SF Mono', 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-primary);
   padding: 4px 8px;
@@ -301,7 +939,7 @@
 }
 
 .arg-label {
-  font-family: 'SF Mono', 'Consolas', monospace;
+  font-family: var(--font-mono);
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -313,7 +951,7 @@
    ============================================ */
 
 .literal-node {
-  padding: 8px 12px;
+  padding: 8px 12px 8px 15px;
 }
 
 .literal-node-content {
@@ -330,7 +968,7 @@
 }
 
 .literal-value {
-  font-family: 'SF Mono', 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   color: var(--text-primary);
   word-break: break-all;
@@ -347,33 +985,38 @@
 }
 
 .structure-node-header {
-  padding: 6px 12px;
-  border-radius: calc(var(--radius-md) - 2px) calc(var(--radius-md) - 2px) 0 0;
-  color: white;
+  padding: 6px 12px 6px 15px;
+  color: var(--ink);
   display: flex;
   align-items: center;
   gap: 8px;
   height: 32px;
   box-sizing: border-box;
+  border-bottom: 1px solid var(--hairline-2);
 }
 
 .structure-node-icon {
-  font-size: 14px;
-  display: flex;
-  align-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: var(--dl-sig);
+  background: color-mix(in srgb, var(--dl-sig) 14%, transparent);
 }
 
 .structure-node-label {
   font-weight: 600;
-  font-size: 14px;
-  letter-spacing: 0.5px;
+  font-size: 13px;
+  letter-spacing: -0.01em;
   flex: 1;
+  color: var(--ink);
 }
 
 .structure-node-body {
   padding: 8px 12px;
   padding-right: 24px;
-  font-family: 'SF Mono', 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre;
   line-height: 18px;
@@ -456,20 +1099,17 @@
   bottom: -6px;
 }
 
+/* input handles (connection to parent) now sit on the RIGHT, centred */
 .react-flow__handle-right {
   right: -6px;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
 }
 
+/* left handles are the per-cell branch handles — their vertical position is set
+   inline / by .cell-handle, so do NOT force-centre them here */
 .react-flow__handle-left {
   left: -6px;
-  top: 50% !important;
-  transform: translateY(-50%) !important;
-}
-
-/* Ensure left handles are centered on simple nodes */
-.literal-node .react-flow__handle-left {
-  top: 50% !important;
-  transform: translateY(-50%) !important;
 }
 
 /* Edge styles */
@@ -497,7 +1137,7 @@
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 11px;
-  font-family: 'SF Mono', 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-weight: 500;
   max-width: 120px;
   overflow: hidden;
@@ -540,7 +1180,7 @@
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: 'SF Mono', 'Consolas', monospace;
+  font-family: var(--font-mono);
 }
 
 .result-popover.error {
@@ -759,16 +1399,33 @@
 
 .debug-info-bubble {
   position: absolute;
-  background: var(--debug-popover-bg);
-  color: var(--debug-popover-text);
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
+  width: 264px;
+  max-width: 300px;
+  background: var(--chip);
+  color: var(--ink-2);
+  border: 1px solid var(--hairline);
+  border-radius: 11px;
+  padding: 0;
+  font-family: var(--font-mono);
   font-size: 11px;
   z-index: 9999;
   box-shadow: var(--shadow-lg);
-  min-width: 180px;
-  max-width: 280px;
   pointer-events: auto;
+}
+/* signal rail — accent by default, red on error (design-system .pop::before) */
+.debug-info-bubble::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--accent);
+  z-index: 1;
+}
+.debug-info-bubble.error::before {
+  background: var(--sig-bool-false);
 }
 
 .debug-info-bubble.debug-info-top {
@@ -853,43 +1510,59 @@
 }
 
 .debug-info-iteration {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--debug-iteration-color);
-  margin-bottom: 8px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--debug-border-color);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-ui);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--sig-collection);
+  padding: 8px 12px 8px 15px;
+  border-bottom: 1px solid var(--hairline-2);
 }
 
 .debug-info-section {
-  margin-bottom: 8px;
+  padding: 9px 12px 9px 15px;
+  border-bottom: 1px solid var(--hairline-2);
 }
 
 .debug-info-section:last-child {
-  margin-bottom: 0;
+  border-bottom: none;
 }
 
 .debug-info-label {
-  display: block;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--debug-label-color);
+  display: flex;
+  align-items: center;
+  font-family: var(--font-ui);
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 4px;
+  letter-spacing: 0.1em;
+  margin-bottom: 6px;
 }
 
 .debug-info-value {
   margin: 0;
-  padding: 4px 6px;
-  background: var(--debug-popover-value-bg);
-  border-radius: 4px;
-  font-family: 'SF Mono', 'Consolas', monospace;
-  font-size: 10px;
+  padding: 7px 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline-2);
+  border-radius: 7px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--ink-2);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 100px;
+  max-height: 116px;
   overflow: auto;
+}
+
+.debug-info-simple-value {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 700;
 }
 
 /* Custom scrollbar styling */
@@ -951,7 +1624,7 @@
 }
 
 .debug-info-simple-value {
-  font-family: 'SF Mono', 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
 }

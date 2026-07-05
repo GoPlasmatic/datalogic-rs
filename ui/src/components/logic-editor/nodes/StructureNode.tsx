@@ -2,12 +2,13 @@ import { memo, useMemo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { StructureNodeData } from '../types';
 import { useDebugClassName, useNodeCollapse } from '../hooks';
+import { useIsFlowDirection } from '../context';
 import { NodeInputHandles, CollapseToggleButton, NodeDebugBubble } from './shared';
 import { Icon } from '../utils/icons';
 import { ExpressionSyntax } from '../utils/ExpressionSyntax';
 
-// Color for structure nodes (gray like literal, but slightly different)
-const STRUCTURE_COLOR = '#64748B';
+// Structure nodes assemble an object/array — a collection output.
+const STRUCTURE_SIGNAL = 'var(--sig-collection)';
 
 // Height of each line in the JSON body (in pixels)
 const LINE_HEIGHT = 18;
@@ -29,6 +30,7 @@ export const StructureNode = memo(function StructureNode({
 }: StructureNodeProps) {
   const debugClassName = useDebugClassName(id);
   const toggleNodeCollapse = useNodeCollapse(id);
+  const isFlow = useIsFlowDirection();
 
   const isCollapsed = data.collapsed ?? false;
   const expressionElements = useMemo(
@@ -49,16 +51,13 @@ export const StructureNode = memo(function StructureNode({
   return (
     <div
       className={`dl-node structure-node ${selected ? 'selected' : ''} ${isCollapsed ? 'collapsed' : ''} ${debugClassName}`}
-      style={{
-        borderColor: STRUCTURE_COLOR,
-        backgroundColor: `${STRUCTURE_COLOR}10`,
-      }}
+      style={{ ['--dl-sig']: STRUCTURE_SIGNAL } as React.CSSProperties}
     >
       <NodeDebugBubble nodeId={id} position="top" />
-      <NodeInputHandles nodeId={id} color={STRUCTURE_COLOR} />
+      <NodeInputHandles nodeId={id} color={STRUCTURE_SIGNAL} />
 
       {/* Header with icon, label, and collapse toggle */}
-      <div className="structure-node-header" style={{ backgroundColor: STRUCTURE_COLOR }}>
+      <div className="structure-node-header">
         <span className="structure-node-icon">
           <Icon name={data.isArray ? 'list' : 'braces'} size={14} />
         </span>
@@ -95,14 +94,14 @@ export const StructureNode = memo(function StructureNode({
         return (
           <Handle
             key={`branch-${idx}`}
-            type="source"
-            position={Position.Right}
+            type={isFlow ? 'target' : 'source'}
+            position={isFlow ? Position.Left : Position.Right}
             id={`branch-${idx}`}
             className="structure-branch-handle"
             style={{
-              background: '#3B82F6',
+              background: STRUCTURE_SIGNAL,
               top: `${topPosition}px`,
-              right: '-4px',
+              [isFlow ? 'left' : 'right']: '-4px',
             }}
           />
         );

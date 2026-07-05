@@ -1,21 +1,38 @@
-import type { JsonLogicValue, LogicNode, OperatorNodeData, CellData } from '../../types';
+import type { JsonLogicValue, LogicNode, OperatorNodeData, CellData, LogicEdge } from '../../types';
 import type { ConversionContext, ConverterFn } from './types';
 import { getParentInfo } from './types';
 import { generateExpressionText } from '../formatting';
 import { createArgEdge } from '../node-factory';
 import { v4 as uuidv4 } from 'uuid';
 
-// Convert if/else to a single VerticalCellNode with all branches
-// Each condition and then value gets its own row for handle clarity
+type BranchType = 'yes' | 'no' | 'branch' | 'condition' | undefined;
+
+// Edge from a diamond to one of its inputs. Rendered edges are rebuilt
+// child->parent from the cells; this parent->child form is for the dagre layout.
+function diamondEdge(nodeId: string, childId: string, cellIndex: number): LogicEdge {
+  return {
+    id: `${nodeId}-b${cellIndex}-${childId}`,
+    source: nodeId,
+    target: childId,
+    sourceHandle: `branch-${cellIndex}`,
+    targetHandle: 'left',
+  };
+}
+
+/**
+ * Convert if/then/else into a CHAIN of standalone decision-diamond nodes — one
+ * diamond per condition, rather than a single block. Each diamond has three
+ * inputs (when / then / else); a trailing else-if becomes the next diamond wired
+ * into the else input, so the diamonds read as a series down the else path.
+ */
 export function convertIfElse(
   ifArgs: JsonLogicValue[],
   context: ConversionContext,
   convertValue: ConverterFn
 ): string {
   const parentInfo = getParentInfo(context);
-  const nodeId = uuidv4();
 
-  // If there's only a single value (no condition), just convert it directly
+  // A lone value (no condition) — just render it.
   if (ifArgs.length === 1) {
     return convertValue(ifArgs[0], {
       nodes: context.nodes,
@@ -27,150 +44,128 @@ export function convertIfElse(
     });
   }
 
+  return buildDiamond(
+    ifArgs,
+    context,
+    convertValue,
+    parentInfo.parentId,
+    parentInfo.argIndex,
+    parentInfo.branchType,
+    false
+  );
+}
+
+function buildDiamond(
+  args: JsonLogicValue[],
+  context: ConversionContext,
+  convertValue: ConverterFn,
+  parentId: string | undefined,
+  argIndex: number | undefined,
+  branchType: BranchType,
+  isElif: boolean
+): string {
+  const diamondId = uuidv4();
+  const condition = args[0];
+  const thenValue = args[1];
+  const rest = args.slice(2);
   const cells: CellData[] = [];
-  let cellIndex = 0;
 
-  // Parse the if-else chain
-  let idx = 0;
-  while (idx < ifArgs.length - 1) {
-    const condition = ifArgs[idx];
-    const thenValue = ifArgs[idx + 1];
-    const isFirst = idx === 0;
+  // when — the condition (input 0)
+  const condId = convertValue(condition, {
+    nodes: context.nodes,
+    edges: context.edges,
+    parentId: diamondId,
+    argIndex: 0,
+    branchType: 'condition',
+    templating: context.templating,
+  });
+  context.edges.push(diamondEdge(diamondId, condId, 0));
+  cells.push({
+    type: 'branch',
+    icon: 'diamond',
+    rowLabel: 'when',
+    label: generateExpressionText(condition, 40),
+    branchId: condId,
+    index: 0,
+  });
 
-    // Convert condition branch
-    const conditionBranchId = convertValue(condition, {
+  // then — the value when the condition holds (input 1)
+  const thenId = convertValue(thenValue, {
+    nodes: context.nodes,
+    edges: context.edges,
+    parentId: diamondId,
+    argIndex: 1,
+    branchType: 'yes',
+    templating: context.templating,
+  });
+  context.edges.push(diamondEdge(diamondId, thenId, 1));
+  cells.push({
+    type: 'branch',
+    icon: 'check',
+    rowLabel: 'then',
+    label: generateExpressionText(thenValue, 40),
+    branchId: thenId,
+    index: 1,
+  });
+
+  // else — a final value, or the next diamond in the chain (else-if)
+  if (rest.length === 1) {
+    const elseId = convertValue(rest[0], {
       nodes: context.nodes,
       edges: context.edges,
-      parentId: nodeId,
-      argIndex: idx,
-      branchType: 'condition',
-      templating: context.templating,
-    });
-
-    // Create condition edge (sourceHandle uses cellIndex to match CellHandles)
-    context.edges.push({
-      id: `${nodeId}-cond-${conditionBranchId}`,
-      source: nodeId,
-      target: conditionBranchId,
-      sourceHandle: `branch-${cellIndex}`,
-      targetHandle: 'left',
-    });
-
-    // Create cell for condition (If or Else If)
-    const conditionText = generateExpressionText(condition, 40);
-    cells.push({
-      type: 'branch',
-      icon: 'diamond',
-      rowLabel: isFirst ? 'If' : 'Else If',
-      label: conditionText,
-      branchId: conditionBranchId,
-      index: cellIndex,
-    });
-    cellIndex++;
-
-    // Convert then branch
-    const thenBranchId = convertValue(thenValue, {
-      nodes: context.nodes,
-      edges: context.edges,
-      parentId: nodeId,
-      argIndex: idx + 1,
-      branchType: 'yes',
-      templating: context.templating,
-    });
-
-    // Create then edge
-    context.edges.push({
-      id: `${nodeId}-then-${thenBranchId}`,
-      source: nodeId,
-      target: thenBranchId,
-      sourceHandle: `branch-${cellIndex}`,
-      targetHandle: 'left',
-    });
-
-    // Create cell for then value
-    const thenText = generateExpressionText(thenValue, 40);
-    cells.push({
-      type: 'branch',
-      icon: 'check',
-      rowLabel: 'Then',
-      label: thenText,
-      branchId: thenBranchId,
-      index: cellIndex,
-    });
-    cellIndex++;
-
-    idx += 2;
-  }
-
-  // Handle final else (if exists)
-  const hasFinalElse = ifArgs.length % 2 === 1;
-  if (hasFinalElse) {
-    const elseValue = ifArgs[ifArgs.length - 1];
-
-    // Convert else branch
-    const elseBranchId = convertValue(elseValue, {
-      nodes: context.nodes,
-      edges: context.edges,
-      parentId: nodeId,
-      argIndex: ifArgs.length - 1,
+      parentId: diamondId,
+      argIndex: 2,
       branchType: 'no',
       templating: context.templating,
     });
-
-    // Create else edge
-    context.edges.push({
-      id: `${nodeId}-else-${elseBranchId}`,
-      source: nodeId,
-      target: elseBranchId,
-      sourceHandle: `branch-${cellIndex}`,
-      targetHandle: 'left',
-    });
-
-    const elseText = generateExpressionText(elseValue, 40);
-
+    context.edges.push(diamondEdge(diamondId, elseId, 2));
     cells.push({
       type: 'branch',
       icon: 'x',
-      rowLabel: 'Else',
-      label: elseText,
-      branchId: elseBranchId,
-      index: cellIndex,
+      rowLabel: 'else',
+      label: generateExpressionText(rest[0], 40),
+      branchId: elseId,
+      index: 2,
+    });
+  } else if (rest.length >= 2) {
+    const nextId = buildDiamond(rest, context, convertValue, diamondId, 2, 'no', true);
+    context.edges.push(diamondEdge(diamondId, nextId, 2));
+    cells.push({
+      type: 'branch',
+      icon: 'x',
+      rowLabel: 'else',
+      label: generateExpressionText({ if: rest }, 40),
+      branchId: nextId,
+      index: 2,
     });
   }
 
-  // Generate expression text for the entire if/else
-  const originalExpr = { if: ifArgs };
-  const expressionText = generateExpressionText(originalExpr);
-
-  // Create the unified operator node
-  const ifElseNode: LogicNode = {
-    id: nodeId,
+  const node: LogicNode = {
+    id: diamondId,
     type: 'operator',
     position: { x: 0, y: 0 },
     data: {
       type: 'operator',
       operator: 'if',
       category: 'control',
-      label: 'If / Then / Else',
+      label: isElif ? 'elif' : 'if',
       icon: 'diamond',
       cells,
       collapsed: false,
-      expressionText,
-      parentId: parentInfo.parentId,
-      argIndex: parentInfo.argIndex,
-      branchType: parentInfo.branchType,
-      expression: originalExpr,
+      expressionText: generateExpressionText({ if: args }),
+      parentId,
+      argIndex,
+      branchType,
+      expression: { if: args },
     } as OperatorNodeData,
   };
+  context.nodes.push(node);
 
-  context.nodes.push(ifElseNode);
-
-  // Add edge from parent if exists and not a branch connection
-  if (parentInfo.parentId && !parentInfo.branchType) {
-    context.edges.push(
-      createArgEdge(parentInfo.parentId, nodeId, parentInfo.argIndex ?? 0)
-    );
+  // Top-level diamond wires to its parent; nested (else-if) diamonds are wired by
+  // their caller via the else input, so skip the extra arg edge for those.
+  if (parentId && !branchType) {
+    context.edges.push(createArgEdge(parentId, diamondId, argIndex ?? 0));
   }
 
-  return nodeId;
+  return diamondId;
 }

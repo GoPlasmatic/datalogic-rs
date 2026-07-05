@@ -97,7 +97,7 @@ function DebuggerControlsBase({ variant = 'floating' }: { variant?: 'inline' | '
 
   return (
     <div className={`dl-debugger-controls--${variant}`}>
-      <div className="dl-debugger-controls-inner">
+      <div className={`dl-debugger-controls-inner ${isPlaying ? 'is-playing' : ''}`}>
         {/* Bug icon indicator */}
         <div className="dl-debugger-icon">
           <Bug size={variant === 'inline' ? 15 : 18} />
@@ -160,6 +160,12 @@ function DebuggerControlsBase({ variant = 'floating' }: { variant?: 'inline' | '
           <span className="dl-step-current">{isAtInitial ? 0 : currentStepIndex + 1}</span>
           <span className="dl-step-separator">/</span>
           <span className="dl-step-total">{totalSteps}</span>
+          <span
+            className="dl-step-progress"
+            style={{
+              width: `${totalSteps > 0 ? ((isAtInitial ? 0 : currentStepIndex + 1) / totalSteps) * 100 : 0}%`,
+            }}
+          />
         </div>
 
         {/* Speed control */}

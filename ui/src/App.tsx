@@ -316,7 +316,11 @@ function App() {
     <div className="app">
       <header className="app-header">
         <div className="header-title">
-          <h1>DataLogic Studio</h1>
+          <span className="brand-mark" aria-hidden="true" />
+          <div className="brand-text">
+            <h1>DataLogic Studio</h1>
+            <span className="brand-eyebrow">JSONLogic · Visual Debugger</span>
+          </div>
         </div>
         <div className="header-controls">
           <Tooltip label="Start a new project">

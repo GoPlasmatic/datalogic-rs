@@ -67,6 +67,45 @@
   cursor: pointer;
 }
 
+/* Direction toggle — a compact segmented control: Data flow ⇄ Hierarchy */
+.logic-editor-toolbar .dl-direction-toggle {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  border: 1px solid var(--hairline, #ddd);
+  border-radius: var(--radius-sm, 6px);
+  overflow: hidden;
+}
+
+.logic-editor-toolbar .dl-direction-toggle button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #666);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--motion-fast) var(--ease-out),
+              color var(--motion-fast) var(--ease-out);
+}
+
+.logic-editor-toolbar .dl-direction-toggle button + button {
+  border-left: 1px solid var(--hairline, #ddd);
+}
+
+.logic-editor-toolbar .dl-direction-toggle button:hover:not(.active) {
+  background: var(--bg-hover, #f0f0f0);
+  color: var(--text-primary, #1a1a1a);
+}
+
+.logic-editor-toolbar .dl-direction-toggle button.active {
+  background: var(--accent, #6366f1);
+  color: #fff;
+}
+
 /* Shared toolbar button style (undo/redo, etc.) */
 .dl-toolbar-btn {
   display: flex;
@@ -309,8 +348,8 @@
   gap: 4px;
   padding: 4px 8px;
   margin: 4px 8px 8px;
-  border: 1.5px dashed var(--color-primary, #2563eb);
-  border-radius: 4px;
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 55%, var(--hairline));
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-primary, #2563eb);
   font-size: 11px;

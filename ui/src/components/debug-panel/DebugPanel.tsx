@@ -103,21 +103,26 @@ export function DebugPanel({
     <div className="debug-panel">
       {/* Logic Input Section */}
       <div className={`debug-section logic-section ${sectionClass('logic')}`}>
-        <button
-          className="debug-section-header"
-          onClick={accordion ? () => toggleSection('logic') : undefined}
-          type="button"
-        >
-          <div className="debug-section-header-left">
-            {accordion && (
+        <div className="debug-section-header">
+          {accordion ? (
+            <button
+              type="button"
+              className="debug-section-header-left debug-section-toggle"
+              onClick={() => toggleSection('logic')}
+              aria-expanded={isExpanded('logic')}
+            >
               <ChevronDown
                 size={14}
                 className={`debug-section-chevron ${!isExpanded('logic') ? 'collapsed' : ''}`}
               />
-            )}
-            <h3>Logic</h3>
-          </div>
-          <div className="debug-section-header-right" onClick={e => e.stopPropagation()}>
+              <h3>Logic</h3>
+            </button>
+          ) : (
+            <div className="debug-section-header-left">
+              <h3>Logic</h3>
+            </div>
+          )}
+          <div className="debug-section-header-right">
             <Tooltip label="Pretty-print this JSON" side="left">
               <button
                 className="format-btn"
@@ -128,7 +133,7 @@ export function DebugPanel({
               </button>
             </Tooltip>
           </div>
-        </button>
+        </div>
         {isExpanded('logic') && (
           <div className="debug-section-content">
             <JsonEditor
@@ -148,21 +153,26 @@ export function DebugPanel({
 
       {/* Data Input Section */}
       <div className={`debug-section data-section ${sectionClass('data')}`}>
-        <button
-          className="debug-section-header"
-          onClick={accordion ? () => toggleSection('data') : undefined}
-          type="button"
-        >
-          <div className="debug-section-header-left">
-            {accordion && (
+        <div className="debug-section-header">
+          {accordion ? (
+            <button
+              type="button"
+              className="debug-section-header-left debug-section-toggle"
+              onClick={() => toggleSection('data')}
+              aria-expanded={isExpanded('data')}
+            >
               <ChevronDown
                 size={14}
                 className={`debug-section-chevron ${!isExpanded('data') ? 'collapsed' : ''}`}
               />
-            )}
-            <h3>Data</h3>
-          </div>
-          <div className="debug-section-header-right" onClick={e => e.stopPropagation()}>
+              <h3>Data</h3>
+            </button>
+          ) : (
+            <div className="debug-section-header-left">
+              <h3>Data</h3>
+            </div>
+          )}
+          <div className="debug-section-header-right">
             <Tooltip label="Pretty-print this JSON" side="left">
               <button
                 className="format-btn"
@@ -173,7 +183,7 @@ export function DebugPanel({
               </button>
             </Tooltip>
           </div>
-        </button>
+        </div>
         {isExpanded('data') && (
           <div className="debug-section-content">
             <JsonEditor
@@ -192,22 +202,31 @@ export function DebugPanel({
       </div>
 
       {/* Result Section */}
-      <div className={`debug-section result-section ${sectionClass('result')}`}>
-        <button
-          className="debug-section-header"
-          onClick={accordion ? () => toggleSection('result') : undefined}
-          type="button"
-        >
-          <div className="debug-section-header-left">
-            {accordion && (
+      <div
+        className={`debug-section result-section ${sectionClass('result')} ${
+          resultError ? 'has-error' : result === true ? 'has-true' : result === false ? 'has-false' : ''
+        }`}
+      >
+        <div className="debug-section-header">
+          {accordion ? (
+            <button
+              type="button"
+              className="debug-section-header-left debug-section-toggle"
+              onClick={() => toggleSection('result')}
+              aria-expanded={isExpanded('result')}
+            >
               <ChevronDown
                 size={14}
                 className={`debug-section-chevron ${!isExpanded('result') ? 'collapsed' : ''}`}
               />
-            )}
-            <h3>Result</h3>
-          </div>
-          <div className="debug-section-header-right" onClick={e => e.stopPropagation()}>
+              <h3>Result</h3>
+            </button>
+          ) : (
+            <div className="debug-section-header-left">
+              <h3>Result</h3>
+            </div>
+          )}
+          <div className="debug-section-header-right">
             {wasmLoading && <span className="wasm-status loading">Loading</span>}
             {wasmReady && (
               <Tooltip label={resultCopied ? 'Copied' : 'Copy result'} side="left">
@@ -222,7 +241,7 @@ export function DebugPanel({
               </Tooltip>
             )}
           </div>
-        </button>
+        </div>
         {isExpanded('result') && (
           <div className="debug-section-content">
             {resultError ? (
