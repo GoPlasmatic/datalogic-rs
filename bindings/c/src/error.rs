@@ -210,7 +210,10 @@ unsafe fn str_out(s: Option<&str>, len_out: *mut usize) -> *const u8 {
 /// `err` must be `NULL` (returns `NULL`) or a valid error handle;
 /// `len_out` must be `NULL` or writable.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn datalogic_error_message(err: *const Error, len_out: *mut usize) -> *const u8 {
+pub unsafe extern "C" fn datalogic_error_message(
+    err: *const Error,
+    len_out: *mut usize,
+) -> *const u8 {
     unsafe { str_out(err.as_ref().map(|e| e.message.as_str()), len_out) }
 }
 

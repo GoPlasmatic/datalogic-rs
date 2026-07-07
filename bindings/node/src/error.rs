@@ -55,7 +55,11 @@ pub fn engine_error(env: &Env, err: &RsError, compiled: Option<&Logic>) -> napi:
 /// structured field (`name`, `errorType`, `operator`, `nodeIds`,
 /// `path`). Returns `None` when object construction fails; callers fall
 /// back to a plain reason string.
-pub fn engine_error_value(env: &Env, err: &RsError, compiled: Option<&Logic>) -> Option<napi::Error> {
+pub fn engine_error_value(
+    env: &Env,
+    err: &RsError,
+    compiled: Option<&Logic>,
+) -> Option<napi::Error> {
     let message = err.to_string();
     let attrs = engine_attrs(err, &message, compiled);
     let obj = build_attrs_object(env, &attrs)?;
@@ -79,7 +83,11 @@ pub fn type_mismatch_error(env: &Env, message: &str) -> napi::Error {
     throw_attrs(env, &attrs).unwrap_or_else(|| napi::Error::from_reason(message.to_string()))
 }
 
-fn engine_attrs<'a>(err: &'a RsError, message: &'a str, compiled: Option<&Logic>) -> ErrorAttrs<'a> {
+fn engine_attrs<'a>(
+    err: &'a RsError,
+    message: &'a str,
+    compiled: Option<&Logic>,
+) -> ErrorAttrs<'a> {
     let tag = err.tag();
     let name = if tag == "ParseError" {
         "ParseError"

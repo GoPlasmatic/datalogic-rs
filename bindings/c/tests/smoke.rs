@@ -73,9 +73,8 @@ unsafe fn compile(engine: *mut Engine, rule: &str) -> *mut Rule {
 
 unsafe fn parse_data(json: &str) -> *mut Data {
     let mut out: *mut Data = std::ptr::null_mut();
-    let status = unsafe {
-        datalogic_data_parse(json.as_ptr(), json.len(), &mut out, std::ptr::null_mut())
-    };
+    let status =
+        unsafe { datalogic_data_parse(json.as_ptr(), json.len(), &mut out, std::ptr::null_mut()) };
     assert_eq!(status, Status::Ok, "data parse failed for {json}");
     assert!(!out.is_null());
     out
@@ -322,8 +321,7 @@ fn data_parse_error_reports_parse_status() {
     let mut out: *mut Data = std::ptr::null_mut();
     let mut err: *mut Error = std::ptr::null_mut();
     let bad = "{ not json";
-    let status =
-        unsafe { datalogic_data_parse(bad.as_ptr(), bad.len(), &mut out, &mut err) };
+    let status = unsafe { datalogic_data_parse(bad.as_ptr(), bad.len(), &mut out, &mut err) };
     assert_eq!(status, Status::Parse);
     assert!(out.is_null());
     let (estatus, message, tag, _) = unsafe { take_err(err) };
@@ -421,7 +419,12 @@ fn batch_one_rule_many_datas_with_item_failures() {
     let good_b = unsafe { parse_data(r#"{"x":41}"#) };
     let datas: [*const Data; 4] = [good_a, bad, std::ptr::null(), good_b];
 
-    let mut results = [const { Slice { ptr: std::ptr::null(), len: 0 } }; 4];
+    let mut results = [const {
+        Slice {
+            ptr: std::ptr::null(),
+            len: 0,
+        }
+    }; 4];
     let mut statuses = [Status::Internal; 4];
     let status = unsafe {
         datalogic_session_evaluate_batch(
@@ -527,7 +530,12 @@ fn evaluate_many_rules_against_one_payload() {
     let foreign = unsafe { compile(other_engine, r#"{"var":"age"}"#) };
     let rules: [*const Rule; 3] = [adult, senior, foreign];
 
-    let mut results = [const { Slice { ptr: std::ptr::null(), len: 0 } }; 3];
+    let mut results = [const {
+        Slice {
+            ptr: std::ptr::null(),
+            len: 0,
+        }
+    }; 3];
     let mut statuses = [Status::Internal; 3];
     let status = unsafe {
         datalogic_session_evaluate_many(
@@ -565,7 +573,13 @@ fn parse_error_carries_status_and_tag() {
     let mut out: *mut Rule = std::ptr::null_mut();
     let mut err: *mut Error = std::ptr::null_mut();
     let status = unsafe {
-        datalogic_engine_compile(engine, bad_rule.as_ptr(), bad_rule.len(), &mut out, &mut err)
+        datalogic_engine_compile(
+            engine,
+            bad_rule.as_ptr(),
+            bad_rule.len(),
+            &mut out,
+            &mut err,
+        )
     };
     assert_eq!(status, Status::Parse);
     assert!(out.is_null());
@@ -583,14 +597,16 @@ fn evaluate_error_carries_tag_and_path() {
     let data = "{}";
     let mut out = empty_buf();
     let mut err: *mut Error = std::ptr::null_mut();
-    let status = unsafe {
-        datalogic_rule_evaluate(rule, data.as_ptr(), data.len(), &mut out, &mut err)
-    };
+    let status =
+        unsafe { datalogic_rule_evaluate(rule, data.as_ptr(), data.len(), &mut out, &mut err) };
     assert_eq!(status, Status::Eval);
     let (estatus, _message, tag, has_path) = unsafe { take_err(err) };
     assert_eq!(estatus, Status::Eval);
     assert_eq!(tag, "Thrown");
-    assert!(has_path, "path JSON should be resolvable with &Logic in scope");
+    assert!(
+        has_path,
+        "path JSON should be resolvable with &Logic in scope"
+    );
     unsafe { datalogic_rule_free(rule) };
     unsafe { datalogic_engine_free(engine) };
 }
@@ -630,14 +646,23 @@ fn null_pointers_are_handled_without_segfault() {
         unsafe { datalogic_session_allocated_bytes(std::ptr::null()) },
         0
     );
-    assert_eq!(unsafe { datalogic_data_allocated_bytes(std::ptr::null()) }, 0);
+    assert_eq!(
+        unsafe { datalogic_data_allocated_bytes(std::ptr::null()) },
+        0
+    );
 
     // Fallible entry points must return InvalidArg with an error handle.
     let mut out: *mut Rule = std::ptr::null_mut();
     let mut err: *mut Error = std::ptr::null_mut();
     let rule = "{}";
     let status = unsafe {
-        datalogic_engine_compile(std::ptr::null(), rule.as_ptr(), rule.len(), &mut out, &mut err)
+        datalogic_engine_compile(
+            std::ptr::null(),
+            rule.as_ptr(),
+            rule.len(),
+            &mut out,
+            &mut err,
+        )
     };
     assert_eq!(status, Status::InvalidArg);
     let (_, message, tag, _) = unsafe { take_err(err) };
@@ -704,7 +729,11 @@ unsafe extern "C" fn silent_op(
     0
 }
 
-unsafe fn build_with_operator(name: &str, cb: DatalogicOpFn, user_data: *mut c_void) -> *mut Engine {
+unsafe fn build_with_operator(
+    name: &str,
+    cb: DatalogicOpFn,
+    user_data: *mut c_void,
+) -> *mut Engine {
     let b = datalogic_engine_builder_new();
     let status = unsafe {
         datalogic_engine_builder_add_operator(
@@ -723,7 +752,11 @@ unsafe fn build_with_operator(name: &str, cb: DatalogicOpFn, user_data: *mut c_v
     engine
 }
 
-unsafe fn apply_str(engine: *mut Engine, rule: &str, data: &str) -> Result<String, (Status, String, String)> {
+unsafe fn apply_str(
+    engine: *mut Engine,
+    rule: &str,
+    data: &str,
+) -> Result<String, (Status, String, String)> {
     let mut out = empty_buf();
     let mut err: *mut Error = std::ptr::null_mut();
     let status = unsafe {
@@ -757,8 +790,7 @@ fn builder_with_custom_operator_evaluates() {
 #[test]
 fn builder_custom_operator_error_propagates() {
     let engine = unsafe { build_with_operator("boom", Some(boom_op), std::ptr::null_mut()) };
-    let (status, message, _tag) =
-        unsafe { apply_str(engine, r#"{"boom":[]}"#, "{}") }.unwrap_err();
+    let (status, message, _tag) = unsafe { apply_str(engine, r#"{"boom":[]}"#, "{}") }.unwrap_err();
     assert_eq!(status, Status::Eval);
     assert!(message.contains("custom-failure"), "got: {message}");
     unsafe { datalogic_engine_free(engine) };
@@ -848,9 +880,8 @@ fn builder_set_config_json_rejects_bad_input() {
     // Malformed JSON -> Parse.
     let bad = "not-json{{";
     let mut err: *mut Error = std::ptr::null_mut();
-    let status = unsafe {
-        datalogic_engine_builder_set_config_json(b, bad.as_ptr(), bad.len(), &mut err)
-    };
+    let status =
+        unsafe { datalogic_engine_builder_set_config_json(b, bad.as_ptr(), bad.len(), &mut err) };
     let (estatus, message, _, _) = unsafe { take_err(err) };
     assert_eq!(status, estatus);
     assert!(!message.is_empty());

@@ -40,13 +40,11 @@ pub struct TracedSession {
 pub unsafe extern "C" fn datalogic_engine_traced_session(
     engine: *const Engine,
 ) -> *mut TracedSession {
-    ffi_guard(std::ptr::null_mut(), || {
-        match unsafe { engine.as_ref() } {
-            Some(engine) => Box::into_raw(Box::new(TracedSession {
-                engine: Arc::clone(&engine.inner),
-            })),
-            None => std::ptr::null_mut(),
-        }
+    ffi_guard(std::ptr::null_mut(), || match unsafe { engine.as_ref() } {
+        Some(engine) => Box::into_raw(Box::new(TracedSession {
+            engine: Arc::clone(&engine.inner),
+        })),
+        None => std::ptr::null_mut(),
     })
 }
 

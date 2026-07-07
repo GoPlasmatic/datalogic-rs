@@ -285,7 +285,10 @@ impl Task for EvaluateStrTask {
 
     fn compute(&mut self) -> Result<Self::Output> {
         let arena = Bump::new();
-        match self.engine.evaluate(&self.logic, self.data.as_str(), &arena) {
+        match self
+            .engine
+            .evaluate(&self.logic, self.data.as_str(), &arena)
+        {
             Ok(av) => Ok(av.to_string()),
             Err(e) => {
                 // Fallback reason if `reject` cannot build the decorated
@@ -403,8 +406,9 @@ impl CustomOperator for NodeOperator {
 fn parse_config(env: &Env, config: Value) -> Result<EvaluationConfig> {
     let json = match config {
         Value::String(s) => s,
-        other => serde_json::to_string(&other)
-            .map_err(|e| engine_error(env, &DlError::wrap(e), None))?,
+        other => {
+            serde_json::to_string(&other).map_err(|e| engine_error(env, &DlError::wrap(e), None))?
+        }
     };
     EvaluationConfig::from_json_str(&json).map_err(|e| engine_error(env, &e, None))
 }

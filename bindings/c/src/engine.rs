@@ -160,10 +160,8 @@ pub unsafe extern "C" fn datalogic_engine_apply(
 /// `engine` must be `NULL` or a valid engine handle.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn datalogic_engine_session(engine: *const Engine) -> *mut Session {
-    ffi_guard(std::ptr::null_mut(), || {
-        match unsafe { engine.as_ref() } {
-            Some(engine) => Box::into_raw(Box::new(Session::new(engine.inner.clone()))),
-            None => std::ptr::null_mut(),
-        }
+    ffi_guard(std::ptr::null_mut(), || match unsafe { engine.as_ref() } {
+        Some(engine) => Box::into_raw(Box::new(Session::new(engine.inner.clone()))),
+        None => std::ptr::null_mut(),
     })
 }

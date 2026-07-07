@@ -65,8 +65,8 @@ unsafe fn check_pair<'s>(
     session: *mut Session,
     rule: *const Rule,
 ) -> Result<(&'s mut Session, &'s Rule), Error> {
-    let session = unsafe { session.as_mut() }
-        .ok_or_else(|| Error::invalid_arg("session pointer is null"))?;
+    let session =
+        unsafe { session.as_mut() }.ok_or_else(|| Error::invalid_arg("session pointer is null"))?;
     let rule =
         unsafe { rule.as_ref() }.ok_or_else(|| Error::invalid_arg("rule pointer is null"))?;
     if !Arc::ptr_eq(&session.engine, &rule.engine) {

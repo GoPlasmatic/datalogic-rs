@@ -321,9 +321,8 @@ impl CustomOperator for CCustomOperator {
             json: None,
             error: None,
         };
-        let rc = unsafe {
-            (self.callback)(args_json.as_ptr(), args_json.len(), user_data, &mut out)
-        };
+        let rc =
+            unsafe { (self.callback)(args_json.as_ptr(), args_json.len(), user_data, &mut out) };
 
         if rc != 0 {
             let msg = match &out.error {

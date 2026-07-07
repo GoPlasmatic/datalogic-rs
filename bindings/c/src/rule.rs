@@ -98,15 +98,17 @@ pub unsafe extern "C" fn datalogic_rule_evaluate(
             Ok(s) => s,
             Err(e) => return unsafe { fail(err, e) },
         };
-        with_pooled_arena(|arena| match rule.engine.evaluate(&rule.logic, data, arena) {
-            Ok(av) => {
-                let mut v = Vec::new();
-                av.write_json_into(&mut v);
-                unsafe { *out = Buf::from_vec(v) };
-                Status::Ok
-            }
-            Err(e) => unsafe { fail(err, Error::from_engine(&e, Some(&rule.logic))) },
-        })
+        with_pooled_arena(
+            |arena| match rule.engine.evaluate(&rule.logic, data, arena) {
+                Ok(av) => {
+                    let mut v = Vec::new();
+                    av.write_json_into(&mut v);
+                    unsafe { *out = Buf::from_vec(v) };
+                    Status::Ok
+                }
+                Err(e) => unsafe { fail(err, Error::from_engine(&e, Some(&rule.logic))) },
+            },
+        )
     })
 }
 

@@ -116,8 +116,7 @@ unsafe fn eval_session_data(
     // Parse the payload once.
     let mut data_h: *mut Data = std::ptr::null_mut();
     let mut err: *mut Error = std::ptr::null_mut();
-    let status =
-        unsafe { datalogic_data_parse(data.as_ptr(), data.len(), &mut data_h, &mut err) };
+    let status = unsafe { datalogic_data_parse(data.as_ptr(), data.len(), &mut data_h, &mut err) };
     if status != Status::Ok {
         unsafe { datalogic_rule_free(rule_h) };
         return Err(unsafe { take_err_message(err) });
@@ -132,10 +131,7 @@ unsafe fn eval_session_data(
     };
     let outcome = if status == Status::Ok {
         // Copy out before anything else touches the session.
-        Ok(
-            String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(ptr, len) })
-                .into_owned(),
-        )
+        Ok(String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(ptr, len) }).into_owned())
     } else {
         let msg = unsafe { take_err_message(err) };
         Err(if msg.is_empty() {
@@ -223,8 +219,8 @@ fn run_suite(
 ) -> SuiteOutcome {
     let contents =
         std::fs::read_to_string(path).unwrap_or_else(|e| panic!("failed to read {path}: {e}"));
-    let cases: Value = serde_json::from_str(&contents)
-        .unwrap_or_else(|e| panic!("failed to parse {path}: {e}"));
+    let cases: Value =
+        serde_json::from_str(&contents).unwrap_or_else(|e| panic!("failed to parse {path}: {e}"));
     let cases = cases.as_array().expect("suite file is a JSON array");
 
     let mut outcome = SuiteOutcome {

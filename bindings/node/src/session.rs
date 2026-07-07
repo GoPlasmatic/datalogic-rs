@@ -243,7 +243,10 @@ impl Session {
             // Scratch from the previous item is dead — its result was
             // materialised as an owned String by `batch_item`.
             self.arena.reset();
-            let item = match self.engine.evaluate(rule.logic(), &handle.parsed, &self.arena) {
+            let item = match self
+                .engine
+                .evaluate(rule.logic(), &handle.parsed, &self.arena)
+            {
                 Ok(av) => batch_item(Ok(av.to_string())),
                 Err(e) => batch_item(Err(&e)),
             };
@@ -270,7 +273,10 @@ impl Session {
         let mut out = Vec::with_capacity(rules.len());
         for rule in &rules {
             self.arena.reset();
-            let item = match self.engine.evaluate(rule.logic(), &handle.parsed, &self.arena) {
+            let item = match self
+                .engine
+                .evaluate(rule.logic(), &handle.parsed, &self.arena)
+            {
                 Ok(av) => batch_item(Ok(av.to_string())),
                 Err(e) => batch_item(Err(&e)),
             };

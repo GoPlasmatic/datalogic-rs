@@ -141,8 +141,7 @@ pub(crate) unsafe fn str_from_raw<'a>(
         )));
     }
     let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
-    std::str::from_utf8(bytes)
-        .map_err(|_| Error::invalid_arg(format!("{name} is not valid UTF-8")))
+    std::str::from_utf8(bytes).map_err(|_| Error::invalid_arg(format!("{name} is not valid UTF-8")))
 }
 
 /// Run a handle-returning C ABI entry-point body, converting any panic
@@ -161,18 +160,13 @@ pub(crate) fn ffi_guard<T>(default: T, body: impl FnOnce() -> T) -> T {
 /// Run a status-returning C ABI entry-point body, converting any panic
 /// (engine bug, arena OOM, a panicking custom-operator callback) into
 /// [`Status::Internal`] with the error handle stored for the caller.
-pub(crate) fn guard_status(
-    err_out: *mut *mut Error,
-    body: impl FnOnce() -> Status,
-) -> Status {
+pub(crate) fn guard_status(err_out: *mut *mut Error, body: impl FnOnce() -> Status) -> Status {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)) {
         Ok(status) => status,
         Err(_) => unsafe {
             error::fail(
                 err_out,
-                Error::internal(
-                    "internal error: a panic was caught at the datalogic FFI boundary",
-                ),
+                Error::internal("internal error: a panic was caught at the datalogic FFI boundary"),
             )
         },
     }
