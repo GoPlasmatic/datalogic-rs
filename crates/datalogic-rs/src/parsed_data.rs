@@ -71,13 +71,11 @@ impl ParsedData {
         // strings then borrow from arena-owned bytes, which is what
         // keeps the cell self-contained. Capacity heuristic: input copy
         // plus tree nodes typically land within ~2x the text size.
-        let cell = ParsedCell::try_new(
-            Bump::with_capacity(json.len().saturating_mul(2)),
-            |arena| {
+        let cell =
+            ParsedCell::try_new(Bump::with_capacity(json.len().saturating_mul(2)), |arena| {
                 let stable: &str = arena.alloc_str(json);
                 DataValue::from_str(stable, arena).map_err(crate::Error::from)
-            },
-        )?;
+            })?;
         Ok(Self(cell))
     }
 

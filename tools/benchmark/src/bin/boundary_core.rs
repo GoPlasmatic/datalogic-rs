@@ -303,23 +303,24 @@ fn main() {
             dir = Some(PathBuf::from(arg));
         }
     }
-    let dir = dir.unwrap_or_else(|| {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("boundary/workloads")
-    });
+    let dir =
+        dir.unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("boundary/workloads"));
 
     let workloads = load_workloads(&dir);
     let engine = Engine::new();
 
     for w in &workloads {
-        if let Some(f) = &workload_filter
-            && !f.iter().any(|x| x == w.name)
+        if workload_filter
+            .as_ref()
+            .is_some_and(|f| !f.iter().any(|x| x == w.name))
         {
             continue;
         }
         let rule = engine.compile(w.rule.as_str()).expect("rule compile");
         for mode in MODES {
-            if let Some(f) = &mode_filter
-                && !f.iter().any(|x| x == mode)
+            if mode_filter
+                .as_ref()
+                .is_some_and(|f| !f.iter().any(|x| x == mode))
             {
                 continue;
             }

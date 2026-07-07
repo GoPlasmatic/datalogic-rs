@@ -73,7 +73,9 @@ pub(crate) fn evaluate_substr<'a>(
         };
         let byte_end = match length {
             // Negative length = end position from the end of the string.
-            Some(len) if len < 0 => n.saturating_sub(len.saturating_abs() as usize).max(byte_start),
+            Some(len) if len < 0 => n
+                .saturating_sub(len.saturating_abs() as usize)
+                .max(byte_start),
             Some(len) => byte_start.saturating_add(len as usize).min(n),
             None => n,
         };

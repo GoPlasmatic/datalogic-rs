@@ -119,7 +119,10 @@ fn test_rejection_is_real_error_object() {
     // The pre-Error-object JSON payload stays reachable for migration.
     let detail = Reflect::get(&err, &JsValue::from_str("detailJson")).unwrap();
     let detail = detail.as_string().expect("detailJson must be a string");
-    assert!(detail.contains(r#""type":"ParseError""#), "detail: {detail}");
+    assert!(
+        detail.contains(r#""type":"ParseError""#),
+        "detail: {detail}"
+    );
 }
 
 #[wasm_bindgen_test]
@@ -382,7 +385,10 @@ fn test_session_evaluate_number_and_mismatch() {
     let handle = DataHandle::new(r#"{"price": 12.5, "name": "x"}"#).unwrap();
 
     let number_rule = engine.compile(r#"{"var": "price"}"#).unwrap();
-    assert_eq!(session.evaluate_number(&number_rule, &handle).unwrap(), 12.5);
+    assert_eq!(
+        session.evaluate_number(&number_rule, &handle).unwrap(),
+        12.5
+    );
 
     let string_rule = engine.compile(r#"{"var": "name"}"#).unwrap();
     let err = session.evaluate_number(&string_rule, &handle).unwrap_err();
@@ -456,7 +462,9 @@ fn test_session_evaluate_batch_mixed_outcomes() {
     handles.push(&JsValue::from(
         DataHandle::new(r#"{"fail": false}"#).unwrap(),
     ));
-    handles.push(&JsValue::from(DataHandle::new(r#"{"fail": true}"#).unwrap()));
+    handles.push(&JsValue::from(
+        DataHandle::new(r#"{"fail": true}"#).unwrap(),
+    ));
     handles.push(&JsValue::from(
         DataHandle::new(r#"{"fail": false}"#).unwrap(),
     ));
@@ -549,7 +557,9 @@ fn test_session_evaluate_many_mixed_outcomes() {
     rules.push(&JsValue::from(
         engine.compile(r#"{"*": [{"var": "n"}, 2]}"#).unwrap(),
     ));
-    rules.push(&JsValue::from(engine.compile(r#"{"throw": "nope"}"#).unwrap()));
+    rules.push(&JsValue::from(
+        engine.compile(r#"{"throw": "nope"}"#).unwrap(),
+    ));
     rules.push(&JsValue::from(
         engine.compile(r#"{"+": [{"var": "n"}, 1]}"#).unwrap(),
     ));
@@ -609,7 +619,9 @@ fn test_engine_config_strict_preset_changes_behavior() {
     // Default semantics coerce null to 0: {"+": [null, 1]} evaluates to 1.
     let default_engine = Engine::new(build_options(false, &[])).unwrap();
     assert_eq!(
-        default_engine.eval_str(r#"{"+": [null, 1]}"#, "{}").unwrap(),
+        default_engine
+            .eval_str(r#"{"+": [null, 1]}"#, "{}")
+            .unwrap(),
         "1"
     );
 

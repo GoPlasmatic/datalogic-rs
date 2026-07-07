@@ -10,6 +10,10 @@
  *   make run
  */
 
+/* Expose clock_gettime / CLOCK_MONOTONIC from <time.h> under strict -std=c11
+ * (glibc hides POSIX symbols unless a feature-test macro is set). */
+#define _POSIX_C_SOURCE 200809L
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

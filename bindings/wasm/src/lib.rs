@@ -168,7 +168,10 @@ fn parse_config_value(value: &JsValue) -> Result<Option<EvaluationConfig>, JsVal
             .ok()
             .and_then(|s| s.as_string())
             .ok_or_else(|| {
-                input_err_to_js("parse-config", "config must be a JSON string or a plain object")
+                input_err_to_js(
+                    "parse-config",
+                    "config must be a JSON string or a plain object",
+                )
             })?,
     };
     EvaluationConfig::from_json_str(&json)
@@ -307,7 +310,9 @@ impl CompiledRule {
             None => None,
         };
         let engine = make_engine(templating, config);
-        let compiled = engine.compile_arc(logic).map_err(|e| engine_err_to_js(&e))?;
+        let compiled = engine
+            .compile_arc(logic)
+            .map_err(|e| engine_err_to_js(&e))?;
         Ok(CompiledRule { engine, compiled })
     }
 
@@ -971,7 +976,9 @@ fn stash_element<T>(
     // The call throws for a freed (`.free()`d) object; treat that as an
     // invalid element too.
     stash_fn.call0(elem).map_err(|_| not_a())?;
-    stash.with(|slot| slot.borrow_mut().take()).ok_or_else(not_a)
+    stash
+        .with(|slot| slot.borrow_mut().take())
+        .ok_or_else(not_a)
 }
 
 /// Materialise batch outcomes as one JS array via a single JSON round
@@ -984,7 +991,12 @@ fn outcomes_to_js(outcomes: &[BatchOutcome]) -> Result<Array, JsValue> {
         serde_json::to_string(outcomes).map_err(|e| input_err_to_js("serialize-batch", e))?;
     js_sys::JSON::parse(&json)?
         .dyn_into::<Array>()
-        .map_err(|_| input_err_to_js("serialize-batch", "batch envelope did not parse to an array"))
+        .map_err(|_| {
+            input_err_to_js(
+                "serialize-batch",
+                "batch envelope did not parse to an array",
+            )
+        })
 }
 
 // =============== options-bag parsing ===============

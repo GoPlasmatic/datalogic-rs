@@ -581,10 +581,7 @@ fn test_div_by_zero_fold_matches_two_arg_for_numeric_string_dividend() {
     // 1-arg array fold must match the 2-arg reference.
     assert_eq!(
         engine
-            .eval_into::<serde_json::Value, _, _>(
-                &json!({"/": [[{"var": "x"}, 0]]}),
-                &str_dividend
-            )
+            .eval_into::<serde_json::Value, _, _>(&json!({"/": [[{"var": "x"}, 0]]}), &str_dividend)
             .unwrap(),
         json!(null)
     );
@@ -608,10 +605,7 @@ fn test_div_by_zero_fold_matches_two_arg_for_numeric_string_dividend() {
     );
     assert!(
         engine
-            .eval_into::<serde_json::Value, _, _>(
-                &json!({"/": [[{"var": "x"}, 0]]}),
-                &int_dividend
-            )
+            .eval_into::<serde_json::Value, _, _>(&json!({"/": [[{"var": "x"}, 0]]}), &int_dividend)
             .is_err()
     );
     assert!(
