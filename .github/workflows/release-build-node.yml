@@ -108,19 +108,37 @@ jobs:
           path: bindings/node/*.node
           if-no-files-found: error
 
-  # aarch64-musl prebuild, built inside the napi-rs alpine image via plain `docker run` so the image's baked env (rustup toolchain under /root, RUSTFLAGS=-C target-feature=-crt-static, the aarch64-unknown-linux-musl target) applies as designed; a GHA `container:` job would override HOME and break rustup's toolchain lookup.
-  # A dedicated lts-alpine-aarch64 tag does not exist on ghcr.io; lts-alpine is multi-arch, and on this arm64 runner docker pulls the arm64 variant, so both the build and node:test run natively (no QEMU).
+  # aarch64-musl prebuild, built inside a Node 22 Alpine container via plain
+  # `docker run` (a GHA `container:` job would override HOME and break rustup's
+  # toolchain lookup). napi-rs's own `lts-alpine` image still ships Node 18,
+  # too old for @napi-rs/cli's @inquirer dependency (it imports `styleText`
+  # from `node:util`, added in Node 20), so we base on `node:22-alpine` and set
+  # up the Rust musl toolchain ourselves:
+  #   - build-base provides gcc/musl-dev; symlink the target-prefixed linker
+  #     name rustc's musl target expects (`aarch64-linux-musl-gcc`) to gcc;
+  #   - RUSTFLAGS=-C target-feature=-crt-static dynamically links the shared
+  #     .node against the container's musl (matching napi-rs's baked default).
+  # node:22-alpine is multi-arch, so on this arm64 runner docker pulls the arm64
+  # variant and the build + node:test run natively (no QEMU).
   prebuild-linux-arm64-musl:
     name: Build (linux / arm64 / musl)
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v6
 
-      - name: Build .node prebuild + run node:test (alpine container)
+      - name: Build .node prebuild + run node:test (Node 22 alpine container)
         run: |
           docker run --rm -v "$PWD":/build -w /build/bindings/node \
-            ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine \
-            sh -c 'set -e; npm ci || npm install; npx napi build --platform --release --target aarch64-unknown-linux-musl; npm test'
+            node:22-alpine \
+            sh -c 'set -e
+              apk add --no-cache build-base curl
+              curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+              . "$HOME/.cargo/env"
+              ln -sf "$(command -v gcc)" /usr/local/bin/aarch64-linux-musl-gcc
+              export RUSTFLAGS="-C target-feature=-crt-static"
+              npm ci || npm install
+              npx napi build --platform --release --target aarch64-unknown-linux-musl
+              npm test'
 
       - name: Upload .node artifact
         uses: actions/upload-artifact@v7
