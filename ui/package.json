@@ -76,9 +76,9 @@
     "@fontsource/space-grotesk": "^5.2.10",
     "@goplasmatic/datalogic-wasm": "5.0.1",
     "@msgpack/msgpack": "^3.1.3",
-    "fflate": "^0.8.2",
-    "lucide-react": "^1.14.0",
-    "uuid": "^14.0.0"
+    "fflate": "^0.8.3",
+    "lucide-react": "^1.23.0",
+    "uuid": "^14.0.1"
   },
   "peerDependencies": {
     "@xyflow/react": "^12.0.0",
@@ -87,21 +87,21 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/node": "^25.7.0",
-    "@types/react": "^19.2.14",
+    "@types/node": "^26.1.0",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.1",
-    "@xyflow/react": "^12.10.2",
-    "eslint": "^10.3.0",
+    "@vitejs/plugin-react": "^6.0.3",
+    "@xyflow/react": "^12.11.2",
+    "eslint": "^10.6.0",
     "eslint-plugin-react-hooks": "^7.1.1",
-    "eslint-plugin-react-refresh": "^0.5.2",
-    "globals": "^17.6.0",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^17.7.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "typescript": "~6.0.3",
-    "typescript-eslint": "^8.59.3",
-    "vite": "^8.0.12",
-    "vite-plugin-dts": "^5.0.0",
+    "typescript-eslint": "^8.63.0",
+    "vite": "^8.1.3",
+    "vite-plugin-dts": "^5.0.3",
     "vite-plugin-wasm": "^3.6.0"
   }
 }
