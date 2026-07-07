@@ -147,7 +147,11 @@
                     <plugin>
                         <groupId>org.sonatype.central</groupId>
                         <artifactId>central-publishing-maven-plugin</artifactId>
-                        <version>0.7.0</version>
+                        <!-- 0.8.0+ tolerates the Central Portal API's added
+                             `warnings` response field; 0.7.0 crashed
+                             deserializing it *after* a successful publish,
+                             reporting a false failure. -->
+                        <version>0.11.0</version>
                         <extensions>true</extensions>
                         <configuration>
                             <publishingServerId>central</publishingServerId>

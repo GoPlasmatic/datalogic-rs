@@ -643,7 +643,15 @@ jobs:
         #   private package, you must set `access` to public.
         # napi prepublish has no --access flag; setting NPM_CONFIG_ACCESS
         # makes every nested `npm publish` call inherit it.
-        run: npx napi prepublish -t npm
+        #
+        # `--no-gh-release`: the .node binaries ship inside the per-platform
+        # npm subpackages, so napi's default GitHub-Release asset upload is
+        # redundant here — and it needs `contents: write`, which this job
+        # deliberately drops to `contents: read` for npm provenance. Without
+        # this flag the upload 403s and aborts the whole prepublish before the
+        # npm publish runs (v5.0.1's node binding silently missed npm as a
+        # result).
+        run: npx napi prepublish -t npm --no-gh-release
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -701,6 +709,23 @@ jobs:
           distribution: 'temurin'
           java-version: '25'
 
+      - name: Check if version exists on Maven Central
+        id: check
+        # The Central publishing plugin has no `--skip-duplicate`
+        # equivalent, and re-deploying an existing coordinate errors out.
+        # repo1 is the authoritative public mirror; a 200 on the POM means
+        # the version already published (idempotency for partial-release
+        # reruns).
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          if curl -sf "https://repo1.maven.org/maven2/io/github/goplasmatic/datalogic/${VERSION}/datalogic-${VERSION}.pom" >/dev/null; then
+            echo "Version $VERSION already on Maven Central, skipping"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "Publishing version $VERSION to Maven Central"
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
       # publish-jvm needs the cdylibs inside the JAR. The build-jvm
       # output is an artifact (not a filesystem snapshot), so we
       # re-stage from the cdylib matrix outputs here and rebuild before
@@ -727,6 +752,7 @@ jobs:
           echo "$GPG_PRIVATE_KEY" | gpg --batch --import
 
       - name: Deploy to Central Portal
+        if: steps.check.outputs.skip != 'true'
         working-directory: bindings/jvm
         env:
           MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
@@ -969,13 +995,19 @@ jobs:
           echo "Final asset set:"
           ls -la assets/
 
-      - name: Create release
+      - name: Create or update release
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
-          gh release create "v$VERSION" \
-            --title "v$VERSION" \
-            --notes-file release-notes.md \
-            --verify-tag \
-            assets/*
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            # Release already exists (partial-release rerun): refresh assets
+            # in place instead of failing on "already exists".
+            gh release upload "v$VERSION" assets/* --clobber
+          else
+            gh release create "v$VERSION" \
+              --title "v$VERSION" \
+              --notes-file release-notes.md \
+              --verify-tag \
+              assets/*
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
