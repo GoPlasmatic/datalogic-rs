@@ -549,3 +549,77 @@ fn test_div_by_zero_fold_and_variadic_honor_config() {
             .is_err()
     );
 }
+
+#[test]
+fn test_div_by_zero_fold_matches_two_arg_for_numeric_string_dividend() {
+    // A numeric-*string* dividend coerces to a whole f64 (7.0) but is not an
+    // integer `DataValue`. The 2-arg path decides the int/int carve-out on the
+    // original value (`as_i64()` is None for a string), so it takes the
+    // configurable float path. The fold and variadic forms must agree, rather
+    // than treating `7.0.fract() == 0` as an integer and hard-erroring.
+    //
+    // The dividend is fed through `var` so it survives as a runtime string:
+    // a bare `"7"` literal in an arithmetic position is pre-converted to the
+    // number 7 at compile time, which would take the int/int carve-out and
+    // mask the asymmetry this test guards.
+    let engine = Engine::builder()
+        .with_config(
+            EvaluationConfig::default().with_division_by_zero(DivisionByZeroHandling::ReturnNull),
+        )
+        .build();
+
+    let str_dividend = json!({"x": "7"});
+    let int_dividend = json!({"x": 7});
+
+    // 2-arg reference behavior: string dividend → float path → ReturnNull.
+    assert_eq!(
+        engine
+            .eval_into::<serde_json::Value, _, _>(&json!({"/": [{"var": "x"}, 0]}), &str_dividend)
+            .unwrap(),
+        json!(null)
+    );
+    // 1-arg array fold must match the 2-arg reference.
+    assert_eq!(
+        engine
+            .eval_into::<serde_json::Value, _, _>(
+                &json!({"/": [[{"var": "x"}, 0]]}),
+                &str_dividend
+            )
+            .unwrap(),
+        json!(null)
+    );
+    // Variadic (3+ args): string first operand → float path on the first step.
+    assert_eq!(
+        engine
+            .eval_into::<serde_json::Value, _, _>(
+                &json!({"/": [{"var": "x"}, 0, 1]}),
+                &str_dividend
+            )
+            .unwrap(),
+        json!(null)
+    );
+
+    // The genuine int/int carve-out is unchanged: a real integer dividend still
+    // errors regardless of config, in both fold and variadic forms.
+    assert!(
+        engine
+            .eval_into::<serde_json::Value, _, _>(&json!({"/": [{"var": "x"}, 0]}), &int_dividend)
+            .is_err()
+    );
+    assert!(
+        engine
+            .eval_into::<serde_json::Value, _, _>(
+                &json!({"/": [[{"var": "x"}, 0]]}),
+                &int_dividend
+            )
+            .is_err()
+    );
+    assert!(
+        engine
+            .eval_into::<serde_json::Value, _, _>(
+                &json!({"/": [{"var": "x"}, 0, 1]}),
+                &int_dividend
+            )
+            .is_err()
+    );
+}

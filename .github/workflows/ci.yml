@@ -206,6 +206,12 @@ jobs:
             exit 1
           fi
 
+      # Build and run the C examples against the c-abi-host cdylib
+      # (bindings/c/target/release, already built above) so they can't rot.
+      - name: Run examples
+        working-directory: bindings/c/examples
+        run: make run
+
   # WASM smoke build. Catches a wasm-pack / Rust target / wasm-opt
   # regression at PR time rather than at release. Single platform —
   # the WASM artifact is platform-agnostic so one runner suffices.

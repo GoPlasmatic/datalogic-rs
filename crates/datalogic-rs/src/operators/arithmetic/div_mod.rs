@@ -152,10 +152,12 @@ fn one_arg_div_mod<'a>(
         }
         let mut result =
             coerce_to_number_cfg(&items[0], engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
-        for elem in &items[1..] {
+        for (i, elem) in items[1..].iter().enumerate() {
             let n = coerce_to_number_cfg(elem, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
             if n == 0.0 {
-                return fold_divbyzero(ctx, arena, result, elem, engine);
+                // First step: the accumulator is still the untouched `items[0]`.
+                let dividend_av = if i == 0 { Some(&items[0]) } else { None };
+                return fold_divbyzero(ctx, arena, result, dividend_av, elem, engine);
             }
             result = op.apply_f64(result, n);
         }
@@ -198,11 +200,13 @@ fn variadic_div_mod<'a>(
     let first_av = engine.dispatch_node(&args[0], ctx, arena)?;
     let mut result =
         coerce_to_number_cfg(first_av, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
-    for arg in args.iter().skip(1) {
+    for (i, arg) in args.iter().skip(1).enumerate() {
         let av = engine.dispatch_node(arg, ctx, arena)?;
         let n = coerce_to_number_cfg(av, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
         if n == 0.0 {
-            return fold_divbyzero(ctx, arena, result, av, engine);
+            // First step: the accumulator is still the untouched `first_av`.
+            let dividend_av = if i == 0 { Some(first_av) } else { None };
+            return fold_divbyzero(ctx, arena, result, dividend_av, av, engine);
         }
         result = op.apply_f64(result, n);
     }
@@ -212,19 +216,31 @@ fn variadic_div_mod<'a>(
 /// Zero-divisor policy for the array-fold and variadic paths. Mirrors the
 /// carve-out in [`div_mod_two_arg`]: an integer dividend divided by an
 /// integer zero is always an error, while any other (float) case honours the
-/// engine's [`DivisionByZeroHandling`] config. The running fold accumulator
-/// `dividend` stands in for the left operand; `divisor` is the DataValue that
+/// engine's [`DivisionByZeroHandling`] config. `divisor` is the DataValue that
 /// coerced to zero.
+///
+/// The mirror is exact on the **first** fold step: `dividend_av` is
+/// `Some(original)` there, so integer-ness is decided on the untouched left
+/// `DataValue` via `as_i64()` — the same test the 2-arg path uses, so a
+/// numeric-*string* dividend (`"7"`) takes the configurable float path rather
+/// than the hard int/int error. After a division has been applied the running
+/// `dividend` accumulator is a computed float with no original value, so
+/// `None` falls back to the `fract()`-in-i64-range check.
 #[inline]
 fn fold_divbyzero<'a>(
     ctx: &mut ContextStack<'_>,
     arena: &'a Bump,
     dividend: f64,
+    dividend_av: Option<&DataValue<'_>>,
     divisor: &DataValue<'_>,
     engine: &Engine,
 ) -> Result<&'a DataValue<'a>> {
-    let dividend_is_int =
-        dividend.fract() == 0.0 && dividend >= i64::MIN as f64 && dividend <= i64::MAX as f64;
+    let dividend_is_int = match dividend_av {
+        Some(av) => av.as_i64().is_some(),
+        None => {
+            dividend.fract() == 0.0 && dividend >= i64::MIN as f64 && dividend <= i64::MAX as f64
+        }
+    };
     if dividend_is_int && divisor.as_i64().is_some() {
         return Err(crate::Error::nan_at(ctx));
     }

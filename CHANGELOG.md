@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
-## [5.0.1] - 2026-07-03
+## [5.0.1] - 2026-07-07
 
 ### Changed
 
@@ -169,12 +169,21 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   the conformance suites.
 - Release platform matrix evened out: Intel-mac Python wheels and Node
   prebuilds, aarch64-musl Node prebuilds.
-- Runnable `examples/` for every language binding (Node, WASM, Python,
-  Go, JVM, .NET, PHP): the same three programs — `getting-started`,
+- Runnable `examples/` for every language binding (C, Node, WASM,
+  Python, Go, JVM, .NET, PHP): the same three programs — `getting-started`,
   `compile-once-evaluate-many`, `custom-operator` — with the same rule
   and data in each language, executed in CI so they cannot rot.
 - `scripts/conformance-count.sh` — generates the canonical
   "N suites / M cases" statistic quoted in READMEs and release notes.
+- **Signal Board redesign of the React visual debugger**
+  (`@goplasmatic/datalogic-ui`): nodes are typed and coloured by the
+  *return-type signal* they produce (boolean, number, string, array, and
+  so on) rather than by operator category, exposed through overridable
+  `--sig-*` CSS tokens scoped to `.logic-editor`. Boolean operators render
+  as SVG logic-gate silhouettes (AND / OR / NOT), edges carry an explicit
+  left-to-right flow direction, and the depth axis packs by real node
+  widths so wide nodes no longer overlap. The React component's public
+  props are unchanged.
 
 ### Removed
 

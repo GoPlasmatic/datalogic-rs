@@ -1,0 +1,6 @@
+# Compiled example binaries (built by the Makefile).
+/getting-started
+/custom-operator
+/compile-once-evaluate-many
+*.o
+*.dSYM
