@@ -39,7 +39,7 @@ Write a [JSONLogic](https://jsonlogic.com) rule once and evaluate it with the ex
 
 Rules are plain JSON, so there is exactly one of them, no matter how many languages you run:
 
-```json
+```yaml
 Rule:   {"and": [{">=": [{"var": "age"}, 18]}, {"==": [{"var": "status"}, "active"]}]}
 Data:   {"age": 25, "status": "active"}
 Result: true
@@ -85,7 +85,7 @@ Same bytes in, same bytes out: every binding wraps the same core and passes the 
 
 Encode pricing logic, fee schedules, eligibility and underwriting rules, transaction risk scoring, payment routing, access control, or form validation as JSON. Store rules in a database column, fetch them from an API, review them in a diff: logic changes ship without a deploy.
 
-```json
+```yaml
 Rule:   {"if": [
           {">": [{"var": "cart.total"}, 100]}, "free-shipping",
           {">": [{"var": "cart.total"}, 50]},  "flat-rate",
@@ -99,7 +99,7 @@ Result: "free-shipping"
 
 Enable templating mode and JSON key-value structures flow through to the output, with operators computing fields in place:
 
-```json
+```yaml
 Template: {"greeting": {"cat": ["Hello ", {"var": "name"}]},
            "isAdult":  {">=": [{"var": "age"}, 18]}}
 Data:     {"name": "Jane", "age": 25}
@@ -112,7 +112,7 @@ Templating is an engine option in every binding (in Rust: `Engine::builder().wit
 
 Let power users and admins write formulas without handing them a scripting engine:
 
-```json
+```yaml
 Rule:   {"+": [{"var": "subtotal"}, {"var": "tax"}, {"var": "shipping"}]}
 Data:   {"subtotal": 100, "tax": 8.5, "shipping": 5}
 Result: 113.5
