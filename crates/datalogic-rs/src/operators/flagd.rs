@@ -348,15 +348,14 @@ fn parse_version<'a>(value: &'a DataValue<'a>, arena: &'a Bump) -> Option<semver
         // `123` parses as version `123` then gets padded to `123.0.0`.
         let s = bumpalo::format!(in arena, "{}", n);
         s.into_bump_str()
-    } else if let Some(f) = value.as_f64() {
+    } else {
         // Float coercion is rarer but the spec covers it: `1.5` →
         // `"1.5"` → padded to `"1.5.0"`. SemVer's grammar rejects
         // scientific notation, so a pathological `1e10` falls through
         // to a parse error and we return None.
+        let f = value.as_f64()?;
         let s = bumpalo::format!(in arena, "{}", f);
         s.into_bump_str()
-    } else {
-        return None;
     };
 
     // Strip leading v / V — flagd-spec normalization #1.
