@@ -150,7 +150,7 @@ cargo run --release -p datalogic-bench --bin compare -- --all --allow-missing-su
 ### Reading the output
 
 ```
-=== Cross-Library Matrix — avg ns/op (median of 3, ~200ms target/cell, 44 suites) ===
+=== Cross-Library Matrix — avg ns/op (median of 3, ~200ms target/cell, 50 suites) ===
 
 | Suite                | dlrs:engine | jsonlogic-rs | dlrs:wasm:compiled | json-logic-js | json-logic-engine | json-logic-engine:compiled |
 |----------------------|------------:|-------------:|-------------------:|--------------:|------------------:|---------------------------:|

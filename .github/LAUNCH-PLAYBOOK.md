@@ -3,18 +3,28 @@
 Maintainer-facing checklist for promoting datalogic-rs. Not user docs.
 Baselines captured 2026-07-03; update them when you snapshot metrics.
 
+Drafted launch content (blog posts, channel posts, listing PR texts) and
+the external-action runbook live in `.github/launch/`, which is
+deliberately untracked (gitignored): maintainer-local reference only.
+
 ## Gates — do not promote before these are true
 
-1. Maven Central and Packagist actually serve the packages (see the
-   registry-ops checklist in [DEVELOPMENT.md](../DEVELOPMENT.md)). Two of
-   eight advertised install commands failing is a launch-killing HN
-   comment.
-2. The stale `@goplasmatic/datalogic` v4 npm package is deprecated.
-3. The redesigned README and restructured docs site are deployed
+1. ✅ (2026-07-15) Maven Central and Packagist actually serve the
+   packages — verified: `io.github.goplasmatic:datalogic` 5.0.1 on
+   Central since 2026-07-07, `goplasmatic/datalogic` resolving on
+   Packagist. Two of eight advertised install commands failing is a
+   launch-killing HN comment.
+2. ✅ (2026-07-15) The stale `@goplasmatic/datalogic` v4 npm package is
+   gone: deprecated and removed from the registry (`npm view` returns
+   404).
+3. ✅ The redesigned README and restructured docs site are deployed
    (docs.yml runs on push to main).
-4. GitHub Discussions is enabled (Q&A category exists; the issue-template
-   contact link points at it).
-5. `scripts/conformance-count.sh` output matches every quoted stat.
+4. ✅ (2026-07-15) GitHub Discussions is enabled with all categories
+   (Announcements, Q&A, Ideas, Show and tell; the issue-template
+   contact link points at Q&A).
+5. ✅ (2026-07-15) `scripts/conformance-count.sh` output matches every
+   quoted stat — a stale pre-refresh geomean in the crate README was
+   fixed; `scripts/check-stats.sh` now guards this in CI.
 
 ## External listings (start first — longest latency)
 
@@ -45,7 +55,7 @@ Baselines captured 2026-07-03; update them when you snapshot metrics.
 
 Week 1 — Rust channel:
 - [ ] Blog post (a) or (d) published (see titles below).
-- [ ] r/rust text post: "datalogic-rs v5 — JSONLogic engine, ~10 ns geomean,
+- [ ] r/rust text post: "datalogic-rs v5 — JSONLogic engine, 8.9 ns geomean,
   8 language bindings from one core". Lead with the one-core-many-registries
   architecture; r/rust loves release-engineering detail. Maintainer in
   comments all day.
@@ -57,7 +67,7 @@ Week 1 — Rust channel:
 Week 2 — Show HN (the anchor):
 - [ ] Submit **the playground URL** (Show HN guidelines favor something
   people can try): title
-  `Show HN: One JSONLogic engine for 8 languages (Rust core, ~10 ns/eval)`.
+  `Show HN: One JSONLogic engine for 8 languages (Rust core, ~9 ns/eval)`.
 - [ ] Prepared first comment: what it is, why one core (drift between
   ports), benchmark table + repro command, honest limits (rules are
   data-plane only; WASM is 88x slower than native; resource bounding is
@@ -70,7 +80,7 @@ Week 2 — Show HN (the anchor):
 - [ ] Tue–Thu, 8–10 AM ET; maintainer available 6+ hours.
 
 Week 3+ — per-ecosystem:
-- [ ] r/node post + blog (e): the safe-eval / json-logic-js-43x angle.
+- [ ] r/node post + blog (e): the safe-eval / json-logic-js-perf angle.
 - [ ] Blog (c) + OpenFeature follow-through.
 - [ ] r/golang, r/dotnet, r/PHP, r/java staggered weekly as each
   language's examples land; each post uses that language's snippet, not
@@ -78,8 +88,10 @@ Week 3+ — per-ecosystem:
 
 ## Blog titles (map to searcher intent; publish on dev.to or a Plasmatic blog, cross-post excerpts)
 
-- (a) "json-logic-js is 43x slower than it needs to be" — perf/alternative
+- (a) "json-logic-js is 100× slower than it needs to be" — perf/alternative
   intent. Respectful of the reference impl; methodology + repro mandatory.
+  (Pairwise 104.2× over 23 shared suites per BENCHMARK.md 2026-07-03;
+  re-verify before publishing.)
 - (b) "Same rule, eight runtimes: one JSONLogic engine across your whole
   stack" — the positioning anchor; links the parallel examples/ folders.
 - (c) "Feature flags without a flag service: flagd-compatible evaluation

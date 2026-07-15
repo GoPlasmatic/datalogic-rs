@@ -59,6 +59,8 @@
 - [Structured Objects](advanced/structured-objects.md)
 - [Thread Safety](advanced/threading.md)
 - [Security & Sandboxing](advanced/security.md)
+- [Integration: Express (Node.js)](integrations/express.md)
+- [Integration: Spring Boot (JVM)](integrations/spring-boot.md)
 
 # Reference
 

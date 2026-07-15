@@ -316,34 +316,22 @@ whoever cuts the next tag should watch these once, then delete this list:
 
 ### One-time registry / marketing ops (added 2026-07-03; maintainer-only)
 
-Registry state: crates.io, npm ×3, PyPI, NuGet, the Go proxy, and (since
-2026-07-03) **Packagist** all serve 5.0.0. Done on 2026-07-03: Packagist
-registration + webhook, GitHub Discussions enabled, wiki disabled.
-Still open, each needing credentials only a maintainer holds:
+Registry state: **all nine registries serve 5.0.1** — crates.io, npm ×3,
+PyPI, NuGet, the Go proxy, Packagist (since 2026-07-03), and Maven
+Central (first publish 2026-07-07). Done on 2026-07-03: Packagist
+registration + webhook, GitHub Discussions enabled, wiki disabled. Done
+on 2026-07-07: first Maven Central publish (`io.github.goplasmatic:datalogic`);
+the root README's Maven row now carries the shields.io maven-central
+badge. Done: Discussions categories created (Announcements, Q&A, Ideas,
+Show and tell). Done on 2026-07-15: the stale v4 npm package
+`@goplasmatic/datalogic` was deprecated and removed from the registry
+(`npm view` now 404s); do **not** re-register or republish that name —
+any new publish would resurrect its search-rank signal and split the
+lineup three ways again. Still open:
 
-- **First Maven Central publish** — `io.github.goplasmatic` has never
-  received an artifact, so the advertised Maven dependency does not
-  resolve. Complete Central-Portal namespace verification (GitHub-based
-  namespaces are auto-verifiable), configure the GPG signing key in repo
-  secrets, then run the `publish-jvm` leg (see the checklist item
-  above). The root README's Maven row shows "first Maven release
-  pending" text; swap in the shields.io maven-central badge once live.
-- **Deprecate the stale v4 npm package** — blocked on a 2FA one-time
-  password (the account enforces OTP for `npm deprecate`); reversible
-  later via `npm deprecate ... ""`:
-
-  ```bash
-  npm deprecate "@goplasmatic/datalogic@*" "Renamed in v5: use @goplasmatic/datalogic-wasm (browsers/edge) or @goplasmatic/datalogic-node (native Node, fastest). Migration: https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md" --otp=<code>
-  ```
-
-  Rationale: the un-deprecated v4 package still ranks in npm search for
-  "jsonlogic" and splits the lineup three ways. Do **not** republish it
-  or convert it to a meta-package — any new publish refreshes its
-  maintenance signal and search rank.
-- **Discussions categories**: create Announcements (maintainer-post-only),
-  Q&A, Ideas, and Show and Tell; pin a "Who's using datalogic-rs? Add
-  your project" thread in Show and Tell.
-  `.github/ISSUE_TEMPLATE/config.yml` already links to the Q&A category.
+- **Pin a "Who's using datalogic-rs? Add your project" thread** in the
+  Show and tell Discussions category (the categories themselves exist;
+  `.github/ISSUE_TEMPLATE/config.yml` already links to Q&A).
 - **FUNDING.yml is intentionally absent**: add it only after enrolling
   the org (or a maintainer account) in GitHub Sponsors — a Sponsor
   button that 404s is worse than none.

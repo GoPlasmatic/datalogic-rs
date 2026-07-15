@@ -19,7 +19,7 @@ Write a [JSONLogic](https://jsonlogic.com) rule once and evaluate it with the ex
 
 <div align="center">
   <a href="https://goplasmatic.github.io/datalogic-rs/playground/">
-    <img src="https://raw.githubusercontent.com/GoPlasmatic/datalogic-rs/main/docs/src/assets/demo.gif" alt="JSONLogic Online Debugger Demo" width="800">
+    <img src="https://raw.githubusercontent.com/GoPlasmatic/datalogic-rs/main/docs/src/assets/demo.jpg" alt="JSONLogic Online Debugger Demo" width="800">
   </a>
   <p><em>Build, trace, and debug rules live in the <a href="https://goplasmatic.github.io/datalogic-rs/playground/">playground</a>.</em></p>
 </div>
@@ -71,7 +71,7 @@ Same bytes in, same bytes out: every binding wraps the same core and passes the 
 | **Browser, Edge, Bun, Deno** | [![npm](https://img.shields.io/npm/v/@goplasmatic/datalogic-wasm)](https://www.npmjs.com/package/@goplasmatic/datalogic-wasm) | `@goplasmatic/datalogic-wasm` | `npm i @goplasmatic/datalogic-wasm` | [wasm README](./bindings/wasm/README.md) |
 | **Python** | [![PyPI](https://img.shields.io/pypi/v/datalogic-py.svg)](https://pypi.org/project/datalogic-py/) | `datalogic-py` | `pip install datalogic-py` | [python README](./bindings/python/README.md) |
 | **Go** | [![Go Reference](https://pkg.go.dev/badge/github.com/GoPlasmatic/datalogic-rs/bindings/go/v5.svg)](https://pkg.go.dev/github.com/GoPlasmatic/datalogic-rs/bindings/go/v5) | `datalogic-go` | `go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5` | [go README](./bindings/go/README.md) |
-| **Java / JVM** (Kotlin, Scala) | first Maven release pending<!-- swap for maven-central badge once published --> | `io.github.goplasmatic:datalogic` | Maven / Gradle dependency | [jvm README](./bindings/jvm/README.md) |
+| **Java / JVM** (Kotlin, Scala) | [![Maven Central](https://img.shields.io/maven-central/v/io.github.goplasmatic/datalogic.svg)](https://central.sonatype.com/artifact/io.github.goplasmatic/datalogic) | `io.github.goplasmatic:datalogic` | Maven / Gradle dependency | [jvm README](./bindings/jvm/README.md) |
 | **.NET** (C#, F#) | [![NuGet](https://img.shields.io/nuget/v/Goplasmatic.Datalogic.svg)](https://www.nuget.org/packages/Goplasmatic.Datalogic) | `Goplasmatic.Datalogic` | `dotnet add package Goplasmatic.Datalogic` | [dotnet README](./bindings/dotnet/README.md) |
 | **PHP** | [![Packagist](https://img.shields.io/packagist/v/goplasmatic/datalogic.svg)](https://packagist.org/packages/goplasmatic/datalogic) | `goplasmatic/datalogic` | `composer require goplasmatic/datalogic` | [php README](./bindings/php/README.md) |
 | **C / FFI** (embed anywhere) | built in-tree | `datalogic-c` | built locally | [c README](./bindings/c/README.md) |

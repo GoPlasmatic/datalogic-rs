@@ -1,0 +1,73 @@
+# datalogic-rs
+
+> High-performance JSONLogic (json-logic) rules engine and sandboxed
+> expression evaluator: one Rust core with official bindings for
+> Node.js, browser/edge WASM, Python, Go, Java (JVM), .NET, and PHP,
+> plus an embeddable React visual rule editor and step-through
+> debugger. Business rules are plain JSON data: store them in a
+> database, ship them over an API, change logic without a redeploy.
+> Apache-2.0.
+
+Key facts: rules compile once to opcode programs and evaluate in a
+reusable memory arena (8.9 ns geomean across the 50-suite benchmark
+matrix); the core is `#![forbid(unsafe_code)]` with no eval, no I/O,
+and no scripting runtime, so user-submitted rules are safe to evaluate;
+every binding runs the same 1,532-case conformance battery (53 suites)
+in CI, so semantics never drift between languages; 59 built-in
+operators including datetime, string/array extensions, error handling
+(try/throw), and flagd-compatible feature-flag operators (fractional,
+sem_ver) with murmur3 bucketing byte-compatible with OpenFeature flagd.
+
+Install per language: Rust `cargo add datalogic-rs` · Node.js
+`npm i @goplasmatic/datalogic-node` · Browser/Edge WASM
+`npm i @goplasmatic/datalogic-wasm` · Python `pip install datalogic-py`
+(fully typed, PEP 561) · Go
+`go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5` · JVM
+`io.github.goplasmatic:datalogic` (JDK 22+) · .NET
+`dotnet add package Goplasmatic.Datalogic` · PHP
+`composer require goplasmatic/datalogic` (PHP 8.4+, ext-ffi) · React UI
+`npm i @goplasmatic/datalogic-ui`.
+
+API shape (identical across languages): one-shot `apply(rule, data)`;
+`Engine` → `compile(rule)` → `rule.evaluate(data)` for hot paths;
+`Session` for arena-reuse loops; `DataHandle` for parse-once payloads;
+typed results (bool/int/float) for predicates; batch evaluation;
+custom operators registered as host-language callbacks; optional
+templating mode and step-by-step trace output.
+
+## Docs
+
+- [Introduction](https://goplasmatic.github.io/datalogic-rs/introduction.html):
+  what the engine is and when to use it
+- [Quick start](https://goplasmatic.github.io/datalogic-rs/getting-started/quick-start.html):
+  first evaluation in every language
+- [Operator reference](https://goplasmatic.github.io/datalogic-rs/operators/overview.html):
+  all 59 built-in operators with examples
+- [Language guides](https://goplasmatic.github.io/datalogic-rs/rust/overview.html):
+  per-binding chapters (Rust, Node, WASM, Python, Go, JVM, .NET, PHP, React UI)
+- [Security & sandboxing](https://goplasmatic.github.io/datalogic-rs/advanced/security.html):
+  the sandbox guarantees and what remains the host's job
+- [How it compares](https://goplasmatic.github.io/datalogic-rs/comparison.html):
+  vs json-logic-js, json-logic-engine, GoRules ZEN, CEL
+- [Performance](https://goplasmatic.github.io/datalogic-rs/performance.html):
+  benchmark methodology and numbers
+
+## Try it
+
+- [Live playground](https://goplasmatic.github.io/datalogic-rs/playground/):
+  visual editor and step-through debugger running the real engine (WASM)
+- [GitHub repository](https://github.com/GoPlasmatic/datalogic-rs):
+  source, examples for every language under bindings/<lang>/examples/
+- [Rust API docs](https://docs.rs/datalogic-rs): docs.rs reference
+
+## Notes for code generation
+
+- Rule and data inputs: Node and Python accept native objects; WASM,
+  Go, JVM, .NET, and PHP take JSON strings at the primary surface.
+- Compile once and reuse the compiled rule; compiled rules are
+  thread-safe in every binding. Sessions are single-threaded.
+- Errors carry a stable tag (`ParseError`, `TypeMismatch`, `Thrown`,
+  `NaN`, …) with the same taxonomy in every language.
+- The old v4 npm package `@goplasmatic/datalogic` no longer exists on
+  the registry; use `@goplasmatic/datalogic-node` (native Node) or
+  `@goplasmatic/datalogic-wasm` (browser/edge).
