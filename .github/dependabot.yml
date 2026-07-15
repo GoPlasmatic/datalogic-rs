@@ -71,6 +71,50 @@ updates:
     open-pull-requests-limit: 2
     labels: [dependencies, javascript, node]
 
+  # ──────────── Maven ────────────
+  # jackson-databind is compile-scope, so it reaches consumers of
+  # io.github.goplasmatic:datalogic transitively — its CVEs are ours to
+  # ship a fix for, not just ours to tolerate. Left unregistered until
+  # CVE-2026-54515 sat open on 2.22.0 with no PR to bump it.
+  - package-ecosystem: maven
+    directory: /bindings/jvm
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    labels: [dependencies, jvm]
+
+  # ──────────── NuGet ────────────
+  # Same exported-dependency argument as Maven: src/Datalogic carries a
+  # System.Text.Json PackageReference that flows to NuGet consumers.
+  - package-ecosystem: nuget
+    directory: /bindings/dotnet
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    labels: [dependencies, dotnet]
+
+  # ──────────── Composer ────────────
+  # Thin by design: runtime `require` is php + ext-ffi + ext-json, so this
+  # only really tracks the phpunit devDep. Registered so a future runtime
+  # dep is covered from day one rather than retrofitted after an alert.
+  - package-ecosystem: composer
+    directory: /bindings/php
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    labels: [dependencies, php]
+
+  # ──────────── Go modules ────────────
+  # go.mod has zero `require` entries today (the binding is cgo over the C
+  # ABI, no external Go deps), so expect no PRs. Same rationale as Composer:
+  # cheap to register now, easy to forget later.
+  - package-ecosystem: gomod
+    directory: /bindings/go
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    labels: [dependencies, go]
+
   # ──────────── GitHub Actions ────────────
   # Pin action versions sharply; bump on Dependabot's cadence rather than
   # via floating `@v4` aliases that can change underfoot.
