@@ -28,6 +28,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      # Marketing stats (conformance counts, benchmark geomean) are quoted
+      # in READMEs and badges; this fails the build when a quote drifts
+      # from its canonical source. Runs before toolchain setup — it only
+      # needs bash + python3.
+      - name: Check quoted stats against canonical sources
+        run: bash scripts/check-stats.sh
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:

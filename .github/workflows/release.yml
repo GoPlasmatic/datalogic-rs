@@ -923,6 +923,18 @@ jobs:
             echo "::error::Failed to extract CHANGELOG section for $VERSION (validate should have caught this)"
             exit 1
           fi
+          # Standard syndication footer (see .github/LAUNCH-PLAYBOOK.md
+          # "Ongoing"). Conformance stat comes from the script so the
+          # footer can never drift from the actual suite count.
+          CONFORMANCE=$(bash scripts/conformance-count.sh)
+          cat >> release-notes.md <<EOF
+
+          ---
+
+          Every binding passes the same conformance battery: **${CONFORMANCE}**.
+          Try rules live in the [playground](https://goplasmatic.github.io/datalogic-rs/playground/).
+          Running datalogic-rs in production? [Add your project](https://github.com/GoPlasmatic/datalogic-rs/discussions/categories/show-and-tell).
+          EOF
           echo "Release notes preview:"
           head -20 release-notes.md
 
@@ -1006,6 +1018,7 @@ jobs:
             gh release create "v$VERSION" \
               --title "v$VERSION" \
               --notes-file release-notes.md \
+              --discussion-category "Announcements" \
               --verify-tag \
               assets/*
           fi
