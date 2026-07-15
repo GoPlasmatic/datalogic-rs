@@ -36,12 +36,13 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Rust",
     "Topic :: Software Development :: Libraries",
+    "Typing :: Typed",
 ]
 
 [project.urls]
 Homepage = "https://github.com/GoPlasmatic/datalogic-rs"
 Repository = "https://github.com/GoPlasmatic/datalogic-rs"
-Documentation = "https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/python"
+Documentation = "https://goplasmatic.github.io/datalogic-rs/python/installation.html"
 Issues = "https://github.com/GoPlasmatic/datalogic-rs/issues"
 
 [project.optional-dependencies]

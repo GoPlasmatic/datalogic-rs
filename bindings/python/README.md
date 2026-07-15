@@ -36,11 +36,15 @@ Pre-built wheels are published for:
 | Linux (manylinux)  | x86_64, aarch64 |
 | Linux (musllinux)  | x86_64, aarch64 |
 | macOS              | x86_64, arm64   |
-| Windows            | x86_64          |
+| Windows            | x86_64, arm64   |
 
 Python 3.10 and newer are supported via
 [PEP 384 stable ABI (`abi3`)](https://peps.python.org/pep-0384/) — one
 wheel per platform covers every CPython 3.10+ release.
+
+The package is fully typed ([PEP 561](https://peps.python.org/pep-0561/)):
+every wheel ships type stubs and a `py.typed` marker, so mypy, pyright,
+and IDE autocomplete see the complete API surface out of the box.
 
 > **Naming:** `pip install datalogic-py` (PyPI distribution name) →
 > `import datalogic_py` (Python module name). Python modules can't

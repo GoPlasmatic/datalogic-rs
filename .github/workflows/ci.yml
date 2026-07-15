@@ -329,7 +329,7 @@ jobs:
 
       - name: Install build + test deps
         working-directory: bindings/python
-        run: pip install --upgrade pip maturin pytest
+        run: pip install --upgrade pip maturin pytest mypy
 
       # `maturin develop --release` builds the binding and installs it
       # into the active venv in one shot. Using --release because debug
@@ -342,6 +342,13 @@ jobs:
       - name: Run pytest
         working-directory: bindings/python
         run: pytest -v
+
+      # The PEP 561 stubs (datalogic_py.pyi) are hand-written; stubtest
+      # diffs them against the compiled module's real surface so a Rust
+      # signature change can't land without the matching stub update.
+      - name: Check type stubs against runtime (stubtest)
+        working-directory: bindings/python
+        run: python -m mypy.stubtest datalogic_py --allowlist stubtest-allowlist.txt
 
       # Execute the runnable examples against the binding installed into
       # the venv above so they can't rot.

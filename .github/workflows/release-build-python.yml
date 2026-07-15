@@ -44,6 +44,22 @@ jobs:
           # "musllinux_1_2" are interpreted by the action.
           manylinux: ${{ matrix.target.manylinux }}
 
+      # Every wheel must carry the PEP 561 typing surface — maturin
+      # bundles datalogic_py.pyi (as __init__.pyi) plus a py.typed
+      # marker automatically because the stub sits next to
+      # pyproject.toml; fail loudly if that ever regresses.
+      - name: Assert type stubs shipped in wheel
+        shell: bash
+        working-directory: bindings/python
+        run: |
+          for whl in dist/*.whl; do
+            listing=$(python -m zipfile -l "$whl")
+            echo "$listing" | grep -q "datalogic_py/__init__.pyi" \
+              || { echo "::error::$whl is missing datalogic_py/__init__.pyi"; exit 1; }
+            echo "$listing" | grep -q "datalogic_py/py.typed" \
+              || { echo "::error::$whl is missing datalogic_py/py.typed"; exit 1; }
+          done
+
       - name: Upload wheel
         uses: actions/upload-artifact@v7
         with:
@@ -111,7 +127,7 @@ jobs:
 
       - name: Install build + test deps
         working-directory: bindings/python
-        run: pip install --upgrade pip maturin pytest
+        run: pip install --upgrade pip maturin pytest mypy
 
       - name: Build + install binding
         working-directory: bindings/python
@@ -120,3 +136,9 @@ jobs:
       - name: Run pytest
         working-directory: bindings/python
         run: pytest -v
+
+      # Diff the hand-written PEP 561 stubs against the compiled
+      # module's real surface (mirrors the ci.yml python-test job).
+      - name: Check type stubs against runtime (stubtest)
+        working-directory: bindings/python
+        run: python -m mypy.stubtest datalogic_py --allowlist stubtest-allowlist.txt

@@ -1,0 +1,7 @@
+# mypy.stubtest allowlist for `python -m mypy.stubtest datalogic_py`.
+#
+# The compiled extension lives at datalogic_py.datalogic_py inside the
+# maturin-generated package; its public surface is re-exported (and
+# stubbed) at the package root, so the inner module needs no stub of
+# its own.
+datalogic_py.datalogic_py
