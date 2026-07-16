@@ -54,6 +54,13 @@ pub struct Logic {
     /// `CustomOperator` (one alloc per compile, amortised over many
     /// evaluations), `None` for `Value` literals.
     pub(crate) root_op_name: Option<std::borrow::Cow<'static, str>>,
+    /// Number of CSE memo slots assigned by the compile-time CSE pass
+    /// (`crate::compile::optimize::cse`); the upper bound of the lazily
+    /// grown per-evaluation slot table on `ContextStack`. `0` for rules
+    /// with no shared pure aggregates (and for every no-fold / traced
+    /// compile). Plain `Copy` data — `Logic` stays `Send + Sync` with no
+    /// interior mutability.
+    pub(crate) cse_slot_count: u16,
 }
 
 impl std::fmt::Debug for Logic {
@@ -79,10 +86,16 @@ impl Logic {
     /// # Arguments
     ///
     /// * `root` - The root node of the compiled logic tree
-    pub(crate) fn new(mut root: CompiledNode) -> Self {
+    /// * `cse_slot_count` - Memo slots assigned by the CSE pass (0 when
+    ///   the pass didn't run or found nothing to share)
+    pub(crate) fn new(mut root: CompiledNode, cse_slot_count: u16) -> Self {
         populate_lits(&mut root);
         let root_op_name = root.operator_name();
-        Self { root, root_op_name }
+        Self {
+            root,
+            root_op_name,
+            cse_slot_count,
+        }
     }
 
     /// Check if this compiled logic is static (can be evaluated without context)
@@ -126,6 +139,34 @@ impl Logic {
     /// ```
     pub fn is_constant(&self) -> bool {
         matches!(self.root, CompiledNode::Value { .. })
+    }
+
+    /// Number of shared-subexpression memo slots the compiler assigned to
+    /// this rule.
+    ///
+    /// The compile-time CSE pass detects structurally identical pure
+    /// subtrees (typically repeated aggregates — JSONLogic has no `let`
+    /// bindings, so rule authors paste them) and arranges for each
+    /// equivalence class to be computed once per evaluation. `0` means no
+    /// shared subexpressions were found — or the pass didn't run (engines
+    /// built with [`crate::EngineBuilder::with_constant_folding`]`(false)`
+    /// or configured with a [`crate::TruthyEvaluator::Custom`] evaluator
+    /// compile without CSE). Useful for rule-analysis tooling and for
+    /// verifying that a hot rule benefits from sharing.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::Engine;
+    ///
+    /// let engine = Engine::new();
+    /// let agg = r#"{"reduce": [{"var": "xs"}, {"+": [{"var": "accumulator"}, {"var": "current"}]}, 0]}"#;
+    /// let rule = format!(r#"{{"+": [{agg}, {agg}]}}"#);
+    /// let compiled = engine.compile(rule.as_str()).unwrap();
+    /// assert_eq!(compiled.cse_slot_count(), 1);
+    /// ```
+    pub fn cse_slot_count(&self) -> u16 {
+        self.cse_slot_count
     }
 
     /// Reconstruct a JSONLogic string from this compiled tree.
@@ -176,6 +217,7 @@ pub(crate) fn node_is_static(node: &CompiledNode) -> bool {
         CompiledNode::Array { nodes, .. } => nodes.iter().all(node_is_static),
         CompiledNode::BuiltinOperator { opcode, args, .. } => opcode_is_static(opcode, args),
         CompiledNode::CustomOperator(_) => false,
+        CompiledNode::Cse(data) => node_is_static(&data.inner),
         CompiledNode::Var { .. } => false,
         #[cfg(feature = "ext-control")]
         CompiledNode::Exists(_) => false,

@@ -79,6 +79,52 @@ fn arb_json() -> impl Strategy<Value = Value> {
     })
 }
 
+/// A small pure aggregate over a generated var path — the shape the CSE
+/// pass targets. Operator and initial accumulator vary so near-twin
+/// classes (e.g. `0` vs `0.0` initials) get generated too.
+fn arb_aggregate() -> impl Strategy<Value = Value> {
+    let body_op = prop_oneof![Just("+"), Just("*"), Just("-")];
+    let initial = prop_oneof![
+        Just(json!(0)),
+        Just(json!(0.0)),
+        Just(json!(1)),
+        Just(json!(100)),
+    ];
+    ("[a-c]{1,2}", body_op, initial).prop_map(|(path, op, initial)| {
+        json!({
+            "reduce": [
+                {"var": path},
+                {op: [{"var": "accumulator"}, {"var": "current"}]},
+                initial
+            ]
+        })
+    })
+}
+
+/// Splice 2–4 occurrences of one aggregate (plus arbitrary siblings) into
+/// a combining operator, sometimes nesting an occurrence inside a `map`
+/// body or an `if` branch — the placements the CSE gates must handle.
+fn arb_spliced_rule() -> impl Strategy<Value = Value> {
+    (arb_aggregate(), arb_json(), 2usize..=4, 0usize..=2).prop_map(
+        |(agg, extra, copies, placement)| {
+            let mut args: Vec<Value> = std::iter::repeat_n(agg.clone(), copies).collect();
+            args.push(extra);
+            match placement {
+                // All occurrences at combinable positions.
+                0 => json!({"+": args}),
+                // One extra occurrence inside a map body (per-item
+                // context — must not share the root memo).
+                1 => json!({"+": [
+                    {"map": [{"var": "a"}, agg]},
+                    args
+                ]}),
+                // Occurrences split across if branches.
+                _ => json!({"if": [{"var": "a"}, {"+": args}, agg]}),
+            }
+        },
+    )
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(256))]
 
@@ -125,6 +171,46 @@ proptest! {
             (optimized, traced) => prop_assert!(
                 false,
                 "optimized vs traced Ok/Err divergence for rule={} data={}: optimized={:?} traced={:?}",
+                rule_str,
+                data_str,
+                optimized,
+                traced
+            ),
+        }
+    }
+
+    /// Property C: CSE differential oracle. Rules with spliced repeated
+    /// aggregates — the exact shape the CSE pass wraps — must agree
+    /// between the optimized pipeline (folding + CSE + fast paths) and
+    /// the traced pipeline (no-fold compile, zero Cse nodes, general
+    /// dispatch): both `Ok` with equal JSON or both `Err`.
+    #[test]
+    fn cse_spliced_aggregates_agree(rule in arb_spliced_rule(), data in arb_json()) {
+        let engine = Engine::new();
+        let rule_str = serde_json::to_string(&rule).expect("generated rule serialises");
+        let data_str = serde_json::to_string(&data).expect("generated data serialises");
+
+        let optimized = engine.eval_str(rule_str.as_str(), data_str.as_str());
+        let traced = engine.trace().eval_str(rule_str.as_str(), data_str.as_str()).result;
+
+        match (optimized, traced) {
+            (Ok(optimized), Ok(traced)) => {
+                let optimized: Value =
+                    serde_json::from_str(&optimized).expect("engine emits valid JSON");
+                let traced: Value =
+                    serde_json::from_str(&traced).expect("engine emits valid JSON");
+                prop_assert_eq!(
+                    optimized,
+                    traced,
+                    "CSE vs traced result mismatch for rule={} data={}",
+                    rule_str,
+                    data_str
+                );
+            }
+            (Err(_), Err(_)) => {}
+            (optimized, traced) => prop_assert!(
+                false,
+                "CSE vs traced Ok/Err divergence for rule={} data={}: optimized={:?} traced={:?}",
                 rule_str,
                 data_str,
                 optimized,

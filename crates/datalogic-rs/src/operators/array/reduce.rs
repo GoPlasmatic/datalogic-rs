@@ -1,7 +1,7 @@
 //! `reduce` — fold an array into a single value via an accumulator.
 
 use crate::arena::{ContextStack, DataValue, IterGuard};
-use crate::node::ReduceHint;
+use crate::node::{PathSegment, ReduceHint};
 use crate::opcode::OpCode;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
@@ -10,8 +10,8 @@ use super::helpers::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
 
 /// `reduce` — folds an array into a single value via an accumulator. Input
 /// resolves via `resolve_iter_input` (so `reduce(filter(...), +, 0)`
-/// composes), with inline arithmetic fast paths for the dominant
-/// `current op accumulator` pattern.
+/// composes), with an inline arithmetic fast path for two-var `+`/`-`/`*`
+/// fold bodies in either operand order.
 #[inline]
 pub(crate) fn evaluate_reduce<'a>(
     args: &'a [CompiledNode],
@@ -43,24 +43,13 @@ pub(crate) fn evaluate_reduce<'a>(
         return Ok(initial);
     }
 
-    // FAST PATH: {op: [val("current"[+path]), val("accumulator")]} for + / - / *.
-    // Skipped when a tracer is attached so per-iteration trace markers still get
-    // recorded via `run_iter_body` in the general path.
+    // FAST PATH: {op: [val("current"[+path]), val("accumulator")]} in either
+    // operand order for + / - / *. Skipped when a tracer is attached so
+    // per-iteration trace markers still get recorded via `run_iter_body` in
+    // the general path.
     if !ctx.is_tracing() {
-        if let CompiledNode::BuiltinOperator {
-            opcode,
-            args: body_args,
-            ..
-        } = body
-        {
-            if body_args.len() == 2
-                && matches!(opcode, OpCode::Add | OpCode::Multiply | OpCode::Subtract)
-            {
-                if let Some(result) = try_reduce_fast_path(&src, initial, body_args, *opcode, arena)
-                {
-                    return Ok(result);
-                }
-            }
+        if let Some(result) = try_reduce_fast_path(&src, initial, body, arena) {
+            return Ok(result);
         }
     }
 
@@ -122,19 +111,31 @@ fn reduce_arena_bridge<'a>(
     }
 }
 
-/// Arena variant of the reduce arithmetic fast path: detects the
-/// `{+|-|*: [val("current"[+path]), val("accumulator")]}` body shape and
-/// folds without per-item context push or body dispatch. Iterates `IterSrc`
-/// directly.
-fn try_reduce_fast_path<'a>(
-    src: &IterSrc<'a>,
-    initial: &'a DataValue<'a>,
-    body_args: &[CompiledNode],
-    opcode: OpCode,
-    arena: &'a Bump,
-) -> Option<&'a DataValue<'a>> {
+/// Detected `{+|-|*: [var, var]}` fold body over `current`/`accumulator`,
+/// operand order preserved.
+struct FoldShape<'a> {
+    op: OpCode,
+    /// true — body is `{op: [accumulator, current]}`; false — `[current, accumulator]`.
+    acc_is_lhs: bool,
+    /// Path below `current` (`"current.x.y"` → `["x", "y"]`); empty for bare `current`.
+    current_segments: &'a [PathSegment],
+}
+
+/// Matches a reduce body of the shape `{+|-|*: [val("current"[+path]),
+/// val("accumulator")]}` in either operand order, recording which side the
+/// accumulator sits on so non-commutative folds evaluate correctly.
+fn detect_fold_shape(body: &CompiledNode) -> Option<FoldShape<'_>> {
+    let (opcode, body_args) = match body {
+        CompiledNode::BuiltinOperator { opcode, args, .. } => (*opcode, args),
+        _ => return None,
+    };
+    if body_args.len() != 2 || !matches!(opcode, OpCode::Add | OpCode::Multiply | OpCode::Subtract)
+    {
+        return None;
+    }
+
     // Identify which arg is current and which is accumulator.
-    let (current_arg, _acc_arg) = match (&body_args[0], &body_args[1]) {
+    let (current_arg, acc_is_lhs) = match (&body_args[0], &body_args[1]) {
         (
             CompiledNode::Var {
                 reduce_hint: hint0, ..
@@ -146,11 +147,11 @@ fn try_reduce_fast_path<'a>(
             (
                 ReduceHint::Current | ReduceHint::CurrentPath,
                 ReduceHint::Accumulator | ReduceHint::AccumulatorPath,
-            ) => (&body_args[0], &body_args[1]),
+            ) => (&body_args[0], false),
             (
                 ReduceHint::Accumulator | ReduceHint::AccumulatorPath,
                 ReduceHint::Current | ReduceHint::CurrentPath,
-            ) => (&body_args[1], &body_args[0]),
+            ) => (&body_args[1], true),
             _ => return None,
         },
         _ => return None,
@@ -171,6 +172,27 @@ fn try_reduce_fast_path<'a>(
         return None;
     };
 
+    Some(FoldShape {
+        op: opcode,
+        acc_is_lhs,
+        current_segments,
+    })
+}
+
+/// Arena variant of the reduce arithmetic fast path: detects a `FoldShape`
+/// body and folds without per-item context push or body dispatch. Iterates
+/// `IterSrc` directly.
+fn try_reduce_fast_path<'a>(
+    src: &IterSrc<'a>,
+    initial: &'a DataValue<'a>,
+    body: &CompiledNode,
+    arena: &'a Bump,
+) -> Option<&'a DataValue<'a>> {
+    let FoldShape {
+        op,
+        acc_is_lhs,
+        current_segments,
+    } = detect_fold_shape(body)?;
     let len = src.len();
 
     // Integer fast path. `acc` stays a plain i64 for the duration of the
@@ -185,10 +207,11 @@ fn try_reduce_fast_path<'a>(
                 crate::arena::value::traverse_segments(item, current_segments)?
             };
             if let Some(cur_i) = current_val.as_i64() {
-                let checked = match opcode {
+                let checked = match op {
                     OpCode::Add => acc.checked_add(cur_i),
                     OpCode::Multiply => acc.checked_mul(cur_i),
-                    OpCode::Subtract => acc.checked_sub(cur_i),
+                    OpCode::Subtract if acc_is_lhs => acc.checked_sub(cur_i),
+                    OpCode::Subtract => cur_i.checked_sub(acc),
                     _ => return None,
                 };
                 match checked {
@@ -226,10 +249,11 @@ fn try_reduce_fast_path<'a>(
             crate::arena::value::traverse_segments(item, current_segments)?
         };
         let cur_f = current_val.as_f64()?;
-        acc_f = match opcode {
+        acc_f = match op {
             OpCode::Add => acc_f + cur_f,
             OpCode::Multiply => acc_f * cur_f,
-            OpCode::Subtract => acc_f - cur_f,
+            OpCode::Subtract if acc_is_lhs => acc_f - cur_f,
+            OpCode::Subtract => cur_f - acc_f,
             _ => return None,
         };
     }

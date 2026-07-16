@@ -216,6 +216,10 @@ pub(super) fn dispatch_node_inner<'a>(
             }
             CompiledNode::Array { nodes, .. } => evaluate_array_literal(nodes, ctx, engine, arena),
             CompiledNode::CustomOperator(data) => evaluate_custom_operator(data, ctx, engine, arena),
+
+            // CSE memo wrapper — one more jump-table entry, so non-CSE
+            // nodes pay nothing for the feature. See `dispatch_cse`.
+            CompiledNode::Cse(data) => dispatch_cse(engine, data, ctx, arena),
         },
 
         // Standard `BuiltinOperator { opcode, args, .. } => fn(args, ctx,
@@ -350,6 +354,41 @@ pub(super) fn dispatch_node_inner<'a>(
 // dispatch prologue to reserve ~464 B of stack on every recursive call.
 // `#[inline(never)]` is load-bearing — see the comment on
 // `dispatch_node_inner`.
+
+/// Evaluate a CSE memo wrapper: consult/fill the per-evaluation slot when
+/// the double runtime gate holds. At `depth() == 0` a pure subtree is a
+/// function of (root data, engine config) only — up-level `val`s clamp to
+/// root — so the memoized borrow is context-safe; under an iterator/catch
+/// frame or an attached tracer the memo is bypassed and the wrapper
+/// degrades to a plain delegating dispatch. Only `Ok` results are cached:
+/// errors re-evaluate deterministically (e.g. after a `try` caught the
+/// first occurrence's failure).
+///
+/// Delegates to [`dispatch_node_inner`] rather than the outer
+/// `dispatch_node`, so the caller's wrapper performs the breadcrumb push
+/// and trace recording exactly once, attributed to the wrapped node's
+/// delegated id — error paths and traces stay byte-identical to an
+/// unwrapped tree.
+#[inline(never)]
+fn dispatch_cse<'a>(
+    engine: &Engine,
+    data: &'a crate::node::CseData,
+    ctx: &mut ContextStack<'a>,
+    arena: &'a bumpalo::Bump,
+) -> Result<&'a crate::arena::DataValue<'a>> {
+    if ctx.depth() == 0 && !ctx.is_tracing() {
+        if let Some(hit) = ctx.cse_slot(data.slot) {
+            return Ok(hit);
+        }
+        let result = dispatch_node_inner(engine, &data.inner, ctx, arena);
+        if let Ok(value) = &result {
+            ctx.fill_cse_slot(data.slot, value);
+        }
+        result
+    } else {
+        dispatch_node_inner(engine, &data.inner, ctx, arena)
+    }
+}
 
 #[cfg(feature = "templating")]
 #[inline(never)]

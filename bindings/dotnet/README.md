@@ -10,7 +10,7 @@ Part of [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs) — one engi
 the JSONLogic rules engine with one Rust core and official bindings for
 Rust, Node.js, the browser (WASM), Python, Go, Java, .NET, and PHP. Same
 rules, same semantics: every binding runs the same core and passes the
-same 1,532-case conformance battery (53 suites). Compile once, evaluate
+same 1,553-case conformance battery (54 suites). Compile once, evaluate
 many, natively in .NET.
 
 For the cross-runtime overview and the API-tier model every binding

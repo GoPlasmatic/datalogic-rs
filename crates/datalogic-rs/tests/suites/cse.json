@@ -1,0 +1,149 @@
+[
+  "# Common-subexpression elimination (CSE) — repeated pure aggregates share a per-evaluation memo slot; these cases pin the observable behavior (values, error flow, context isolation), which must be identical with CSE on or off",
+
+  "# Basic sharing",
+  {
+    "description": "Repeated aggregate at root evaluates to the same value twice",
+    "rule": {
+      "+": [
+        { "reduce": [{ "var": "items" }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 0] },
+        { "reduce": [{ "var": "items" }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 0] }
+      ]
+    },
+    "data": { "items": [1, 2, 3] },
+    "result": 12
+  },
+  {
+    "description": "Three-way share nested inside other operators",
+    "rule": {
+      "+": [
+        { "reduce": [{ "var": "items" }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 0] },
+        { "*": [{ "reduce": [{ "var": "items" }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 0] }, 2] },
+        { "*": [{ "reduce": [{ "var": "items" }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 0] }, 2] }
+      ]
+    },
+    "data": { "items": [1, 2, 3] },
+    "result": 30
+  },
+  {
+    "description": "Shared aggregate as the input of two reduces (fused pipeline shape)",
+    "rule": {
+      "+": [
+        { "reduce": [{ "map": [{ "var": "items" }, { "*": [{ "var": "" }, 2] }] }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 0] },
+        { "reduce": [{ "map": [{ "var": "items" }, { "*": [{ "var": "" }, 2] }] }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 0] }
+      ]
+    },
+    "data": { "items": [1, 2, 3] },
+    "result": 24
+  },
+
+  "# Control flow",
+  {
+    "description": "Occurrence in a not-taken if branch never evaluates; taken branch computes",
+    "rule": {
+      "if": [
+        { "var": "flag" },
+        { "reduce": [{ "var": "items" }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 0] },
+        { "+": [{ "reduce": [{ "var": "items" }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 0] }, 1] }
+      ]
+    },
+    "data": { "flag": false, "items": [1, 2, 3] },
+    "result": 7
+  },
+  {
+    "description": "Same rule with the branch taken",
+    "rule": {
+      "if": [
+        { "var": "flag" },
+        { "reduce": [{ "var": "items" }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 0] },
+        { "+": [{ "reduce": [{ "var": "items" }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 0] }, 1] }
+      ]
+    },
+    "data": { "flag": true, "items": [1, 2, 3] },
+    "result": 6
+  },
+
+  "# Context isolation — the cross-context guard",
+  {
+    "description": "Same aggregate at root (memoizable) and inside a map body (per-item context, must NOT reuse the root memo)",
+    "rule": {
+      "+": [
+        { "reduce": [{ "var": "ys" }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 0] },
+        { "reduce": [{ "var": "ys" }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 0] },
+        { "reduce": [
+            { "map": [{ "var": "xs" }, { "reduce": [{ "var": "ys" }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 0] }] },
+            { "+": [{ "var": "accumulator" }, { "var": "current" }] },
+            0
+        ] }
+      ]
+    },
+    "data": { "ys": [10, 20], "xs": [{ "ys": [1] }, { "ys": [2, 3] }] },
+    "result": 66
+  },
+
+  "# Near-twins must not share",
+  {
+    "description": "Aggregates differing only in the initial accumulator stay independent",
+    "rule": {
+      "+": [
+        { "reduce": [{ "var": "items" }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 0] },
+        { "reduce": [{ "var": "items" }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 100] }
+      ]
+    },
+    "data": { "items": [1, 2, 3] },
+    "result": 112
+  },
+
+  "# Error flow — errors are never cached",
+  {
+    "description": "Erroring shared aggregate: both occurrences fail inside one try, caught once",
+    "rule": {
+      "try": [
+        { "+": [
+          { "reduce": [{ "map": [{ "var": "items" }, { "/": [1, { "var": "" }] }] }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 0] },
+          { "reduce": [{ "map": [{ "var": "items" }, { "/": [1, { "var": "" }] }] }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 0] }
+        ] },
+        "caught"
+      ]
+    },
+    "data": { "items": [0] },
+    "result": "caught"
+  },
+  {
+    "description": "Erroring shared aggregate caught independently in two try expressions",
+    "rule": {
+      "cat": [
+        { "try": [{ "reduce": [{ "map": [{ "var": "items" }, { "/": [1, { "var": "" }] }] }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 0] }, "E1"] },
+        "-",
+        { "try": [{ "reduce": [{ "map": [{ "var": "items" }, { "/": [1, { "var": "" }] }] }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 0] }, "E2"] }
+      ]
+    },
+    "data": { "items": [0] },
+    "result": "E1-E2"
+  },
+  {
+    "description": "Same rule over non-erroring data computes and shares normally",
+    "rule": {
+      "cat": [
+        { "try": [{ "reduce": [{ "map": [{ "var": "items" }, { "/": [1, { "var": "" }] }] }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 0] }, "E1"] },
+        "-",
+        { "try": [{ "reduce": [{ "map": [{ "var": "items" }, { "/": [1, { "var": "" }] }] }, { "+": [{ "var": "accumulator" }, { "var": "current" }] }, 0] }, "E2"] }
+      ]
+    },
+    "data": { "items": [1] },
+    "result": "1-1"
+  },
+
+  "# Filter/quantifier aggregates share too",
+  {
+    "description": "Repeated filter-count aggregate",
+    "rule": {
+      "+": [
+        { "reduce": [{ "filter": [{ "var": "items" }, { ">": [{ "var": "" }, 10] }] }, { "+": [{ "var": "accumulator" }, 1] }, 0] },
+        { "reduce": [{ "filter": [{ "var": "items" }, { ">": [{ "var": "" }, 10] }] }, { "+": [{ "var": "accumulator" }, 1] }, 0] }
+      ]
+    },
+    "data": { "items": [5, 15, 25] },
+    "result": 4
+  }
+]

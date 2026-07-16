@@ -88,6 +88,13 @@ fn walk(
     parent_pointer: &str,
     out: &mut HashMap<u32, NodeInfo>,
 ) {
+    // CSE memo wrappers are path-transparent: delegate before the generic
+    // body so the wrapped node's operator/pointer are recorded exactly as
+    // in an unwrapped tree (no extra "/op/0" step for the wrapper).
+    if let CompiledNode::Cse(data) = node {
+        return walk(&data.inner, parent_op, arg_index, parent_pointer, out);
+    }
+
     let id = node.id();
     let operator = node.operator_name().map(|c| c.into_owned());
     let json_pointer = build_pointer(parent_pointer, parent_op, arg_index);
