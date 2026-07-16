@@ -61,6 +61,24 @@ const OBJECT_ITERATION_ORDER_CASES = new Set([
 ]);
 
 /**
+ * The object path preserves full 64-bit integer precision by returning
+ * BigInt for values outside Number's safe range, while the string path
+ * (`JSON.parse`) rounds them to the nearest double. Collapse BigInts to
+ * Numbers so the comparison checks semantic agreement at double
+ * precision — the most the JSON text path can represent.
+ */
+function collapseBigInts(value) {
+  if (typeof value === 'bigint') return Number(value);
+  if (Array.isArray(value)) return value.map(collapseBigInts);
+  if (value !== null && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = collapseBigInts(v);
+    return out;
+  }
+  return value;
+}
+
+/**
  * Evaluate one case through both paths and compare.
  *
  * The binding's dual-input convention treats a JS string argument as
@@ -81,7 +99,7 @@ function assertPathsAgree(rule, data, label, { orderInsensitive = false } = {}) 
   let objResult;
   let objErr = null;
   try {
-    objResult = compiled.evaluate(dataArg);
+    objResult = collapseBigInts(compiled.evaluate(dataArg));
   } catch (e) {
     objErr = e;
   }
