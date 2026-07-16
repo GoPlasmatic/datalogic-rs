@@ -522,6 +522,9 @@ fn try_reduce_fast_path<'a>(
         current_segments,
     } = detect_fold_shape(body)?;
     let len = src.len();
+    // Hinted per-row resolver for `current.path` folds; state persists
+    // across the int pass and the f64 restart.
+    let mut current_field = FieldCursor::new(current_segments);
 
     // Integer fast path. `acc` stays a plain i64 for the duration of the
     // block (it is only ever reassigned an integer), so no Option juggling.
@@ -529,11 +532,7 @@ fn try_reduce_fast_path<'a>(
         let mut all_int = true;
         for i in 0..len {
             let item = src.get(i);
-            let current_val = if current_segments.is_empty() {
-                item
-            } else {
-                crate::arena::value::traverse_segments(item, current_segments)?
-            };
+            let current_val = current_field.resolve(item)?;
             if let Some(cur_i) = current_val.as_i64() {
                 let checked = match op {
                     OpCode::Add => acc.checked_add(cur_i),
@@ -571,11 +570,7 @@ fn try_reduce_fast_path<'a>(
     let mut acc_f = initial.as_f64()?;
     for i in 0..len {
         let item = src.get(i);
-        let current_val = if current_segments.is_empty() {
-            item
-        } else {
-            crate::arena::value::traverse_segments(item, current_segments)?
-        };
+        let current_val = current_field.resolve(item)?;
         let cur_f = current_val.as_f64()?;
         acc_f = match op {
             OpCode::Add => acc_f + cur_f,

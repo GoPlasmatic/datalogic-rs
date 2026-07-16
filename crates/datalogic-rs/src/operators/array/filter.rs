@@ -7,7 +7,7 @@ use bumpalo::Bump;
 use std::ops::ControlFlow;
 
 use super::helpers::{
-    FastPredicate, IterArgKind, IterSrc, ResolvedInput, evaluate_invariant_no_push,
+    FastPredicate, FieldCursor, IterArgKind, IterSrc, ResolvedInput, evaluate_invariant_no_push,
     for_each_iter_array, for_each_iter_object, resolve_iter_input, try_extract_filter_field_cmp,
 };
 
@@ -90,10 +90,13 @@ fn filter_strict_eq_field_fast_path<'a>(
     let invariant_val = evaluate_invariant_no_push(invariant_node, ctx, engine, arena)?;
     let is_eq = matches!(opcode, OpCode::StrictEquals);
     let len = src.len();
+    // Local hinted cursor — homogeneous rows resolve the field in one key
+    // compare after the first item (same mechanism as the map fast paths).
+    let mut field = FieldCursor::new(segments);
     let mut results = bvec::<DataValue<'a>>(arena, len);
     for i in 0..len {
         let item = src.get(i);
-        let matches = match crate::arena::value::traverse_segments(item, segments) {
+        let matches = match field.resolve(item) {
             Some(av) => av == invariant_val,
             None => false,
         };

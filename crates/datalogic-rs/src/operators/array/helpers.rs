@@ -83,6 +83,18 @@ pub(super) fn evaluate_invariant_no_push<'a>(
 /// reports "indeterminate" on non-string values (coercion territory), which
 /// makes the whole per-item evaluation abort so the caller can re-run the
 /// collection through the general dispatch path.
+///
+/// Measured negative result (2026-07-16, M2 Pro): replacing `var_path`
+/// with a hinted-lookup path (compile-assigned cursor slots resolved
+/// through a per-collection `&mut [usize]`, mirroring `FieldCursor`) made
+/// macro/checkout-40 ~7% *slower* — slice-indexed cursor state defeats
+/// register allocation across the recursive `evaluate_opt` walk, while a
+/// linear scan over realistic (≤ 8-key) row objects with early exit is
+/// already near-optimal. `FieldCursor` wins only where its single cursor
+/// lives in a register-promoted local driving one loop (map fast paths,
+/// the strict-eq filter path, the reduce fold). Re-attempt only with a
+/// design that keeps per-leaf hint state in registers, and gate it on the
+/// macro rows.
 #[derive(Debug, Clone)]
 pub(crate) enum FastPredicate {
     /// Strict equality (===) or inequality (!==) against a literal
