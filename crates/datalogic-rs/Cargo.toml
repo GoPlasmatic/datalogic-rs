@@ -4,8 +4,11 @@ version = "5.0.1"
 edition.workspace = true
 # Floor matches edition 2024 (stable in 1.85). Bump deliberately when a
 # newer language feature is actually needed; downstream pinning depends on
-# this staying conservative. Requires `datavalue-rs >= 0.2.1` — earlier
-# versions used let-chains and would push this floor to 1.88.
+# this staying conservative. Requires `datavalue-rs >= 0.2.3`: 0.2.0 and
+# earlier used let-chains (would push this floor to 1.88), and 0.2.2 and
+# earlier printed whole floats outside i64's exact range through a
+# saturating cast — `float_to_str`'s fast path mirrors the fixed Display
+# and would break byte-parity against them.
 rust-version = "1.85"
 license.workspace = true
 authors.workspace = true
@@ -89,7 +92,7 @@ wasm-clock = ["chrono?/wasmbind"]
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.150", optional = true }
 chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"], optional = true }
-datavalue = { version = "0.2.2", package = "datavalue-rs", features = ["serde"] }
+datavalue = { version = "0.2.3", package = "datavalue-rs", features = ["serde"] }
 bumpalo = { version = "3.20", features = ["collections"] }
 # Number -> string rendering on the `cat` / string-coercion hot path
 # (`arena::value::strings`). Both render digits without the `core::fmt`

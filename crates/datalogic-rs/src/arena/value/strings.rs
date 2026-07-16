@@ -35,11 +35,17 @@ pub(crate) fn data_to_str<'a>(v: &DataValue<'a>, arena: &'a Bump) -> &'a str {
 }
 
 /// Render a float into the arena, byte-identical to `NumberValue`'s
-/// `Display` (`datavalue` 0.2.x):
+/// `Display` (`datavalue` >= 0.2.3):
 ///
 /// - NaN / infinities print `"null"`.
-/// - `fract() == 0.0` prints `"{f as i64}.0"` (saturating cast), rendered
-///   here via itoa, which matches i64 `Display` exactly.
+/// - Whole values exactly representable as i64 print `"{f as i64}.0"`,
+///   rendered here via itoa, which matches i64 `Display` exactly. The
+///   range guard mirrors `datavalue`'s `f64_as_i64_exact`: strict `<` on
+///   the high side because `i64::MAX as f64` rounds up to 2^63, which the
+///   cast would saturate one off (`>=` is exact on the low side, i64::MIN
+///   being -2^63). Whole values outside that range print via `{:?}`
+///   (scientific for these magnitudes, e.g. `1e300`), matching the
+///   Display fix that landed in 0.2.3 — 0.2.2 saturated them.
 /// - Fractional values print via `f64`'s `Display` (shortest round-trip,
 ///   always positional notation). ryu also emits shortest round-trip
 ///   digits, so when its output is positional and needs at most 15
@@ -58,11 +64,17 @@ fn float_to_str(f: f64, arena: &Bump) -> &str {
         return "null";
     }
     if f.fract() == 0.0 {
-        let digits_buf = &mut itoa::Buffer::new();
-        let digits = digits_buf.format(f as i64);
-        let mut buf = bumpalo::collections::String::with_capacity_in(digits.len() + 2, arena);
-        buf.push_str(digits);
-        buf.push_str(".0");
+        if f >= i64::MIN as f64 && f < i64::MAX as f64 {
+            let digits_buf = &mut itoa::Buffer::new();
+            let digits = digits_buf.format(f as i64);
+            let mut buf = bumpalo::collections::String::with_capacity_in(digits.len() + 2, arena);
+            buf.push_str(digits);
+            buf.push_str(".0");
+            return buf.into_bump_str();
+        }
+        use std::fmt::Write as _;
+        let mut buf = bumpalo::collections::String::with_capacity_in(24, arena);
+        let _ = write!(&mut buf, "{f:?}");
         return buf.into_bump_str();
     }
     let ryu_buf = &mut ryu::Buffer::new();
@@ -187,9 +199,9 @@ mod tests {
 
     #[test]
     fn float_display_parity() {
-        // Spicy corpus: signed zero, integral floats (".0" arm with its
-        // saturating cast), notation boundaries, subnormals, non-finite,
-        // and the two known std-vs-ryu last-digit divergences.
+        // Spicy corpus: signed zero, integral floats (".0" arm and its
+        // exact-i64-range guard), notation boundaries, subnormals,
+        // non-finite, and the two known std-vs-ryu last-digit divergences.
         let corpus: &[f64] = &[
             0.0,
             -0.0,
@@ -202,6 +214,15 @@ mod tests {
             123.456,
             1e300,
             -1e300,
+            // The i64-exactness boundary: 2^63 (first whole float past
+            // i64, the old saturating cast printed it one off), the
+            // largest float below it (2^63 - 1024, still exact), exactly
+            // -2^63 (= i64::MIN, exact), and the first whole float below
+            // that.
+            9223372036854775808.0,
+            9223372036854774784.0,
+            -9223372036854775808.0,
+            -9223372036854777856.0,
             1e-7,
             -1e-7,
             1e-5,
