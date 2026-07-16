@@ -257,5 +257,129 @@
       }
     },
     "result": true
+  },
+
+  "# Subtraction operand order (fast-path regression: acc-LHS vs current-LHS)",
+  {
+    "description": "Subtract reduce - accumulator on LHS (integers)",
+    "rule": {
+      "reduce": [
+        [10, 20, 30],
+        { "-": [{ "var": "accumulator" }, { "var": "current" }] },
+        100
+      ]
+    },
+    "data": null,
+    "result": 40
+  },
+  {
+    "description": "Subtract reduce - current on LHS (integers)",
+    "rule": {
+      "reduce": [
+        [10, 20, 30],
+        { "-": [{ "var": "current" }, { "var": "accumulator" }] },
+        0
+      ]
+    },
+    "data": null,
+    "result": 20
+  },
+  {
+    "description": "Subtract reduce - accumulator on LHS (floats)",
+    "rule": {
+      "reduce": [
+        [1.5, 2.25],
+        { "-": [{ "var": "accumulator" }, { "var": "current" }] },
+        10
+      ]
+    },
+    "data": null,
+    "result": 6.25
+  },
+  {
+    "description": "Subtract reduce - current on LHS (floats)",
+    "rule": {
+      "reduce": [
+        [1.5, 2.5],
+        { "-": [{ "var": "current" }, { "var": "accumulator" }] },
+        0.5
+      ]
+    },
+    "data": null,
+    "result": 1.5
+  },
+  {
+    "description": "Subtract reduce - current on LHS, mixed ints and floats",
+    "rule": {
+      "reduce": [
+        [5, 2.5],
+        { "-": [{ "var": "current" }, { "var": "accumulator" }] },
+        1
+      ]
+    },
+    "data": null,
+    "result": -1.5
+  },
+  {
+    "description": "Subtract reduce - accumulator on LHS, i64 overflow promotes to float",
+    "rule": {
+      "reduce": [
+        [1],
+        { "-": [{ "var": "accumulator" }, { "var": "current" }] },
+        -9223372036854775808
+      ]
+    },
+    "data": null,
+    "result": -9223372036854775808
+  },
+  {
+    "description": "Subtract reduce - current on LHS, i64 overflow promotes to float",
+    "rule": {
+      "reduce": [
+        [-9223372036854775808],
+        { "-": [{ "var": "current" }, { "var": "accumulator" }] },
+        1
+      ]
+    },
+    "data": null,
+    "result": -9223372036854775808
+  },
+  {
+    "description": "Subtract reduce - current on LHS with property path",
+    "rule": {
+      "reduce": [
+        { "var": "items" },
+        { "-": [{ "var": "current.value" }, { "var": "accumulator" }] },
+        0
+      ]
+    },
+    "data": {
+      "items": [{ "value": 10 }, { "value": 4 }]
+    },
+    "result": -6
+  },
+  {
+    "description": "Subtract reduce - accumulator on LHS with nulls (general path)",
+    "rule": {
+      "reduce": [
+        [10, null, 3],
+        { "-": [{ "var": "accumulator" }, { "var": "current" }] },
+        20
+      ]
+    },
+    "data": null,
+    "result": 7
+  },
+  {
+    "description": "Subtract reduce - current on LHS with nulls (general path)",
+    "rule": {
+      "reduce": [
+        [10, null, 3],
+        { "-": [{ "var": "current" }, { "var": "accumulator" }] },
+        0
+      ]
+    },
+    "data": null,
+    "result": 13
   }
 ]
