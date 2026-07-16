@@ -9,7 +9,7 @@ Rust implementation of [JSONLogic](http://jsonlogic.com). Same rules,
 same semantics as the Rust crate, with the **compile-once /
 evaluate-many** pattern exposed natively — compile a rule once and
 evaluate it against thousands of data inputs without re-parsing. Every
-binding runs the same core and passes the same 1,553-case conformance
+binding runs the same core and passes the same 1,565-case conformance
 battery (54 suites).
 
 For the cross-runtime overview and the API-tier model every binding

@@ -1,6 +1,6 @@
 # Introduction
 
-**datalogic-rs** is a JSONLogic rules engine: one Rust core with official bindings for Rust, Node.js, the browser (WASM), Python, Go, Java, .NET, and PHP, plus a React visual debugger. Rules are plain JSON; the same rule evaluates with identical semantics in every runtime, verified by a 1,553-case conformance battery that runs against the same core every binding ships.
+**datalogic-rs** is a JSONLogic rules engine: one Rust core with official bindings for Rust, Node.js, the browser (WASM), Python, Go, Java, .NET, and PHP, plus a React visual debugger. Rules are plain JSON; the same rule evaluates with identical semantics in every runtime, verified by a 1,565-case conformance battery that runs against the same core every binding ships.
 
 This site is the reference documentation. For the project pitch, benchmarks, and package matrix, see the [GitHub repository](https://github.com/GoPlasmatic/datalogic-rs#readme); to try rules in your browser right now, open the [playground](https://goplasmatic.github.io/datalogic-rs/playground/).
 

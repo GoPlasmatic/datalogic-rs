@@ -1,198 +1,368 @@
 [
-    "# Collection of Plus Operator Tests",
-    {
-        "description": "Addition",
-        "rule": { "+": [1, 2] },
-        "result": 3,
-        "data": null
+  "# Collection of Plus Operator Tests",
+  {
+    "description": "Addition",
+    "rule": {
+      "+": [
+        1,
+        2
+      ]
     },
-    {
-        "description": "Addition (2)",
-        "rule": { "+": [5, 12] },
-        "result": 17,
-        "data": null
+    "result": 3,
+    "data": null
+  },
+  {
+    "description": "Addition (2)",
+    "rule": {
+      "+": [
+        5,
+        12
+      ]
     },
-    {
-        "description": "Addition with Multiple Operands",
-        "rule": { "+": [1, 2, 3, 4] },
-        "result": 10,
-        "data": null
+    "result": 17,
+    "data": null
+  },
+  {
+    "description": "Addition with Multiple Operands",
+    "rule": {
+      "+": [
+        1,
+        2,
+        3,
+        4
+      ]
     },
-    {
-        "description": "Addition with Negative Numbers",
-        "rule": { "+": [-1, 0, 5] },
-        "result": 4,
-        "data": null
+    "result": 10,
+    "data": null
+  },
+  {
+    "description": "Addition with Negative Numbers",
+    "rule": {
+      "+": [
+        -1,
+        0,
+        5
+      ]
     },
-    {
-        "description": "Addition with Strings",
-        "rule": { "+": ["1", "2", "3"] },
-        "result": 6,
-        "data": null
+    "result": 4,
+    "data": null
+  },
+  {
+    "description": "Addition with Strings",
+    "rule": {
+      "+": [
+        "1",
+        "2",
+        "3"
+      ]
     },
-    {
-        "description": "Addition with Booleans",
-        "rule": { "+": [true, false, true] },
-        "result": 2,
-        "data": null
+    "result": 6,
+    "data": null
+  },
+  {
+    "description": "Addition with Booleans",
+    "rule": {
+      "+": [
+        true,
+        false,
+        true
+      ]
     },
-    {
-        "description": "Addition with Multiple Value Types",
-        "rule": { "+": [1, "2", 3, "4", "", true, false, null] },
-        "result": 11,
-        "data": null
+    "result": 2,
+    "data": null
+  },
+  {
+    "description": "Addition with Multiple Value Types",
+    "rule": {
+      "+": [
+        1,
+        "2",
+        3,
+        "4",
+        "",
+        true,
+        false,
+        null
+      ]
     },
-    {
-        "description": "Plus Operator with Single Operand (Number)",
-        "rule": { "+": [1] },
-        "result": 1,
-        "data": null
+    "result": 11,
+    "data": null
+  },
+  {
+    "description": "Plus Operator with Single Operand (Number)",
+    "rule": {
+      "+": [
+        1
+      ]
     },
-    {
-        "description": "Plus Operator with Single Operand (Negative Number)",
-        "rule": { "+": [-1] },
-        "result": -1,
-        "data": null
+    "result": 1,
+    "data": null
+  },
+  {
+    "description": "Plus Operator with Single Operand (Negative Number)",
+    "rule": {
+      "+": [
+        -1
+      ]
     },
-    {
-        "description": "Plus Operator with zero operands is zero",
-        "rule": { "+": [] },
-        "result": 0,
-        "data": null
+    "result": -1,
+    "data": null
+  },
+  {
+    "description": "Plus Operator with zero operands is zero",
+    "rule": {
+      "+": []
     },
-    {
-        "description": "Plus Operator with Single Operand, Direct (Number)",
-        "rule": { "+": 1 },
-        "result": 1,
-        "data": null
+    "result": 0,
+    "data": null
+  },
+  {
+    "description": "Plus Operator with Single Operand, Direct (Number)",
+    "rule": {
+      "+": 1
     },
-    {
-        "description": "Plus Operator with Single Operand, Direct (0)",
-        "rule": { "+": 0 },
-        "result": 0,
-        "data": null
+    "result": 1,
+    "data": null
+  },
+  {
+    "description": "Plus Operator with Single Operand, Direct (0)",
+    "rule": {
+      "+": 0
     },
-    {
-        "description": "Plus Operator with Single Operand (String)",
-        "rule": { "+": ["1"] },
-        "result": 1,
-        "data": null
+    "result": 0,
+    "data": null
+  },
+  {
+    "description": "Plus Operator with Single Operand (String)",
+    "rule": {
+      "+": [
+        "1"
+      ]
     },
-    {
-        "description": "Plus Operator with Single Operand, Direct (Negative Number String)",
-        "rule": { "+": "-1" },
-        "result": -1,
-        "data": null
+    "result": 1,
+    "data": null
+  },
+  {
+    "description": "Plus Operator with Single Operand, Direct (Negative Number String)",
+    "rule": {
+      "+": "-1"
     },
-    {
-        "description": "Plus Operator with Single Operand, Direct (String Decimal)",
-        "rule": { "+": "1.5" },
-        "result": 1.5,
-        "data": null,
-        "decimal": true
+    "result": -1,
+    "data": null
+  },
+  {
+    "description": "Plus Operator with Single Operand, Direct (String Decimal)",
+    "rule": {
+      "+": "1.5"
     },
-    {
-        "description": "Plus Operator with Single Operand, Direct (String Negative Decimal)",
-        "rule": { "+": "-1.5" },
-        "result": -1.5,
-        "data": null,
-        "decimal": true
+    "result": 1.5,
+    "data": null,
+    "decimal": true
+  },
+  {
+    "description": "Plus Operator with Single Operand, Direct (String Negative Decimal)",
+    "rule": {
+      "+": "-1.5"
     },
-    {
-        "description": "Plus Operator with Single Operand, Direct (String 0.5)",
-        "rule": { "+": "0.5" },
-        "result": 0.5,
-        "data": null,
-        "decimal": true
+    "result": -1.5,
+    "data": null,
+    "decimal": true
+  },
+  {
+    "description": "Plus Operator with Single Operand, Direct (String 0.5)",
+    "rule": {
+      "+": "0.5"
     },
-    {
-        "description": "Plus Operator with Single Operand, Direct (String 1e2)",
-        "rule": { "+": "1e2" },
-        "result": 100,
-        "data": null
+    "result": 0.5,
+    "data": null,
+    "decimal": true
+  },
+  {
+    "description": "Plus Operator with Single Operand, Direct (String 1e2)",
+    "rule": {
+      "+": "1e2"
     },
-    {
-        "description": "Plus Operator with Single Operand, Direct (String 0)",
-        "rule": { "+": "0" },
-        "result": 0,
-        "data": null
+    "result": 100,
+    "data": null
+  },
+  {
+    "description": "Plus Operator with Single Operand, Direct (String 0)",
+    "rule": {
+      "+": "0"
     },
-    {
-        "description": "Plus Operator with Single Operand, Direct (true)",
-        "rule": { "+": true },
-        "result": 1,
-        "data": null
+    "result": 0,
+    "data": null
+  },
+  {
+    "description": "Plus Operator with Single Operand, Direct (true)",
+    "rule": {
+      "+": true
     },
-    {
-        "description": "Plus Operator with Single Operand, Direct (false)",
-        "rule": { "+": false },
-        "result": 0,
-        "data": null
+    "result": 1,
+    "data": null
+  },
+  {
+    "description": "Plus Operator with Single Operand, Direct (false)",
+    "rule": {
+      "+": false
     },
-    {
-        "description": "Plus Operator with Single Operand, Direct (Empty String)",
-        "rule": { "+": "" },
-        "result": 0,
-        "data": null
+    "result": 0,
+    "data": null
+  },
+  {
+    "description": "Plus Operator with Single Operand, Direct (Empty String)",
+    "rule": {
+      "+": ""
     },
-    {
-        "description": "Plus Operator with a Single Operand, Direct (null)",
-        "rule": { "+": null },
-        "result": 0,
-        "data": null
+    "result": 0,
+    "data": null
+  },
+  {
+    "description": "Plus Operator with a Single Operand, Direct (null)",
+    "rule": {
+      "+": null
     },
-    {
-        "description": "Addition with val",
-        "rule": { "+": [{ "val": "x" }, { "val": "y" }] },
-        "result": 3,
-        "data": { "x": 1, "y": 2 }
+    "result": 0,
+    "data": null
+  },
+  {
+    "description": "Addition with val",
+    "rule": {
+      "+": [
+        {
+          "val": "x"
+        },
+        {
+          "val": "y"
+        }
+      ]
     },
-    {
-        "description": "Addition with string produces NaN",
-        "rule": { "+": ["Hey", 1] },
-        "error": { "type": "NaN" },
-        "data": null
-    },
-    {
-        "description": "Addition with Array produces NaN",
-        "rule": { "+": [[1], 1] },
-        "error": { "type": "NaN" },
-        "data": null
-    },
-    {
-        "description": "Addition with Array from context produces NaN",
-        "rule": { "+": [{ "val": "x" }, 1] },
-        "error": { "type": "NaN" },
-        "data": { "x": [1] }
-    },
-    {
-        "description": "Addition with Object produces NaN",
-        "rule": { "+": [{ "val": "x" }, 1] },
-        "error": { "type": "NaN" },
-        "data": { "x": {} }
-    },
-    {
-        "description": "Plus Operator with Single Operand, Invalid String Produces NaN",
-        "rule": { "+": "Hello" },
-        "error": { "type": "NaN" },
-        "data": null
-    },
-    {
-        "description": "Plus Operator with Single Operand, Array Input Produces NaN",
-        "rule": { "+": [[1]] },
-        "error": { "type": "NaN" },
-        "data": null
-    },
-    {
-        "description": "Plus Operator with Single Operand, Object Input Produces NaN",
-        "rule": { "+": [{}] },
-        "error": { "type": "NaN" },
-        "data": null
-    },
-    {
-        "description": "Plus Operator with Single Operand, Direct Object Input Produces NaN",
-        "rule": { "+": {} },
-        "error": { "type": "NaN" },
-        "data": null
+    "result": 3,
+    "data": {
+      "x": 1,
+      "y": 2
     }
+  },
+  {
+    "description": "Addition with string produces NaN",
+    "rule": {
+      "+": [
+        "Hey",
+        1
+      ]
+    },
+    "error": {
+      "type": "NaN"
+    },
+    "data": null
+  },
+  {
+    "description": "Addition with Array produces NaN",
+    "rule": {
+      "+": [
+        [
+          1
+        ],
+        1
+      ]
+    },
+    "error": {
+      "type": "NaN"
+    },
+    "data": null
+  },
+  {
+    "description": "Addition with Array from context produces NaN",
+    "rule": {
+      "+": [
+        {
+          "val": "x"
+        },
+        1
+      ]
+    },
+    "error": {
+      "type": "NaN"
+    },
+    "data": {
+      "x": [
+        1
+      ]
+    }
+  },
+  {
+    "description": "Addition with Object produces NaN",
+    "rule": {
+      "+": [
+        {
+          "val": "x"
+        },
+        1
+      ]
+    },
+    "error": {
+      "type": "NaN"
+    },
+    "data": {
+      "x": {}
+    }
+  },
+  {
+    "description": "Plus Operator with Single Operand, Invalid String Produces NaN",
+    "rule": {
+      "+": "Hello"
+    },
+    "error": {
+      "type": "NaN"
+    },
+    "data": null
+  },
+  {
+    "description": "Plus Operator with Single Operand, Array Input Produces NaN",
+    "rule": {
+      "+": [
+        [
+          1
+        ]
+      ]
+    },
+    "error": {
+      "type": "NaN"
+    },
+    "data": null
+  },
+  {
+    "description": "Plus Operator with Single Operand, Object Input Produces NaN",
+    "rule": {
+      "+": [
+        {}
+      ]
+    },
+    "error": {
+      "type": "NaN"
+    },
+    "data": null
+  },
+  {
+    "description": "Plus Operator with Single Operand, Direct Object Input Produces NaN",
+    "rule": {
+      "+": {}
+    },
+    "error": {
+      "type": "NaN"
+    },
+    "data": null
+  },
+  "# Fold-vs-runtime coercion parity (numeric strings stay strings at compile time)",
+  {
+    "description": "Numeric-string arithmetic is identical folded or unfolded (i64-exact beyond 2^53)",
+    "rule": {
+      "+": [
+        3,
+        "164649094278213886"
+      ]
+    },
+    "data": null,
+    "result": 164649094278213889
+  }
 ]

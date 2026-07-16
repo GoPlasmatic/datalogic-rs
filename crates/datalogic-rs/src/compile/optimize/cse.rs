@@ -364,6 +364,9 @@ fn is_cse_pure(node: &CompiledNode) -> bool {
 }
 
 fn opcode_is_cse_pure(opcode: OpCode) -> bool {
+    // With all the gated features off, every impure opcode compiles out
+    // and `opcode` would be unused.
+    let _ = opcode;
     #[cfg(feature = "error-handling")]
     if matches!(opcode, OpCode::Try | OpCode::Throw) {
         return false;
