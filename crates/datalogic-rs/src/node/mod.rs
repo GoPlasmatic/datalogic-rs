@@ -34,7 +34,7 @@ pub(crate) use payload::CompiledThrowData;
 pub(crate) use payload::StructuredObjectData;
 pub(crate) use payload::{
     CompiledMissingArg, CompiledMissingData, CompiledMissingMin, CompiledMissingPaths,
-    CompiledMissingSomeData, CustomOperatorData, MetadataHint, PathSegment, ReduceHint,
+    CompiledMissingSomeData, CseData, CustomOperatorData, MetadataHint, PathSegment, ReduceHint,
 };
 pub(crate) use populate::populate_lits;
 pub(crate) use prelit::PreLit;
@@ -162,6 +162,17 @@ pub(crate) enum CompiledNode {
     /// names *which* op was misused (e.g. "Invalid arguments: if") even
     /// when the failure is nested inside an outer op.
     InvalidArgs { id: NodeId, op_name: &'static str },
+
+    /// A common-subexpression memo wrapper produced by the compile-time
+    /// CSE pass (`crate::compile::optimize::cse`). Transparent everywhere
+    /// except the dispatch hub: `dispatch_cse` consults/fills the
+    /// per-evaluation memo slot when `ctx.depth() == 0` and no tracer is
+    /// attached; every other consumer (id, serialization, static
+    /// classification, trace tree, path walk) delegates to `inner`, so a
+    /// wrapped tree is observably identical to an unwrapped one.
+    /// Boxed to keep the enum within the 48-byte layout budget. Declared
+    /// last so every pre-existing variant keeps its discriminant value.
+    Cse(Box<CseData>),
 }
 
 impl CompiledNode {
@@ -188,6 +199,10 @@ impl CompiledNode {
             CompiledNode::Array { id, .. } => *id,
             CompiledNode::BuiltinOperator { id, .. } => *id,
             CompiledNode::CustomOperator(data) => data.id,
+            // The memo wrapper is id-transparent: breadcrumbs and trace
+            // steps attribute to the wrapped node, byte-identical to an
+            // unwrapped tree.
+            CompiledNode::Cse(data) => data.inner.node_id(),
             #[cfg(feature = "templating")]
             CompiledNode::StructuredObject(data) => data.id,
             CompiledNode::Var { id, .. } => *id,
@@ -227,6 +242,10 @@ impl CompiledNode {
                     f(i as u32, n);
                 }
             }
+            // The memo wrapper presents `inner` as its single child.
+            // Consumers that need full transparency (the path walker)
+            // delegate to `inner` explicitly before their generic body.
+            CompiledNode::Cse(data) => f(0, &data.inner),
             #[cfg(feature = "templating")]
             CompiledNode::StructuredObject(data) => {
                 for (i, (_, n)) in data.fields.iter().enumerate() {
@@ -282,6 +301,7 @@ impl CompiledNode {
                     f(n);
                 }
             }
+            CompiledNode::Cse(data) => f(&mut data.inner),
             #[cfg(feature = "templating")]
             CompiledNode::StructuredObject(data) => {
                 for (_, n) in data.fields.iter_mut() {
@@ -370,6 +390,7 @@ impl CompiledNode {
         match self {
             CompiledNode::BuiltinOperator { opcode, .. } => Some(Cow::Borrowed(opcode.as_str())),
             CompiledNode::CustomOperator(data) => Some(Cow::Owned(data.name.clone())),
+            CompiledNode::Cse(data) => data.inner.operator_name(),
             CompiledNode::Var { .. } => Some(Cow::Borrowed("var")),
             #[cfg(feature = "ext-control")]
             CompiledNode::Exists(_) => Some(Cow::Borrowed("exists")),

@@ -51,5 +51,6 @@
     "arithmetic/floor.json",
     "flagd/fractional.json",
     "flagd/sem_ver.json",
-    "type.json"
+    "type.json",
+    "cse.json"
 ]

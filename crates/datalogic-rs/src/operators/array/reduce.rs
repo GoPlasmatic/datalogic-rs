@@ -129,8 +129,7 @@ fn detect_fold_shape(body: &CompiledNode) -> Option<FoldShape<'_>> {
         CompiledNode::BuiltinOperator { opcode, args, .. } => (*opcode, args),
         _ => return None,
     };
-    if body_args.len() != 2
-        || !matches!(opcode, OpCode::Add | OpCode::Multiply | OpCode::Subtract)
+    if body_args.len() != 2 || !matches!(opcode, OpCode::Add | OpCode::Multiply | OpCode::Subtract)
     {
         return None;
     }

@@ -8,7 +8,10 @@ use super::compile_ctx::NodeId;
 use datavalue::OwnedDataValue;
 
 /// A pre-parsed path segment for compiled variable access.
-#[derive(Debug, Clone)]
+///
+/// `PartialEq`/`Hash` are structural — used by the CSE pass to compare
+/// `Var`/`Exists` subtrees for slot sharing.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum PathSegment {
     /// Object field access by key
     Field(Box<str>),
@@ -20,7 +23,7 @@ pub(crate) enum PathSegment {
 }
 
 /// Hint for reduce context resolution, detected at compile time.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum ReduceHint {
     /// Normal path access (no reduce context)
     None,
@@ -35,7 +38,7 @@ pub(crate) enum ReduceHint {
 }
 
 /// Hint for metadata access (index/key), detected at compile time.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum MetadataHint {
     /// Normal data access
     None,
@@ -51,6 +54,18 @@ pub(crate) struct CustomOperatorData {
     pub id: NodeId,
     pub name: String,
     pub args: Box<[CompiledNode]>,
+}
+
+/// Data for a CSE memo wrapper (boxed inside CompiledNode to reduce enum
+/// size). Produced only by the compile-time CSE pass
+/// (`crate::compile::optimize::cse`); `slot` indexes the per-evaluation
+/// memo table on `ContextStack`, shared by every occurrence of one
+/// equivalence class. Carries no id of its own — id, name, serialization,
+/// and trace queries all delegate to `inner`.
+#[derive(Debug, Clone)]
+pub(crate) struct CseData {
+    pub slot: u16,
+    pub inner: CompiledNode,
 }
 
 /// Data for a structured object template (boxed inside CompiledNode to reduce enum size).

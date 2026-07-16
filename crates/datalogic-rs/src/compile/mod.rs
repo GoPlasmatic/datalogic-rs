@@ -47,12 +47,27 @@ impl Logic {
 
     #[inline]
     fn compile_inner(logic: &OwnedDataValue, engine: &Engine, mut ctx: CompileCtx) -> Result<Self> {
-        let root = walker::compile_node(
+        let mut root = walker::compile_node(
             logic,
             Some(engine),
             engine.is_templating_enabled(),
             &mut ctx,
         )?;
-        Ok(Self::new(root))
+        // CSE runs once over the finished tree, after the per-node fixpoint
+        // optimizer (folded shapes are final) and before `Logic::new`'s
+        // populate pass (so hints are derived through the wrappers). Gated
+        // like folding — traced/no-fold compiles produce zero `Cse` nodes —
+        // and skipped under a `Custom` truthy evaluator, whose opaque
+        // closure's call count would become observable through memoization.
+        let cse_slot_count = if ctx.skip_fold()
+            || matches!(
+                engine.config().truthy_evaluator,
+                crate::TruthyEvaluator::Custom(_)
+            ) {
+            0
+        } else {
+            optimize::cse::apply(&mut root)
+        };
+        Ok(Self::new(root, cse_slot_count))
     }
 }

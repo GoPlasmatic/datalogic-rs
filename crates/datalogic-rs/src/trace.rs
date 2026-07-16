@@ -59,6 +59,8 @@ impl ExpressionNode {
                 expression: node_serialize::custom_to_json_string(&data.name, &data.args),
                 children: Self::op_children(&data.args),
             },
+            // Memo wrappers are invisible in the trace tree.
+            CompiledNode::Cse(data) => Self::build_node(&data.inner),
             #[cfg(feature = "templating")]
             CompiledNode::StructuredObject(data) => ExpressionNode {
                 id,

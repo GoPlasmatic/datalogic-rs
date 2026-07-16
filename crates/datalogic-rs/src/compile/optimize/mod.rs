@@ -12,6 +12,7 @@
 //! 4. Run `cargo test` — no changes needed in engine.rs or trace.rs
 
 pub(super) mod constant_fold;
+pub(super) mod cse;
 pub(super) mod dead_code;
 mod helpers;
 pub(super) mod strength;

@@ -57,6 +57,15 @@ pub(crate) struct ContextStack<'a> {
     parents: SmallVec<[ContextFrame<'a>; INLINE_FRAMES]>,
     /// Breadcrumb of `CompiledNode::id`s accumulated as errors unwind.
     error_path: Vec<u32>,
+    /// Per-evaluation CSE memo slots, indexed by `CseData::slot`. Fully
+    /// lazy: starts empty and grows on the first [`Self::fill_cse_slot`],
+    /// so evaluations of rules without CSE nodes never touch it (eager
+    /// per-evaluation sizing cost a measurable regression on the
+    /// folded-literal path; a heap-backed `Vec` cost CSE'd rules their
+    /// win on small data). ≤ 8 slots stay inline. Reads past the current
+    /// length are simply misses. `Ok`-results only; errors are never
+    /// cached.
+    cse_slots: SmallVec<[Option<&'a DataValue<'a>>; 8]>,
     /// Depth of enclosing `try` *protected* arms (every arm of a multi-arg
     /// `try` except the final catch arm). While > 0, any error raised is
     /// guaranteed to be consumed by the nearest enclosing `try`'s arm loop
@@ -94,6 +103,7 @@ impl<'a> ContextStack<'a> {
             top: None,
             parents: SmallVec::new(),
             error_path: Vec::new(),
+            cse_slots: SmallVec::new(),
             #[cfg(feature = "error-handling")]
             catch_depth: 0,
             #[cfg(feature = "error-handling")]
@@ -216,6 +226,29 @@ impl<'a> ContextStack<'a> {
     #[inline]
     pub(crate) fn depth(&self) -> usize {
         self.parents.len() + usize::from(self.top.is_some())
+    }
+
+    // ----- CSE memo slots ---------------------------------------------------
+
+    /// Read a CSE memo slot. `None` for a miss — including slots the lazy
+    /// table hasn't grown to yet, so no per-evaluation setup is needed
+    /// (rules without CSE nodes never touch the table at all).
+    #[inline]
+    pub(crate) fn cse_slot(&self, slot: u16) -> Option<&'a DataValue<'a>> {
+        self.cse_slots.get(slot as usize).copied().flatten()
+    }
+
+    /// Fill a CSE memo slot with an `Ok` result, lazily growing the table
+    /// on first use. Slot indices come from `Logic`'s compile-time
+    /// numbering, so the table never exceeds `Logic::cse_slot_count`
+    /// entries.
+    #[inline]
+    pub(crate) fn fill_cse_slot(&mut self, slot: u16, value: &'a DataValue<'a>) {
+        let index = slot as usize;
+        if index >= self.cse_slots.len() {
+            self.cse_slots.resize(index + 1, None);
+        }
+        self.cse_slots[index] = Some(value);
     }
 
     /// Get the current context (top frame, or root if empty).

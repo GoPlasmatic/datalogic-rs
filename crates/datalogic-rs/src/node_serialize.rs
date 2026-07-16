@@ -22,6 +22,9 @@ pub(crate) fn node_to_json_string(node: &CompiledNode) -> String {
         }
         CompiledNode::BuiltinOperator { opcode, args, .. } => builtin_to_json_string(opcode, args),
         CompiledNode::CustomOperator(data) => custom_to_json_string(&data.name, &data.args),
+        // Memo wrappers are invisible in serialized output — `to_json()`
+        // of a CSE'd tree is byte-identical to the unwrapped tree.
+        CompiledNode::Cse(data) => node_to_json_string(&data.inner),
         #[cfg(feature = "templating")]
         CompiledNode::StructuredObject(data) => structured_to_json_string(&data.fields),
         CompiledNode::Var {
