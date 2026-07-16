@@ -49,7 +49,3 @@ flamegraph.svg
 *.trace/
 cargo-flamegraph.*
 perf.data*
-
-# Maintainer-local launch drafts (blogs, posts, listing texts, runbook):
-# reference material only, deliberately never committed
-.github/launch/
