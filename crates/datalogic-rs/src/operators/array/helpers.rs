@@ -717,3 +717,136 @@ where
     drop(guard);
     Ok(())
 }
+
+/// Per-loop resolver for a scope-0 var path against successive row items.
+/// Single object-key paths (the dominant row shape) carry a remembered pair
+/// index across rows — see `object_lookup_field_hinted` — so homogeneous
+/// rows resolve in one key compare after the first. Everything else
+/// delegates to the general segment traversal. Shared by the map fast
+/// paths and the reduce(map(...)) fusion loops.
+pub(super) struct FieldCursor<'n> {
+    segments: &'n [crate::node::PathSegment],
+    /// Key of a single-`Field`/`FieldOrIndex` segment path, when applicable.
+    single_key: Option<&'n str>,
+    /// Last hit index for the hinted lookup.
+    hint: usize,
+}
+
+impl<'n> FieldCursor<'n> {
+    #[inline]
+    pub(super) fn new(segments: &'n [crate::node::PathSegment]) -> Self {
+        use crate::node::PathSegment;
+        let single_key = match segments {
+            [PathSegment::Field(k)] => Some(k.as_ref()),
+            [PathSegment::FieldOrIndex(k, _)] => Some(k.as_ref()),
+            _ => None,
+        };
+        Self {
+            segments,
+            single_key,
+            hint: 0,
+        }
+    }
+
+    #[inline(always)]
+    pub(super) fn resolve<'a>(&mut self, item: &'a DataValue<'a>) -> Option<&'a DataValue<'a>> {
+        if let (Some(key), DataValue::Object(pairs)) = (self.single_key, item) {
+            return crate::arena::value::object_lookup_field_hinted(pairs, key, &mut self.hint);
+        }
+        if self.segments.is_empty() {
+            Some(item)
+        } else {
+            crate::arena::value::traverse_segments(item, self.segments)
+        }
+    }
+}
+
+/// Classified fusible map body shape — the three per-item transforms the
+/// map fast paths execute without per-item context pushes. Shared with the
+/// reduce(map(...)) fusion in `reduce.rs`, which runs the same transforms
+/// feeding a fold instead of materializing the intermediate array.
+pub(super) enum FusedMapBody<'n> {
+    /// `{"var": "path"}` — extract (identity when segments are empty).
+    Extract {
+        segments: &'n [crate::node::PathSegment],
+    },
+    /// `{op: [var, literal]}` or `{op: [literal, var]}` for + / - / *.
+    ArithVarLit {
+        op: OpCode,
+        segments: &'n [crate::node::PathSegment],
+        lit: &'n datavalue::OwnedDataValue,
+        var_is_lhs: bool,
+    },
+    /// `{op: [var_a, var_b]}` for + / - / * — the line-total shape.
+    ArithVarVar {
+        op: OpCode,
+        a_segments: &'n [crate::node::PathSegment],
+        b_segments: &'n [crate::node::PathSegment],
+    },
+}
+
+/// Match a plain scope-0 var with no reduce/metadata hints and no default —
+/// the only var shape the fused loops can resolve with a `FieldCursor`.
+#[inline]
+fn plain_var_segments(node: &CompiledNode) -> Option<&[crate::node::PathSegment]> {
+    if let CompiledNode::Var {
+        scope_level: 0,
+        segments,
+        reduce_hint: ReduceHint::None,
+        metadata_hint: MetadataHint::None,
+        default_value: None,
+        ..
+    } = node
+    {
+        Some(segments.as_ref())
+    } else {
+        None
+    }
+}
+
+impl FusedMapBody<'_> {
+    /// Structural classification only — numeric checks (e.g. the literal
+    /// being coercible) stay in the executing loops, which fall back to
+    /// the general path when they fail.
+    pub(super) fn detect(body: &CompiledNode) -> Option<FusedMapBody<'_>> {
+        if let Some(segments) = plain_var_segments(body) {
+            return Some(FusedMapBody::Extract { segments });
+        }
+        let CompiledNode::BuiltinOperator { opcode, args, .. } = body else {
+            return None;
+        };
+        if args.len() != 2 || !matches!(opcode, OpCode::Add | OpCode::Subtract | OpCode::Multiply) {
+            return None;
+        }
+        let op = *opcode;
+        match (&args[0], &args[1]) {
+            (var, CompiledNode::Value { value, .. }) => {
+                let segments = plain_var_segments(var)?;
+                Some(FusedMapBody::ArithVarLit {
+                    op,
+                    segments,
+                    lit: value,
+                    var_is_lhs: true,
+                })
+            }
+            (CompiledNode::Value { value, .. }, var) => {
+                let segments = plain_var_segments(var)?;
+                Some(FusedMapBody::ArithVarLit {
+                    op,
+                    segments,
+                    lit: value,
+                    var_is_lhs: false,
+                })
+            }
+            (a, b) => {
+                let a_segments = plain_var_segments(a)?;
+                let b_segments = plain_var_segments(b)?;
+                Some(FusedMapBody::ArithVarVar {
+                    op,
+                    a_segments,
+                    b_segments,
+                })
+            }
+        }
+    }
+}

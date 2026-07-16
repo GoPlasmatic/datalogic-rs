@@ -125,6 +125,57 @@ fn arb_spliced_rule() -> impl Strategy<Value = Value> {
     )
 }
 
+/// A fused-shape pipeline: `reduce` over a `map` with an extract or
+/// arithmetic body — exactly what the Stage 2 fusion intercepts. Operand
+/// orders, fold orders, extreme literals, and fractional initials all vary
+/// to probe the integer/f64 mode boundaries.
+fn arb_fused_pipeline() -> impl Strategy<Value = Value> {
+    let arith_op = || prop_oneof![Just("+"), Just("*"), Just("-")];
+    let lit = prop_oneof![
+        Just(json!(2)),
+        Just(json!(0.5)),
+        Just(json!(-3)),
+        any::<i64>().prop_map(Value::from),
+    ];
+    let map_body = (
+        "[a-c]{1,2}",
+        arith_op(),
+        lit,
+        any::<bool>(),
+        prop::option::of(prop::option::of("[a-c]{1,2}")),
+    )
+        .prop_map(|(p1, op, lit, var_is_lhs, second)| match second {
+            // Extract body.
+            None => json!({ "var": p1 }),
+            // var ⊗ var body.
+            Some(Some(p2)) => json!({ op: [{ "var": p1 }, { "var": p2 }] }),
+            // var ⊗ literal body, both operand orders.
+            Some(None) => {
+                if var_is_lhs {
+                    json!({ op: [{ "var": p1 }, lit] })
+                } else {
+                    json!({ op: [lit, { "var": p1 }] })
+                }
+            }
+        });
+    let initial = prop_oneof![
+        Just(json!(0)),
+        Just(json!(1)),
+        Just(json!(0.25)),
+        Just(Value::from(i64::MAX)),
+    ];
+    ("[a-c]{1,2}", map_body, arith_op(), any::<bool>(), initial).prop_map(
+        |(src, body, fold_op, acc_is_lhs, initial)| {
+            let fold = if acc_is_lhs {
+                json!({ fold_op: [{ "var": "accumulator" }, { "var": "current" }] })
+            } else {
+                json!({ fold_op: [{ "var": "current" }, { "var": "accumulator" }] })
+            };
+            json!({ "reduce": [{ "map": [{ "var": src }, body] }, fold, initial] })
+        },
+    )
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(256))]
 
@@ -211,6 +262,46 @@ proptest! {
             (optimized, traced) => prop_assert!(
                 false,
                 "CSE vs traced Ok/Err divergence for rule={} data={}: optimized={:?} traced={:?}",
+                rule_str,
+                data_str,
+                optimized,
+                traced
+            ),
+        }
+    }
+
+    /// Property D: reduce(map(...)) fusion differential oracle. Fused
+    /// pipelines must agree with the traced pipeline (no-fold compile,
+    /// general dispatch, no fusion) on every input — including the
+    /// integer-overflow and int/f64 representation boundaries the
+    /// extreme literals and initials probe.
+    #[test]
+    fn fused_reduce_map_agrees(rule in arb_fused_pipeline(), data in arb_json()) {
+        let engine = Engine::new();
+        let rule_str = serde_json::to_string(&rule).expect("generated rule serialises");
+        let data_str = serde_json::to_string(&data).expect("generated data serialises");
+
+        let optimized = engine.eval_str(rule_str.as_str(), data_str.as_str());
+        let traced = engine.trace().eval_str(rule_str.as_str(), data_str.as_str()).result;
+
+        match (optimized, traced) {
+            (Ok(optimized), Ok(traced)) => {
+                let optimized: Value =
+                    serde_json::from_str(&optimized).expect("engine emits valid JSON");
+                let traced: Value =
+                    serde_json::from_str(&traced).expect("engine emits valid JSON");
+                prop_assert_eq!(
+                    optimized,
+                    traced,
+                    "fused vs traced result mismatch for rule={} data={}",
+                    rule_str,
+                    data_str
+                );
+            }
+            (Err(_), Err(_)) => {}
+            (optimized, traced) => prop_assert!(
+                false,
+                "fused vs traced Ok/Err divergence for rule={} data={}: optimized={:?} traced={:?}",
                 rule_str,
                 data_str,
                 optimized,

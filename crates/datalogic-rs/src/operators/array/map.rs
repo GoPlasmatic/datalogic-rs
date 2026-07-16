@@ -1,16 +1,16 @@
 //! `map` — transform each item via a body expression.
 
 use crate::arena::{ContextStack, DataValue, bvec};
-use crate::node::{MetadataHint, PathSegment, ReduceHint};
+use crate::node::PathSegment;
 use crate::opcode::OpCode;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
-use datavalue::NumberValue;
+use datavalue::{NumberValue, OwnedDataValue};
 use std::ops::ControlFlow;
 
 use super::helpers::{
-    IterArgKind, IterSrc, ResolvedInput, for_each_iter_array, for_each_iter_object,
-    resolve_iter_input,
+    FieldCursor, FusedMapBody, IterArgKind, IterSrc, ResolvedInput, for_each_iter_array,
+    for_each_iter_object, resolve_iter_input,
 };
 
 /// `map`. Borrows input from root scope when possible. Body fast path for
@@ -45,74 +45,60 @@ pub(crate) fn evaluate_map<'a>(
 
     // Fast paths bypass `run_iter_body`, so they skip the tracer's
     // per-iteration markers. Only enter them when no tracer is attached.
+    // Shape detection is shared with the reduce(map(...)) fusion — see
+    // `FusedMapBody::detect`.
     if !ctx.is_tracing() {
-        if let Some(result) = map_var_fast_path(&src, body, arena) {
-            return Ok(result);
-        }
-
-        if let Some(result) = map_arith_var_lit_fast_path(&src, body, arena) {
-            return Ok(result);
-        }
-
-        if let Some(result) = map_arith_var_var_fast_path(&src, body, arena) {
-            return Ok(result);
+        if let Some(shape) = FusedMapBody::detect(body) {
+            if let Some(result) = map_fused(&src, &shape, arena) {
+                return Ok(result);
+            }
         }
     }
 
     map_general(&src, body, ctx, engine, arena)
 }
 
-/// Detect a `{op: [{val:[…]}, literal]}` (or literal-first) body and fold
-/// the iteration into a tight loop with no per-item context push or
-/// dispatcher recursion. Covers the dominant `{*: [{val:[]}, 2]}` style of
-/// arithmetic-with-literal map bodies seen in real workloads.
-///
-/// Returns `None` if the body shape doesn't match — caller falls through to
-/// the general path. On match, returns the fully-built result array.
+/// Execute a classified fusible body shape as a tight materializing loop.
+/// Returns `None` when the data doesn't fit the shape (non-numeric operands,
+/// non-coercible literal) — caller falls through to the general path.
 #[inline]
-fn map_arith_var_lit_fast_path<'a>(
+fn map_fused<'a>(
     src: &IterSrc<'a>,
-    body: &'a CompiledNode,
+    shape: &FusedMapBody<'_>,
     arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
-    let CompiledNode::BuiltinOperator { opcode, args, .. } = body else {
-        return None;
-    };
-    if args.len() != 2 {
-        return None;
+    match shape {
+        FusedMapBody::Extract { segments } => Some(map_extract(src, segments, arena)),
+        FusedMapBody::ArithVarLit {
+            op,
+            segments,
+            lit,
+            var_is_lhs,
+        } => map_arith_var_lit(src, *op, segments, lit, *var_is_lhs, arena),
+        FusedMapBody::ArithVarVar {
+            op,
+            a_segments,
+            b_segments,
+        } => map_arith_var_var(src, *op, a_segments, b_segments, arena),
     }
-    let opcode = *opcode;
-    if !matches!(opcode, OpCode::Add | OpCode::Subtract | OpCode::Multiply) {
-        return None;
-    }
+}
 
-    // Detect (var(item), literal) or (literal, var(item)).
-    let (var_segs, lit_value, var_is_lhs) = match (&args[0], &args[1]) {
-        (
-            CompiledNode::Var {
-                scope_level: 0,
-                segments,
-                reduce_hint: ReduceHint::None,
-                metadata_hint: MetadataHint::None,
-                default_value: None,
-                ..
-            },
-            CompiledNode::Value { value, .. },
-        ) => (segments.as_ref(), value, true),
-        (
-            CompiledNode::Value { value, .. },
-            CompiledNode::Var {
-                scope_level: 0,
-                segments,
-                reduce_hint: ReduceHint::None,
-                metadata_hint: MetadataHint::None,
-                default_value: None,
-                ..
-            },
-        ) => (segments.as_ref(), value, false),
-        _ => return None,
-    };
-
+/// Execute a `{op: [var, literal]}` (or literal-first) body as a tight loop
+/// with no per-item context push or dispatcher recursion. Covers the
+/// dominant `{*: [{val:[]}, 2]}` style of arithmetic-with-literal map
+/// bodies seen in real workloads.
+///
+/// Returns `None` if the literal isn't numeric or the data doesn't fit —
+/// caller falls through to the general path.
+#[inline]
+fn map_arith_var_lit<'a>(
+    src: &IterSrc<'a>,
+    opcode: OpCode,
+    var_segs: &[PathSegment],
+    lit_value: &OwnedDataValue,
+    var_is_lhs: bool,
+    arena: &'a Bump,
+) -> Option<&'a DataValue<'a>> {
     let lit_f = lit_value.as_f64()?;
     let lit_i = lit_value.as_i64();
     let len = src.len();
@@ -151,7 +137,7 @@ fn map_arith_var_lit_fast_path<'a>(
     Some(arena.alloc(DataValue::Array(results.into_bump_slice())))
 }
 
-/// Integer-only branch of [`map_arith_var_lit_fast_path`]. Returns `None`
+/// Integer-only branch of [`map_arith_var_lit`]. Returns `None`
 /// (without allocating into the arena) on overflow or non-integer input so
 /// the caller's f64 path can take over.
 #[inline]
@@ -189,53 +175,22 @@ fn map_arith_var_lit_int<'a>(
     Some(arena.alloc(DataValue::Array(results.into_bump_slice())))
 }
 
-/// Detect a `{op: [{var: a}, {var: b}]}` body — both plain scope-0 vars —
-/// and fold the iteration into a tight two-field-extract loop, the var⊗var
-/// sibling of [`map_arith_var_lit_fast_path`]. Covers the pervasive
-/// line-total shape `{"*": [{var: "unit_price"}, {var: "qty"}]}`.
+/// Execute a `{op: [{var: a}, {var: b}]}` body — both plain scope-0 vars —
+/// as a tight two-field-extract loop, the var⊗var sibling of
+/// [`map_arith_var_lit`]. Covers the pervasive line-total shape
+/// `{"*": [{var: "unit_price"}, {var: "qty"}]}`.
 ///
 /// Only `Number` operands are handled; any missing field or non-numeric
 /// value abandons the fast path (dropping the partial results in the
 /// arena) so the general path re-runs with full coercion semantics.
 #[inline]
-fn map_arith_var_var_fast_path<'a>(
+fn map_arith_var_var<'a>(
     src: &IterSrc<'a>,
-    body: &'a CompiledNode,
+    opcode: OpCode,
+    a_segs: &[PathSegment],
+    b_segs: &[PathSegment],
     arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
-    let CompiledNode::BuiltinOperator { opcode, args, .. } = body else {
-        return None;
-    };
-    if args.len() != 2 {
-        return None;
-    }
-    let opcode = *opcode;
-    if !matches!(opcode, OpCode::Add | OpCode::Subtract | OpCode::Multiply) {
-        return None;
-    }
-
-    let (a_segs, b_segs) = match (&args[0], &args[1]) {
-        (
-            CompiledNode::Var {
-                scope_level: 0,
-                segments: a_segments,
-                reduce_hint: ReduceHint::None,
-                metadata_hint: MetadataHint::None,
-                default_value: None,
-                ..
-            },
-            CompiledNode::Var {
-                scope_level: 0,
-                segments: b_segments,
-                reduce_hint: ReduceHint::None,
-                metadata_hint: MetadataHint::None,
-                default_value: None,
-                ..
-            },
-        ) => (a_segments.as_ref(), b_segments.as_ref()),
-        _ => return None,
-    };
-
     let len = src.len();
     let mut a_field = FieldCursor::new(a_segs);
     let mut b_field = FieldCursor::new(b_segs);
@@ -282,67 +237,15 @@ fn map_arith_var_var_fast_path<'a>(
     Some(arena.alloc(DataValue::Array(results.into_bump_slice())))
 }
 
-/// Per-loop resolver for a scope-0 var path against successive row items.
-/// Single object-key paths (the dominant row shape) carry a remembered pair
-/// index across rows — see `object_lookup_field_hinted` — so homogeneous
-/// rows resolve in one key compare after the first. Everything else
-/// delegates to the general segment traversal.
-struct FieldCursor<'n> {
-    segments: &'n [PathSegment],
-    /// Key of a single-`Field`/`FieldOrIndex` segment path, when applicable.
-    single_key: Option<&'n str>,
-    /// Last hit index for the hinted lookup.
-    hint: usize,
-}
-
-impl<'n> FieldCursor<'n> {
-    #[inline]
-    fn new(segments: &'n [PathSegment]) -> Self {
-        let single_key = match segments {
-            [PathSegment::Field(k)] => Some(k.as_ref()),
-            [PathSegment::FieldOrIndex(k, _)] => Some(k.as_ref()),
-            _ => None,
-        };
-        Self {
-            segments,
-            single_key,
-            hint: 0,
-        }
-    }
-
-    #[inline(always)]
-    fn resolve<'a>(&mut self, item: &'a DataValue<'a>) -> Option<&'a DataValue<'a>> {
-        if let (Some(key), DataValue::Object(pairs)) = (self.single_key, item) {
-            return crate::arena::value::object_lookup_field_hinted(pairs, key, &mut self.hint);
-        }
-        if self.segments.is_empty() {
-            Some(item)
-        } else {
-            crate::arena::value::traverse_segments(item, self.segments)
-        }
-    }
-}
-
-/// Body fast path: `var` body with simple shape — identity (empty segments)
-/// or field extract. Both re-borrow arena items with zero per-iteration allocs.
+/// Execute a plain `var` body — identity (empty segments) or field
+/// extract. Both re-borrow arena items with zero per-iteration allocs.
+/// Missing paths extract as `Null`, matching the general path.
 #[inline]
-fn map_var_fast_path<'a>(
+fn map_extract<'a>(
     src: &IterSrc<'a>,
-    body: &'a CompiledNode,
+    segments: &[PathSegment],
     arena: &'a Bump,
-) -> Option<&'a DataValue<'a>> {
-    let CompiledNode::Var {
-        scope_level: 0,
-        segments,
-        reduce_hint: ReduceHint::None,
-        metadata_hint: MetadataHint::None,
-        default_value: None,
-        ..
-    } = body
-    else {
-        return None;
-    };
-
+) -> &'a DataValue<'a> {
     let len = src.len();
     let mut results = bvec::<DataValue<'a>>(arena, len);
     if segments.is_empty() {
@@ -358,7 +261,7 @@ fn map_var_fast_path<'a>(
             }
         }
     }
-    Some(arena.alloc(DataValue::Array(results.into_bump_slice())))
+    arena.alloc(DataValue::Array(results.into_bump_slice()))
 }
 
 /// General path — dispatches body via the arena context stack per item.

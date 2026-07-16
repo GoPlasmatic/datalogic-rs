@@ -381,5 +381,139 @@
     },
     "data": null,
     "result": 13
+  },
+
+  "# reduce(map(...)) fusion shapes - results must be identical fused or not",
+  {
+    "description": "Fused: sum of map with var*literal body (ints)",
+    "rule": {
+      "reduce": [
+        { "map": [{ "var": "items" }, { "*": [{ "var": "" }, 2] }] },
+        { "+": [{ "var": "accumulator" }, { "var": "current" }] },
+        0
+      ]
+    },
+    "data": { "items": [1, 2, 3] },
+    "result": 12
+  },
+  {
+    "description": "Fused: sum of map with field-extract body",
+    "rule": {
+      "reduce": [
+        { "map": [{ "var": "items" }, { "var": "value" }] },
+        { "+": [{ "var": "accumulator" }, { "var": "current" }] },
+        0
+      ]
+    },
+    "data": { "items": [{ "value": 5 }, { "value": 7 }] },
+    "result": 12
+  },
+  {
+    "description": "Fused: line totals - sum of map with var*var body",
+    "rule": {
+      "reduce": [
+        { "map": [{ "var": "items" }, { "*": [{ "var": "price" }, { "var": "qty" }] }] },
+        { "+": [{ "var": "accumulator" }, { "var": "current" }] },
+        0
+      ]
+    },
+    "data": { "items": [{ "price": 10, "qty": 2 }, { "price": 3, "qty": 5 }] },
+    "result": 35
+  },
+  {
+    "description": "Fused: float line totals with non-integral result",
+    "rule": {
+      "reduce": [
+        { "map": [{ "var": "items" }, { "*": [{ "var": "price" }, { "var": "qty" }] }] },
+        { "+": [{ "var": "accumulator" }, { "var": "current" }] },
+        0.25
+      ]
+    },
+    "data": { "items": [{ "price": 2.5, "qty": 3 }, { "price": 1.25, "qty": 2 }] },
+    "result": 10.25
+  },
+  {
+    "description": "Fused: mixed int and float items promote",
+    "rule": {
+      "reduce": [
+        { "map": [{ "var": "items" }, { "var": "v" }] },
+        { "+": [{ "var": "accumulator" }, { "var": "current" }] },
+        0
+      ]
+    },
+    "data": { "items": [{ "v": 2 }, { "v": 0.5 }] },
+    "result": 2.5
+  },
+  {
+    "description": "Fused: subtract fold over mapped values honors operand order",
+    "rule": {
+      "reduce": [
+        { "map": [{ "var": "items" }, { "*": [{ "var": "" }, 2] }] },
+        { "-": [{ "var": "current" }, { "var": "accumulator" }] },
+        0
+      ]
+    },
+    "data": { "items": [5, 2] },
+    "result": -6
+  },
+  {
+    "description": "Fusion bails: numeric strings fall back to general coercion",
+    "rule": {
+      "reduce": [
+        { "map": [{ "var": "items" }, { "var": "v" }] },
+        { "+": [{ "var": "accumulator" }, { "var": "current" }] },
+        0
+      ]
+    },
+    "data": { "items": [{ "v": "4" }, { "v": "6" }] },
+    "result": 10
+  },
+  {
+    "description": "Fusion bails: nulls in mapped input fall back to general coercion",
+    "rule": {
+      "reduce": [
+        { "map": [{ "var": "items" }, { "*": [{ "var": "" }, 2] }] },
+        { "+": [{ "var": "accumulator" }, { "var": "current" }] },
+        0
+      ]
+    },
+    "data": { "items": [1, null, 3] },
+    "result": 8
+  },
+  {
+    "description": "Fused: empty mapped input returns the initial value",
+    "rule": {
+      "reduce": [
+        { "map": [{ "var": "items" }, { "*": [{ "var": "" }, 2] }] },
+        { "+": [{ "var": "accumulator" }, { "var": "current" }] },
+        42
+      ]
+    },
+    "data": { "items": [] },
+    "result": 42
+  },
+  {
+    "description": "Fusion bails: object (Bridge) input to the map",
+    "rule": {
+      "reduce": [
+        { "map": [{ "var": "obj" }, { "var": "v" }] },
+        { "+": [{ "var": "accumulator" }, { "var": "current" }] },
+        0
+      ]
+    },
+    "data": { "obj": { "a": { "v": 1 }, "b": { "v": 2 } } },
+    "result": 3
+  },
+  {
+    "description": "Fused: i64 overflow promotes to float (map overflows, fold stays f64)",
+    "rule": {
+      "reduce": [
+        { "map": [{ "var": "items" }, { "*": [{ "var": "" }, 2] }] },
+        { "+": [{ "var": "accumulator" }, { "var": "current" }] },
+        0
+      ]
+    },
+    "data": { "items": [4611686018427387904, 4611686018427387904, 1] },
+    "result": 1.8446744073709552e19
   }
 ]
