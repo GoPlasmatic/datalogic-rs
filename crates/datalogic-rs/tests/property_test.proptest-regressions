@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 5fd2b67f43ec690781d6af922c1b24b5184b175abd917c9f2377f9b3ba136b02 # shrinks to rule = Object {"+": Array [Object {"reduce": Array [Object {"var": String("a")}, Object {"+": Array [Object {"var": String("accumulator")}, Object {"var": String("current")}]}, Number(1)]}, Object {"reduce": Array [Object {"var": String("a")}, Object {"+": Array [Object {"var": String("accumulator")}, Object {"var": String("current")}]}, Number(1)]}, Object {"reduce": Array [Object {"var": String("a")}, Object {"+": Array [Object {"var": String("accumulator")}, Object {"var": String("current")}]}, Number(1)]}, Object {"cat": Number(164649094278213886)}]}, data = Null

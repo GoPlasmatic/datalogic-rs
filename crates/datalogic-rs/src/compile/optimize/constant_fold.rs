@@ -5,46 +5,44 @@
 //! - `{"cat": ["hello ", "world", {"var": "name"}]}` → `{"cat": ["hello world", {"var": "name"}]}`
 //! - `{"*": [2, {"var": "x"}, 5]}` → `{"*": [10, {"var": "x"}]}`
 //!
-//! Also pre-coerces numeric string literals in arithmetic contexts.
+//! Numeric string literals are deliberately NOT pre-coerced — see the note in [`fold`].
 
 use crate::Engine;
 use crate::node::{CompiledNode, SYNTHETIC_ID, node_is_static};
 use crate::opcode::OpCode;
-use datavalue::{NumberValue, OwnedDataValue};
+use datavalue::OwnedDataValue;
 
 /// Apply partial constant folding to a compiled node.
 ///
 /// Returns `(node, changed)` where `changed` is `true` if the pass rewrote
 /// the input. Used by the optimiser pipeline to drive fixpoint iteration.
 pub(crate) fn fold(node: CompiledNode, engine: &Engine) -> (CompiledNode, bool) {
+    // NOTE: a `precoerce_numeric_strings` pass used to run here, rewriting
+    // numeric string literals in arithmetic contexts into number literals
+    // (`{"+": ["5", x]}` → `{"+": [5, x]}`). It was removed as unsound: at
+    // runtime a *string* operand keeps the arithmetic in f64 space (its
+    // coercion rounds beyond 2^53), while a *number* literal — even an
+    // integral float — takes the exact-integer paths, so the rewrite
+    // changed observable results (e.g. `3 + "9007199254740990"`), caught
+    // by the differential property oracle. `try_partial_fold` below stays
+    // sound because it evaluates static args through the real engine.
     match &node {
-        CompiledNode::BuiltinOperator { .. } => {
-            // First: pre-coerce numeric strings in arithmetic operators
-            let (node, coerced) = match precoerce_numeric_strings(&node) {
-                Some(new) => (new, true),
-                None => (node, false),
-            };
-
-            match &node {
-                CompiledNode::BuiltinOperator {
-                    id, opcode, args, ..
-                } => {
-                    // Partial fold for commutative operators with mixed static/dynamic args
-                    if is_commutative(opcode) && args.len() >= 2 {
-                        match try_partial_fold(*id, *opcode, args, engine) {
-                            Some(new) => (new, true),
-                            None => (node, coerced),
-                        }
-                    } else if *opcode == OpCode::Concat && args.len() >= 2 {
-                        match try_fold_concat(*id, args) {
-                            Some(new) => (new, true),
-                            None => (node, coerced),
-                        }
-                    } else {
-                        (node, coerced)
-                    }
+        CompiledNode::BuiltinOperator {
+            id, opcode, args, ..
+        } => {
+            // Partial fold for commutative operators with mixed static/dynamic args
+            if is_commutative(opcode) && args.len() >= 2 {
+                match try_partial_fold(*id, *opcode, args, engine) {
+                    Some(new) => (new, true),
+                    None => (node, false),
                 }
-                _ => (node, coerced),
+            } else if *opcode == OpCode::Concat && args.len() >= 2 {
+                match try_fold_concat(*id, args) {
+                    Some(new) => (new, true),
+                    None => (node, false),
+                }
+            } else {
+                (node, false)
             }
         }
         _ => (node, false),
@@ -184,81 +182,6 @@ fn try_fold_concat(outer_id: crate::node::NodeId, args: &[CompiledNode]) -> Opti
     })
 }
 
-/// Pre-coerce numeric string literals in arithmetic contexts.
-/// `{"+": ["5", {"var": "x"}]}` → `{"+": [5, {"var": "x"}]}`.
-/// Returns `Some(new_node)` if any string was coerced, `None` otherwise.
-fn precoerce_numeric_strings(node: &CompiledNode) -> Option<CompiledNode> {
-    if let CompiledNode::BuiltinOperator {
-        id, opcode, args, ..
-    } = node
-    {
-        if !is_arithmetic(opcode) {
-            return None;
-        }
-
-        // Bail before cloning the whole arg list unless at least one arg is a
-        // numeric string literal — the only thing that triggers a rewrite.
-        let has_numeric_string = args.iter().any(|arg| {
-            matches!(
-                arg,
-                CompiledNode::Value {
-                    value: OwnedDataValue::String(s),
-                    ..
-                } if s.parse::<i64>().is_ok()
-                    || s.parse::<f64>().is_ok_and(f64::is_finite)
-            )
-        });
-        if !has_numeric_string {
-            return None;
-        }
-
-        let mut changed = false;
-        let new_args: Vec<CompiledNode> = args
-            .iter()
-            .map(|arg| {
-                if let CompiledNode::Value {
-                    value: OwnedDataValue::String(s),
-                    ..
-                } = arg
-                {
-                    // Try parsing as integer first, then float
-                    if let Ok(i) = s.parse::<i64>() {
-                        changed = true;
-                        CompiledNode::synthetic_value(OwnedDataValue::Number(NumberValue::Integer(
-                            i,
-                        )))
-                    } else if let Ok(f) = s.parse::<f64>() {
-                        if f.is_finite() {
-                            changed = true;
-                            CompiledNode::synthetic_value(OwnedDataValue::Number(
-                                NumberValue::from_f64(f),
-                            ))
-                        } else {
-                            arg.clone()
-                        }
-                    } else {
-                        arg.clone()
-                    }
-                } else {
-                    arg.clone()
-                }
-            })
-            .collect();
-
-        if changed {
-            return Some(CompiledNode::BuiltinOperator {
-                id: *id,
-                opcode: *opcode,
-                args: new_args.into_boxed_slice(),
-                predicate_hint: None,
-                iter_arg_kind: crate::operators::array::IterArgKind::General,
-            });
-        }
-    }
-
-    None
-}
-
 /// One-shot arena evaluation for compile-time constant folding.
 ///
 /// The arena lives only for this fold call — uses a fresh `Bump`, not the
@@ -271,13 +194,6 @@ pub(crate) fn fold_static_node(node: &CompiledNode, engine: &Engine) -> Option<O
     let mut ctx = crate::arena::ContextStack::new(null_root);
     let av = engine.dispatch_node(node, &mut ctx, &arena).ok()?;
     Some(av.to_owned())
-}
-
-fn is_arithmetic(opcode: &OpCode) -> bool {
-    matches!(
-        opcode,
-        OpCode::Add | OpCode::Subtract | OpCode::Multiply | OpCode::Divide | OpCode::Modulo
-    )
 }
 
 #[cfg(test)]
@@ -327,14 +243,24 @@ mod tests {
     }
 
     #[test]
-    fn test_precoerce_numeric_string() {
+    fn numeric_strings_are_not_precoerced() {
+        // A numeric string literal must stay a string: at runtime a string
+        // operand keeps the arithmetic in f64 space, so rewriting it into a
+        // number literal changes observable results beyond 2^53.
         let engine = Engine::new();
         let node = builtin(OpCode::Add, vec![val(ov("\"5\"")), var_node("x")]);
-        let (result, _changed) = fold(node, &engine);
+        let (result, changed) = fold(node, &engine);
+        assert!(!changed);
         if let CompiledNode::BuiltinOperator { args, .. } = &result {
-            if let CompiledNode::Value { value, .. } = &args[0] {
-                assert_eq!(value.as_i64(), Some(5));
-            }
+            assert!(matches!(
+                &args[0],
+                CompiledNode::Value {
+                    value: OwnedDataValue::String(_),
+                    ..
+                }
+            ));
+        } else {
+            panic!("expected BuiltinOperator");
         }
     }
 }
