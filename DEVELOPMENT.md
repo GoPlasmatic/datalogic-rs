@@ -302,9 +302,9 @@ up. Still open:
 
 ### One-time registry / marketing ops (added 2026-07-03; maintainer-only)
 
-Registry state: **all nine registries serve 5.0.1** — crates.io, npm ×3,
-PyPI, NuGet, the Go proxy, Packagist (since 2026-07-03), and Maven
-Central (first publish 2026-07-07). Done on 2026-07-03: Packagist
+Registry state: **all nine registries serve 5.1.0** (2026-07-17) —
+crates.io, npm ×3, PyPI, NuGet, the Go proxy, Packagist (registered
+2026-07-03), and Maven Central (first publish 2026-07-07). Done on 2026-07-03: Packagist
 registration + webhook, GitHub Discussions enabled, wiki disabled. Done
 on 2026-07-07: first Maven Central publish (`io.github.goplasmatic:datalogic`);
 the root README's Maven row now carries the shields.io maven-central
