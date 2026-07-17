@@ -44,7 +44,7 @@ const MAX_POOLED_ARENA_BYTES: usize = 4 * 1024 * 1024;
 pub(crate) fn with_pooled_arena<T>(body: impl FnOnce(&Bump) -> T) -> T {
     let arena = POOLED_ARENA
         .with(|cell| cell.borrow_mut().take())
-        .unwrap_or_else(Bump::new);
+        .unwrap_or_default();
     let result = body(&arena);
     let mut arena = arena;
     arena.reset();

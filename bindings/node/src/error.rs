@@ -104,22 +104,6 @@ fn engine_attrs<'a>(
     }
 }
 
-/// Parse-stage shorthand for the path where there's no `RsError` value
-/// (e.g. the binding rejected malformed JSON before handing anything to
-/// the engine). Raises a `ParseError` with `.errorType = "ParseError"`
-/// and the other structured fields set to neutral defaults.
-pub fn parse_error(env: &Env, message: &str) -> napi::Error {
-    let attrs = ErrorAttrs {
-        name: "ParseError",
-        message,
-        error_type: "ParseError",
-        operator: None,
-        node_ids: &[],
-        path: Some(Vec::new()),
-    };
-    throw_attrs(env, &attrs).unwrap_or_else(|| napi::Error::from_reason(message.to_string()))
-}
-
 struct ErrorAttrs<'a> {
     name: &'a str,
     message: &'a str,

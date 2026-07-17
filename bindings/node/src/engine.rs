@@ -305,10 +305,10 @@ impl Task for EvaluateStrTask {
     }
 
     fn reject(&mut self, env: Env, err: Error) -> Result<Self::JsValue> {
-        if let Some(dl) = self.failure.take() {
-            if let Some(decorated) = engine_error_value(&env, &dl, Some(&self.logic)) {
-                return Err(decorated);
-            }
+        if let Some(dl) = self.failure.take()
+            && let Some(decorated) = engine_error_value(&env, &dl, Some(&self.logic))
+        {
+            return Err(decorated);
         }
         Err(err)
     }
