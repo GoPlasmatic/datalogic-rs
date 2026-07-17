@@ -55,7 +55,7 @@ deliberately untracked (gitignored): maintainer-local reference only.
 
 Week 1 — Rust channel:
 - [ ] Blog post (a) or (d) published (see titles below).
-- [ ] r/rust text post: "datalogic-rs v5 — JSONLogic engine, 8.9 ns geomean,
+- [ ] r/rust text post: "datalogic-rs v5 — JSONLogic engine, 10.3 ns geomean,
   8 language bindings from one core". Lead with the one-core-many-registries
   architecture; r/rust loves release-engineering detail. Maintainer in
   comments all day.
@@ -67,7 +67,7 @@ Week 1 — Rust channel:
 Week 2 — Show HN (the anchor):
 - [ ] Submit **the playground URL** (Show HN guidelines favor something
   people can try): title
-  `Show HN: One JSONLogic engine for 8 languages (Rust core, ~9 ns/eval)`.
+  `Show HN: One JSONLogic engine for 8 languages (Rust core, ~10 ns/eval)`.
 - [ ] Prepared first comment: what it is, why one core (drift between
   ports), benchmark table + repro command, honest limits (rules are
   data-plane only; WASM is 88x slower than native; resource bounding is
@@ -88,9 +88,9 @@ Week 3+ — per-ecosystem:
 
 ## Blog titles (map to searcher intent; publish on dev.to or a Plasmatic blog, cross-post excerpts)
 
-- (a) "json-logic-js is 100× slower than it needs to be" — perf/alternative
+- (a) "json-logic-js is 80× slower than it needs to be" — perf/alternative
   intent. Respectful of the reference impl; methodology + repro mandatory.
-  (Pairwise 104.2× over 23 shared suites per BENCHMARK.md 2026-07-03;
+  (Pairwise 83.6× over 24 shared suites per BENCHMARK.md 2026-07-17;
   re-verify before publishing.)
 - (b) "Same rule, eight runtimes: one JSONLogic engine across your whole
   stack" — the positioning anchor; links the parallel examples/ folders.

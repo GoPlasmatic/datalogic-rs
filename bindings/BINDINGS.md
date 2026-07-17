@@ -45,8 +45,8 @@ a deprecation notice on `npm install` pointing them at the new name.
 | Core feature | **No umbrella feature in core.** The binding owns its operator surface; `crates/datalogic-rs/Cargo.toml` stays free of binding-specific bundling so the published crate is binding-agnostic |
 | Tests | `bindings/<lang>/tests/` in the binding's native test runner (pytest, jest, …) |
 | CI | A pair of jobs added to `.github/workflows/release.yml` — `<lang>-build-*` (one or more, possibly a matrix) followed by `publish-<lang>` (`needs: publish-crate` so a binding never ships ahead of core) |
-| Release tags | `v*` (e.g. `v5.0.1`) — single unified trigger. One tag push runs validate + tests, publishes core, then fans out every binding in parallel. |
-| Versioning | Bindings track the core version exactly (5.0.1 → 5.0.1). `validate` fails if any binding's `Cargo.toml` / `pyproject.toml` / `package.json` drifts from core. |
+| Release tags | `v*` (e.g. `v5.1.0`) — single unified trigger. One tag push runs validate + tests, publishes core, then fans out every binding in parallel. |
+| Versioning | Bindings track the core version exactly (5.1.0 → 5.1.0). `validate` fails if any binding's `Cargo.toml` / `pyproject.toml` / `package.json` drifts from core. |
 
 ## Why these conventions
 
@@ -251,7 +251,7 @@ Two invariants:
 
 - **Absolute URLs only.** Registry pages render the README standalone,
   so relative links 404 there.
-- **The `<!-- canonical-bench v5.0 -->` block is quoted verbatim** in
+- **The `<!-- canonical-bench v5.1 -->` block is quoted verbatim** in
   every binding README (comment line plus one unwrapped paragraph), so
   drift is greppable: `grep -A1 -r "canonical-bench" bindings/` must
   return byte-identical paragraphs.

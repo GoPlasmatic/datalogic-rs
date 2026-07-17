@@ -9,7 +9,7 @@ Select your target language to see package installation instructions:
 ```rust
 // Cargo.toml
 [dependencies]
-datalogic-rs = "5.0"
+datalogic-rs = "5.1"
 
 # Or run in terminal:
 # cargo add datalogic-rs
@@ -37,11 +37,11 @@ go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5
 <dependency>
     <groupId>io.github.goplasmatic</groupId>
     <artifactId>datalogic</artifactId>
-    <version>5.0.1</version>
+    <version>5.1.0</version>
 </dependency>
 
 // Gradle: build.gradle.kts
-implementation("io.github.goplasmatic:datalogic:5.0.1")
+implementation("io.github.goplasmatic:datalogic:5.1.0")
 ```
 
 ```csharp
@@ -84,7 +84,7 @@ Example — opt into `serde_json::Value` interop plus templating:
 
 ```toml
 [dependencies]
-datalogic-rs = { version = "5.0", features = ["serde_json", "templating"] }
+datalogic-rs = { version = "5.1", features = ["serde_json", "templating"] }
 serde_json = "1.0"
 ```
 

@@ -8,6 +8,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
+## [5.1.0] - 2026-07-17
+
+### Added
+
+- **Common-subexpression elimination (core).** JSONLogic has no `let`
+  bindings, so rules repeat pure aggregate subexpressions verbatim. A
+  new whole-tree compile pass detects structurally identical pure
+  subtrees and shares one memoized evaluation per rule execution
+  instead of recomputing each occurrence. The pass is invisible in
+  every public observable — `to_json()`, trace trees, and error
+  breadcrumbs are byte-identical to a non-CSE compile — and subtrees
+  containing custom operators, `throw`/`try`, `now`, `fractional`, or
+  `sem_ver` are never memoized. `Logic` gains a public
+  `cse_slot_count()` accessor reporting how many memo slots the
+  compiler assigned. The `macro/checkout-40` benchmark (which
+  recomputes its subtotal map+reduce in 8 places) drops ~2.9x.
+- **Python: PEP 561 type stubs in every wheel.** `datalogic-py` ships
+  `datalogic_py/__init__.pyi` plus the `py.typed` marker covering the
+  full surface (`apply`, `Engine`, `Rule`, `Session`, `DataHandle`,
+  batch errors, the exception hierarchy, `__version__`), guarded
+  against drift by `mypy.stubtest` in CI and a wheel-content check in
+  the release matrix. PyPI listing gains the `Typing :: Typed`
+  classifier.
+
+### Performance
+
+- `reduce(map(...))` pipelines fuse into a single pass: the fold runs
+  directly over the map's input instead of materializing the
+  intermediate array in the arena. Results are bit-identical (the
+  fused loop composes the same representation-choice primitives as the
+  unfused pipeline); non-numeric shapes bail to the general flow.
+  Together with CSE, the `macro/checkout-40` cross-library matrix row
+  improved 2.8x over the 5.0.1 capture (9.5 µs → 3.3 µs) with per-eval
+  arena usage down from 31.9 KB to under 2 KB.
+- The reduce arithmetic fold and the strict-eq filter fast path adopt
+  the hinted `FieldCursor` field-lookup pattern from the map fast
+  paths.
+- datavalue 0.2.3's buffered, heap-free number emit: parse-eval-
+  serialize round trips improve ~3–8% on serialize-heavy workloads;
+  evaluation-only paths are flat.
+
+### Fixed
+
+- Whole floats outside i64's exactly-representable range stringify via
+  shortest round-trip formatting — `1e300` now prints as `"1e300"`
+  instead of a saturated `"9223372036854775807.0"` (matching
+  serde_json). The `datavalue` dependency floor moves to 0.2.3.
+- Removed the unsound numeric-string precoercion optimizer pass:
+  folded and unfolded evaluation previously disagreed on arithmetic
+  over numeric strings with values beyond 2^53 (a string operand keeps
+  arithmetic in f64 space while a rewritten number literal takes the
+  exact-integer paths). Rules with fully-static numeric-string
+  arithmetic still constant-fold — through the real engine evaluator.
+- `reduce` arithmetic fast path honors operand order: fold bodies of
+  the form `{"-": [current, accumulator]}` returned sign-flipped
+  results versus the general path (add/multiply were unaffected by
+  commutativity).
+- JVM: `jackson-databind` bumped to 2.22.1 (CVE-2026-54515).
+
 ## [5.0.1] - 2026-07-07
 
 ### Changed
@@ -616,6 +675,7 @@ section for the subsequent migration).
   optional dispatch mode in v5).
 - Hash-caching layer (see above).
 
+[5.1.0]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.0.1...v5.1.0
 [5.0.1]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.0.0...v5.0.1
 [5.0.0]: https://github.com/GoPlasmatic/datalogic-rs/compare/v4.0.21...v5.0.0
 [4.0.21]: https://github.com/GoPlasmatic/datalogic-rs/releases/tag/v4.0.21

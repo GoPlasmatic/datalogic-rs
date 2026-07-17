@@ -1,7 +1,7 @@
 {
   "name": "@goplasmatic/datalogic-ui",
   "private": false,
-  "version": "5.0.1",
+  "version": "5.1.0",
   "type": "module",
   "description": "React rule builder, visual debugger, and editor for JSONLogic (json-logic) — flow-diagram view and live execution tracing, powered by the datalogic-rs WASM engine.",
   "keywords": [
@@ -74,7 +74,7 @@
     "@dagrejs/dagre": "^3.0.0",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@fontsource/space-grotesk": "^5.2.10",
-    "@goplasmatic/datalogic-wasm": "5.0.1",
+    "@goplasmatic/datalogic-wasm": "5.1.0",
     "@msgpack/msgpack": "^3.1.3",
     "fflate": "^0.8.3",
     "lucide-react": "^1.23.0",

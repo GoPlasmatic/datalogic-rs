@@ -111,7 +111,7 @@ A high-performance feature-flag evaluator that uses transient session recycling 
 
 > **Cargo note:** `session.eval_into::<T, _>(...)` is gated behind the
 > `serde_json` feature. Add it in `Cargo.toml`:
-> `datalogic-rs = { version = "5.0", features = ["serde_json"] }`.
+> `datalogic-rs = { version = "5.1", features = ["serde_json"] }`.
 
 ```rust
 use axum::{routing::post, Json, Router};

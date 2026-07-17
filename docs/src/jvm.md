@@ -12,14 +12,14 @@ Add the dependency to your project:
 <dependency>
     <groupId>io.github.goplasmatic</groupId>
     <artifactId>datalogic</artifactId>
-    <version>5.0.1</version>
+    <version>5.1.0</version>
 </dependency>
 ```
 
 ### Gradle (`build.gradle`)
 
 ```groovy
-implementation 'io.github.goplasmatic:datalogic:5.0.1'
+implementation 'io.github.goplasmatic:datalogic:5.1.0'
 ```
 
 *Note: The Maven `groupId` is `io.github.goplasmatic`, but the Java package path is `com.goplasmatic.datalogic`.*

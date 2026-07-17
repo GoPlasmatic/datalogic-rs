@@ -29,11 +29,11 @@ implements, see the
 <dependency>
     <groupId>io.github.goplasmatic</groupId>
     <artifactId>datalogic</artifactId>
-    <version>5.0.1</version>
+    <version>5.1.0</version>
 </dependency>
 ```
 
-Gradle: `implementation("io.github.goplasmatic:datalogic:5.0.1")`
+Gradle: `implementation("io.github.goplasmatic:datalogic:5.1.0")`
 
 The binding speaks to the engine's C ABI directly through the Java FFM
 API (`java.lang.foreign`) — no JNA, no JNI glue, zero runtime
@@ -328,8 +328,8 @@ in the trace: use it for debugging, not hot paths.
 
 ## Performance
 
-<!-- canonical-bench v5.0 -->
-Geomean across 50 operator benchmark suites (Apple M2 Pro, median of 3 runs; pairwise shared-suite ratios per the [methodology](https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md)): the native Rust core evaluates at **8.9 ns/op**, 7.9× faster than json-logic-engine (compiled, the fastest JS engine), 30.6× faster than jsonlogic-rs (the closest Rust alternative), and 104.2× faster than the json-logic-js reference implementation. The WASM build under Node measures 901.1 ns geomean (101× native); on Node servers, prefer `@goplasmatic/datalogic-node`.
+<!-- canonical-bench v5.1 -->
+Geomean across 51 operator benchmark suites (Apple M2 Pro, median of 3 runs; pairwise shared-suite ratios per the [methodology](https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md)): the native Rust core evaluates at **10.3 ns/op**, 7.0× faster than json-logic-engine (compiled, the fastest JS engine), 28.1× faster than jsonlogic-rs (the closest Rust alternative), and 83.6× faster than the json-logic-js reference implementation. The WASM build under Node measures 900.5 ns geomean (88× native); on Node servers, prefer `@goplasmatic/datalogic-node`.
 
 The FFM boundary adds a small per-call marshalling cost on top of the
 core numbers; pre-parsed `DataHandle`s roughly halve it versus JSON
@@ -349,7 +349,7 @@ git clone https://github.com/GoPlasmatic/datalogic-rs
 cd datalogic-rs/bindings/c && cargo build --release
 cd ../jvm      # needs JDK 22+
 mvn test
-mvn package    # target/datalogic-5.0.1.jar + sources + javadoc
+mvn package    # target/datalogic-5.1.0.jar + sources + javadoc
 ```
 
 ## Learn more

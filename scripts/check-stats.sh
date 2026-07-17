@@ -25,7 +25,7 @@ stat=$(bash scripts/conformance-count.sh)   # e.g. "53 suites / 1,532 cases"
 suites=${stat%% suites*}
 cases=${stat##*/ }
 cases=${cases%% cases*}
-GEOMEAN="8.9 ns"   # BENCHMARK.md cross-library geomean, captured 2026-07-03
+GEOMEAN="10.3 ns"   # BENCHMARK.md cross-library geomean, captured 2026-07-17
 
 # --- canonical strings must appear where we quote them ------------------
 badge="conformance-${suites}_suites_%2F_${cases}_cases"
@@ -45,6 +45,7 @@ grep -qF "$GEOMEAN" crates/datalogic-rs/README.md \
 # list whenever a refresh retires a previously-quoted figure.
 stale_patterns=(
   '9\.7 ns'
+  '8\.9 ns'
   '44 operator suites'
   'Maven release pending'
 )

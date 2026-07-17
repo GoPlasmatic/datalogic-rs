@@ -287,30 +287,16 @@ publish scripts; do not run `npm publish` or `cargo publish` by hand.
 Use `scripts/bump-version.sh <x.y.z>` to update every versioned file the
 validate job checks.
 
-### One-time checklist for the next release (added 2026-07-02)
+### Open release-ops items
 
-The 5.0.x cycle landed changes whose release legs have never executed;
-whoever cuts the next tag should watch these once, then delete this list:
+The one-time watch list for the first 5.0.1 release legs (added
+2026-07-02) was retired after that release brought all nine registries
+up. Still open:
 
-- **Version choice — resolved: shipping as 5.0.1.** Removing the inert
-  `undefined_to_zero` config field is technically breaking for code that
-  merely named it (CHANGELOG "Removed"), and `@goplasmatic/datalogic-wasm`
-  now rejects with structured `Error` objects instead of JSON strings
-  (breaking; migration note in its README). The breaking surface is deemed
-  low-usage, so the patch bump is an intentional call over 5.1.0/6.0.0.
-- **JVM publish leg:** local packaged-JAR validation passes (classpath-root
-  staging via `scripts/stage-jvm-natives.sh`, the FFM loader extracts the
-  bundled native from the classpath root with `datalogic.library.path`
-  unset), but `publish-jvm`'s Maven Central deploy has
-  never run with the corrected layout. Verify the published JAR loads
-  natives on a clean machine.
-- **First run of new matrix entries:** x86_64-apple-darwin Python wheel
-  (maturin cross on macos-15), x86_64-apple-darwin Node prebuild, and the
-  aarch64-musl Node prebuild (docker run of the napi-rs `lts-alpine` image
-  on ubuntu-24.04-arm). npm staging depends on the two new triples in
-  `bindings/node/package.json` `napi.targets`.
-- **CI sanity:** `wasm-pack test --node` must report 22 tests (it silently
-  ran zero before `run_in_browser` was removed from the WASM test suite).
+- **JVM natives on a clean machine:** `publish-jvm`'s Maven Central
+  deploy first ran with the classpath-root layout on 2026-07-07; verify
+  once that the published JAR loads its bundled natives on a machine
+  with no repo checkout and `datalogic.library.path` unset.
 - **NuGet signing** remains unimplemented: needs org certificates and a
   signing decision (README embedding, SourceLink, and snupkg already ship).
 

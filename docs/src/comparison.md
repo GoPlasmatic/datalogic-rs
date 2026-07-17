@@ -69,7 +69,7 @@ the canonical choice for a JS-only stack.
 
 **Choose datalogic-rs when:** the same rules must also run outside
 JavaScript, evaluation is hot enough to show up in profiles (the native
-engine measures about 104x faster across the shared benchmark suites), or
+engine measures about 84x faster across the shared benchmark suites), or
 you want the visual debugger and playground.
 
 Migrating is close to a package swap; the full mapping is in
@@ -141,20 +141,20 @@ official visual editor for the people who write the rules.
 
 ## The numbers
 
-Geomean execution time across 50 benchmark suites (Apple M2 Pro; median of
+Geomean execution time across 51 benchmark suites (Apple M2 Pro; median of
 3 samples; ratios are pairwise shared-suite geomeans; methodology in the
 [benchmark matrix](https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md)).
 
-<!-- canonical-bench v5.0 -->
+<!-- canonical-bench v5.1 -->
 ```text
-datalogic-rs (native Rust)              | 8.9 ns   (■) 1x
-json-logic-engine (JS, compiled)        | 60.3 ns  (■■■■■■) 7.9x
-json-logic-engine (JS, interpreted)     | 235.2 ns (■■■■■■■■■■■■■■■■■■■■■■■■) 30.7x
-jsonlogic-rs (bestowinc Rust engine)    | 244.9 ns (■■■■■■■■■■■■■■■■■■■■■■■■) 30.6x
-json-logic-js (Reference JS library)    | 434.8 ns (■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■) 104.2x
+datalogic-rs (native Rust)              | 10.3 ns  (■) 1x
+json-logic-engine (JS, compiled)        | 63.3 ns  (■■■■■■) 7.0x
+json-logic-engine (JS, interpreted)     | 234.8 ns (■■■■■■■■■■■■■■■■■■■■■■■) 25.8x
+jsonlogic-rs (bestowinc Rust engine)    | 264.2 ns (■■■■■■■■■■■■■■■■■■■■■■■■■■) 28.1x
+json-logic-js (Reference JS library)    | 465.1 ns (■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■) 83.6x
 ```
 
-One honest caveat: the WASM build under Node measures 890.9 ns (97x
+One honest caveat: the WASM build under Node measures 900.5 ns (88x
 native), so on Node servers the native binding is the fast path; the WASM
 package is for browsers and edge runtimes.
 

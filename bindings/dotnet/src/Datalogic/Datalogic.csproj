@@ -13,7 +13,7 @@
          via the release workflow; the validate step fails the build if
          this drifts. -->
     <PackageId>Goplasmatic.Datalogic</PackageId>
-    <Version>5.0.1</Version>
+    <Version>5.1.0</Version>
     <Authors>Plasmatic</Authors>
     <Company>Plasmatic</Company>
     <Description>.NET bindings for datalogic-rs — a JSONLogic (json-logic) rules engine with a native Rust core via P/Invoke. Compile once, evaluate in nanoseconds; identical semantics across .NET, Java, Python, Go, Node.js, WASM, PHP, and Rust.</Description>

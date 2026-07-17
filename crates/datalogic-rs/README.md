@@ -469,7 +469,7 @@ upstream behaviour.
 Compiled rules dispatch through a single `OpCode` enum (no string
 lookups), values live in a `bumpalo::Bump` arena (no per-result heap
 allocation), and read-through operators like `var` borrow zero-copy
-from the caller's input. Geomean 8.9 ns/op across 50 operator suites
+from the caller's input. Geomean 10.3 ns/op across 51 operator suites
 on Apple M2 Pro — see the cross-library comparison in
 [`tools/benchmark/BENCHMARK.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md).
 
