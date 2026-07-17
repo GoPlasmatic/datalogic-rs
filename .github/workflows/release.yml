@@ -902,6 +902,13 @@ jobs:
       - build-jvm
       - build-php
     runs-on: ubuntu-latest
+    # The workflow-level grant is contents-only; creating the linked
+    # Discussions announcement additionally needs discussions:write
+    # (GitHub reports the missing scope as a 404 "Discussion could not
+    # be created", which is how v5.1.0's first run of this step failed).
+    permissions:
+      contents: write
+      discussions: write
     steps:
       - name: Checkout
         uses: actions/checkout@v6
