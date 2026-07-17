@@ -659,6 +659,29 @@ jobs:
           NPM_CONFIG_ACCESS: 'public'
           GITHUB_TOKEN: ${{ github.token }}
 
+      # `napi prepublish` publishes ONLY the `npm/<triple>/` subpackages;
+      # the umbrella package itself is published by a plain `npm publish`
+      # (normally its `prepublishOnly` hook is what runs napi prepublish —
+      # invoking napi directly, as the step above does, leaves the
+      # umbrella unpublished). Both 5.0.1 and 5.1.0 shipped their
+      # umbrella via manual recovery before this step existed.
+      # `--ignore-scripts` skips the prepublishOnly hook (it just ran);
+      # napi has already wired the subpackage optionalDependencies into
+      # package.json in-place. Skip-if-exists keeps reruns idempotent.
+      - name: Publish umbrella package
+        working-directory: bindings/node
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "@goplasmatic/datalogic-node@$VERSION" version >/dev/null 2>&1; then
+            echo "umbrella $VERSION already on npm, skipping"
+          else
+            npm publish --ignore-scripts
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: 'true'
+          NPM_CONFIG_ACCESS: 'public'
+
   publish-dotnet:
     name: Publish .NET to NuGet
     needs: [validate, publish-crate, build-dotnet]
