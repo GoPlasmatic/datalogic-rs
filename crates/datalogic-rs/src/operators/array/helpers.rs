@@ -657,12 +657,6 @@ fn value_as_iter<'a>(av: &'a DataValue<'a>) -> ResolvedInput<'a> {
     }
 }
 
-/// True iff this arena value is `null`.
-#[inline]
-pub(super) fn item_is_null(av: &DataValue<'_>) -> bool {
-    matches!(av, DataValue::Null)
-}
-
 // =============================================================================
 // Per-iteration body machinery (filter / map / quantifiers)
 // =============================================================================

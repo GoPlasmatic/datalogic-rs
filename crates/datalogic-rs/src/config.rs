@@ -156,6 +156,13 @@ pub enum TruthyEvaluator {
     /// Python-style truthiness
     /// - false: None/null, False, 0, 0.0, "", empty collections
     /// - true: everything else
+    ///
+    /// Differs from [`Self::JavaScript`] on exactly one value: `NaN`.
+    /// Python's `float('nan')` is truthy, JavaScript's `NaN` is falsy.
+    /// Every other rule coincides. `NaN` is not expressible as a JSON
+    /// literal, so this only shows up on values arithmetic produced —
+    /// e.g. `inf * 0` under
+    /// [`DivisionByZeroHandling::ReturnInfinity`].
     Python,
 
     /// Strict boolean truthiness

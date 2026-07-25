@@ -68,7 +68,7 @@ pub(crate) fn evaluate_missing_some<'a>(
 
     let short_circuit = match paths_av {
         DataValue::Array(items) => items.iter().any(|it| {
-            value_as_str(it).is_some_and(|p| {
+            it.as_str().is_some_and(|p| {
                 check_path(
                     p,
                     lookup,
@@ -86,14 +86,6 @@ pub(crate) fn evaluate_missing_some<'a>(
         return Ok(crate::arena::singletons::singleton_empty_array());
     }
     Ok(arena.alloc(DataValue::Array(missing.into_bump_slice())))
-}
-
-#[inline]
-fn value_as_str<'a>(av: &'a DataValue<'a>) -> Option<&'a str> {
-    match av {
-        DataValue::String(s) => Some(*s),
-        _ => None,
-    }
 }
 
 // =============================================================================
@@ -204,7 +196,7 @@ pub(crate) fn evaluate_compiled_missing_some<'a>(
             let mut present = 0usize;
             let short = match paths_av {
                 DataValue::Array(items) => items.iter().any(|it| {
-                    value_as_str(it).is_some_and(|p| {
+                    it.as_str().is_some_and(|p| {
                         check_path(p, lookup, &mut missing, &mut present, min_present, arena)
                     })
                 }),
@@ -248,7 +240,7 @@ fn accumulate_dynamic_missing<'a>(
     match av {
         DataValue::Array(items) => {
             for it in *items {
-                if let Some(path) = value_as_str(it) {
+                if let Some(path) = it.as_str() {
                     if !crate::arena::value::path_exists_str(lookup, path) {
                         missing.push(DataValue::String(arena.alloc_str(path)));
                     }

@@ -4,8 +4,6 @@ use crate::arena::{ContextStack, DataValue, bvec};
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
-use super::helpers::item_is_null;
-
 /// Arena-mode `merge`. Flattens its args (each may itself be a nested arena
 /// op) into a single array, skipping nulls.
 ///
@@ -36,7 +34,7 @@ pub(crate) fn evaluate_merge<'a>(
             // Direct arena Array (e.g. result of upstream arena filter/map).
             DataValue::Array(items) => {
                 for item in items.iter() {
-                    if !item_is_null(item) {
+                    if !item.is_null() {
                         push(*item);
                     }
                 }

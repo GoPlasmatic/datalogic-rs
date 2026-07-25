@@ -404,6 +404,121 @@ fn test_truthy_in_logical_operators() {
     }
 }
 
+/// Build a Python-vs-JavaScript pair of engines, optionally with the
+/// optimizer's constant folding disabled.
+fn truthy_pair(fold: bool) -> (Engine, Engine) {
+    let build = |t: TruthyEvaluator| {
+        Engine::builder()
+            .with_config(EvaluationConfig::default().with_truthy_evaluator(t))
+            .with_constant_folding(fold)
+            .build()
+    };
+    (
+        build(TruthyEvaluator::JavaScript),
+        build(TruthyEvaluator::Python),
+    )
+}
+
+/// `NaN` is the one value where Python and JavaScript truthiness disagree:
+/// `float('nan')` is truthy in Python, `NaN` is falsy in JavaScript.
+///
+/// JSON has no NaN literal, so the rule reaches it through arithmetic:
+/// `1e308 * 1e308` overflows to `+inf`, and `inf * 0` is `NaN`. The `var`
+/// keeps the predicate dynamic so this exercises the runtime arena path.
+#[test]
+fn python_truthiness_treats_nan_as_truthy() {
+    let rule = json!({"if": [{"*": [{"*": [{"var": "big"}, 1e308]}, 0]}, "truthy", "falsy"]});
+    let data = json!({"big": 1e308});
+    let (js, py) = truthy_pair(true);
+
+    assert_eq!(
+        js.eval_into::<serde_json::Value, _, _>(&rule, &data)
+            .unwrap(),
+        json!("falsy"),
+        "JavaScript truthiness must treat NaN as falsy"
+    );
+    assert_eq!(
+        py.eval_into::<serde_json::Value, _, _>(&rule, &data)
+            .unwrap(),
+        json!("truthy"),
+        "Python truthiness must treat NaN as truthy"
+    );
+}
+
+/// Truthiness has two implementations: `truthy_arena` on the evaluation
+/// path and `truthy_owned` on the compile-time folding path (reached via
+/// the optimizer's `is_truthy_literal`). They must agree, or a predicate
+/// the folder collapses would disagree with the same predicate evaluated
+/// at runtime.
+///
+/// An all-literal NaN predicate folds to a `Value` node, so running the
+/// same rule with folding on and off puts each implementation on the
+/// stand. This test fails if either side is changed alone.
+#[test]
+fn folded_and_runtime_truthiness_agree_on_nan() {
+    let rule = json!({"if": [{"*": [{"*": [1e308, 1e308]}, 0]}, "truthy", "falsy"]});
+
+    for evaluator in [TruthyEvaluator::JavaScript, TruthyEvaluator::Python] {
+        let expected = match evaluator {
+            TruthyEvaluator::Python => json!("truthy"),
+            _ => json!("falsy"),
+        };
+        let (js, py) = truthy_pair(true);
+        let (js_nofold, py_nofold) = truthy_pair(false);
+        let (folded, unfolded) = match evaluator {
+            TruthyEvaluator::Python => (py, py_nofold),
+            _ => (js, js_nofold),
+        };
+
+        assert_eq!(
+            folded
+                .eval_into::<serde_json::Value, _, _>(&rule, &json!({}))
+                .unwrap(),
+            expected,
+            "constant-folded path disagreed"
+        );
+        assert_eq!(
+            unfolded
+                .eval_into::<serde_json::Value, _, _>(&rule, &json!({}))
+                .unwrap(),
+            expected,
+            "runtime path disagreed with the folded path"
+        );
+    }
+}
+
+/// Everything other than NaN must stay identical between the two
+/// evaluators, so the Python arm doesn't quietly become its own dialect.
+#[test]
+fn python_and_javascript_truthiness_agree_off_nan() {
+    let (js, py) = truthy_pair(true);
+    let cases = [
+        json!(null),
+        json!(false),
+        json!(true),
+        json!(0),
+        json!(1),
+        json!(""),
+        json!("x"),
+        json!([]),
+        json!([1]),
+        json!({}),
+        json!({"k": 1}),
+    ];
+
+    for value in cases {
+        let rule = json!({"if": [{"var": "v"}, "truthy", "falsy"]});
+        let data = json!({"v": value});
+        assert_eq!(
+            js.eval_into::<serde_json::Value, _, _>(&rule, &data)
+                .unwrap(),
+            py.eval_into::<serde_json::Value, _, _>(&rule, &data)
+                .unwrap(),
+            "Python and JavaScript truthiness diverged on {data:?}"
+        );
+    }
+}
+
 #[test]
 fn debug_format_covers_all_truthy_variants() {
     // Each variant must produce a stable, lossless Debug rendering so

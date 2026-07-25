@@ -247,15 +247,6 @@ impl OrdOp {
 // operands take an arena-native fast path; collection-vs-collection equality
 // falls through to `DataValue`'s `PartialEq` in the datavalue crate.
 
-/// View an arena value as `&str` if it's a string variant.
-#[inline]
-fn value_as_str_in_op<'a>(av: &'a DataValue<'a>) -> Option<&'a str> {
-    match av {
-        DataValue::String(s) => Some(*s),
-        _ => None,
-    }
-}
-
 /// Arena-native equality. Loose mode goes through [`loose::loose_equals`];
 /// strict mode is a direct [`PartialEq`] with one carve-out: numeric
 /// variants compare as `f64` so `Integer(1) === Float(1.0)` is `true`.
@@ -335,7 +326,7 @@ fn compare_ordered(
     // also compare byte-wise when the strict-ISO gate proves byte order
     // equals the parse path's verdict; see `iso_byte_compare_eligible`.
     #[cfg(feature = "datetime")]
-    if let (Some(l), Some(r)) = (value_as_str_in_op(left), value_as_str_in_op(right)) {
+    if let (Some(l), Some(r)) = (left.as_str(), right.as_str()) {
         if !could_be_datetime_or_duration(l)
             || !could_be_datetime_or_duration(r)
             || iso_byte_compare_eligible(l, r)
@@ -344,7 +335,7 @@ fn compare_ordered(
         }
     }
     #[cfg(not(feature = "datetime"))]
-    if let (Some(l), Some(r)) = (value_as_str_in_op(left), value_as_str_in_op(right)) {
+    if let (Some(l), Some(r)) = (left.as_str(), right.as_str()) {
         return Ok(op.apply_str(l, r));
     }
 
@@ -379,7 +370,7 @@ fn compare_ordered(
     }
 
     // String vs String — datetime-shaped that fell through.
-    if let (Some(l), Some(r)) = (value_as_str_in_op(left), value_as_str_in_op(right)) {
+    if let (Some(l), Some(r)) = (left.as_str(), right.as_str()) {
         return Ok(op.apply_str(l, r));
     }
 

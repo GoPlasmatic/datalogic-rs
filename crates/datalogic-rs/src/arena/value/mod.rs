@@ -28,10 +28,11 @@ pub(crate) use traversal::{
 
 pub use datavalue::DataValue;
 
-/// JavaScript/Python-style default truthiness for a [`DataValue`].
-/// `truthy_arena` (config-aware) delegates here for the common
-/// truthiness modes; operators can call this directly when they need the
-/// default rules unconditionally.
+/// JavaScript-style default truthiness for a [`DataValue`].
+/// `truthy_arena` (config-aware) delegates here for both `JavaScript` and
+/// `Python`, which differ only in their treatment of `NaN` — the `Python`
+/// arm handles that case before falling through. Operators can call this
+/// directly when they need the default rules unconditionally.
 #[inline]
 pub(crate) fn truthy_js_arena(v: &DataValue<'_>) -> bool {
     match v {

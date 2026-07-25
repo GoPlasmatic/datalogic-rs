@@ -239,7 +239,7 @@ fn implicit_bucket_key<'a>(root: &'a DataValue<'a>, arena: &'a Bump) -> Option<&
     }
     let flag_key = root
         .as_object()
-        .and_then(|obj| object_get(obj, "$flagd"))
+        .and_then(|obj| crate::arena::value::object_lookup_field(obj, "$flagd"))
         .and_then(|flagd| lookup_string(flagd, "flagKey"))
         .unwrap_or("");
     if flag_key.is_empty() {
@@ -252,16 +252,12 @@ fn implicit_bucket_key<'a>(root: &'a DataValue<'a>, arena: &'a Bump) -> Option<&
     Some(buf.into_bump_str())
 }
 
-/// `value.get(key)` for an object — `DataValue::Object` stores pairs as
-/// a flat slice, so a small linear scan is fine for the keys we're
-/// looking up (at most one or two per fractional call).
+/// `value.get(key)` for an object, resolved through the shared
+/// [`crate::arena::value::object_lookup_field`] so flagd's key reads use the
+/// same prefiltered comparison as `var` / `exists` / path traversal.
 fn lookup_string<'a>(value: &'a DataValue<'a>, key: &str) -> Option<&'a str> {
     let pairs = value.as_object()?;
-    object_get(pairs, key)?.as_str()
-}
-
-fn object_get<'a>(pairs: &'a [(&'a str, DataValue<'a>)], key: &str) -> Option<&'a DataValue<'a>> {
-    pairs.iter().find(|(k, _)| *k == key).map(|(_, v)| v)
+    crate::arena::value::object_lookup_field(pairs, key)?.as_str()
 }
 
 // =============== sem_ver ===============

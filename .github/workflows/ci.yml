@@ -104,6 +104,57 @@ jobs:
           cargo doc -p datalogic-rs --all-features --no-deps
           cargo doc -p datalogic-rs --no-deps
 
+  feature-matrix:
+    name: Feature (${{ matrix.feature }})
+    runs-on: ubuntu-latest
+    # The `check` job covers `--all-features` and `--no-default-features`
+    # and nothing between, so a feature-gated item referenced from another
+    # feature's code compiles fine in both of those configurations and
+    # breaks only for the user who enables one feature on its own. Each
+    # leg here builds exactly one feature to catch that.
+    #
+    # `build`, not `test`: most integration tests are gated on
+    # `serde_json` and would silently skip under the other legs, so the
+    # run would report success without exercising anything. Compiling
+    # each feature standalone is the property worth guarding.
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every opt-in feature except `wasm-clock`, which is a weak-dep
+        # modifier (`chrono?/wasmbind`) — inert without `datetime` and on
+        # non-wasm targets. The `wasm-build` job already guards it.
+        feature:
+          - serde_json
+          - templating
+          - datetime
+          - trace
+          - error-handling
+          - ext-string
+          - ext-array
+          - ext-control
+          - ext-math
+          - flagd
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-featmat-${{ matrix.feature }}-${{ hashFiles('Cargo.toml', 'crates/datalogic-rs/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-featmat-${{ matrix.feature }}-
+
+      - name: Build with only `${{ matrix.feature }}` enabled
+        run: cargo build -p datalogic-rs --no-default-features --features ${{ matrix.feature }}
+
   msrv:
     name: MSRV (Rust 1.85)
     runs-on: ubuntu-latest

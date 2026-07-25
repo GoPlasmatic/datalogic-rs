@@ -104,15 +104,6 @@ pub(crate) fn extract_duration(av: &DataValue<'_>) -> Option<DataDuration> {
     }
 }
 
-/// Resolve an arg as an arena string. Returns `None` if not string-like.
-#[inline]
-fn arg_as_str<'a>(av: &'a DataValue<'a>) -> Option<&'a str> {
-    match av {
-        DataValue::String(s) => Some(*s),
-        _ => None,
-    }
-}
-
 /// True iff this arena Object has a `datetime` key (boundary form).
 #[inline]
 fn is_datetime_object(av: &DataValue<'_>) -> bool {
@@ -145,7 +136,7 @@ pub(crate) fn evaluate_datetime<'a>(
     }
 
     // String parses as datetime → return as-is to preserve timezone info.
-    if let Some(s) = arg_as_str(av) {
+    if let Some(s) = av.as_str() {
         if DataDateTime::parse(s).is_some() {
             return Ok(av);
         }
@@ -172,7 +163,7 @@ pub(crate) fn evaluate_timestamp<'a>(
         return Ok(av);
     }
 
-    if let Some(s) = arg_as_str(av) {
+    if let Some(s) = av.as_str() {
         if let Some(duration) = DataDuration::parse(s) {
             // `DataDuration` has a streaming `Display`, so render it straight
             // into the arena rather than through a heap `String`.
@@ -210,7 +201,7 @@ pub(crate) fn evaluate_parse_date<'a>(
     }
     let date_av = engine.dispatch_node(&args[0], ctx, arena)?;
     let fmt_av = engine.dispatch_node(&args[1], ctx, arena)?;
-    if let (Some(date), Some(fmt)) = (arg_as_str(date_av), arg_as_str(fmt_av)) {
+    if let (Some(date), Some(fmt)) = (date_av.as_str(), fmt_av.as_str()) {
         let chrono_format = jsonlogic_to_chrono_format(fmt);
         if let Some(dt) = DataDateTime::parse_with_format(date, &chrono_format) {
             let iso = dt.to_iso_string();
@@ -240,8 +231,9 @@ pub(crate) fn evaluate_format_date<'a>(
     // Resolve the datetime — supports object form and string form.
     let dt: Option<DataDateTime> = extract_datetime(dt_av);
 
-    let fmt: &'a str =
-        arg_as_str(fmt_av).ok_or_else(|| Error::invalid_arguments("Failed to format date"))?;
+    let fmt: &'a str = fmt_av
+        .as_str()
+        .ok_or_else(|| Error::invalid_arguments("Failed to format date"))?;
 
     if let Some(datetime) = dt {
         let chrono_format = if fmt == "z" {
@@ -276,7 +268,7 @@ pub(crate) fn evaluate_date_diff<'a>(
 
     let dt1 = extract_datetime(d1_av);
     let dt2 = extract_datetime(d2_av);
-    let unit = arg_as_str(unit_av);
+    let unit = unit_av.as_str();
 
     if let (Some(a), Some(b), Some(u)) = (dt1, dt2, unit) {
         let diff = a.diff_in_unit(&b, u);
