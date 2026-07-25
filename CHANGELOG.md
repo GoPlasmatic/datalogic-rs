@@ -12,6 +12,22 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ### Fixed
 
+- **`reduce` fast paths disagreed with general dispatch above 2^53**
+  ([#61](https://github.com/GoPlasmatic/datalogic-rs/issues/61)). Both
+  the arithmetic fast path and the `reduce(map(...))` fused loop carried
+  the accumulator as a raw `f64` across a two/three-mode state machine.
+  General dispatch instead rebuilds a number every step, and the
+  binary operators' overflow helper collapses a whole,
+  exactly-`i64`-representable result back to an integer, which flips the
+  *next* step from float math into exact integer math. Below 2^53 the two
+  agree; above it they do not. Folding `[-9591485970090907; 6]` with
+  `{"-": [current, accumulator]}` from `0.25` returned `0` on the fast
+  paths and `1` through general dispatch. Both now fold through the same
+  integer/float promotion the `+` / `-` / `*` operators use, so the
+  representation decision is shared rather than mirrored. Found by the
+  `fused_reduce_map_agrees` property test; the counterexample is pinned
+  in `property_test.proptest-regressions`.
+
 - **`TruthyEvaluator::Python` now behaves as documented.** All three
   dispatch sites matched `JavaScript | Python` and routed to the same
   implementation, so the variant was an alias rather than a distinct

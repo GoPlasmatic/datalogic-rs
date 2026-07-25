@@ -412,3 +412,61 @@ fn test_reduce_multiply_overflow_promotes_to_float() {
     let n = result.as_f64().expect("numeric result");
     assert!(n > 9.9e26, "expected ~1e27, got {n}");
 }
+
+/// Regression for issue #61. Above 2^53 an `f64` cannot hold every
+/// integer, so whether a fold step runs in exact `i64` or in `f64`
+/// changes the answer. The reduce fast paths used to carry the
+/// accumulator as a raw `f64`, while general dispatch rebuilds a
+/// `NumberValue` each step — and `NumberValue::from_f64` collapses a
+/// whole, exactly-representable result back to `Integer`, flipping the
+/// *next* step into exact integer math.
+///
+/// Folding `[-9591485970090907; 6]` with `{"-": [current, accumulator]}`
+/// from `0.25` therefore gave `0` on the fast path and `1` through
+/// general dispatch. Both fast paths now fold through `NumberValue`, so
+/// they agree by construction.
+///
+/// The exact answer is `0.25` (each pair of steps is `v - (v - x) == x`),
+/// which needs more than 53 bits of mantissa; neither path can represent
+/// it. This test pins *agreement*, which is the property the engine
+/// actually promises.
+#[test]
+fn test_reduce_fold_above_2_53_matches_general_path() {
+    let engine = Engine::new();
+    // |v| > 2^53, so `v as f64` rounds (to -9591485970090908).
+    let v = -9591485970090907i64;
+    let body = json!({"-": [{"var": "current"}, {"var": "accumulator"}]});
+
+    // Unfused: reduce straight over a literal array, exercising
+    // `try_reduce_fast_path`.
+    let unfused = json!({"reduce": [[v, v, v, v, v, v], body, 0.25]});
+    // Fused: reduce over a map, exercising `run_fused_fold`.
+    let fused = json!({
+        "reduce": [
+            {"map": [{"var": "a"}, {"-": [v, {"var": "a"}]}]},
+            body,
+            0.25
+        ]
+    });
+    let data = json!({"a": [null, null, null, null, null, null]});
+
+    for (label, rule) in [("unfused", &unfused), ("fused", &fused)] {
+        let fast = engine
+            .eval_into::<serde_json::Value, _, _>(rule, &data)
+            .unwrap();
+        // The traced engine compiles without folding and uses general
+        // dispatch, bypassing both fast paths — the reference result.
+        let general: serde_json::Value = serde_json::from_str(
+            &engine
+                .trace()
+                .eval_str(&serde_json::to_string(rule).unwrap(), &data.to_string())
+                .result
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            fast, general,
+            "{label}: fast path diverged from general path"
+        );
+    }
+}
