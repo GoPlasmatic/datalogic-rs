@@ -8,6 +8,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
+## [5.1.1] - 2026-07-25
+
+### Fixed
+
+- **`TruthyEvaluator::Python` now behaves as documented.** All three
+  dispatch sites matched `JavaScript | Python` and routed to the same
+  implementation, so the variant was an alias rather than a distinct
+  mode; the only test covering it asserted its `Debug` string. The one
+  place the two languages genuinely differ is `NaN`, which Python
+  treats as truthy and JavaScript treats as falsy. Both the evaluation
+  path and the constant-folding path now implement that, and a test
+  pins them in lockstep by running the same rule with folding on and
+  off. Default truthiness is `JavaScript`, so JSONLogic conformance is
+  unaffected; only engines explicitly configured with
+  `TruthyEvaluator::Python` see a behaviour change, and only on values
+  arithmetic produced (`NaN` has no JSON literal).
+
+### Security
+
+- **Third-party GitHub Actions are pinned to commit SHAs.** Every
+  non-GitHub action resolved through a mutable tag or branch
+  (`dtolnay/rust-toolchain@stable`,
+  `pypa/gh-action-pypi-publish@release/v1`, `taiki-e/install-action@v2`,
+  `shivammathur/setup-php@v2`, `PyO3/maturin-action@v1`,
+  `peaceiris/actions-mdbook@v2`). The release workflow holds publish
+  credentials for nine registries, so a retagged upstream action could
+  have exfiltrated them. Human-readable refs are retained as trailing
+  comments.
+- **Workflow tokens scoped to least privilege.** `release.yml` defaulted
+  to `contents: write` for every job, including the whole build matrix
+  and every registry publisher. It now defaults to `contents: read`,
+  with `contents: write` opted into only by `publish-go` (pushes the
+  `bindings/go/vX.Y.Z` tag) and `github-release`. `ci.yml` had no
+  `permissions:` block at all and so inherited the repository default;
+  it now declares `contents: read`.
+- **Removed an expression-interpolation sink.** `release-build-ui.yml`
+  spliced `${{ inputs.version }}` directly into a shell script; the
+  value now reaches the script through the environment.
+
+### Changed
+
+- Four private helpers that reimplemented `datavalue` methods verbatim
+  are gone: three copies of `DataValue::as_str` (in `missing`,
+  `comparison`, and `datetime`) and one of `DataValue::is_null`. The
+  `flagd` operators' private object lookup now routes through the
+  shared `object_lookup_field`, which carries the length and
+  first-byte prefilter the rest of the crate already uses. No public
+  API change.
+- CI gains a `feature-matrix` job building each opt-in feature
+  standalone. `check` previously ran only `--all-features` and
+  `--no-default-features`, so a cross-feature reference missing a
+  `#[cfg]` compiled in both and broke only for users enabling a single
+  feature. All ten features build clean today.
+- The `c-abi-host` composite action moves to `actions/cache@v5`,
+  clearing the Node.js 20 deprecation warnings on the C ABI and JVM
+  binding jobs.
+
 ## [5.1.0] - 2026-07-17
 
 ### Added

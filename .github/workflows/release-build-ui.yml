@@ -31,13 +31,22 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       - name: Sync UI version + WASM dep
+        # `inputs.version` reaches the shell through the environment
+        # rather than `${{ }}` interpolation. Expression interpolation
+        # splices the value into the script *before* bash parses it, so
+        # a value carrying shell metacharacters would execute rather than
+        # be passed as an argument. The value is repo-derived and
+        # tag-gated today, but an env var costs nothing and removes the
+        # class of bug entirely.
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
           cd ui
           # Bump UI's own version
-          npm version "${{ inputs.version }}" --no-git-tag-version --allow-same-version
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
           # Pin @goplasmatic/datalogic-wasm to the same version we're publishing
           # so the released UI references the matching WASM (no skew).
-          npm pkg set "dependencies.@goplasmatic/datalogic-wasm=${{ inputs.version }}"
+          npm pkg set "dependencies.@goplasmatic/datalogic-wasm=$VERSION"
 
       # Wire the freshly-built local WASM artifact into ui/node_modules
       # BEFORE running npm install. With the symlink present and its

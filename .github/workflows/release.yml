@@ -65,8 +65,21 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+# Read-only by default. This workflow holds publish credentials for nine
+# registries, so the blast radius of any one compromised step should stop
+# at that step. Only two jobs write to this repo and both opt in for
+# themselves:
+#
+#   - publish-go     pushes the `bindings/go/vX.Y.Z` module tag
+#   - github-release creates the release and uploads assets
+#
+# Everything else (validate, the build matrix, publish-crate, and the
+# npm / PyPI / NuGet / Maven / Packagist publishers) authenticates to its
+# registry with a dedicated secret and needs no repo write at all.
+# publish-php pushes to GoPlasmatic/datalogic-php using a separate
+# fine-grained PAT, which the GITHUB_TOKEN's scope never covered anyway.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
@@ -180,7 +193,7 @@ jobs:
           echo "CHANGELOG.md entry: ${HEADER} ✓"
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           components: rustfmt, clippy
 
@@ -240,7 +253,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
 
       - name: Check if version exists on crates.io
         id: check
@@ -432,7 +445,7 @@ jobs:
           merge-multiple: true
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # release/v1
         with:
           packages-dir: dist
           # `skip-existing` avoids a hard failure if a wheel was already
@@ -483,6 +496,12 @@ jobs:
     name: Publish Go module tag
     needs: [validate, publish-crate, build-go]
     runs-on: ubuntu-latest
+    # The Go binding ships as a Git tag rather than to a registry, so this
+    # is one of only two jobs that needs to write to the repo (see the
+    # top-level `permissions` note). It pushes `bindings/go/vX.Y.Z` and
+    # nothing else — the synthetic commit never lands on a branch.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v6
         with:

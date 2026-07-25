@@ -20,6 +20,19 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege for the whole workflow. CI only ever reads the repo —
+# it builds, tests, and lints. Nothing here creates a release, pushes a
+# tag, or comments on a PR.
+#
+# Declaring this explicitly matters because an absent `permissions:` key
+# inherits the repository/organisation default, which on older repos is
+# still read-write. That would hand a repo-writable GITHUB_TOKEN to every
+# job that compiles third-party crates and runs `npm install` on the UI.
+# Fork PRs already get a read-only token regardless; this closes the same
+# gap for `push` builds on main.
+permissions:
+  contents: read
+
 jobs:
   check:
     name: Check
@@ -36,7 +49,7 @@ jobs:
         run: bash scripts/check-stats.sh
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           components: rustfmt, clippy
 
@@ -139,7 +152,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
 
       - name: Cache cargo
         uses: actions/cache@v5
@@ -163,7 +176,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Rust 1.85 (matches `rust-version` in Cargo.toml)
-        uses: dtolnay/rust-toolchain@1.85
+        uses: dtolnay/rust-toolchain@b0480e2d44a72e89a62650e223ba831cbca8d2be # 1.85
 
       - name: Cache cargo (separate from stable to avoid toolchain mix)
         uses: actions/cache@v5
@@ -195,12 +208,12 @@ jobs:
       # deps (e.g. a `bumpalo = "3"` requirement that secretly needs a
       # 3.x feature added in 3.4 — we'd want `bumpalo = "3.4"`).
       - name: Setup nightly toolchain
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@4fd1da8b0805d2d2e936788875a7d65dbd677dc2 # nightly
 
       # Install a *stable* toolchain too — the actual build runs on
       # stable; nightly is only used to *resolve* the lockfile.
       - name: Setup stable toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
 
       - name: Resolve with minimal versions
         run: cargo +nightly update -Z minimal-versions
@@ -279,7 +292,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           targets: wasm32-unknown-unknown
 
@@ -287,7 +300,7 @@ jobs:
       # version is current at install time — that floats CI across
       # wasm-pack releases and bites you on a release-day regression.
       - name: Install wasm-pack
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@3d7d7cd5ac7f994c1892ae0c06165095b9139094 # v2
         with:
           tool: wasm-pack@0.14.0
 
@@ -360,7 +373,7 @@ jobs:
         with:
           python-version: '3.13'
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
 
       - name: Cache cargo
         uses: actions/cache@v5
@@ -433,7 +446,7 @@ jobs:
         with:
           node-version: '22'
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
 
       - name: Cache cargo
         uses: actions/cache@v5
@@ -585,7 +598,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: '8.4'
           extensions: ffi, json
