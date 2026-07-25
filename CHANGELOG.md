@@ -62,6 +62,18 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 - **Removed an expression-interpolation sink.** `release-build-ui.yml`
   spliced `${{ inputs.version }}` directly into a shell script; the
   value now reaches the script through the environment.
+- **Two high-severity dev-dependency advisories patched in the UI
+  package.** `postcss` 8.5.16 → 8.5.23
+  ([GHSA-r28c-9q8g-f849](https://github.com/advisories/GHSA-r28c-9q8g-f849),
+  path traversal in previous-source-map auto-loading) and
+  `brace-expansion` 5.0.7 → 5.0.8
+  ([GHSA-mh99-v99m-4gvg](https://github.com/advisories/GHSA-mh99-v99m-4gvg),
+  DoS via unbounded expansion). Both are transitive and build-time only
+  (via `vite` and `eslint` respectively), so neither ships to consumers
+  of `@goplasmatic/datalogic-ui`. Note the `brace-expansion` advisory
+  covers `<= 5.0.7`, so the earlier 5.0.6 → 5.0.7 bump had landed inside
+  the vulnerable range; only `npm audit` surfaced it, not the Dependabot
+  alert list. `npm audit` now reports zero vulnerabilities.
 
 ### Changed
 
