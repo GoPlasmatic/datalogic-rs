@@ -1,0 +1,60 @@
+name: Repo-wide Rust lint
+description: |
+  Sets up the stable Rust toolchain (rustfmt + clippy + the wasm32 target),
+  primes a shared cargo cache, and runs `make fmt-check` + `make clippy`
+  over every Cargo manifest in the tree — the root workspace plus the
+  bindings and fuzz crate it excludes.
+
+  Shared by ci.yml's check job and release.yml's validate job so a release
+  can never validate against a narrower lint surface than a PR: one
+  definition instead of two mirrored blocks that could drift.
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+      with:
+        components: rustfmt, clippy
+        # `make clippy` lints bindings/wasm with `--target
+        # wasm32-unknown-unknown` so tests/web.rs — which is
+        # `#![cfg(target_arch = "wasm32")]` and compiles to an empty file
+        # on the host — actually gets checked. The Makefile fails hard when
+        # the target is missing and `CI` is set, so dropping this line
+        # breaks the build instead of silently shrinking coverage.
+        targets: wasm32-unknown-unknown
+
+    - name: Cache cargo (lint)
+      uses: actions/cache@v5
+      with:
+        # `bindings/*/target/` holds the clippy artifacts of the binding
+        # workspaces `make clippy` walks; the glob stays in step with the
+        # `hashFiles` glob in the key when a binding is added. The fuzz
+        # crate has no entry — its clippy is a deliberate SKIP in CI (no
+        # nightly toolchain here; see the Makefile's clippy-fuzz).
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+          bindings/*/target/
+        key: ${{ runner.os }}-cargo-lint-${{ hashFiles('Cargo.toml', 'crates/datalogic-rs/Cargo.toml', 'tools/benchmark/Cargo.toml', 'bindings/*/Cargo.toml') }}
+        # The bare `-cargo-` fallback restores the closest older entry when
+        # the key scheme changes, so the first run after a rename is not
+        # fully cold.
+        restore-keys: |
+          ${{ runner.os }}-cargo-lint-
+          ${{ runner.os }}-cargo-
+
+    - name: Check formatting
+      shell: bash
+      run: make fmt-check
+
+    - name: Run clippy
+      # The flags (`--all-features --all-targets -- -D warnings`) live in
+      # the Makefile's CLIPPY_FLAGS — `--all-features` so feature-gated
+      # paths get linted too. `make clippy` runs every crate through a `-k`
+      # sub-make, so one failing crate never hides the others.
+      shell: bash
+      run: make clippy

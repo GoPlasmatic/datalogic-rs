@@ -28,6 +28,40 @@ pip install maturin    # only if you are editing bindings/python/
 cargo install mdbook   # only if you are editing docs/
 ```
 
+## Repo-wide commands
+
+The repo holds six Cargo manifests, but the root workspace has only two
+members. The four bindings and the fuzz crate are `exclude`d from it (each
+declares its own `[workspace]` table; the `exclude` comment in the root
+`Cargo.toml` explains why per crate), so root-level `cargo fmt --all`,
+`cargo clippy --workspace` and `cargo clean` **silently skip them**.
+
+The root `Makefile` fans those commands out over every manifest:
+
+```bash
+make lint        # fmt-check + clippy, all six manifests — run before a PR
+make fmt         # format everything
+make fmt-check   # check formatting without writing (what CI gates on)
+make clippy      # clippy everything, every crate's failures in one pass
+make clean       # cargo clean every manifest (~3 GB in a warm tree)
+make clean-all   # clean + node_modules, venv, vendor, pkg/, dotnet bin+obj, ...
+make help        # list all targets
+```
+
+Two crates need more than the stable host toolchain, and `make` degrades
+rather than failing if you don't have it:
+
+- **`bindings/wasm`** — `rustup target add wasm32-unknown-unknown`. Its
+  `tests/web.rs` is `#![cfg(target_arch = "wasm32")]`, so a host-target lint
+  compiles it to an empty file and checks nothing. Without the target, `make
+  clippy` warns and falls back to a host lint (in CI, where `CI` is set, it
+  fails instead so lost coverage can't hide).
+- **`crates/datalogic-rs/fuzz`** — `rustup toolchain install nightly`.
+  `#![no_main]` + `libfuzzer_sys` don't build on stable. Without nightly,
+  `make clippy` prints a SKIP; `make fmt` covers it either way.
+
+Individual crates are reachable as `make clippy-c`, `make clippy-wasm`, etc.
+
 ## The build pipeline
 
 The packages have a strict build order. From a fresh clone:
@@ -62,8 +96,7 @@ silently mask any local Rust changes you wanted to test.
 cargo check -p datalogic-rs
 cargo test  -p datalogic-rs                        # default features
 cargo test  -p datalogic-rs --all-features         # everything
-cargo fmt   --all
-cargo clippy --workspace --all-targets -- -D warnings
+make lint      # fmt + clippy, every manifest — what CI gates on
 ```
 
 Run a single JSONLogic suite (the `test_jsonlogic` harness picks the file

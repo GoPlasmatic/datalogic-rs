@@ -8,6 +8,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
+## [5.1.2] - 2026-08-10
+
+### Added
+
+- **Root `Makefile` with repo-wide targets.** `make lint`, `make fmt`,
+  `make clippy`, `make clean` and `make clean-all` fan out over every
+  Cargo manifest in the tree — root-level `cargo fmt --all` / `cargo
+  clippy --workspace` / `cargo clean` silently skip the four bindings
+  and the fuzz crate, which are excluded workspaces. `make clippy`
+  lints `bindings/wasm` against `wasm32-unknown-unknown` (so its
+  `#![cfg(target_arch = "wasm32")]` test module is actually checked)
+  and reports every crate's failures in one pass. See
+  [DEVELOPMENT.md](./DEVELOPMENT.md#repo-wide-commands).
+
+### Changed
+
+- **CI and release validation lint through one shared composite action**
+  (`.github/actions/rust-lint`) running the `make` targets above, so the
+  clippy/fmt gate now covers all six Cargo manifests (previously the
+  root workspace only) and release validation is structurally identical
+  to PR CI instead of a mirrored copy that could drift.
+- Dependency floors raised to current: `serde` 1.0.229, `serde_json`
+  1.0.151, `smallvec` 1.15.2, `self_cell` 1.3.0, and dev-dependencies
+  `tokio` 1.53 / `futures` 0.3.33.
+
+### Fixed
+
+- **Three high-severity dev-dependency advisories patched.** In the UI
+  package: `brace-expansion` 5.0.8 → 5.0.9
+  ([GHSA-rgw5-rvv9-x895](https://github.com/advisories/GHSA-rgw5-rvv9-x895),
+  DoS via unbounded intermediate arrays — the 5.0.8 that 5.1.1 landed as
+  a fix turned out to be inside this advisory's range) and `nanoid`
+  3.3.16 → 3.3.18
+  ([GHSA-2v37-7h3g-55p8](https://github.com/advisories/GHSA-2v37-7h3g-55p8),
+  custom generators can loop indefinitely). In the Node binding:
+  `js-yaml` 4.3.0 → 4.3.1
+  ([GHSA-5p4m-2wfm-xmqj](https://github.com/advisories/GHSA-5p4m-2wfm-xmqj),
+  CVE-2026-59870, quadratic CPU in `!!omap` resolution). All three are
+  transitive and build-time only (via `eslint`, `vite`, and
+  `@napi-rs/cli` respectively), so none ship to package consumers.
+  `npm audit` reports zero vulnerabilities in both packages again.
+
 ## [5.1.1] - 2026-07-25
 
 ### Fixed

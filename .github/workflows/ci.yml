@@ -48,33 +48,14 @@ jobs:
       - name: Check quoted stats against canonical sources
         run: bash scripts/check-stats.sh
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Cache cargo
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml', 'crates/datalogic-rs/Cargo.toml', 'tools/benchmark/Cargo.toml') }}
-          restore-keys: ${{ runner.os }}-cargo-
-
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-      - name: Run clippy
-        # `--all-features` mirrors the test/example steps so feature-gated
-        # paths (serde_json, templating, datetime, trace, error-handling,
-        # the ext-* operators) get linted. Without it, clippy silently
-        # skips gated code and a regression in those paths can land
-        # unnoticed.
-        run: cargo clippy --workspace --all-features --all-targets -- -D warnings
+      # Toolchain + shared cargo cache + `make fmt-check` / `make clippy`
+      # over every Cargo manifest — bare `cargo fmt --all` / `cargo clippy
+      # --workspace` only see the two root-workspace members. Factored into
+      # a composite action shared with release.yml's validate job so a
+      # release can never validate against a narrower lint surface than a
+      # PR. The toolchain and cache it sets up also serve the steps below.
+      - name: Lint (fmt + clippy, every manifest)
+        uses: ./.github/actions/rust-lint
 
       - name: Run tests
         # `--all-features` is required to exercise the gated integration

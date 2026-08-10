@@ -45,8 +45,9 @@ commands, see [DEVELOPMENT.md](./DEVELOPMENT.md).
 
 ## Code style
 
-- `cargo fmt` and `cargo clippy --workspace --all-targets -- -D warnings`
-  must pass before opening a PR. CI enforces this.
+- `make lint` must pass before opening a PR — CI enforces it. It covers
+  every Cargo manifest in the tree, not just the root workspace; see
+  [DEVELOPMENT.md](./DEVELOPMENT.md#repo-wide-commands).
 - Public items should have rustdoc. Examples in rustdoc should compile
   (they run under `cargo test --doc`).
 - Prefer editing existing files over adding new ones. Keep comments
@@ -103,9 +104,9 @@ for the Rust pattern, or drop into
 
 1. Fork and create a topic branch.
 2. Make your change. Add or update tests.
-3. Run `cargo fmt && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo test --workspace --all-features`.
-   If you touched WASM / Python / Go / UI, also run the relevant build
-   scripts ([DEVELOPMENT.md](./DEVELOPMENT.md) has the commands).
+3. Run `make lint && cargo test --workspace --all-features`. If you
+   touched WASM / Python / Go / UI, also run the relevant build scripts
+   ([DEVELOPMENT.md](./DEVELOPMENT.md) has the commands).
 4. Open a PR with a description of the *why* and a short test plan.
 
 Architectural notes live in [ARCHITECTURE.md](./ARCHITECTURE.md).

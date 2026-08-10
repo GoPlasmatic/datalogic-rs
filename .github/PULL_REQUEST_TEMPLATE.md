@@ -25,8 +25,7 @@
 
 <!-- How did you verify this works? -->
 
-- [ ] `cargo fmt --all` passes
-- [ ] `cargo clippy --workspace --all-targets --all-features -- -D warnings` passes
+- [ ] `make lint` passes
 - [ ] `cargo test --workspace --all-features` passes
 - [ ] Added/updated JSON suite under `crates/datalogic-rs/tests/suites/` (for
       operator changes)

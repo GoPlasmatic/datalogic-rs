@@ -192,33 +192,12 @@ jobs:
           fi
           echo "CHANGELOG.md entry: ${HEADER} ✓"
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Cache cargo
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml', 'crates/datalogic-rs/Cargo.toml', 'tools/benchmark/Cargo.toml') }}
-          restore-keys: ${{ runner.os }}-cargo-
-
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-      - name: Run clippy
-        # `--all-features` mirrors ci.yml so feature-gated paths
-        # (serde_json, templating, datetime, trace, error-handling, the
-        # ext-* operators) get linted. Without it, a regression there
-        # can pass release validate while failing PR clippy — drift we
-        # don't want.
-        run: cargo clippy --workspace --all-features --all-targets -- -D warnings
+      # Same composite as ci.yml's check job — a release must not validate
+      # against a narrower lint surface than a PR does, and sharing one
+      # action makes that structural instead of a mirrored block to keep in
+      # sync. Also sets up the toolchain and cache the test step below uses.
+      - name: Lint (fmt + clippy, every manifest)
+        uses: ./.github/actions/rust-lint
 
       - name: Run tests
         # `--all-features` is required: most integration tests are gated

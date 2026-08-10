@@ -52,6 +52,11 @@ are authoritative; link to them.
 
 ## Project-specific conventions
 
+- **Use `make` for anything repo-wide.** Root-level `cargo fmt --all`,
+  `cargo clippy --workspace` and `cargo clean` silently skip the four
+  bindings and the fuzz crate (each is its own workspace root). `make help`
+  lists the fan-out targets; see
+  [DEVELOPMENT.md](./DEVELOPMENT.md#repo-wide-commands).
 - **Always pass `--all-features` to `cargo test`.** Most integration tests
   are gated behind `feature = "serde_json"` and the JSONLogic suite runner
   also needs `feature = "templating"`. Without `--all-features`, tests
