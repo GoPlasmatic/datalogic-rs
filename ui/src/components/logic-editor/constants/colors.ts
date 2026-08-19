@@ -14,6 +14,7 @@ export const CATEGORY_COLORS: Record<NodeCategory, string> = {
   arithmetic: '#22c55e',
   string: '#06b6d4',
   array: '#7c3aed',
+  object: '#a855f7',
   control: '#f59e0b',
   datetime: '#0ea5e9',
   validation: '#94a3b8',
