@@ -44,7 +44,7 @@ for data in datasets {
 
 Built-in operators use direct OpCode dispatch instead of string lookups:
 
-- 59 built-in operators have direct dispatch
+- 64 built-in operators have direct dispatch
 - Custom operators use a single map lookup
 - No runtime reflection or dynamic dispatch
 

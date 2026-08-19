@@ -13,6 +13,7 @@ import { arithmeticOperators } from './arithmetic';
 import { controlOperators } from './control';
 import { stringOperators } from './string';
 import { arrayOperators } from './array';
+import { objectOperators } from './object';
 import { datetimeOperators } from './datetime';
 import { validationOperators } from './validation';
 import { errorOperators } from './error';
@@ -27,6 +28,7 @@ export {
   controlOperators,
   stringOperators,
   arrayOperators,
+  objectOperators,
   datetimeOperators,
   validationOperators,
   errorOperators,
@@ -44,6 +46,7 @@ export const operators: Record<string, Operator> = {
   ...controlOperators,
   ...stringOperators,
   ...arrayOperators,
+  ...objectOperators,
   ...datetimeOperators,
   ...validationOperators,
   ...errorOperators,

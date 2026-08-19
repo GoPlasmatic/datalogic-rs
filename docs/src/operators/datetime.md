@@ -199,11 +199,13 @@ Parse a date string with a custom format into an ISO datetime.
 **Syntax:**
 ```json
 { "parse_date": [string, format] }
+{ "parse_date": [string, format, timezone] }
 ```
 
 **Arguments:**
 - `string` - Date string to parse
 - `format` - Format string using simplified tokens
+- `timezone` - Optional IANA zone name (e.g. `"Asia/Kolkata"`). Without it, naive input is read as UTC; with it, the input is read as wall-clock time *in that zone* and resolved to the corresponding UTC instant.
 
 **Returns:** Parsed datetime as ISO 8601 string.
 
@@ -211,11 +213,17 @@ Parse a date string with a custom format into an ISO datetime.
 | Token | Description | Example |
 |-------|-------------|---------|
 | `yyyy` | 4-digit year | 2024 |
+| `MMMM` | full month name | January |
+| `MMM` | abbreviated month name | Jan |
 | `MM` | 2-digit month | 01-12 |
 | `dd` | 2-digit day | 01-31 |
 | `HH` | 2-digit hour (24h) | 00-23 |
 | `mm` | 2-digit minute | 00-59 |
 | `ss` | 2-digit second | 00-59 |
+| `EEEE` | full weekday name | Monday |
+| `EEE` | abbreviated weekday name | Mon |
+
+Raw [chrono `%` specifiers](https://docs.rs/chrono/latest/chrono/format/strftime/index.html) also pass through unchanged.
 
 **Examples:**
 
@@ -232,11 +240,20 @@ Parse a date string with a custom format into an ISO datetime.
 { "parse_date": ["2024-01-15", "yyyy-MM-dd"] }
 // Result: "2024-01-15T00:00:00Z"
 
+// Read a naive local time as New York wall clock (EDT in June)
+{ "parse_date": ["2024-06-15 12:00:00", "yyyy-MM-dd HH:mm:ss", "America/New_York"] }
+// Result: "2024-06-15T16:00:00Z"
+
 // With variable
 { "parse_date": [{ "var": "dateStr" }, "yyyy-MM-dd"] }
 // Data: { "dateStr": "2024-06-15" }
 // Result: "2024-06-15T00:00:00Z"
 ```
+
+**Timezone notes:**
+- Zone offsets (including DST) come from the compiled-in IANA table — no fixed-offset arithmetic, no tzdata I/O.
+- An ambiguous local time (clocks rolled back, the wall-clock occurs twice) resolves to the **earlier** instant; a nonexistent one (spring-forward gap) is an error.
+- An unknown zone name that appears as a *literal* in the rule fails when the rule is compiled; a zone arriving through data fails at evaluation with `Unknown timezone: <name>`.
 
 **Try it:**
 
@@ -252,16 +269,18 @@ Format a datetime as a string with a custom format.
 **Syntax:**
 ```json
 { "format_date": [datetime, format] }
+{ "format_date": [datetime, format, timezone] }
 ```
 
 **Arguments:**
 - `datetime` - Datetime value to format
 - `format` - Format string using simplified tokens (same as parse_date)
+- `timezone` - Optional IANA zone name (e.g. `"Asia/Kolkata"`). When present, the instant is rendered as wall-clock time in that zone (DST-correct via the IANA table) instead of UTC.
 
 **Returns:** Formatted date string.
 
 **Special Format:**
-- `z` - Returns timezone offset (e.g., "+0500")
+- `z` - Returns timezone offset (e.g., "+0500"). Without a zone argument this is the *source* offset the datetime was parsed with; with a zone argument it is the target zone's offset at that instant.
 
 **Examples:**
 
@@ -277,6 +296,14 @@ Format a datetime as a string with a custom format.
 // Get timezone offset
 { "format_date": [{ "datetime": "2024-01-01T10:00:00+05:00" }, "z"] }
 // Result: "+0500"
+
+// Render an instant as a calendar date in a zone
+{ "format_date": [{ "datetime": "2026-08-17T18:30:00Z" }, "dd MMM yyyy", "Asia/Kolkata"] }
+// Result: "18 Aug 2026"
+
+// Zone offset at that instant (DST-aware)
+{ "format_date": [{ "datetime": "2024-07-15T12:00:00Z" }, "z", "America/New_York"] }
+// Result: "-0400"
 
 // Format current time
 { "format_date": [{ "now": [] }, "yyyy-MM-dd"] }

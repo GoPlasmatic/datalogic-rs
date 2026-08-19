@@ -2,7 +2,7 @@
 
 Operations for working with arrays, including iteration and transformation.
 
-> **Feature flags (Rust crate).** All array operators are baseline except `sort` and `slice`, which require the `ext-array` feature. Every language binding enables all operator features. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
+> **Feature flags (Rust crate).** All array operators are baseline except `sort`, `slice`, `group_by`, and `distinct`, which require the `ext-array` feature. Every language binding enables all operator features. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
 
 ## merge
 
@@ -523,3 +523,113 @@ Extract a portion of an array.
 
 <div class="playground-widget" data-logic='{"slice": [[1, 2, 3, 4, 5], 1, 3]}' data-data='{}'>
 </div>
+
+---
+
+## group_by
+
+Collapse an array into groups on a computed key.
+
+**Syntax:**
+```json
+{ "group_by": [array, key_expression] }
+```
+
+**Arguments:**
+- `array` - Array to group (a value that resolves to an array)
+- `key_expression` - Per-element expression that produces each element's group key (evaluated with the element as its context, like `sort`'s key extractor)
+
+**Returns:** Array of `{"key": ..., "items": [...]}` rows — an *array* of groups rather than an object, so the result composes directly with `map`, `filter`, and `sort`. Groups appear in order of first key occurrence, so output is deterministic for a given input.
+
+**Examples:**
+
+```json
+// Group tasks by status
+{ "group_by": [{ "var": "tasks" }, { "var": "status" }] }
+// Data: { "tasks": [
+//   { "id": 1, "status": "open" },
+//   { "id": 2, "status": "done" },
+//   { "id": 3, "status": "open" }
+// ]}
+// Result: [
+//   { "key": "open", "items": [{ "id": 1, "status": "open" }, { "id": 3, "status": "open" }] },
+//   { "key": "done", "items": [{ "id": 2, "status": "done" }] }
+// ]
+
+// Group meetings by calendar date in the user's timezone
+{ "group_by": [
+    { "var": "meetings" },
+    { "format_date": [{ "var": "start_time" }, "dd MMM yyyy", "Asia/Kolkata"] }
+]}
+// Result: [ { "key": "17 Aug 2026", "items": [ ... ] }, ... ]
+
+// Group numbers by a computed key
+{ "group_by": [[1, 2, 3, 4, 5], { "%": [{ "var": "" }, 2] }] }
+// Result: [
+//   { "key": 1, "items": [1, 3, 5] },
+//   { "key": 0, "items": [2, 4] }
+// ]
+```
+
+**Try it:**
+
+<div class="playground-widget" data-logic='{"group_by": [{"var": "tasks"}, {"var": "status"}]}' data-data='{"tasks": [{"id": 1, "status": "open"}, {"id": 2, "status": "done"}, {"id": 3, "status": "open"}]}'>
+</div>
+
+**Notes:**
+- Keys are kept as their evaluated values — numbers, booleans, `null`, and even objects group correctly by deep equality; they are not stringified.
+- Elements whose key expression misses (resolves to `null`) group together under a `null` key.
+- `null` or empty input yields `[]`. Non-array input (scalar or object) is an error.
+
+---
+
+## distinct
+
+Drop duplicate elements, by value or by a computed key.
+
+**Syntax:**
+```json
+{ "distinct": [array] }
+{ "distinct": [array, key_expression] }
+```
+
+**Arguments:**
+- `array` - Array to deduplicate (a value that resolves to an array)
+- `key_expression` - Optional per-element expression; when present, elements are deduplicated by the computed key instead of by value
+
+**Returns:** Array with duplicates removed. The first occurrence wins, so output preserves input order.
+
+**Examples:**
+
+```json
+// Dedup by value
+{ "distinct": [[3, 1, 3, 2, 1]] }
+// Result: [3, 1, 2]
+
+// Strict equality: 1 and "1" stay distinct
+{ "distinct": [[1, "1", 1]] }
+// Result: [1, "1"]
+
+// Dedup objects structurally
+{ "distinct": [{ "var": "items" }] }
+// Data: { "items": [{ "a": 1 }, { "a": 2 }, { "a": 1 }] }
+// Result: [{ "a": 1 }, { "a": 2 }]
+
+// Dedup by key: one row per id, first revision wins
+{ "distinct": [{ "var": "rows" }, { "var": "id" }] }
+// Data: { "rows": [
+//   { "id": 1, "rev": "a" },
+//   { "id": 2, "rev": "b" },
+//   { "id": 1, "rev": "c" }
+// ]}
+// Result: [{ "id": 1, "rev": "a" }, { "id": 2, "rev": "b" }]
+```
+
+**Try it:**
+
+<div class="playground-widget" data-logic='{"distinct": [[3, 1, 3, 2, 1]]}' data-data='{}'>
+</div>
+
+**Notes:**
+- Equality is strict deep equality (the same predicate `in` uses): mixed types never merge, arrays and objects compare structurally.
+- `null` or empty input yields `[]`. Non-array input is an error.

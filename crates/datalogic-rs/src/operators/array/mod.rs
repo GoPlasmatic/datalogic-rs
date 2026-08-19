@@ -11,6 +11,10 @@
 //! - [`length`] — `length` of strings/arrays (gated on `feature = "ext-string"`).
 //! - [`slice`] — Python-style `slice` (gated on `feature = "ext-array"`).
 //! - [`sort`] — `sort` (key-based ordering, gated on `feature = "ext-array"`).
+//! - [`group_by`] — `group_by` (collapse on a computed key into `{key, items}`
+//!   rows, gated on `feature = "ext-array"`).
+//! - [`distinct`] — `distinct` (dedup by value or computed key, gated on
+//!   `feature = "ext-array"`).
 //! - [`helpers`] — shared infrastructure: `IterSrc`, `ResolvedInput`,
 //!   `resolve_iter_input` (used by every iterator op), `FastPredicate`
 //!   (filter / quantifier fast paths), and a few small comparison helpers.
@@ -25,6 +29,11 @@ mod reduce;
 
 #[cfg(feature = "ext-string")]
 mod length;
+
+#[cfg(feature = "ext-array")]
+mod distinct;
+#[cfg(feature = "ext-array")]
+mod group_by;
 #[cfg(feature = "ext-array")]
 mod slice;
 #[cfg(feature = "ext-array")]
@@ -39,6 +48,11 @@ pub(crate) use reduce::evaluate_reduce;
 
 #[cfg(feature = "ext-string")]
 pub(crate) use length::evaluate_length;
+
+#[cfg(feature = "ext-array")]
+pub(crate) use distinct::evaluate_distinct;
+#[cfg(feature = "ext-array")]
+pub(crate) use group_by::evaluate_group_by;
 #[cfg(feature = "ext-array")]
 pub(crate) use slice::evaluate_slice;
 #[cfg(feature = "ext-array")]

@@ -125,6 +125,7 @@ jobs:
           - error-handling
           - ext-string
           - ext-array
+          - ext-object
           - ext-control
           - ext-math
           - flagd

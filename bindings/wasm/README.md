@@ -9,8 +9,8 @@ runtimes** — powered by WebAssembly. WASM bindings for
 [`datalogic-rs`](https://github.com/GoPlasmatic/datalogic-rs).
 
 Same rules, same semantics as the Rust crate: every binding runs the
-same core and passes the same 1,565-case conformance battery
-(54 suites). For the cross-runtime overview and the API-tier model
+same core and passes the same 1,636-case conformance battery
+(58 suites). For the cross-runtime overview and the API-tier model
 that every binding implements, see the
 [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
@@ -479,13 +479,14 @@ isolation benefit.
 
 ## Supported operators
 
-This binding exposes all 59 built-in operators from the Rust engine:
+This binding exposes all 64 built-in operators from the Rust engine:
 
 **Logical** — `and`, `or`, `!`, `!!`
 **Comparison** — `==`, `===`, `!=`, `!==`, `<`, `<=`, `>`, `>=`
 **Arithmetic** — `+`, `-`, `*`, `/`, `%`, `min`, `max`, `abs`, `ceil`, `floor`
 **Control flow** — `if`, `?:`, `??` (coalesce), `switch` / `match`
-**Array** — `map`, `filter`, `reduce`, `all`, `some`, `none`, `merge`, `in`, `sort`, `slice`
+**Array** — `map`, `filter`, `reduce`, `all`, `some`, `none`, `merge`, `in`, `sort`, `slice`, `group_by`, `distinct`
+**Object** — `keys`, `values`, `entries`
 **String** — `cat`, `substr`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `split`, `length`
 **Data access** — `var`, `val`, `exists`, `missing`, `missing_some`
 **Date/time** — `now`, `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`

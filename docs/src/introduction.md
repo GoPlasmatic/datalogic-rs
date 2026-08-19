@@ -1,6 +1,6 @@
 # Introduction
 
-**datalogic-rs** is a JSONLogic rules engine: one Rust core with official bindings for Rust, Node.js, the browser (WASM), Python, Go, Java, .NET, and PHP, plus a React visual debugger. Rules are plain JSON; the same rule evaluates with identical semantics in every runtime, verified by a 1,565-case conformance battery that runs against the same core every binding ships.
+**datalogic-rs** is a JSONLogic rules engine: one Rust core with official bindings for Rust, Node.js, the browser (WASM), Python, Go, Java, .NET, and PHP, plus a React visual debugger. Rules are plain JSON; the same rule evaluates with identical semantics in every runtime, verified by a 1,636-case conformance battery that runs against the same core every binding ships.
 
 This site is the reference documentation. For the project pitch, benchmarks, and package matrix, see the [GitHub repository](https://github.com/GoPlasmatic/datalogic-rs#readme); to try rules in your browser right now, open the [playground](https://goplasmatic.github.io/datalogic-rs/playground/).
 
@@ -66,7 +66,7 @@ Every language has a first-class chapter with install, quickstart, and the API s
 ## How these docs are organized
 
 - **[Getting Started](getting-started/installation.md)** — install, first evaluation, core concepts, starter microservice templates
-- **[Operators](operators/overview.md)** — reference for all 59 built-in operators, with runnable examples on every page
+- **[Operators](operators/overview.md)** — reference for all 64 built-in operators, with runnable examples on every page
 - **Languages** — one chapter per binding (see the table above)
 - **Guides** — [custom operators](advanced/custom-operators.md), [configuration](advanced/configuration.md), [structured objects / templating](advanced/structured-objects.md), [thread safety](advanced/threading.md), and [security & sandboxing](advanced/security.md)
 - **Reference** — [use-case cookbook](use-cases/examples.md), [performance](performance.md), [comparisons](comparison.md), [migration](migration.md), [FAQ](faq.md), and [troubleshooting](troubleshooting.md)

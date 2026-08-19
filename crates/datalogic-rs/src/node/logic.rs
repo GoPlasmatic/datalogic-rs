@@ -265,6 +265,13 @@ fn opcode_is_static(opcode: &OpCode, args: &[CompiledNode]) -> bool {
         // callbacks that may reference the iteration variable. Even with static
         // arrays, the callback logic depends on the per-element context.
         Map | Filter | Reduce | All | Some | None => false,
+        #[cfg(feature = "ext-array")]
+        GroupBy => false,
+        // `distinct` without a key expression runs no callback (pure value
+        // dedup) and folds like any pure operator; the keyed form runs the
+        // key expression under per-element frames and stays dynamic.
+        #[cfg(feature = "ext-array")]
+        Distinct => args.len() < 2 && args_static(),
 
         // Error handling: These have control flow effects (early exit, error propagation)
         // that should be preserved for runtime execution.
@@ -342,6 +349,72 @@ mod tests {
         let div = engine.compile(r#"{"/": [1, 0]}"#).unwrap();
         assert!(div.is_static());
         assert!(!div.is_constant());
+    }
+
+    /// Folding classification of the collection operators: `group_by`
+    /// always stays dynamic (its key expression runs under per-element
+    /// frames, even when literal), `distinct` folds only in its unkeyed
+    /// pure form.
+    #[cfg(feature = "ext-array")]
+    #[test]
+    fn group_by_distinct_folding_classification() {
+        let engine = Engine::new();
+
+        // All-literal group_by is still classified dynamic.
+        let grouped = engine.compile(r#"{"group_by": [[1, 2, 1], 7]}"#).unwrap();
+        assert!(!grouped.is_constant());
+        assert_eq!(
+            engine
+                .eval_str(r#"{"group_by": [[1, 2, 1], 7]}"#, "null")
+                .unwrap(),
+            r#"[{"key":7,"items":[1,2,1]}]"#
+        );
+
+        // Unkeyed distinct over literals folds to its result.
+        let unkeyed = engine.compile(r#"{"distinct": [[1, 1, 2]]}"#).unwrap();
+        assert!(unkeyed.is_constant());
+        assert_eq!(
+            engine
+                .eval_str(r#"{"distinct": [[1, 1, 2]]}"#, "null")
+                .unwrap(),
+            "[1,2]"
+        );
+
+        // Keyed distinct and dynamic input stay dynamic.
+        assert!(
+            !engine
+                .compile(r#"{"distinct": [[1, 1, 2], {"var": ""}]}"#)
+                .unwrap()
+                .is_constant()
+        );
+        assert!(
+            !engine
+                .compile(r#"{"distinct": [{"var": "xs"}]}"#)
+                .unwrap()
+                .is_constant()
+        );
+    }
+
+    /// `keys` / `values` / `entries` are pure and fold when their argument
+    /// is static. Null is the only literal-expressible input in strict
+    /// mode (object literals in args read as operator invocations), and
+    /// folds to the empty array.
+    #[cfg(feature = "ext-object")]
+    #[test]
+    fn object_ops_fold_when_static() {
+        let engine = Engine::new();
+        let keys = engine.compile(r#"{"keys": [null]}"#).unwrap();
+        assert!(keys.is_constant());
+        assert_eq!(
+            engine.eval_str(r#"{"keys": [null]}"#, "null").unwrap(),
+            "[]"
+        );
+        assert!(
+            !engine
+                .compile(r#"{"keys": [{"var": "o"}]}"#)
+                .unwrap()
+                .is_constant()
+        );
     }
 
     /// Composite literals are pre-built (`PreLit`) at compile time; a

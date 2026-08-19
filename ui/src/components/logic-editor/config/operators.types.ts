@@ -18,6 +18,7 @@ export type OperatorCategory =
   | 'control'
   | 'string'
   | 'array'
+  | 'object'
   | 'datetime'
   | 'validation'
   | 'error'

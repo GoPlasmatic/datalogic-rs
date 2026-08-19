@@ -402,10 +402,10 @@ Runnable example: [`examples/thread_safety.rs`](https://github.com/GoPlasmatic/d
 |-------------------|---------------------------------------------------------------------------|
 | `serde_json`      | `&serde_json::Value` interop and `eval_into::<T>` typed deserialisation   |
 | `templating`      | Structure-preservation (templating) mode                                  |
-| `datetime`        | Date / time operators (pulls in `chrono`)                                 |
+| `datetime`        | Date / time operators (pulls in `chrono` + `chrono-tz` for IANA-zone args) |
 | `trace`           | Execution-step recording for the debugger (implies `serde_json`)          |
 | `error-handling`  | `try` / `throw` operators                                                 |
-| `ext-string`, `ext-array`, `ext-control`, `ext-math` | Optional operator families             |
+| `ext-string`, `ext-array`, `ext-object`, `ext-control`, `ext-math` | Optional operator families |
 | `flagd`           | flagd-compat operators (`fractional`, `sem_ver`); pulls in `semver`       |
 
 The default build is `serde_json`-free; opt in via

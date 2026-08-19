@@ -8,6 +8,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
+## [5.2.0] - 2026-08-19
+
+### Added
+
+- **`group_by` and `distinct` operators** (`ext-array` feature)
+  ([#63](https://github.com/GoPlasmatic/datalogic-rs/issues/63)).
+  `{"group_by": [array, key_expr]}` collapses an array into
+  `{key, items}` rows on a per-element key expression, insertion-ordered
+  by first key occurrence; keys keep their evaluated type and group by
+  strict deep equality. `{"distinct": [array]}` dedups by value,
+  `{"distinct": [array, key_expr]}` by computed key — first occurrence
+  wins in both forms. `group_by` and keyed `distinct` join the
+  iteration class (never constant-folded, key expressions excluded from
+  CSE); unkeyed `distinct` is pure and fold-eligible.
+- **`keys` / `values` / `entries` operators behind a new `ext-object`
+  feature** ([#63](https://github.com/GoPlasmatic/datalogic-rs/issues/63)).
+  The object take-apart family: `entries` yields `[{key, value}]` rows
+  the array vocabulary can iterate. `null` input yields `[]`; other
+  non-object input errors. All four Rust-side bindings (and the C ABI
+  consumers) enable the feature; pure Rust consumers opt in.
+- **Optional trailing IANA timezone argument on `format_date` and
+  `parse_date`**, backed by `chrono-tz` inside the `datetime` feature
+  ([#63](https://github.com/GoPlasmatic/datalogic-rs/issues/63)).
+  `format_date(ts, fmt, "Asia/Kolkata")` renders the instant as
+  wall-clock time in the zone (the `"z"` token then reports the target
+  zone's offset at that instant); `parse_date(s, fmt, zone)` reads a
+  naive input as zone wall-clock and resolves it to the UTC instant.
+  DST policy: ambiguous local times resolve to the earlier instant,
+  nonexistent ones (spring-forward gap) error. Zone offsets come from
+  chrono-tz's compiled-in table — no tzdata I/O, so `format_date` with
+  a literal zone stays fold-eligible, and a literal *unknown* zone
+  name is rejected at compile time through the operator-specialisation
+  stage. Two-argument behavior is byte-for-byte unchanged.
+- **Month- and weekday-name format tokens**: `MMM` → abbreviated month,
+  `MMMM` → full month, `EEE` → abbreviated weekday, `EEEE` → full
+  weekday, alongside the existing `yyyy MM dd HH mm ss` table and raw
+  chrono `%` passthrough.
+
+### Fixed
+
+- **`jsonlogic_to_chrono_format` is now a single-pass longest-match
+  scanner** instead of sequential `String::replace`. Previously `"MMM"`
+  corrupted to `"%mM"` (rendering as a month number followed by a
+  literal `M`); token families now disambiguate by length and a
+  replacement can never be re-matched by a later token.
+
 ## [5.1.2] - 2026-08-10
 
 ### Added

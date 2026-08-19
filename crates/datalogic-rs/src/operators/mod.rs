@@ -21,7 +21,8 @@
 //! | `map`, `filter`, `reduce`, `merge`, `all`, `some`, `none` | *baseline* |
 //! | `missing`, `missing_some` | *baseline* |
 //! | `length`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `split` | `ext-string` |
-//! | `sort`, `slice` | `ext-array` |
+//! | `sort`, `slice`, `group_by`, `distinct` | `ext-array` |
+//! | `keys`, `values`, `entries` | `ext-object` |
 //! | `abs`, `ceil`, `floor` | `ext-math` |
 //! | `exists`, `??`, `switch`/`match`, `type` | `ext-control` |
 //! | `try`, `throw` | `error-handling` |
@@ -75,3 +76,5 @@ pub(crate) mod error_handling;
 pub(crate) mod flagd;
 #[cfg(feature = "ext-control")]
 pub(crate) mod inspect;
+#[cfg(feature = "ext-object")]
+pub(crate) mod object;

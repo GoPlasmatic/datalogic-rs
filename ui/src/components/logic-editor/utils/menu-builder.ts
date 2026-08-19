@@ -27,6 +27,7 @@ const OPERATOR_CATEGORY_ORDER: OperatorCategory[] = [
   'logical',
   'string',
   'array',
+  'object',
   'control',
   'datetime',
   'validation',

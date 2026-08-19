@@ -430,6 +430,13 @@ fn test_reduce_multiply_overflow_promotes_to_float() {
 /// which needs more than 53 bits of mantissa; neither path can represent
 /// it. This test pins *agreement*, which is the property the engine
 /// actually promises.
+///
+/// Gated on `trace` (not just the file's `serde_json`): the reference
+/// result comes from the traced engine, whose `Engine::trace` API only
+/// exists with the feature on. Without the gate, a workspace-root
+/// `cargo test` — where feature unification with `tools/benchmark`
+/// enables `serde_json` but not `trace` — fails to compile this file.
+#[cfg(feature = "trace")]
 #[test]
 fn test_reduce_fold_above_2_53_matches_general_path() {
     let engine = Engine::new();

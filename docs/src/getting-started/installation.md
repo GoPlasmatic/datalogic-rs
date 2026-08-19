@@ -70,10 +70,11 @@ v5 splits the surface into a small core plus opt-in features:
 |---------|---------|-------------|
 | `serde_json` | off | `&serde_json::Value` interop (as `EvalInput` / `IntoLogic`) and the typed `eval_into::<T>` paths on `Engine`, `Session`, and the module-level helpers. Pulls in `serde_json` as a runtime dependency. |
 | `templating` | off | Templating mode — `Engine::builder().with_templating(true).build()`. |
-| `datetime` | off | `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`, `now` operators (pulls in `chrono`). |
+| `datetime` | off | `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`, `now` operators, including the optional trailing IANA-zone argument on `format_date` / `parse_date` (pulls in `chrono` and `chrono-tz`). |
 | `trace` | off | Per-evaluation execution tracing (`engine.trace()…`). Transitively enables `serde_json`. |
 | `ext-string` | off | Extended string operators. |
-| `ext-array` | off | Extended array operators (e.g. `sort`). |
+| `ext-array` | off | Extended array operators (`sort`, `slice`, `group_by`, `distinct`). |
+| `ext-object` | off | Object take-apart operators (`keys`, `values`, `entries`). |
 | `ext-control` | off | Extended control-flow operators (`exists`, `??`, `switch`/`match`, `type`). |
 | `error-handling` | off | `try` / `throw` operators. |
 | `ext-math` | off | Extended math operators. |

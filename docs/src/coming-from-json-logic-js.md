@@ -74,7 +74,8 @@ Both live on `EvaluationConfig`; see [Configuration](advanced/configuration.md).
 
 Beyond the JSONLogic baseline, datalogic-rs adds opt-in operators the
 reference engine does not ship: datetime arithmetic, string helpers
-(`length`, `starts_with`, `split`, ...), `sort`/`slice`, `try`/`throw`,
+(`length`, `starts_with`, `split`, ...), `sort`/`slice`/`group_by`/`distinct`,
+`keys`/`values`/`entries`, `try`/`throw`,
 `switch`, and flagd-compatible feature-flag operators (`fractional`,
 `sem_ver`). In the Rust crate these sit behind Cargo features; every
 language binding enables them all. See the

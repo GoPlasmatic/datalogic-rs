@@ -211,8 +211,35 @@ fn try_specialised(
         }
         #[cfg(feature = "ext-control")]
         OpCode::Exists => operator::try_compile_exists(args, ctx),
+        #[cfg(feature = "datetime")]
+        OpCode::FormatDate | OpCode::ParseDate => try_validate_timezone_literal(opcode, args, ctx),
         _ => None,
     }
+}
+
+/// `format_date` / `parse_date` with a *literal* timezone argument:
+/// validate the zone name against chrono-tz's compiled-in table at compile
+/// time, so a typo'd zone fails when the rule is built instead of on first
+/// evaluation. Dynamic zone expressions still validate at evaluation.
+/// Follows the [`invalid_args_marker`] precedent — the marker raises at
+/// dispatch carrying the op name, keeping the breadcrumb path intact.
+#[cfg(feature = "datetime")]
+fn try_validate_timezone_literal(
+    opcode: OpCode,
+    args: &[CompiledNode],
+    ctx: &mut CompileCtx,
+) -> Option<CompiledNode> {
+    let CompiledNode::Value {
+        value: OwnedDataValue::String(s),
+        ..
+    } = args.get(2)?
+    else {
+        return None;
+    };
+    if s.parse::<chrono_tz::Tz>().is_ok() {
+        return None;
+    }
+    Some(invalid_args_marker(opcode, ctx))
 }
 
 /// Build the [`CompiledNode::InvalidArgs`] placeholder for `and` / `or` /

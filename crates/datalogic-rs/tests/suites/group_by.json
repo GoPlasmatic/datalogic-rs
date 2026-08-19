@@ -1,0 +1,152 @@
+[
+  "# group_by operator tests (ext-array)",
+  {
+    "description": "Group by a string field",
+    "rule": { "group_by": [{"val": "items"}, {"var": "status"}] },
+    "data": { "items": [
+      {"id": 1, "status": "open"},
+      {"id": 2, "status": "done"},
+      {"id": 3, "status": "open"}
+    ]},
+    "result": [
+      {"key": "open", "items": [{"id": 1, "status": "open"}, {"id": 3, "status": "open"}]},
+      {"key": "done", "items": [{"id": 2, "status": "done"}]}
+    ]
+  },
+  {
+    "description": "Groups are ordered by first key occurrence",
+    "rule": { "group_by": [{"val": "items"}, {"var": "k"}] },
+    "data": { "items": [{"k": "b"}, {"k": "a"}, {"k": "b"}, {"k": "c"}, {"k": "a"}] },
+    "result": [
+      {"key": "b", "items": [{"k": "b"}, {"k": "b"}]},
+      {"key": "a", "items": [{"k": "a"}, {"k": "a"}]},
+      {"key": "c", "items": [{"k": "c"}]}
+    ]
+  },
+  {
+    "description": "Numeric keys stay numbers (not stringified)",
+    "rule": { "group_by": [{"val": "items"}, {"var": "n"}] },
+    "data": { "items": [{"n": 1}, {"n": 2}, {"n": 1}] },
+    "result": [
+      {"key": 1, "items": [{"n": 1}, {"n": 1}]},
+      {"key": 2, "items": [{"n": 2}]}
+    ]
+  },
+  {
+    "description": "Computed key expression",
+    "rule": { "group_by": [{"val": "nums"}, {"%": [{"var": ""}, 2]}] },
+    "data": { "nums": [1, 2, 3, 4, 5] },
+    "result": [
+      {"key": 1, "items": [1, 3, 5]},
+      {"key": 0, "items": [2, 4]}
+    ]
+  },
+  {
+    "description": "Boolean keys group correctly",
+    "rule": { "group_by": [{"val": "nums"}, {">": [{"var": ""}, 2]}] },
+    "data": { "nums": [1, 2, 3, 4] },
+    "result": [
+      {"key": false, "items": [1, 2]},
+      {"key": true, "items": [3, 4]}
+    ]
+  },
+  {
+    "description": "Missing field groups under null",
+    "rule": { "group_by": [{"val": "items"}, {"var": "k"}] },
+    "data": { "items": [{"k": "a"}, {"x": 1}, {"y": 2}] },
+    "result": [
+      {"key": "a", "items": [{"k": "a"}]},
+      {"key": null, "items": [{"x": 1}, {"y": 2}]}
+    ]
+  },
+  {
+    "description": "Whole-element key via empty var",
+    "rule": { "group_by": [{"val": "nums"}, {"var": ""}] },
+    "data": { "nums": [1, 2, 1] },
+    "result": [
+      {"key": 1, "items": [1, 1]},
+      {"key": 2, "items": [2]}
+    ]
+  },
+  {
+    "description": "Object-valued keys group by deep equality",
+    "rule": { "group_by": [{"val": "items"}, {"var": "loc"}] },
+    "data": { "items": [
+      {"id": 1, "loc": {"city": "Chennai", "zip": "600001"}},
+      {"id": 2, "loc": {"city": "Pune", "zip": "411001"}},
+      {"id": 3, "loc": {"city": "Chennai", "zip": "600001"}}
+    ]},
+    "result": [
+      {"key": {"city": "Chennai", "zip": "600001"}, "items": [
+        {"id": 1, "loc": {"city": "Chennai", "zip": "600001"}},
+        {"id": 3, "loc": {"city": "Chennai", "zip": "600001"}}
+      ]},
+      {"key": {"city": "Pune", "zip": "411001"}, "items": [
+        {"id": 2, "loc": {"city": "Pune", "zip": "411001"}}
+      ]}
+    ]
+  },
+  {
+    "description": "ISO datetime-shaped string keys group as plain strings",
+    "rule": { "group_by": [{"val": "items"}, {"var": "ts"}] },
+    "data": { "items": [
+      {"ts": "2026-08-17T09:30:00Z"},
+      {"ts": "2026-08-18T10:00:00Z"},
+      {"ts": "2026-08-17T09:30:00Z"}
+    ]},
+    "result": [
+      {"key": "2026-08-17T09:30:00Z", "items": [{"ts": "2026-08-17T09:30:00Z"}, {"ts": "2026-08-17T09:30:00Z"}]},
+      {"key": "2026-08-18T10:00:00Z", "items": [{"ts": "2026-08-18T10:00:00Z"}]}
+    ]
+  },
+  {
+    "description": "Key expression can read root data (scopes.json convention)",
+    "rule": { "group_by": [{"val": "rows"}, {"==": [{"var": ""}, {"val": [[2], "pivot"]}]}] },
+    "data": { "pivot": 2, "rows": [1, 2, 3, 2] },
+    "result": [
+      {"key": false, "items": [1, 3]},
+      {"key": true, "items": [2, 2]}
+    ]
+  },
+  {
+    "description": "Key expression can read the iteration index",
+    "rule": { "group_by": [{"val": "nums"}, {"%": [{"val": [[1], "index"]}, 2]}] },
+    "data": { "nums": [10, 11, 12, 13] },
+    "result": [
+      {"key": 0, "items": [10, 12]},
+      {"key": 1, "items": [11, 13]}
+    ]
+  },
+  "# Edge cases",
+  {
+    "description": "Empty array yields empty result",
+    "rule": { "group_by": [{"val": "items"}, {"var": "k"}] },
+    "data": { "items": [] },
+    "result": []
+  },
+  {
+    "description": "Null input yields empty result",
+    "rule": { "group_by": [{"val": "missing"}, {"var": "k"}] },
+    "data": {},
+    "result": []
+  },
+  "# Error cases",
+  {
+    "description": "Missing key expression is an error",
+    "rule": { "group_by": [{"val": "items"}] },
+    "data": { "items": [1, 2] },
+    "error": { "type": "Invalid Arguments" }
+  },
+  {
+    "description": "Scalar input is an error",
+    "rule": { "group_by": [{"val": "n"}, {"var": ""}] },
+    "data": { "n": 42 },
+    "error": { "type": "Invalid Arguments" }
+  },
+  {
+    "description": "Object input is an error",
+    "rule": { "group_by": [{"val": "obj"}, {"var": ""}] },
+    "data": { "obj": {"a": 1} },
+    "error": { "type": "Invalid Arguments" }
+  }
+]

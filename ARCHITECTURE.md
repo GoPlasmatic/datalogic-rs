@@ -141,10 +141,10 @@ opt in via their dependency line.
 |-------------------|-------------------------------------------------------------------|--------------------------------|
 | `serde_json`      | `&serde_json::Value` interop + `eval_into::<T>` typed output      | Node, Python, C, `benchmark`, integration tests |
 | `templating`      | Structure-preservation (templating) mode                          | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit), examples |
-| `datetime`        | Date/time operators (pulls in `chrono`)                           | WASM, Node, Python, C, `datetime_ops` example |
+| `datetime`        | Date/time operators (pulls in `chrono` + `chrono-tz` for the IANA-zone arguments on `format_date`/`parse_date`) | WASM, Node, Python, C, `datetime_ops` example |
 | `trace`           | Execution-step recording for the debugger (implies `serde_json`)  | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit), `tracing` example |
 | `error-handling`  | `try` / `throw` operators                                         | WASM, Node, Python, C, `error_handling` example |
-| `ext-string`, `ext-array`, `ext-control`, `ext-math` | Optional operator families                 | WASM, Node, Python, C; opt-in per Rust consumer |
+| `ext-string`, `ext-array`, `ext-object`, `ext-control`, `ext-math` | Optional operator families | WASM, Node, Python, C; opt-in per Rust consumer |
 | `flagd`           | `fractional` + `sem_ver` operators (OpenFeature flagd spec); pulls in `semver` | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit). See [flagd docs](https://flagd.dev/reference/custom-operations/) |
 | `wasm-clock`      | JS-host clock for `now` on `wasm32-unknown-unknown` (forwards to `chrono/wasmbind`). Deliberately opt-in: it links JS imports that non-JS wasm runtimes (wasmtime, wazero, Chicory) cannot satisfy — issue #47 | WASM only. Never enable when the module runs outside a JS host |
 

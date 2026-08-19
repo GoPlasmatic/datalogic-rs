@@ -26,6 +26,7 @@ datalogic-rs = { path = "../../crates/datalogic-rs", features = [
     "error-handling",
     "ext-string",
     "ext-array",
+    "ext-object",
     "ext-control",
     "ext-math",
     "flagd",

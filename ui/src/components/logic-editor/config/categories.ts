@@ -57,6 +57,13 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     color: '#7c3aed', // deep violet
     icon: 'layers',
   },
+  object: {
+    name: 'object',
+    label: 'Object',
+    description: 'Object take-apart: keys, values, entries',
+    color: '#a855f7', // purple
+    icon: 'braces',
+  },
   datetime: {
     name: 'datetime',
     label: 'Date & Time',

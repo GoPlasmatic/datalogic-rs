@@ -1,0 +1,107 @@
+[
+  "# keys / values / entries operator tests (ext-object)",
+  {
+    "description": "keys of an object",
+    "rule": { "keys": [{"val": "obj"}] },
+    "data": { "obj": {"a": 1, "b": 2, "c": 3} },
+    "result": ["a", "b", "c"]
+  },
+  {
+    "description": "values of an object",
+    "rule": { "values": [{"val": "obj"}] },
+    "data": { "obj": {"a": 1, "b": 2, "c": 3} },
+    "result": [1, 2, 3]
+  },
+  {
+    "description": "entries of an object",
+    "rule": { "entries": [{"val": "obj"}] },
+    "data": { "obj": {"a": 1, "b": 2} },
+    "result": [{"key": "a", "value": 1}, {"key": "b", "value": 2}]
+  },
+  {
+    "description": "values preserves nested structures",
+    "rule": { "values": [{"val": "obj"}] },
+    "data": { "obj": {"a": {"x": 1}, "b": [2, 3]} },
+    "result": [{"x": 1}, [2, 3]]
+  },
+  {
+    "description": "entries composes with map",
+    "rule": { "map": [{"entries": [{"val": "obj"}]}, {"var": "key"}] },
+    "data": { "obj": {"a": 1, "b": 2} },
+    "result": ["a", "b"]
+  },
+  {
+    "description": "entries composes with group_by-style access",
+    "rule": { "map": [{"entries": [{"val": "obj"}]}, {"var": "value"}] },
+    "data": { "obj": {"a": 10, "b": 20} },
+    "result": [10, 20]
+  },
+  "# Edge cases",
+  {
+    "description": "keys of an empty object",
+    "rule": { "keys": [{"val": "obj"}] },
+    "data": { "obj": {} },
+    "result": []
+  },
+  {
+    "description": "values of an empty object",
+    "rule": { "values": [{"val": "obj"}] },
+    "data": { "obj": {} },
+    "result": []
+  },
+  {
+    "description": "entries of an empty object",
+    "rule": { "entries": [{"val": "obj"}] },
+    "data": { "obj": {} },
+    "result": []
+  },
+  {
+    "description": "keys of null yields empty array",
+    "rule": { "keys": [{"val": "missing"}] },
+    "data": {},
+    "result": []
+  },
+  {
+    "description": "values of null yields empty array",
+    "rule": { "values": [{"val": "missing"}] },
+    "data": {},
+    "result": []
+  },
+  {
+    "description": "entries of null yields empty array",
+    "rule": { "entries": [{"val": "missing"}] },
+    "data": {},
+    "result": []
+  },
+  "# Error cases",
+  {
+    "description": "keys of an array is an error",
+    "rule": { "keys": [{"val": "arr"}] },
+    "data": { "arr": [1, 2] },
+    "error": { "type": "Invalid Arguments" }
+  },
+  {
+    "description": "keys of a number is an error",
+    "rule": { "keys": [{"val": "n"}] },
+    "data": { "n": 5 },
+    "error": { "type": "Invalid Arguments" }
+  },
+  {
+    "description": "values of a string is an error",
+    "rule": { "values": [{"val": "s"}] },
+    "data": { "s": "abc" },
+    "error": { "type": "Invalid Arguments" }
+  },
+  {
+    "description": "entries of a boolean is an error",
+    "rule": { "entries": [{"val": "b"}] },
+    "data": { "b": true },
+    "error": { "type": "Invalid Arguments" }
+  },
+  {
+    "description": "keys with no argument is an error",
+    "rule": { "keys": [] },
+    "data": null,
+    "error": { "type": "Invalid Arguments" }
+  }
+]

@@ -44,7 +44,7 @@ pub(super) fn precompute_lit(value: &OwnedDataValue) -> Option<PreLit> {
 #[inline]
 fn iterates_args0(opcode: OpCode) -> bool {
     #[cfg(feature = "ext-array")]
-    if matches!(opcode, OpCode::Sort) {
+    if matches!(opcode, OpCode::Sort | OpCode::GroupBy | OpCode::Distinct) {
         return true;
     }
     matches!(
@@ -111,5 +111,34 @@ pub(crate) fn populate_lits(node: &mut CompiledNode) {
         } else {
             crate::operators::array::IterArgKind::General
         };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// `group_by` / `distinct` consume `args[0]` via `resolve_iter_input`,
+    /// so they must be listed in [`super::iterates_args0`] — otherwise the
+    /// classification silently stays `General` (still correct, but pays a
+    /// full dispatch per evaluation). Pin the classified shape.
+    #[cfg(feature = "ext-array")]
+    #[test]
+    fn group_by_distinct_classify_iter_arg() {
+        use crate::CompiledNode;
+        use crate::operators::array::IterArgKind;
+        let engine = crate::Engine::new();
+        for rule in [
+            r#"{"group_by": [{"var": "xs"}, {"var": "k"}]}"#,
+            r#"{"distinct": [{"var": "xs"}]}"#,
+        ] {
+            let logic = engine.compile(rule).unwrap();
+            let CompiledNode::BuiltinOperator { iter_arg_kind, .. } = &logic.root else {
+                panic!("expected a builtin operator root for {rule}");
+            };
+            assert_ne!(
+                *iter_arg_kind,
+                IterArgKind::General,
+                "iterates_args0 must classify {rule}"
+            );
+        }
     }
 }

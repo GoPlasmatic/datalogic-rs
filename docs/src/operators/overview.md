@@ -1,6 +1,6 @@
 # Operators Overview
 
-datalogic-rs provides 59 built-in operators organized into logical categories. In the Rust crate, 33 baseline operators are always available in the default build (`default = []`); a further 24 canonical operators are enabled by opt-in Cargo features, and two flagd-compatible operators (`fractional`, `sem_ver`) sit behind the `flagd` feature. Every language binding (WASM, Node, Python, Go, JVM, .NET, PHP) ships with all operator features enabled, so the full set is available out of the box outside Rust. Counts are by canonical operator: `var` and `?:` are accepted as input aliases of `val` and `if`, and `match` is an alias of `switch`, so the aliases are not counted separately. This section documents each operator with syntax, examples, and notes on behavior.
+datalogic-rs provides 64 built-in operators organized into logical categories. In the Rust crate, 33 baseline operators are always available in the default build (`default = []`); a further 29 canonical operators are enabled by opt-in Cargo features, and two flagd-compatible operators (`fractional`, `sem_ver`) sit behind the `flagd` feature. Every language binding (WASM, Node, Python, Go, JVM, .NET, PHP) ships with all operator features enabled, so the full set is available out of the box outside Rust. Counts are by canonical operator: `var` and `?:` are accepted as input aliases of `val` and `if`, and `match` is an alias of `switch`, so the aliases are not counted separately. This section documents each operator with syntax, examples, and notes on behavior.
 
 ## Operator Categories
 
@@ -12,7 +12,8 @@ datalogic-rs provides 59 built-in operators organized into logical categories. I
 | [Arithmetic](arithmetic.md) | `+`, `-`, `*`, `/`, `%`, `max`, `min`, `abs`, `ceil`, `floor` | Math operations |
 | [Control Flow](control-flow.md) | `if` (alias `?:`), `??`, `switch` (alias `match`), `type` | Conditional branching |
 | [String](string.md) | `cat`, `substr`, `in`, `length`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `split` | String manipulation |
-| [Array](array.md) | `merge`, `filter`, `map`, `reduce`, `all`, `some`, `none`, `sort`, `slice` | Array operations |
+| [Array](array.md) | `merge`, `filter`, `map`, `reduce`, `all`, `some`, `none`, `sort`, `slice`, `group_by`, `distinct` | Array operations |
+| [Object](object.md) | `keys`, `values`, `entries` | Object take-apart |
 | [DateTime](datetime.md) | `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`, `now` | Date and time |
 | [Missing Values](missing.md) | `missing`, `missing_some` | Check for missing data |
 | [Error Handling](error-handling.md) | `try`, `throw` | Exception handling |
@@ -26,7 +27,8 @@ This split only affects the **Rust crate**: only the baseline set compiles in th
 |---------------|-----------|
 | *baseline* (always on) | `val`/`var`, comparison (`==` … `<=`), `and`, `or`, `!`, `!!`, `if`/`?:`, `+ - * / %`, `min`, `max`, `cat`, `substr`, `in`, `map`, `filter`, `reduce`, `merge`, `all`, `some`, `none`, `missing`, `missing_some` |
 | `ext-string` | `length`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `split` |
-| `ext-array` | `sort`, `slice` |
+| `ext-array` | `sort`, `slice`, `group_by`, `distinct` |
+| `ext-object` | `keys`, `values`, `entries` |
 | `ext-math` | `abs`, `ceil`, `floor` |
 | `ext-control` | `exists`, `??`, `switch`/`match`, `type` |
 | `error-handling` | `try`, `throw` |

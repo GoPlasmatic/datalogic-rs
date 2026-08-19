@@ -20,6 +20,7 @@
     - [Control Flow](operators/control-flow.md)
     - [String Operations](operators/string.md)
     - [Array Operations](operators/array.md)
+    - [Object Operations](operators/object.md)
     - [DateTime](operators/datetime.md)
     - [Missing Values](operators/missing.md)
     - [Error Handling](operators/error-handling.md)

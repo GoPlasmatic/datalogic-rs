@@ -299,6 +299,14 @@ pub(super) fn dispatch_node_inner<'a>(
             #[cfg(feature = "datetime")]
             Now => crate::operators::datetime::evaluate_now,
 
+            // Object take-apart
+            #[cfg(feature = "ext-object")]
+            Keys => crate::operators::object::evaluate_keys,
+            #[cfg(feature = "ext-object")]
+            Values => crate::operators::object::evaluate_values,
+            #[cfg(feature = "ext-object")]
+            Entries => crate::operators::object::evaluate_entries,
+
             // Type
             #[cfg(feature = "ext-control")]
             Type => crate::operators::inspect::evaluate_type,
@@ -330,6 +338,10 @@ pub(super) fn dispatch_node_inner<'a>(
             Min => crate::operators::arithmetic::evaluate_min,
             #[cfg(feature = "ext-array")]
             Sort => crate::operators::array::evaluate_sort,
+            #[cfg(feature = "ext-array")]
+            GroupBy => crate::operators::array::evaluate_group_by,
+            #[cfg(feature = "ext-array")]
+            Distinct => crate::operators::array::evaluate_distinct,
         ],
 
         // `BuiltinOperator { opcode, args, .. } => fn(args, ctx, engine,

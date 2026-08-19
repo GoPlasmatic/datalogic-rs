@@ -1,0 +1,155 @@
+[
+  "# format_date with an IANA timezone argument",
+  {
+    "description": "Format an instant as Asia/Kolkata wall clock",
+    "rule": {"format_date": [{"datetime": "2026-08-17T18:30:00Z"}, "yyyy-MM-dd HH:mm", "Asia/Kolkata"]},
+    "data": null,
+    "result": "2026-08-18 00:00"
+  },
+  {
+    "description": "Month-name tokens with a zone (the issue #63 example shape)",
+    "rule": {"format_date": [{"datetime": "2026-08-17T18:30:00Z"}, "dd MMM yyyy", "Asia/Kolkata"]},
+    "data": null,
+    "result": "18 Aug 2026"
+  },
+  {
+    "description": "z reports the target zone offset (no-DST zone)",
+    "rule": {"format_date": [{"datetime": "2026-08-17T18:30:00Z"}, "z", "Asia/Kolkata"]},
+    "data": null,
+    "result": "+0530"
+  },
+  {
+    "description": "z reports the winter offset in a DST zone",
+    "rule": {"format_date": [{"datetime": "2024-01-15T12:00:00Z"}, "z", "America/New_York"]},
+    "data": null,
+    "result": "-0500"
+  },
+  {
+    "description": "z reports the summer offset in a DST zone",
+    "rule": {"format_date": [{"datetime": "2024-07-15T12:00:00Z"}, "z", "America/New_York"]},
+    "data": null,
+    "result": "-0400"
+  },
+  {
+    "description": "Naive input with a zone must use the zone offset, not the source offset",
+    "rule": {"format_date": [{"datetime": "2026-08-17T12:00:00"}, "z", "Asia/Kolkata"]},
+    "data": null,
+    "result": "+0530"
+  },
+  {
+    "description": "Raw %Z yields the zone abbreviation",
+    "rule": {"format_date": [{"datetime": "2024-01-15T12:00:00Z"}, "%Z", "America/New_York"]},
+    "data": null,
+    "result": "EST"
+  },
+  {
+    "description": "UTC as an explicit zone",
+    "rule": {"format_date": [{"datetime": "2024-01-15T12:00:00Z"}, "z", "UTC"]},
+    "data": null,
+    "result": "+0000"
+  },
+  "# parse_date with an IANA timezone argument",
+  {
+    "description": "Naive input read as America/New_York wall clock (EDT)",
+    "rule": {"parse_date": ["2024-06-15 12:00:00", "yyyy-MM-dd HH:mm:ss", "America/New_York"]},
+    "data": null,
+    "result": "2024-06-15T16:00:00Z"
+  },
+  {
+    "description": "Date-only input is midnight in the zone",
+    "rule": {"parse_date": ["2026-08-17", "yyyy-MM-dd", "Asia/Kolkata"]},
+    "data": null,
+    "result": "2026-08-16T18:30:00Z"
+  },
+  {
+    "description": "Ambiguous local time (fall-back) resolves to the earlier instant",
+    "rule": {"parse_date": ["2024-11-03 01:30:00", "yyyy-MM-dd HH:mm:ss", "America/New_York"]},
+    "data": null,
+    "result": "2024-11-03T05:30:00Z"
+  },
+  {
+    "description": "Nonexistent local time (spring-forward gap) is an error",
+    "rule": {"parse_date": ["2024-03-10 02:30:00", "yyyy-MM-dd HH:mm:ss", "America/New_York"]},
+    "data": null,
+    "error": { "type": "Nonexistent local time for timezone" }
+  },
+  {
+    "description": "Etc/UTC parses as plain UTC",
+    "rule": {"parse_date": ["2024-06-15 12:00:00", "yyyy-MM-dd HH:mm:ss", "Etc/UTC"]},
+    "data": null,
+    "result": "2024-06-15T12:00:00Z"
+  },
+  {
+    "description": "Zone round-trip: parse in zone, format back in zone",
+    "rule": {"format_date": [
+      {"parse_date": ["2026-08-17 09:30", "yyyy-MM-dd HH:mm", "Asia/Kolkata"]},
+      "yyyy-MM-dd HH:mm",
+      "Asia/Kolkata"
+    ]},
+    "data": null,
+    "result": "2026-08-17 09:30"
+  },
+  "# Expanded format tokens (no zone — applies to all arities)",
+  {
+    "description": "MMM renders the abbreviated month name",
+    "rule": {"format_date": [{"datetime": "2024-01-15T12:00:00Z"}, "dd MMM yyyy"]},
+    "data": null,
+    "result": "15 Jan 2024"
+  },
+  {
+    "description": "MMMM and EEEE render full names",
+    "rule": {"format_date": [{"datetime": "2024-01-15T12:00:00Z"}, "EEEE, dd MMMM yyyy"]},
+    "data": null,
+    "result": "Monday, 15 January 2024"
+  },
+  {
+    "description": "EEE renders the abbreviated weekday",
+    "rule": {"format_date": [{"datetime": "2024-01-15T12:00:00Z"}, "EEE HH:mm"]},
+    "data": null,
+    "result": "Mon 12:00"
+  },
+  {
+    "description": "parse_date understands MMM input",
+    "rule": {"parse_date": ["15 Jan 2024 08:00:00", "dd MMM yyyy HH:mm:ss"]},
+    "data": null,
+    "result": "2024-01-15T08:00:00Z"
+  },
+  "# Two-argument behavior is unchanged",
+  {
+    "description": "z without a zone still reports the source offset",
+    "rule": {"format_date": [{"datetime": "2022-07-06T13:20:06+05:00"}, "z"]},
+    "data": null,
+    "result": "+0500"
+  },
+  {
+    "description": "parse_date without a zone still reads naive input as UTC",
+    "rule": {"parse_date": ["2024-06-15 12:00:00", "yyyy-MM-dd HH:mm:ss"]},
+    "data": null,
+    "result": "2024-06-15T12:00:00Z"
+  },
+  "# Error cases",
+  {
+    "description": "Unknown zone from data errors at evaluation with the zone name",
+    "rule": {"format_date": [{"datetime": "2024-01-15T12:00:00Z"}, "z", {"var": "tz"}]},
+    "data": { "tz": "Not/AZone" },
+    "error": { "type": "Unknown timezone: Not/AZone" }
+  },
+  {
+    "description": "Unknown literal zone is caught by the compile-time check",
+    "rule": {"format_date": [{"datetime": "2024-01-15T12:00:00Z"}, "z", "Not/AZone"]},
+    "data": null,
+    "error": { "type": "Invalid Arguments" }
+  },
+  {
+    "description": "Unknown literal zone on parse_date is caught the same way",
+    "rule": {"parse_date": ["2024-06-15", "yyyy-MM-dd", "Not/AZone"]},
+    "data": null,
+    "error": { "type": "Invalid Arguments" }
+  },
+  {
+    "description": "Non-string zone argument is an error",
+    "rule": {"format_date": [{"datetime": "2024-01-15T12:00:00Z"}, "z", 5]},
+    "data": null,
+    "error": { "type": "Timezone must be a string" }
+  }
+]

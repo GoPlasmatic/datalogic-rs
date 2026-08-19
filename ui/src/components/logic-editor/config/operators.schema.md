@@ -401,7 +401,7 @@ export const operatorConfig: OperatorConfig = {
   operators: {
     '!': { ... },
     '!!': { ... },
-    // ... all 59 operators
+    // ... all 64 operators
   }
 };
 

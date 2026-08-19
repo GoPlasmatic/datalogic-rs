@@ -302,6 +302,12 @@ fn child_never_cacheable(opcode: OpCode, index: usize, len: usize) -> bool {
     if matches!(opcode, OpCode::Sort) {
         return index == 2;
     }
+    // `group_by`'s and keyed `distinct`'s key expressions (`args[1]`) run
+    // under per-item frames, same as the iterator bodies below.
+    #[cfg(feature = "ext-array")]
+    if matches!(opcode, OpCode::GroupBy | OpCode::Distinct) {
+        return index == 1;
+    }
     #[cfg(feature = "error-handling")]
     if matches!(opcode, OpCode::Try) {
         return len >= 2 && index == len - 1;
@@ -409,7 +415,7 @@ fn contains_iterator_op(node: &CompiledNode) -> bool {
 
 fn is_iterator_opcode(opcode: OpCode) -> bool {
     #[cfg(feature = "ext-array")]
-    if matches!(opcode, OpCode::Sort) {
+    if matches!(opcode, OpCode::Sort | OpCode::GroupBy | OpCode::Distinct) {
         return true;
     }
     matches!(
@@ -807,6 +813,19 @@ mod tests {
             r#"{{"+": [{AGG}, {{"reduce": [{{"map": [{{"var": "xs"}}, {AGG}]}}, {{"+": [{{"var": "accumulator"}}, {{"var": "current"}}]}}, 0]}}]}}"#
         );
         assert_eq!(slot_count(&rule), 0);
+    }
+
+    /// `group_by` / keyed `distinct` key expressions run under per-item
+    /// frames — same ineligibility as the iterator bodies above.
+    #[cfg(feature = "ext-array")]
+    #[test]
+    fn key_expr_occurrences_neither_count_nor_wrap() {
+        for op in ["group_by", "distinct"] {
+            let rule = format!(
+                r#"{{"+": [{AGG}, {{"reduce": [{{"{op}": [{{"var": "xs"}}, {AGG}]}}, {{"+": [{{"var": "accumulator"}}, 1]}}, 0]}}]}}"#
+            );
+            assert_eq!(slot_count(&rule), 0, "key expr of {op} must be ineligible");
+        }
     }
 
     #[cfg(feature = "error-handling")]

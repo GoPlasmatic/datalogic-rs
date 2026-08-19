@@ -31,7 +31,8 @@
 //!   - Missing: `missing`, `missing_some`
 //! - **datetime**: `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`, `now`
 //! - **ext-string**: `length`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `split`
-//! - **ext-array**: `sort`, `slice`
+//! - **ext-array**: `sort`, `slice`, `group_by`, `distinct`
+//! - **ext-object**: `keys`, `values`, `entries`
 //! - **ext-control**: `exists`, `??`, `switch`/`match`, `type`
 //! - **error-handling**: `try`, `throw`
 //! - **ext-math**: `abs`, `ceil`, `floor`
@@ -136,6 +137,18 @@ pub(crate) enum OpCode {
     Sort = 54,
     #[cfg(feature = "ext-array")]
     Slice = 55,
+    #[cfg(feature = "ext-array")]
+    GroupBy = 62,
+    #[cfg(feature = "ext-array")]
+    Distinct = 63,
+
+    // === ext-object ===
+    #[cfg(feature = "ext-object")]
+    Keys = 64,
+    #[cfg(feature = "ext-object")]
+    Values = 65,
+    #[cfg(feature = "ext-object")]
+    Entries = 66,
 
     // === ext-control ===
     #[cfg(feature = "ext-control")]
@@ -256,6 +269,17 @@ const OPCODE_NAMES: &[(&str, OpCode)] = &[
     ("sort", OpCode::Sort),
     #[cfg(feature = "ext-array")]
     ("slice", OpCode::Slice),
+    #[cfg(feature = "ext-array")]
+    ("group_by", OpCode::GroupBy),
+    #[cfg(feature = "ext-array")]
+    ("distinct", OpCode::Distinct),
+    // ext-object
+    #[cfg(feature = "ext-object")]
+    ("keys", OpCode::Keys),
+    #[cfg(feature = "ext-object")]
+    ("values", OpCode::Values),
+    #[cfg(feature = "ext-object")]
+    ("entries", OpCode::Entries),
     // ext-control
     #[cfg(feature = "ext-control")]
     ("exists", OpCode::Exists),
@@ -388,6 +412,17 @@ impl OpCode {
             OpCode::Sort => "sort",
             #[cfg(feature = "ext-array")]
             OpCode::Slice => "slice",
+            #[cfg(feature = "ext-array")]
+            OpCode::GroupBy => "group_by",
+            #[cfg(feature = "ext-array")]
+            OpCode::Distinct => "distinct",
+            // ext-object
+            #[cfg(feature = "ext-object")]
+            OpCode::Keys => "keys",
+            #[cfg(feature = "ext-object")]
+            OpCode::Values => "values",
+            #[cfg(feature = "ext-object")]
+            OpCode::Entries => "entries",
             // ext-control. `switch` is canonical; `match` is an alias.
             #[cfg(feature = "ext-control")]
             OpCode::Exists => "exists",
