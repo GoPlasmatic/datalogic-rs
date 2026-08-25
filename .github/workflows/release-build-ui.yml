@@ -30,7 +30,7 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Sync UI version + WASM dep
+      - name: Sync UI version
         # `inputs.version` reaches the shell through the environment
         # rather than `${{ }}` interpolation. Expression interpolation
         # splices the value into the script *before* bash parses it, so
@@ -44,19 +44,31 @@ jobs:
           cd ui
           # Bump UI's own version
           npm version "$VERSION" --no-git-tag-version --allow-same-version
-          # Pin @goplasmatic/datalogic-wasm to the same version we're publishing
-          # so the released UI references the matching WASM (no skew).
-          npm pkg set "devDependencies.@goplasmatic/datalogic-wasm=$VERSION"
 
-      # Wire the freshly-built local WASM artifact into ui/node_modules
-      # BEFORE running npm install. With the symlink present and its
-      # version matching ui/package.json's pin, `npm install`
-      # preserves it instead of fetching from the registry — critical
-      # because we run BEFORE publish-wasm.
-      - name: Link local WASM package into UI
+      # Resolve @goplasmatic/datalogic-wasm from the freshly-built local
+      # artifact rather than the registry. This job runs BEFORE
+      # publish-wasm, so $VERSION does not exist on npm yet — pinning the
+      # dep to it here is what broke the v5.3.0 release:
+      #
+      #   npm error code ETARGET
+      #   npm error notarget No matching version found for
+      #   @goplasmatic/datalogic-wasm@5.3.0
+      #
+      # A `file:` spec takes the registry off the critical path entirely,
+      # and points at the same tree the build actually consumes: every
+      # import of the package is aliased to `ui/vendor/datalogic` (see
+      # vite.config.ts, vite.lib.config.ts, vitest.config.ts and
+      # tsconfig.{app,lib}.json), which the `sync-wasm` prebuild hook
+      # copies out of `../bindings/wasm/pkg`. node_modules never feeds the
+      # build; the dep is declared for provenance, not resolution.
+      #
+      # The previous `npm link` step could not survive the install that
+      # followed it — `npm install` re-resolves from package.json and the
+      # lockfile, replacing the symlink.
+      - name: Point WASM dep at the local build artifact
         run: |
-          cd bindings/wasm/pkg && npm link
-          cd ../../../ui && npm link @goplasmatic/datalogic-wasm
+          cd ui
+          npm pkg set "devDependencies.@goplasmatic/datalogic-wasm=file:../bindings/wasm/pkg"
 
       - name: Install UI dependencies
         run: cd ui && npm install
@@ -64,11 +76,22 @@ jobs:
       - name: Build UI library
         run: cd ui && npm run build:lib
 
+      # Restore the published manifest's pin now that nothing else needs
+      # to resolve it. publish-ui `needs: publish-wasm`, so $VERSION is on
+      # npm before this package.json is ever published — no skew, and no
+      # `file:` spec leaking into the published tarball.
+      - name: Pin WASM dep to the release version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          cd ui
+          npm pkg set "devDependencies.@goplasmatic/datalogic-wasm=$VERSION"
+
       # Bundle only the files `npm publish` actually packs — everything
       # listed in package.json's `files` field plus the package manifest,
       # README, LICENSE. node_modules is intentionally excluded (it
-      # carries the linked-local WASM symlink which would not match the
-      # published WASM dep).
+      # carries the `file:`-linked local WASM package, which would not
+      # match the published WASM dep).
       - name: Upload ui-package artifact
         uses: actions/upload-artifact@v7
         with:
