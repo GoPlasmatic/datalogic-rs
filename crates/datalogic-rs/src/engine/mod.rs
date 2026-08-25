@@ -386,6 +386,41 @@ impl Engine {
         self.custom_operators.keys().map(String::as_str)
     }
 
+    /// Iterator over every *built-in* operator name this build evaluates:
+    /// the JSONLogic baseline plus whichever extension families
+    /// (`ext-string`, `datetime`, `ext-control`, …) were compiled in.
+    ///
+    /// The list is derived from the same table the compiler resolves
+    /// operator keys against, so it cannot drift from dispatch. It
+    /// includes input aliases (`var` for `val`, `?:` for `if`, `match`
+    /// for `switch`) because those keys are live calls too; order is
+    /// canonical name first, then its aliases, per operator.
+    ///
+    /// Custom registrations are not included; see
+    /// [`Self::custom_operator_names`]. The union of the two is the full
+    /// vocabulary of this engine. A custom operator registered under a
+    /// built-in name is never reached: built-in resolution wins at
+    /// compile time.
+    ///
+    /// Under templating mode an unknown key is not an error (the object
+    /// echoes back as data), so this is the vocabulary authoring-side
+    /// tooling needs to tell a live call from a literal.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::Engine;
+    ///
+    /// let engine = Engine::new();
+    /// let names: Vec<&str> = engine.builtin_operator_names().collect();
+    /// assert!(names.contains(&"val"));
+    /// assert!(names.contains(&"var")); // alias of `val`
+    /// assert!(!names.contains(&"lenght"));
+    /// ```
+    pub fn builtin_operator_names(&self) -> impl Iterator<Item = &'static str> + use<> {
+        crate::opcode::builtin_operator_names()
+    }
+
     // ============================================================
     // V5 PUBLIC API
     //   - One-shot:   `eval` / `eval_str` / `eval_into`   (engine-owned arena per call)

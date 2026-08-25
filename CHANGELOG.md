@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
+## [5.3.0] - 2026-08-25
+
+### Added
+
+- **`Engine::builtin_operator_names()`**
+  ([#65](https://github.com/GoPlasmatic/datalogic-rs/issues/65)).
+  Iterator over every built-in operator key this build resolves: the
+  JSONLogic baseline plus whichever extension families were compiled
+  in, including the input aliases `var`, `?:` and `match`. Derived from
+  the compiler's own lookup table, so it cannot drift from dispatch.
+  Complements `custom_operator_names()` (5.2.0); the union of the two
+  is the engine's full vocabulary, which authoring-side tooling needs
+  under templating mode, where an unknown key is not an error but
+  echoes back as data. Downstream consumers (dataflow-rs, Orion) can
+  drop their hand-kept mirrors of the operator list.
+
 ## [5.2.0] - 2026-08-19
 
 ### Added

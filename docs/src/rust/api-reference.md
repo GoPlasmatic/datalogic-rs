@@ -172,7 +172,16 @@ pub fn trace(&self) -> TracedSession<'_>;
 pub fn config(&self) -> &EvaluationConfig
 pub fn has_custom_operator(&self, name: &str) -> bool
 pub fn custom_operator_names(&self) -> impl Iterator<Item = &str>
+pub fn builtin_operator_names(&self) -> impl Iterator<Item = &'static str>
 ```
+
+`builtin_operator_names()` reports every built-in key this build resolves
+as an operator: the baseline set plus whichever extension families were
+compiled in, including the input aliases `var`, `?:` and `match`. It is
+derived from the compiler's own lookup table, so it cannot drift from
+dispatch. Together with `custom_operator_names()` it is the engine's full
+vocabulary, which is what authoring-side tooling needs under templating
+mode, where an unknown key is not an error but echoes back as data.
 
 ---
 

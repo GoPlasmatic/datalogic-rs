@@ -46,6 +46,10 @@
 //! 2. Add an entry (canonical name first, then any aliases) to [`OPCODE_NAMES`]
 //! 3. Add the dispatch arm in `src/engine/dispatch.rs`
 //! 4. Implement the operator function in the appropriate `src/operators/` module
+//!
+//! No further step is needed for introspection:
+//! [`crate::Engine::builtin_operator_names`] is derived from
+//! [`OPCODE_NAMES`], so a new entry is reported automatically.
 
 use std::str::FromStr;
 
@@ -325,6 +329,15 @@ impl FromStr for OpCode {
     }
 }
 
+/// Every name [`OpCode::from_str`] accepts in this build: canonical names
+/// and their aliases, in table order (canonical first, then aliases for
+/// the same opcode). Derived from [`OPCODE_NAMES`], so it cannot drift
+/// from dispatch; the table's `#[cfg]` gates are what make the result
+/// reflect the compiled feature set.
+pub(crate) fn builtin_operator_names() -> impl Iterator<Item = &'static str> {
+    OPCODE_NAMES.iter().map(|(name, _)| *name)
+}
+
 impl OpCode {
     /// Convert OpCode back to its canonical string form (for debugging /
     /// display / serialization).
@@ -477,6 +490,33 @@ mod tests {
                 reparsed, *expected,
                 "canonical {canonical:?} for {expected:?} re-parses to {reparsed:?}"
             );
+        }
+    }
+
+    /// `builtin_operator_names` is a public contract (via
+    /// `Engine::builtin_operator_names`), so the table must never carry
+    /// the same string twice: a duplicate would be silently shadowed by
+    /// `from_str`'s first-match scan and double-reported by the iterator.
+    #[test]
+    fn builtin_operator_names_are_unique_and_match_table() {
+        let names: Vec<&str> = builtin_operator_names().collect();
+        assert_eq!(names.len(), OPCODE_NAMES.len());
+        let mut sorted = names.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), names.len(), "duplicate name in OPCODE_NAMES");
+        // Canonical name precedes its aliases: the first occurrence of each
+        // opcode in table order must be what `as_str` reports.
+        let mut seen = Vec::new();
+        for (name, op) in OPCODE_NAMES {
+            if !seen.contains(op) {
+                seen.push(*op);
+                assert_eq!(
+                    op.as_str(),
+                    *name,
+                    "first entry for {op:?} is not canonical"
+                );
+            }
         }
     }
 }

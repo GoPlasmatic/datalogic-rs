@@ -378,7 +378,8 @@ JSONLogic implementation as a comparison subject, see
 ## Adding a built-in operator
 
 1. Add a variant to `OpCode` in `crates/datalogic-rs/src/opcode.rs` and wire its
-   `FromStr` + `as_str()` entries.
+   `FromStr` + `as_str()` entries. `Engine::builtin_operator_names()` is derived
+   from the same table, so the new name is reported automatically.
 2. Implement `evaluate_<op>` under `crates/datalogic-rs/src/operators/<category>/`
    following the established signature
    (`args: &'a [CompiledNode], ctx: &mut ContextStack<'a>, engine: &Engine, arena: &'a Bump`).

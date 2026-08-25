@@ -35,6 +35,13 @@ This split only affects the **Rust crate**: only the baseline set compiles in th
 | `datetime` | `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`, `now` |
 | `flagd` | `fractional`, `sem_ver` |
 
+The table above is maintained by hand; the machine-readable source of
+truth for a given build is
+[`Engine::builtin_operator_names()`](../rust/api-reference.md#introspection-helpers),
+which is derived from the compiler's own lookup table and reflects the
+compiled feature set (aliases included). Use it instead of a hand-copied
+list when tooling needs to know what the running engine evaluates.
+
 ## Operator Syntax
 
 All operators follow the JSONLogic format:
