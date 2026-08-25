@@ -9,17 +9,23 @@ import { getCategoryIcon } from '../../config/categories';
 import { generateExpressionText, generateArgSummary } from '../formatting';
 import { isSimpleOperand } from '../type-helpers';
 import { TRUNCATION_LIMITS } from '../../constants';
-
-// Variable operators
-const VARIABLE_OPERATORS = ['var', 'val', 'exists'] as const;
-type VariableOperator = (typeof VARIABLE_OPERATORS)[number];
+import { convertOperator } from './operator-converter';
+import {
+  isVariableOperatorName,
+  parseVarOperand,
+  parseValOperand,
+  parseExistsOperand,
+  type VariableOperator,
+} from './variable-cells';
 
 // Check if operator is a variable operator
 export function isVariableOperator(operator: string): operator is VariableOperator {
-  return VARIABLE_OPERATORS.includes(operator as VariableOperator);
+  return isVariableOperatorName(operator);
 }
 
-// Convert a variable operator (var, val, exists) to a unified operator node with cells
+// Convert a variable operator (var, val, exists) to a unified operator node with cells.
+// A computed path (an expression where a path segment is expected) falls back to
+// the generic operator converter so it is wired as a child and round-trips intact.
 export function convertVariable(
   operator: VariableOperator,
   operands: JsonLogicValue,
@@ -30,40 +36,30 @@ export function convertVariable(
   const op = getOperator(operator);
   const category = op?.category ?? 'variable';
   const icon: IconName = getCategoryIcon(category) as IconName;
-  const branchIndex = 0;
 
   // Parse operands to extract path, default value, scope, and path components
-  let path = '';
+  let path: string | number = '';
   let defaultValue: JsonLogicValue | undefined;
   let scopeJump: number | undefined;
-  let pathComponents: string[] | undefined;
+  let pathComponents: JsonLogicValue[] | undefined;
 
   if (operator === 'var') {
-    if (Array.isArray(operands)) {
-      path = String(operands[0] ?? '');
-      defaultValue = operands[1];
-    } else {
-      path = String(operands ?? '');
-    }
+    const parsed = parseVarOperand(operands);
+    if (!parsed.isStatic) return convertDynamic(operator, operands, context, convertValue);
+    path = parsed.path;
+    defaultValue = parsed.defaultValue;
   } else if (operator === 'val') {
-    if (Array.isArray(operands)) {
-      const [scopeArray, ...pathParts] = operands;
-      if (Array.isArray(scopeArray) && scopeArray.length > 0) {
-        const scopeValue = scopeArray[0];
-        scopeJump = typeof scopeValue === 'number' ? Math.abs(scopeValue) : 0;
-      } else {
-        scopeJump = 0;
-      }
-      pathComponents = pathParts.map(p => String(p));
-    } else {
-      scopeJump = 0;
-      pathComponents = [String(operands ?? '')];
-    }
+    const parsed = parseValOperand(operands);
+    if (!parsed.isStatic) return convertDynamic(operator, operands, context, convertValue);
+    scopeJump = parsed.scope;
+    pathComponents = parsed.components;
   } else if (operator === 'exists') {
-    if (Array.isArray(operands)) {
-      path = operands.map(p => String(p)).join('.');
+    const parsed = parseExistsOperand(operands);
+    if (!parsed.isStatic) return convertDynamic(operator, operands, context, convertValue);
+    if (Array.isArray(parsed.path)) {
+      pathComponents = parsed.path;
     } else {
-      path = String(operands ?? '');
+      path = parsed.path;
     }
   }
 
@@ -85,6 +81,7 @@ export function convertVariable(
       edges: context.edges,
       parentId: nodeId,
       argIndex: 1,
+      branchType: 'branch',
       templating: context.templating,
     });
     const summary = generateArgSummary(defaultValue);
@@ -97,7 +94,8 @@ export function convertVariable(
       index: 1,
       summary,
     });
-    context.edges.push(createBranchEdge(nodeId, branchId, branchIndex));
+    // The branch edge uses the cell index so it matches CellHandles / edge-builder.
+    context.edges.push(createBranchEdge(nodeId, branchId, 1));
   }
 
   const originalExpr = { [operator]: operands };
@@ -134,3 +132,15 @@ export function convertVariable(
   return nodeId;
 }
 
+// A var/val/exists whose path is computed: wire the operands as ordinary
+// arguments. The generic node keeps the raw operand on its expression, so the
+// serializer emits the original single-value or array form.
+function convertDynamic(
+  operator: VariableOperator,
+  operands: JsonLogicValue,
+  context: ConversionContext,
+  convertValue: ConverterFn
+): string {
+  const operandArray: JsonLogicValue[] = Array.isArray(operands) ? operands : [operands];
+  return convertOperator(operator, operandArray, context, convertValue, operands);
+}

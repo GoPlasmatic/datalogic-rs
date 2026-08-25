@@ -1,58 +1,78 @@
 import type { MenuItemConfig } from './ContextMenu';
 import type { LogicNode, OperatorNodeData, CellData } from '../types';
+import { decisionCell, isIfOperator } from '../utils/converters/if-else-converter';
+import { switchPairPartner } from '../utils/converters/switch-cells';
 
-// Build remove items for if/then operator — groups condition+then as pairs
+// Build remove items for a decision diamond (if / else-if).
+// The condition (with its then value) can only be removed when an else-if
+// diamond follows in the chain to take its place; the else input can always go.
 export function buildIfRemoveItems(
   opData: OperatorNodeData,
-  _childNodes: LogicNode[],
+  childNodes: LogicNode[],
   onRemove: (argIndex: number) => void
 ): MenuItemConfig[] {
   const items: MenuItemConfig[] = [];
-  const cells = opData.cells;
-  let i = 0;
-  let pairNum = 1;
+  const whenCell = decisionCell(opData.cells, 'when');
+  const elseCell = decisionCell(opData.cells, 'else');
 
-  while (i < cells.length) {
-    const cell = cells[i];
+  if (whenCell) {
+    const elseChild = elseCell?.branchId
+      ? childNodes.find((c) => c.id === elseCell.branchId)
+      : undefined;
+    const hasElseIf =
+      elseChild?.data.type === 'operator' &&
+      elseChild.data.label === 'elif' &&
+      isIfOperator((elseChild.data as OperatorNodeData).operator);
+    const condLabel = whenCell.label || '(condition)';
 
-    if (cell.rowLabel === 'If' || cell.rowLabel === 'Else If') {
-      // This is a condition cell — pair it with the next Then cell
-      const condLabel = cell.label || '(condition)';
-      const isFirst = cell.rowLabel === 'If';
-      const label = isFirst
-        ? `If: ${condLabel}`
-        : `Else If ${pairNum}: ${condLabel}`;
+    items.push({
+      id: `remove-pair-${whenCell.index}`,
+      label: `${opData.label === 'elif' ? 'Else If' : 'If'}: ${condLabel}`,
+      disabled: !hasElseIf,
+      onClick: hasElseIf ? () => onRemove(whenCell.index) : undefined,
+    });
+  }
 
-      // Only allow removing if it's not the last condition-then pair
-      const conditionCount = cells.filter(
-        (c) => c.rowLabel === 'If' || c.rowLabel === 'Else If'
-      ).length;
-      const canRemoveThis = conditionCount > 1;
+  if (elseCell) {
+    items.push({
+      id: `remove-else-${elseCell.index}`,
+      label: `Else: ${elseCell.label || '(value)'}`,
+      onClick: () => onRemove(elseCell.index),
+    });
+  }
 
+  return items;
+}
+
+// Build remove items for a switch/match node: one entry per Case/Then pair
+// and one for the Default row. The Match row cannot be removed.
+export function buildSwitchRemoveItems(
+  opData: OperatorNodeData,
+  childNodes: LogicNode[],
+  onRemove: (argIndex: number) => void
+): MenuItemConfig[] {
+  const items: MenuItemConfig[] = [];
+  let caseNum = 1;
+
+  for (const cell of opData.cells) {
+    if (cell.rowLabel === 'Case') {
+      const partner = switchPairPartner(opData.cells, cell);
+      const childNode = cell.branchId ? childNodes.find((c) => c.id === cell.branchId) : undefined;
+      const caseLabel = cell.label || (childNode ? getCellLabel(cell, childNode, cell.index) : '(case)');
+      const thenLabel = partner?.label || '(result)';
       items.push({
-        id: `remove-pair-${cell.index}`,
-        label,
-        disabled: !canRemoveThis,
-        onClick: canRemoveThis ? () => onRemove(cell.index) : undefined,
-      });
-
-      pairNum++;
-      i += 2; // Skip the Then cell
-      continue;
-    }
-
-    if (cell.rowLabel === 'Else') {
-      items.push({
-        id: `remove-else-${cell.index}`,
-        label: `Else: ${cell.label || '(value)'}`,
+        id: `remove-case-${cell.index}`,
+        label: `Case ${caseNum}: ${caseLabel} then ${thenLabel}`,
         onClick: () => onRemove(cell.index),
       });
-      i++;
-      continue;
+      caseNum++;
+    } else if (cell.rowLabel === 'Default') {
+      items.push({
+        id: `remove-default-${cell.index}`,
+        label: `Default: ${cell.label || '(value)'}`,
+        onClick: () => onRemove(cell.index),
+      });
     }
-
-    // Fallback for unexpected cells
-    i++;
   }
 
   return items;
@@ -67,7 +87,8 @@ export function getCellLabel(cell: CellData, childNode: LogicNode | undefined, i
 
   // Editable cells (var path, etc.)
   if (cell.type === 'editable') {
-    return `${cell.rowLabel || 'Arg'} ${index + 1}: ${cell.value !== undefined ? String(cell.value) : '(empty)'}`;
+    const value = Array.isArray(cell.value) ? cell.value.map(String).join('.') : cell.value;
+    return `${cell.rowLabel || 'Arg'} ${index + 1}: ${value !== undefined && value !== '' ? String(value) : '(empty)'}`;
   }
 
   // Branch cells with child node

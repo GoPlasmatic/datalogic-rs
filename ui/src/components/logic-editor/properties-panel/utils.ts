@@ -4,10 +4,22 @@
  * Helper functions for mapping node data to panel configurations.
  */
 
-import type { LogicNodeData, LiteralNodeData, OperatorNodeData, StructureNodeData } from '../types';
+import type {
+  LogicNodeData,
+  LiteralNodeData,
+  OperatorNodeData,
+  StructureNodeData,
+  JsonLogicValue,
+} from '../types';
 import type { Operator, PanelConfig } from '../config/operators.types';
 import { getOperator } from '../config/operators';
-import { literalPanelConfig } from '../config/literalPanel';
+import { literalPanelConfig, structurePanelConfig } from '../config/literalPanel';
+import { isSimpleOperand } from '../utils/type-helpers';
+import {
+  isMetadataAccess,
+  pathComponentsFromCellValue,
+  rawOperandOf,
+} from '../utils/converters/variable-cells';
 
 /**
  * Get the panel configuration for a node
@@ -43,7 +55,10 @@ function getOperatorPanelConfig(data: OperatorNodeData): PanelConfig | null {
 }
 
 function getStructurePanelConfig(): PanelConfig | null {
-  return literalPanelConfig;
+  // Structure nodes are the only place the `object` literal type applies;
+  // `literalPanelConfig` deliberately omits it (LiteralNodeData has no
+  // `object` valueType).
+  return structurePanelConfig;
 }
 
 /**
@@ -63,44 +78,58 @@ export function getInitialValuesFromNode(data: LogicNodeData): Record<string, un
 }
 
 function getOperatorInitialValues(data: OperatorNodeData): Record<string, unknown> {
+  const raw = rawOperandOf(data.expression);
+  const operands: JsonLogicValue[] = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
+
   // For variable operators, extract values from editable cells
   if (data.operator === 'var') {
     const pathCell = data.cells.find((c) => c.fieldId === 'path');
-    const defaultCell = data.cells.find((c) => c.fieldId === 'default');
+    // The default is the second cell: inline (value stored on the expression),
+    // editable, or a wired child (complex default).
+    const defaultCell = data.cells.find((c) => c.index === 1 && c.fieldId !== 'path');
+    let defaultValue: unknown;
+    if (defaultCell?.type === 'editable') {
+      defaultValue = defaultCell.value;
+    } else if (defaultCell && defaultCell.type !== 'branch') {
+      defaultValue = operands[1];
+    } else if (defaultCell && isSimpleOperand(operands[1] ?? null) && operands.length > 1) {
+      defaultValue = operands[1];
+    }
     return {
       path: pathCell?.value ?? '',
       hasDefault: defaultCell !== undefined,
-      default: defaultCell?.value,
+      default: defaultValue,
     };
   }
 
   if (data.operator === 'val') {
-    const pathCell = data.cells.find((c) => c.fieldId === 'path');
+    const pathCells = data.cells.filter((c) => c.fieldId === 'path');
     const scopeCell = data.cells.find((c) => c.fieldId === 'scopeLevel');
-    const metaCell = data.cells.find((c) => c.fieldId === 'metadataKey');
+    const scope = typeof scopeCell?.value === 'number' ? scopeCell.value : 0;
+    const components = pathCells.flatMap((c) => pathComponentsFromCellValue(c.value));
 
-    if (metaCell) {
+    if (isMetadataAccess(scope, components)) {
       return {
         accessType: 'metadata',
-        metadataKey: metaCell.value,
+        metadataKey: components[0],
       };
     }
 
     return {
       accessType: 'path',
-      scopeLevel: scopeCell?.value ?? 0,
-      path: pathCell?.value ?? [],
+      scopeLevel: scope,
+      path: components,
     };
   }
 
   if (data.operator === 'exists') {
     const pathCell = data.cells.find((c) => c.fieldId === 'path');
-    const pathValue = pathCell?.value as string | undefined;
-    const isDotNotation = typeof pathValue === 'string' && !pathValue.startsWith('[');
+    const pathValue = pathCell?.value;
+    const isArrayPath = Array.isArray(pathValue);
     return {
-      pathType: isDotNotation ? 'dot' : 'array',
-      dotPath: isDotNotation ? (pathValue ?? '') : '',
-      arrayPath: isDotNotation ? [] : (pathValue ? String(pathValue).split('.') : []),
+      pathType: isArrayPath ? 'array' : 'dot',
+      dotPath: isArrayPath ? '' : String(pathValue ?? ''),
+      arrayPath: isArrayPath ? (pathValue as unknown[]).map(String) : [],
     };
   }
 

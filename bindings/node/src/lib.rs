@@ -23,6 +23,20 @@ pub use crate::data::DataHandle;
 pub use crate::engine::{Engine, Rule};
 pub use crate::session::Session;
 
+/// Every built-in operator name this binding accepts, in the engine's
+/// registry order: canonical names first, then their aliases (`var`,
+/// `?:`, `match`). Mirrors `Engine::builtin_operator_names()` in the Rust
+/// crate; the binding enables every operator feature, so this is the full
+/// set. Custom operators registered on an `Engine` are listed by
+/// `Engine.customOperatorNames()`.
+#[napi(js_name = "builtinOperatorNames")]
+pub fn builtin_operator_names() -> Vec<String> {
+    datalogic_rs::Engine::new()
+        .builtin_operator_names()
+        .map(str::to_owned)
+        .collect()
+}
+
 /// Top-level convenience: compile `rule` and evaluate against `data` in
 /// one call. Equivalent to `new Engine().compile(rule).evaluate(data)`.
 ///

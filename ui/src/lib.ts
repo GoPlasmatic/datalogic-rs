@@ -9,6 +9,8 @@ export { DataLogicEditor } from './components/logic-editor/DataLogicEditor';
 export type {
   // Public props
   DataLogicEditorProps,
+  DataLogicEvaluationConfig,
+  DataLogicCustomOperator,
   // JSONLogic types
   JsonLogicValue,
   // Node types (for advanced use)
@@ -18,12 +20,18 @@ export type {
   OperatorNodeData,
   VariableNodeData,
   LiteralNodeData,
-  // Evaluation types
-  NodeEvaluationResult,
-  EvaluationResultsMap,
+  StructureNodeData,
+  StructureElement,
+  CellData,
+  ConversionResult,
+  StructuredError,
+  TracedResult,
   // Operator types
   OperatorCategory,
 } from './components/logic-editor/types';
+export type { FlowDirection } from './components/logic-editor/context';
+export type { IconName } from './components/logic-editor/utils/icons';
+export type { JsonLogicToNodesOptions } from './components/logic-editor/utils';
 
 // Constants (for customization)
 export { CATEGORY_COLORS } from './components/logic-editor/constants';
@@ -31,3 +39,9 @@ export { operators as OPERATORS } from './components/logic-editor/config/operato
 
 // Utilities (for advanced use)
 export { jsonLogicToNodes, applyTreeLayout } from './components/logic-editor/utils';
+export {
+  useWasmEvaluator,
+  DataLogicEvaluationError,
+  summarizeEvaluationConfig,
+  isDefaultEvaluationConfig,
+} from './components/logic-editor/hooks';

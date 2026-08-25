@@ -121,11 +121,11 @@ impl<'a> EvalInput<'a> for &'a serde_json::Value {
 // resolvable in a default-features build.
 #[cfg_attr(
     feature = "serde_json",
-    doc = "/ [`crate::Engine::eval_into`] and the module-level `datalogic::eval*`"
+    doc = "/ [`crate::Engine::eval_into`] and the module-level `datalogic_rs::eval*`"
 )]
 #[cfg_attr(
     not(feature = "serde_json"),
-    doc = "(plus `Engine::eval_into` with the `serde_json` feature) and the module-level `datalogic::eval*`"
+    doc = "(plus `Engine::eval_into` with the `serde_json` feature) and the module-level `datalogic_rs::eval*`"
 )]
 /// helpers, where the engine creates and owns the arena per call.
 ///

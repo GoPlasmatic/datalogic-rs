@@ -39,7 +39,7 @@ and PHP bindings all embed the same engine; none of them reimplements a
 single operator. Semantic parity across languages is a build artifact, not a
 hope, and two concrete checks keep it that way:
 
-- The same 1,636-case conformance battery (58 suites) runs against the core
+- The same 1,658-case conformance battery (58 suites) runs against the core
   in CI. Every binding ships the exact engine those cases validated, so
   there is no per-language test matrix to fall behind.
 - The flagd [`fractional` operator](operators/flagd.md) is byte-compatible
@@ -104,7 +104,7 @@ to the core standard, and evaluations are infrequent enough that per-call
 rule walking does not matter.
 
 **Choose datalogic-rs when:** evaluation is hot (compile-once evaluation
-measures about 31x faster geomean on the shared suites), you need the
+measures about 28x faster geomean on the shared suites), you need the
 extended operators (datetime, string, `try`/`throw`, flagd), custom
 operators, tracing, or any of the non-Rust bindings. Both engines speak
 JSONLogic, so rules carry over unchanged; switching is confined to the Rust

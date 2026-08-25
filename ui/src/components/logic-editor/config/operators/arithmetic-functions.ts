@@ -49,7 +49,11 @@ export const arithmeticFunctionOperators: Record<string, Operator> = {
           result: 95,
         },
       ],
-      notes: ['Accepts 1 or more arguments', 'Can operate on an array'],
+      notes: [
+        'Accepts 1 or more arguments',
+        'A single argument that evaluates to an array is used as the value list',
+        'A literal array must be the argument list itself ({"max": [1, 5, 3]}), not wrapped',
+      ],
       seeAlso: ['min'],
     },
     ui: {
@@ -101,11 +105,15 @@ export const arithmeticFunctionOperators: Record<string, Operator> = {
           result: 19.99,
         },
       ],
-      notes: ['Accepts 1 or more arguments', 'Can operate on an array'],
+      notes: [
+        'Accepts 1 or more arguments',
+        'A single argument that evaluates to an array is used as the value list',
+        'A literal array must be the argument list itself ({"min": [5, 1, 3]}), not wrapped',
+      ],
       seeAlso: ['max'],
     },
     ui: {
-      icon: 'arrow-down',
+      icon: 'calculator',
       shortLabel: 'min',
       nodeType: 'operator',
     },
@@ -117,11 +125,10 @@ export const arithmeticFunctionOperators: Record<string, Operator> = {
     category: 'arithmetic',
     description: 'Get absolute value (remove sign)',
     arity: {
-      type: 'unary',
+      type: 'nary',
       min: 1,
-      max: 1,
       args: [
-        { name: 'value', label: 'Value', type: 'number', required: true },
+        { name: 'value', label: 'Value', type: 'number', required: true, repeatable: true },
       ],
     },
     help: {
@@ -150,12 +157,22 @@ export const arithmeticFunctionOperators: Record<string, Operator> = {
           data: { difference: -15 },
           result: 15,
         },
+        {
+          title: 'Several values',
+          rule: { abs: [-1, 2.5, -3] },
+          result: [1, 2.5, 3],
+          note: 'Multiple arguments return an array',
+        },
       ],
-      notes: ['Always returns a non-negative number', 'Useful for distance calculations'],
+      notes: [
+        'Always returns a non-negative number',
+        'Multiple arguments return an array of results',
+        'Useful for distance calculations',
+      ],
       seeAlso: ['ceil', 'floor'],
     },
     ui: {
-      icon: 'bar-chart-2',
+      icon: 'calculator',
       shortLabel: 'abs',
       nodeType: 'operator',
     },
@@ -167,11 +184,10 @@ export const arithmeticFunctionOperators: Record<string, Operator> = {
     category: 'arithmetic',
     description: 'Round up to nearest integer',
     arity: {
-      type: 'unary',
+      type: 'nary',
       min: 1,
-      max: 1,
       args: [
-        { name: 'value', label: 'Value', type: 'number', required: true },
+        { name: 'value', label: 'Value', type: 'number', required: true, repeatable: true },
       ],
     },
     help: {
@@ -201,12 +217,22 @@ export const arithmeticFunctionOperators: Record<string, Operator> = {
           data: { average: 3.7 },
           result: 4,
         },
+        {
+          title: 'Several values',
+          rule: { ceil: [4.2, 4.8] },
+          result: [5, 5],
+          note: 'Multiple arguments return an array',
+        },
       ],
-      notes: ['Always rounds toward positive infinity', 'Use floor to round down'],
+      notes: [
+        'Always rounds toward positive infinity',
+        'Multiple arguments return an array of results',
+        'Use floor to round down',
+      ],
       seeAlso: ['floor', 'abs'],
     },
     ui: {
-      icon: 'arrow-up-to-line',
+      icon: 'calculator',
       shortLabel: 'ceil',
       nodeType: 'operator',
     },
@@ -218,11 +244,10 @@ export const arithmeticFunctionOperators: Record<string, Operator> = {
     category: 'arithmetic',
     description: 'Round down to nearest integer',
     arity: {
-      type: 'unary',
+      type: 'nary',
       min: 1,
-      max: 1,
       args: [
-        { name: 'value', label: 'Value', type: 'number', required: true },
+        { name: 'value', label: 'Value', type: 'number', required: true, repeatable: true },
       ],
     },
     help: {
@@ -252,12 +277,22 @@ export const arithmeticFunctionOperators: Record<string, Operator> = {
           data: { score: 89.9 },
           result: 89,
         },
+        {
+          title: 'Several values',
+          rule: { floor: [4.2, 4.8] },
+          result: [4, 4],
+          note: 'Multiple arguments return an array',
+        },
       ],
-      notes: ['Always rounds toward negative infinity', 'Use ceil to round up'],
+      notes: [
+        'Always rounds toward negative infinity',
+        'Multiple arguments return an array of results',
+        'Use ceil to round up',
+      ],
       seeAlso: ['ceil', 'abs'],
     },
     ui: {
-      icon: 'arrow-down-to-line',
+      icon: 'calculator',
       shortLabel: 'floor',
       nodeType: 'operator',
     },

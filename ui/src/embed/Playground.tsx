@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { DataLogicEditor, type JsonLogicValue } from '../components/logic-editor';
 import { useWasmEvaluator, DataLogicEvaluationError } from '../components/logic-editor/hooks';
+import { ErrorDisplay, type DebugError } from '../components/debug-panel/ErrorDisplay';
 import { EMBED_SAMPLE_EXPRESSIONS as SAMPLE_EXPRESSIONS } from '../constants/embed-sample-expressions';
 import { JsonHighlight } from './JsonHighlight';
 import { JsonEditor } from './JsonEditor';
@@ -8,25 +9,26 @@ import { detectTheme, type PlaygroundProps } from './utils';
 
 export type { PlaygroundProps };
 
-export function Playground({ editable = false }: PlaygroundProps) {
+export function Playground({ editable = false, templating: initialTemplating = false }: PlaygroundProps) {
 
   const [logicText, setLogicText] = useState<string>('');
   const [expression, setExpression] = useState<JsonLogicValue | null>(null);
   const [logicError, setLogicError] = useState<string | null>(null);
 
   const [dataText, setDataText] = useState<string>('{}');
-  const [data, setData] = useState<object>({});
+  const [data, setData] = useState<unknown>({});
   const [dataError, setDataError] = useState<string | null>(null);
 
   const [result, setResult] = useState<unknown>(undefined);
-  const [resultError, setResultError] = useState<string | null>(null);
+  const [resultError, setResultError] = useState<DebugError>(null);
 
+  const [templating, setTemplating] = useState<boolean>(initialTemplating);
   const [selectedExample, setSelectedExample] = useState<string>('');
 
   // Detect theme
   const theme = detectTheme();
 
-  const { ready: wasmReady, loading: wasmLoading, error: wasmError, evaluate } = useWasmEvaluator({});
+  const { ready: wasmReady, loading: wasmLoading, error: wasmError, evaluate } = useWasmEvaluator({ templating });
 
   // Handle logic text changes
   const handleLogicChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -48,7 +50,7 @@ export function Playground({ editable = false }: PlaygroundProps) {
     }
   }, []);
 
-  // Handle data text changes
+  // Handle data text changes: any JSON value is a valid root context
   const handleDataChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const text = e.target.value;
     setDataText(text);
@@ -60,19 +62,21 @@ export function Playground({ editable = false }: PlaygroundProps) {
     }
 
     try {
-      const parsed = JSON.parse(text);
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-        setDataError('Data must be a JSON object');
-        return;
-      }
-      setData(parsed);
+      setData(JSON.parse(text));
       setDataError(null);
     } catch (err) {
       setDataError(err instanceof Error ? err.message : 'Invalid JSON');
     }
   }, []);
 
-  // Load sample expression
+  // Canvas edits flow back into the Logic text and the result
+  const handleExpressionChange = useCallback((newExpr: JsonLogicValue | null) => {
+    setExpression(newExpr);
+    setLogicText(newExpr !== null ? JSON.stringify(newExpr, null, 2) : '');
+    setLogicError(null);
+  }, []);
+
+  // Load sample expression (switching templating to match the sample)
   const loadSample = useCallback((name: string) => {
     const sample = SAMPLE_EXPRESSIONS[name];
     if (sample) {
@@ -83,6 +87,7 @@ export function Playground({ editable = false }: PlaygroundProps) {
       setData(sample.data);
       setDataText(JSON.stringify(sample.data, null, 2));
       setDataError(null);
+      setTemplating(sample.templating ?? false);
     }
   }, []);
 
@@ -109,7 +114,7 @@ export function Playground({ editable = false }: PlaygroundProps) {
     } catch (err) {
       setResult(undefined);
       if (err instanceof DataLogicEvaluationError) {
-        setResultError(err.structured.message);
+        setResultError(err.structured);
       } else {
         setResultError(err instanceof Error ? err.message : typeof err === 'string' ? err : 'Evaluation failed');
       }
@@ -123,6 +128,14 @@ export function Playground({ editable = false }: PlaygroundProps) {
       <div className="playground-header">
         <span className="playground-title">JSONLogic Playground</span>
         <div className="playground-controls">
+          <label className="playground-templating-toggle" title="Compile multi-key objects as output templates with embedded JSONLogic">
+            <input
+              type="checkbox"
+              checked={templating}
+              onChange={(e) => setTemplating(e.target.checked)}
+            />
+            <span>Templating</span>
+          </label>
           <select
             className="playground-examples"
             value={selectedExample}
@@ -160,7 +173,7 @@ export function Playground({ editable = false }: PlaygroundProps) {
             value={dataText}
             onChange={handleDataChange}
             hasError={!!dataError}
-            placeholder="Enter JSON data..."
+            placeholder="Enter JSON data (object, array or scalar)..."
             className="playground-json-editor"
           />
           {dataError && <div className="playground-error">{dataError}</div>}
@@ -172,7 +185,9 @@ export function Playground({ editable = false }: PlaygroundProps) {
             {wasmError ? (
               <span className="playground-result-error">Failed to load WASM: {wasmError}</span>
             ) : resultError ? (
-              <span className="playground-result-error">{resultError}</span>
+              <div className="playground-result-error embed-error">
+                <ErrorDisplay error={resultError} />
+              </div>
             ) : wasmLoading ? (
               <span className="json-highlight json-null">Loading WASM...</span>
             ) : (
@@ -186,9 +201,12 @@ export function Playground({ editable = false }: PlaygroundProps) {
       <div className="playground-diagram-row">
         <DataLogicEditor
           value={expression}
+          onChange={editable ? handleExpressionChange : undefined}
           data={data}
           theme={theme}
           editable={editable}
+          templating={templating}
+          onTemplatingChange={setTemplating}
         />
       </div>
     </div>

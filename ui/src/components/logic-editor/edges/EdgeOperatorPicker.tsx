@@ -5,9 +5,10 @@
  * allowing users to select an operator to insert.
  */
 
-import { memo, useState, useCallback, useEffect, useRef } from 'react';
+import { memo, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Search, X, Variable, Hash } from 'lucide-react';
 import { useEditorContext } from '../context/editor';
+import { edgeInsertDiscardsSubtree } from '../context/editor/useNodeEdgeInsert';
 import {
   getOperatorsGroupedByCategory,
   searchOperators,
@@ -30,7 +31,7 @@ export const EdgeOperatorPicker = memo(function EdgeOperatorPicker({
   edgeInfo,
   onClose,
 }: EdgeOperatorPickerProps) {
-  const { insertNodeOnEdge } = useEditorContext();
+  const { insertNodeOnEdge, nodes } = useEditorContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<OperatorCategory | null>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -62,6 +63,14 @@ export const EdgeOperatorPicker = memo(function EdgeOperatorPicker({
       document.removeEventListener('keydown', handleEscape);
     };
   }, [onClose]);
+
+  // A var / literal cannot hold the edge's existing child, so quick-add
+  // replaces that subtree rather than wrapping it the way an operator does.
+  // Say so on the buttons instead of dropping the work silently.
+  const quickAddReplaces = useMemo(
+    () => edgeInsertDiscardsSubtree(nodes, edgeInfo.sourceId, edgeInfo.targetId),
+    [nodes, edgeInfo.sourceId, edgeInfo.targetId]
+  );
 
   // Get operators to display
   const operatorsToShow = searchQuery
@@ -141,21 +150,26 @@ export const EdgeOperatorPicker = memo(function EdgeOperatorPicker({
           type="button"
           className="dl-edge-picker-quick-btn"
           onClick={() => handleQuickAdd('variable')}
-          title="Insert variable"
+          title={quickAddReplaces ? 'Replace this branch with a variable' : 'Insert variable'}
         >
           <Variable size={14} />
-          <span>Variable</span>
+          <span>{quickAddReplaces ? 'Replace with Variable' : 'Variable'}</span>
         </button>
         <button
           type="button"
           className="dl-edge-picker-quick-btn"
           onClick={() => handleQuickAdd('literal')}
-          title="Insert literal"
+          title={quickAddReplaces ? 'Replace this branch with a literal' : 'Insert literal'}
         >
           <Hash size={14} />
-          <span>Literal</span>
+          <span>{quickAddReplaces ? 'Replace with Literal' : 'Literal'}</span>
         </button>
       </div>
+      {quickAddReplaces && (
+        <div className="dl-edge-picker-note">
+          Replaces the branch below this edge. Operators wrap it instead.
+        </div>
+      )}
 
       {/* Categories or Search Results */}
       <div className="dl-edge-picker-content">

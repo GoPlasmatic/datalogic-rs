@@ -500,3 +500,53 @@ func TestErrorFieldsThroughV2(t *testing.T) {
 		t.Errorf("Error() should include the tag, got %q", derr.Error())
 	}
 }
+
+// Nil receivers and nil handle arguments must surface as InvalidArgument
+// errors (the C ABI rejects NULL handles) rather than nil-pointer panics.
+func TestNilHandlesReturnInvalidArgument(t *testing.T) {
+	e := NewEngine()
+	defer e.Close()
+	rule, err := e.Compile(`{"var":"x"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rule.Close()
+	data, err := ParseData(`{"x":1}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer data.Close()
+	session := e.Session()
+	defer session.Close()
+
+	var nilRule *Rule
+	var nilSession *Session
+	var nilData *DataHandle
+
+	expectInvalid := func(name string, err error) {
+		t.Helper()
+		if err == nil {
+			t.Fatalf("%s: expected an error for a nil handle", name)
+		}
+		dlErr, ok := err.(*Error)
+		if !ok {
+			t.Fatalf("%s: expected *Error, got %T (%v)", name, err, err)
+		}
+		if dlErr.Type != "InvalidArgument" {
+			t.Errorf("%s: want Type InvalidArgument, got %q (%s)", name, dlErr.Type, dlErr.Message)
+		}
+	}
+
+	_, err = nilRule.EvaluateData(data)
+	expectInvalid("nil Rule.EvaluateData", err)
+	_, err = rule.EvaluateData(nilData)
+	expectInvalid("Rule.EvaluateData(nil data)", err)
+	_, err = nilSession.EvaluateData(rule, data)
+	expectInvalid("nil Session.EvaluateData", err)
+	_, err = session.EvaluateData(nilRule, data)
+	expectInvalid("Session.EvaluateData(nil rule)", err)
+	_, err = session.EvaluateBool(nilRule, data)
+	expectInvalid("Session.EvaluateBool(nil rule)", err)
+	_, err = session.EvaluateTruthy(rule, nilData)
+	expectInvalid("Session.EvaluateTruthy(nil data)", err)
+}

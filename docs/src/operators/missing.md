@@ -1,6 +1,6 @@
 # Missing Value Operators
 
-Operators for checking if data fields are missing or undefined.
+Operators for checking whether data fields are absent.
 
 ## missing
 
@@ -44,7 +44,16 @@ Check for missing fields in the data.
 { "missing": ["user.name", "user.email"] }
 // Data: { "user": { "name": "Alice" } }
 // Result: ["user.email"]
+
+// A key that exists with a null value counts as present
+{ "missing": ["x"] }
+// Data: { "x": null }
+// Result: []
 ```
+
+**Notes:**
+- Only absent paths are reported. A key that exists with a `null` or empty-string value counts as present, so `{ "missing": ["x"] }` with `{ "x": null }` or `{ "x": "" }` returns `[]`. This differs from json-logic-js, which also reports keys whose value is `null` or `""`
+- Dot-separated names walk nested objects (`"user.email"`)
 
 ### Common Patterns
 
@@ -78,7 +87,7 @@ Check for missing fields in the data.
 
 ## missing_some
 
-Check if at least N fields are missing from a set.
+Require that at least N of a set of fields are present; the missing ones are returned only when fewer than N are present.
 
 **Syntax:**
 ```json
@@ -113,6 +122,11 @@ Check if at least N fields are missing from a set.
 // Data: { "name": "Alice", "email": "a@b.com", "phone": "555" }
 // Result: [] (3 present, exceeds requirement)
 ```
+
+**Notes:**
+- Presence follows the same rule as `missing`: a key holding `null` or `""` counts as present
+- `minimum` must be an integer; a non-integer minimum (for example `2.5` or `"1"`) falls back to `1`
+- With fewer than two arguments (`{ "missing_some": [1] }`) the result is `[]`
 
 ### Common Patterns
 

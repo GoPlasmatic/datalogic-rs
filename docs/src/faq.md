@@ -139,7 +139,6 @@ Yes. For the App Router, wrap in a client component:
 ```tsx
 'use client';
 
-import '@xyflow/react/dist/style.css';
 import '@goplasmatic/datalogic-ui/styles.css';
 import { DataLogicEditor } from '@goplasmatic/datalogic-ui';
 
@@ -188,6 +187,15 @@ Or use default values with `var`:
 {"var": ["user.email", "no-email@example.com"]}
 ```
 
+`or` also works as a fallback, because it returns the deciding operand
+rather than a boolean:
+
+```json
+{"or": [{"var": "nickname"}, "Anonymous"]}
+// Data: {"nickname": "Ada"}  -> "Ada"
+// Data: {}                   -> "Anonymous"
+```
+
 ### What happened to the `preserve` operator?
 
 It was removed in v5. Literal scalars and arrays already pass through
@@ -222,8 +230,14 @@ let config = EvaluationConfig::default()
     .with_division_by_zero(DivisionByZeroHandling::ReturnNull);
 ```
 
-Options: `ReturnSaturated` (default — `f64::MAX/MIN`), `ThrowError`,
-`ReturnNull`, `ReturnInfinity`.
+Options: `ReturnSaturated` (default, `f64::MAX/MIN` with the dividend's
+sign), `ThrowError`, `ReturnNull`, `ReturnInfinity`.
+
+The setting applies to the float path only: an integer dividend over an
+integer zero (`{"/": [10, 0]}`) always raises `Thrown { type: "NaN" }`,
+whatever the setting. `{"/": [10.5, 0]}` takes the configured path. See
+[Division by Zero](advanced/configuration.md#division-by-zero) for the
+full comparison table.
 
 ---
 
@@ -242,7 +256,10 @@ In standard mode, unrecognized keys are treated as errors. Either:
 1. Use `Session` for repeated calls (arena reuse)
 2. Drop to `Engine::evaluate` with a caller-managed `bumpalo::Bump` for the
    absolute hot path
-3. Profile with `feature = "trace"` to identify slow sub-expressions
+3. Use `feature = "trace"` to see which sub-expressions run and how often
+   (iteration counts; the trace records no timings), and a sampling
+   profiler such as perf or Instruments for timing (see
+   [Performance](performance.md#profiling))
 
 ### WASM initialization fails
 

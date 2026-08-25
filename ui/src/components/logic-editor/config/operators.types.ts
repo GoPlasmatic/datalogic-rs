@@ -6,6 +6,8 @@
  * and UI rendering.
  */
 
+import type { IconName } from '../utils/icons';
+
 // ============================================================================
 // Category Types
 // ============================================================================
@@ -22,7 +24,8 @@ export type OperatorCategory =
   | 'datetime'
   | 'validation'
   | 'error'
-  | 'utility';
+  | 'utility'
+  | 'flagd';
 
 // ============================================================================
 // Arity Types
@@ -89,9 +92,14 @@ export interface OperatorExample {
   title: string;
   rule: unknown;
   data?: unknown;
+  /** Expected engine result. Omit (together with `error`) only for
+   *  non-deterministic rules such as `now`, and say why in `note`. */
   result?: unknown;
+  /** Expected structured error `type` (e.g. "Thrown", "InvalidArguments"). */
   error?: { type: string };
   note?: string;
+  /** Evaluate in templating mode (multi-key object literals only parse there). */
+  templating?: boolean;
 }
 
 export interface OperatorHelp {
@@ -117,7 +125,8 @@ export type NodeType =
   | 'structure';
 
 export interface OperatorUIHints {
-  icon?: string;
+  /** Icon shown in the help header; falls back to the category icon. */
+  icon?: IconName;
   shortLabel?: string;
   nodeType?: NodeType;
   inlineEditable?: boolean;
@@ -125,7 +134,6 @@ export interface OperatorUIHints {
   collapsible?: boolean;
   scopeJump?: boolean;
   metadata?: boolean;
-  datetimeProps?: boolean;
   iteratorContext?: boolean;
   addArgumentLabel?: string; // Custom label for add argument button (e.g., "Add Else If", "Add Default")
 }
@@ -159,7 +167,10 @@ export interface CategoryMeta {
   label: string;
   description: string;
   color: string;
-  icon: string;
+  /** Node/help icon; must be a registered IconName so it can always render. */
+  icon: IconName;
+  /** Page slug under https://goplasmatic.github.io/datalogic-rs/operators/ */
+  docsPage: string;
 }
 
 // ============================================================================

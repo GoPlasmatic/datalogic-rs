@@ -83,6 +83,10 @@ interface IconProps {
 }
 
 export function Icon({ name, size = 14, className, style }: IconProps): React.ReactElement {
-  const IconComponent = ICON_COMPONENTS[name];
+  // `name` is typed as IconName, but operator configs and node data can carry
+  // a name that was valid before an icon was renamed (or that came from a
+  // consumer's own node data). Fall back to a neutral glyph rather than
+  // crashing the whole canvas on `undefined` component.
+  const IconComponent = ICON_COMPONENTS[name] ?? ICON_COMPONENTS.list;
   return <IconComponent size={size} className={className} style={style} />;
 }

@@ -1,7 +1,6 @@
 import type { Node, Edge } from '@xyflow/react';
 import type { OperatorCategory, JsonLogicValue } from './jsonlogic';
 import type { IconName } from '../utils/icons';
-import type { TracedResult } from './trace';
 
 // Visual node types
 export type VisualNodeType = 'operator' | 'literal' | 'structure';
@@ -117,30 +116,45 @@ export interface ConversionResult {
   rootId: string | null;
 }
 
-// Evaluation result for debugging
-export interface NodeEvaluationResult {
-  value: unknown;
-  error: string | null;
-  type: 'boolean' | 'number' | 'string' | 'null' | 'array' | 'object' | 'undefined';
+/**
+ * Engine evaluation settings, mirroring the WASM `Engine` config keys
+ * (`EvaluationConfig::from_json_str` in the Rust crate). Every key is
+ * optional; omitted keys keep the engine default (or the selected preset's
+ * value). Unknown keys or values are rejected by the engine with a
+ * `ConfigurationError`.
+ */
+export interface DataLogicEvaluationConfig {
+  /** Starting point the other keys override. Default: `'default'`. */
+  preset?: 'default' | 'safe_arithmetic' | 'strict';
+  /** What arithmetic does with a non-numeric operand. Default: `'throw_error'`. */
+  arithmetic_nan_handling?: 'throw_error' | 'ignore_value' | 'coerce_to_zero' | 'return_null';
+  /**
+   * What a fractional dividend over zero yields. Default: `'return_saturated'`.
+   * Integer division by zero always throws `{"type": "NaN"}`.
+   */
+  division_by_zero?: 'return_saturated' | 'throw_error' | 'return_null' | 'return_infinity';
+  /** Whether loose `==` raises on incompatible types. Default: `true`. */
+  loose_equality_errors?: boolean;
+  /** Truthiness rules used by `if`, `and`, `or`, `!`. Default: `'javascript'`. */
+  truthy_evaluator?: 'javascript' | 'python' | 'strict_boolean';
+  /** Numeric coercion knobs (all default to `true` except `reject_non_numeric`). */
+  numeric_coercion?: {
+    empty_string_to_zero?: boolean;
+    null_to_zero?: boolean;
+    bool_to_number?: boolean;
+    /** When `true`, overrides every other coercion flag and raises instead. */
+    reject_non_numeric?: boolean;
+  };
+  /** Nested evaluation-boundary cap (custom operators re-entering the engine). Default: `256`. */
+  max_recursion_depth?: number;
 }
 
-// Map of node ID to evaluation result
-export type EvaluationResultsMap = Map<string, NodeEvaluationResult>;
-
-// Props for the LogicEditor component (internal use, legacy)
-export interface LogicEditorProps {
-  value: JsonLogicValue | null;
-  onChange: (expr: JsonLogicValue | null) => void;
-  readOnly?: boolean;
-  className?: string;
-  evaluationResults?: EvaluationResultsMap;
-  /** Data object for debug evaluation */
-  debugData?: unknown;
-  /** Evaluate function from WASM - if provided, enables debug mode */
-  evaluate?: (logic: unknown, data: unknown) => unknown;
-  /** Evaluate with trace function from WASM - if provided, uses trace API for diagram rendering */
-  evaluateWithTrace?: (logic: unknown, data: unknown) => TracedResult;
-}
+/**
+ * A custom operator implementation. Receives the already-evaluated
+ * arguments and returns any JSON-serializable value (`undefined` becomes
+ * `null`). A thrown exception surfaces as a runtime evaluation error.
+ */
+export type DataLogicCustomOperator = (args: unknown[]) => unknown;
 
 /**
  * Props for the DataLogicEditor component (public API)
@@ -171,6 +185,22 @@ export interface DataLogicEditorProps {
 
   /** Callback when templating mode changes (from toolbar checkbox) */
   onTemplatingChange?: (value: boolean) => void;
+
+  /**
+   * Engine evaluation settings (presets, NaN and division-by-zero handling,
+   * truthiness rules, numeric coercion, recursion cap). Applied to both the
+   * plain and the traced evaluation paths; the toolbar shows a compact
+   * summary whenever the settings differ from the engine defaults.
+   */
+  config?: DataLogicEvaluationConfig;
+
+  /**
+   * Custom operators registered on the evaluation engine, keyed by operator
+   * name. Rules that use them evaluate and trace normally; the palette and
+   * help panel only know built-in operators, so custom nodes render with
+   * the generic "utility" styling.
+   */
+  customOperators?: Record<string, DataLogicCustomOperator>;
 
   /**
    * Enable editing: node selection, properties panel, context menus, undo/redo.

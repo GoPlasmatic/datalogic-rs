@@ -22,8 +22,7 @@ import {
   extractArguments,
   type ArgumentInfo,
 } from './utils/argument-parser';
-import { rebuildVariableExpression } from './utils/expression-rebuilder';
-import { formatOperandLabel } from '../utils/formatting';
+import { updateInlineOperand } from '../services/inline-edit-service';
 import { ArgumentItem } from './ArgumentItem';
 
 interface ArgumentsSectionProps {
@@ -111,73 +110,17 @@ export const ArgumentsSection = memo(function ArgumentsSection({
     [updateNode]
   );
 
-  // Handle updating an inline literal value (stored in parent's expression)
+  // Handle updating an inline value (stored in the parent's expression or an
+  // editable cell). The service maps the cell index onto the right operand for
+  // every cell layout (variable cells, switch rows, n-ary operands).
   const handleInlineLiteralChange = useCallback(
     (argIndex: number, newValue: JsonLogicValue) => {
       const nodeData = node.data;
+      if (nodeData.type !== 'operator') return;
 
-      if (nodeData.type === 'operator') {
-        const opData = nodeData as OperatorNodeData;
-
-        // Special handling for variable operators (var, val, exists) with editable cells
-        const editableCell = opData.cells.find((c) => c.index === argIndex && c.type === 'editable');
-        if (editableCell) {
-          // Update the cell's value
-          const newCells = opData.cells.map((cell) => {
-            if (cell.index === argIndex) {
-              const updatedCell = { ...cell, value: newValue };
-              // Update label for scope cells
-              if (cell.fieldId === 'scopeLevel' && typeof newValue === 'number') {
-                updatedCell.label = `${newValue} level${newValue !== 1 ? 's' : ''} up`;
-              }
-              return updatedCell;
-            }
-            return cell;
-          });
-
-          // Rebuild expression based on operator type
-          const newExpression = rebuildVariableExpression(opData.operator, newCells);
-
-          updateNode(node.id, {
-            cells: newCells,
-            expression: newExpression,
-            expressionText: undefined,
-          });
-          return;
-        }
-
-        // Standard inline literal handling
-        const expr = opData.expression;
-        if (expr && typeof expr === 'object' && !Array.isArray(expr)) {
-          const operator = Object.keys(expr)[0];
-          const operands = (expr as Record<string, unknown>)[operator];
-          const operandArray: JsonLogicValue[] = Array.isArray(operands)
-            ? [...operands]
-            : [operands as JsonLogicValue];
-
-          // Update the operand at the given index
-          operandArray[argIndex] = newValue;
-
-          // Update the cell's label to reflect the new value
-          const newCells = opData.cells.map((cell) => {
-            if (cell.index === argIndex && cell.type === 'inline') {
-              return {
-                ...cell,
-                label: formatOperandLabel(newValue),
-              };
-            }
-            return cell;
-          });
-
-          // Rebuild the expression
-          const newExpression = { [operator]: operandArray };
-
-          updateNode(node.id, {
-            cells: newCells,
-            expression: newExpression,
-            expressionText: undefined,
-          });
-        }
+      const patch = updateInlineOperand(nodeData as OperatorNodeData, argIndex, newValue);
+      if (patch) {
+        updateNode(node.id, patch);
       }
     },
     [node.id, node.data, updateNode]

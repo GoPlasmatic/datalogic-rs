@@ -4,12 +4,14 @@ Dev-only benchmark harness for `datalogic-rs`. **For the latest captured
 matrix and headline numbers, see [`BENCHMARK.md`](./BENCHMARK.md)** — link
 to that file from other docs rather than re-quoting cells inline.
 
-Two binaries share a common suite loader and reporter (`src/lib.rs`):
+Four binaries share a common suite loader and reporter (`src/lib.rs`):
 
-| Binary    | Purpose                                                                                |
-|-----------|----------------------------------------------------------------------------------------|
-| `self`    | Times datalogic-rs alone using the fast arena path (compile once, persistent input arena, eval-arena reset). Use this to track regressions in our own engine. |
-| `compare` | Cross-library **matrix** — runs every suite against every available subject (datalogic-rs API tiers, gated Rust crates, JS/WASM via Node) and prints a markdown table of avg ns/op. |
+| Binary          | Purpose                                                                                |
+|-----------------|----------------------------------------------------------------------------------------|
+| `self`          | Times datalogic-rs alone using the fast arena path (compile once, persistent input arena, eval-arena reset). Use this to track regressions in our own engine. |
+| `compare`       | Cross-library **matrix**: runs every suite against every available subject (datalogic-rs API tiers, gated Rust crates, JS/WASM via Node) and prints a markdown table of avg ns/op. |
+| `boundary_core` | The rust-core runner for the per-binding boundary benchmark under [`boundary/`](./boundary); emits the same JSON-lines schema as the other runtimes' runners. |
+| `profile_macro` | Sampling-profiler feeder (samply / Instruments): hammers one macro suite in a hot loop so the profile shows only that suite's evaluation path. |
 
 A third area, [`boundary/`](./boundary), measures the opposite of the
 matrix: **per-binding boundary cost** — what a real caller pays per
@@ -23,10 +25,11 @@ JSON-lines output, and a renderer for that document's tables:
 cd boundary && ./run.sh && python3 render.py
 ```
 
-See [`boundary/README.md`](./boundary/README.md) for runner status
-(five verified; the Go/.NET/JVM/PHP runners are written against the
-C-ABI-v2 rollout and marked unverified until those rewrites land). The
-`boundary_core` bin target in this crate is the rust-core runner.
+See [`boundary/README.md`](./boundary/README.md) for runner status:
+all nine runners are verified and produced the 2026-07-03 v2 capture;
+go / dotnet / jvm / php sit in the extended set only because they need
+their language toolchains installed. The `boundary_core` bin target in
+this crate is the rust-core runner.
 
 Both read JSON suites from `crates/datalogic-rs/tests/suites/`, and both
 accept `--macro` to swap those for the synthesized macro suites instead.
@@ -237,8 +240,8 @@ That's the entire recipe — three files each, no harness changes.
 ## Platform support
 
 Linux and macOS. The Node runner uses POSIX path conventions in
-`file:../../wasm/pkg` and the `runners/` setup is shell-coded; Windows
-isn't tested.
+`file:../../../bindings/wasm/pkg` and the `runners/` setup is
+shell-coded; Windows isn't tested.
 
 ## CI
 

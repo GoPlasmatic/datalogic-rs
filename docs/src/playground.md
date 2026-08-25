@@ -11,8 +11,9 @@ Try JSONLogic expressions right in your browser! This playground uses the visual
 
 1. **Logic**: Enter your JSONLogic expression in the Logic panel
 2. **Data**: Enter the JSON data to evaluate against in the Data panel
-3. **Diagram**: View the visual diagram of your logic expression
-4. **Examples**: Use the dropdown to load pre-built examples
+3. **Result**: Read the evaluated output, or the engine's error with its type and failing operator
+4. **Diagram**: View the visual diagram of your logic expression
+5. **Examples**: Use the dropdown to load pre-built examples
 
 ## Quick Reference
 

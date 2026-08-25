@@ -11,7 +11,13 @@ import type {
 import type { IconName } from './icons';
 import type { ParentInfo } from './converters/types';
 import { getValueType } from './type-helpers';
-import { formatOperandLabel, CONTEXT_LABEL } from './formatting';
+import { formatOperandLabel } from './formatting';
+import {
+  joinPathComponents,
+  pathComponentsFromCellValue,
+  scopeLabel,
+  varPathLabel,
+} from './converters/variable-cells';
 
 
 // Factory function to create a literal node
@@ -39,13 +45,18 @@ export function createLiteralNode(
 // Options for building variable operator cells
 export interface BuildVariableCellsOptions {
   operator: 'var' | 'val' | 'exists';
-  path: string;
+  /** var: dot-notation path (a numeric index is kept as a number); exists: a single literal key */
+  path: string | number;
+  /** var only: an inline (simple) default value */
   defaultValue?: JsonLogicValue;
+  /** val only: scope jump as written in the rule (sign preserved) */
   scopeJump?: number;
-  pathComponents?: string[];
+  /** val / exists: path components, kept as an array so keys containing '.' survive */
+  pathComponents?: JsonLogicValue[];
 }
 
-// Build cells for variable operators (var, val, exists)
+// Build cells for variable operators (var, val, exists).
+// See utils/converters/variable-cells.ts for the cell layout contract.
 export function buildVariableCells(options: BuildVariableCellsOptions): CellData[] {
   const { operator, path, defaultValue, scopeJump, pathComponents } = options;
   const cells: CellData[] = [];
@@ -58,21 +69,26 @@ export function buildVariableCells(options: BuildVariableCellsOptions): CellData
       fieldId: 'path',
       fieldType: 'text',
       value: path,
-      label: path || CONTEXT_LABEL,
+      label: varPathLabel(path),
       placeholder: 'user.profile.name',
       index: 0,
     });
     if (defaultValue !== undefined) {
+      // The value lives on the stored expression (operand 1); the cell carries
+      // it too so the properties panel can seed "has default" from the cells.
       cells.push({
         type: 'inline',
         rowLabel: 'Default',
         icon: 'hash',
+        fieldId: 'default',
+        value: defaultValue,
         label: formatOperandLabel(defaultValue),
         index: 1,
       });
     }
   } else if (operator === 'val') {
     const scope = scopeJump ?? 0;
+    const components = pathComponents ?? pathComponentsFromCellValue(path);
     cells.push({
       type: 'editable',
       rowLabel: 'Scope',
@@ -80,7 +96,7 @@ export function buildVariableCells(options: BuildVariableCellsOptions): CellData
       fieldId: 'scopeLevel',
       fieldType: 'number',
       value: scope,
-      label: `${scope} level${scope !== 1 ? 's' : ''} up`,
+      label: scopeLabel(scope),
       index: 0,
     });
     cells.push({
@@ -89,20 +105,21 @@ export function buildVariableCells(options: BuildVariableCellsOptions): CellData
       icon: 'type',
       fieldId: 'path',
       fieldType: 'text',
-      value: pathComponents?.join('.') ?? path,
-      label: (pathComponents?.join('.') || path) || CONTEXT_LABEL,
+      value: components,
+      label: joinPathComponents(components),
       placeholder: 'field1.field2',
       index: 1,
     });
   } else if (operator === 'exists') {
+    const value: unknown = pathComponents ?? path;
     cells.push({
       type: 'editable',
       rowLabel: 'Path',
       icon: 'type',
       fieldId: 'path',
       fieldType: 'text',
-      value: path,
-      label: path || CONTEXT_LABEL,
+      value,
+      label: Array.isArray(value) ? joinPathComponents(value) : varPathLabel(value),
       placeholder: 'user.profile.name',
       index: 0,
     });
@@ -114,12 +131,12 @@ export function buildVariableCells(options: BuildVariableCellsOptions): CellData
 // Factory function to create a variable node (now creates unified operator node)
 export function createVariableNode(
   operator: 'var' | 'val' | 'exists',
-  path: string,
+  path: string | number,
   defaultValue: JsonLogicValue | undefined,
   originalExpr: JsonLogicValue,
   parentInfo: ParentInfo = {},
   scopeJump?: number,
-  pathComponents?: string[]
+  pathComponents?: JsonLogicValue[]
 ): LogicNode {
   const nodeId = uuidv4();
   const cells = buildVariableCells({ operator, path, defaultValue, scopeJump, pathComponents });

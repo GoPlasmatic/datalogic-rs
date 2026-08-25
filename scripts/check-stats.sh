@@ -43,15 +43,20 @@ grep -qF "$GEOMEAN" crates/datalogic-rs/README.md \
 # --- known-stale figures must not reappear in living documents ----------
 # Each pattern is a number we have already had to scrub once. Extend this
 # list whenever a refresh retires a previously-quoted figure.
+# docs/src/llms.txt is swept too: it is served to LLM crawlers and quoted
+# the retired 8.9 ns / 1,565-case / 59-operator figures unnoticed.
 stale_patterns=(
   '9\.7 ns'
   '8\.9 ns'
   '44 operator suites'
+  '1,565'
+  '59 built-in operators'
   'Maven release pending'
 )
 for pat in "${stale_patterns[@]}"; do
   hits=$(grep -rEln "$pat" \
     --include='*.md' \
+    --include='*.txt' \
     --exclude='CHANGELOG.md' \
     --exclude-dir=node_modules \
     --exclude-dir=target \

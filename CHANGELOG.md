@@ -8,6 +8,134 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
+## [Unreleased]
+
+### Added
+
+- **WASM: `builtinOperatorNames()`, `Engine.evaluateWithTrace`,
+  `Engine.customOperatorNames()`.** The module-level
+  `builtinOperatorNames(): string[]` mirrors
+  `Engine::builtin_operator_names()`; `Engine.evaluateWithTrace(logic,
+  data): string` returns the same envelope as the top-level
+  `evaluateWithTrace` while honouring the engine's templating mode,
+  config, and custom operators; `Engine.customOperatorNames(): string[]`
+  lists the registered custom operators.
+- **Node: `builtinOperatorNames()` and `Engine.customOperatorNames()`.**
+  Same shapes as the WASM additions, so authoring tooling can read the
+  full operator vocabulary from either JS package.
+
+### Changed
+
+- **`date_diff` rejects unknown units.** An unrecognised unit now raises
+  `InvalidArguments` (`date_diff: unknown unit ...`) instead of silently
+  returning `0`. Accepted units are `days`, `hours`, `minutes`, `seconds`,
+  and `milliseconds`; `milliseconds` is now documented alongside the
+  others.
+- **Conformance battery is now 58 suites / 1,658 cases**, after the
+  regression suites below landed.
+
+### Fixed
+
+- **`and` / `or` constant folding dropped dynamic arguments.** With a
+  literal in trailing position, folding could discard the dynamic
+  arguments before it or strip a trailing identity literal.
+  `{"or": [{"var": "a"}, "fallback"]}` now returns the variable when it
+  is truthy, and `{"and": [{"var": "a"}, "x"]}` returns `"x"` when `a`
+  is truthy, matching unoptimised evaluation. Regression cases live in
+  `control/and.json` and `control/or.json`.
+- **`try` now hands engine errors to the catch arm.** Previously only a
+  `throw` payload reached the catch arm; an engine-raised error left the
+  original data in scope. The catch arm now sees `{"type": ...}` for
+  every error: `"Unknown Operator"` for an unknown operator, and the
+  error's message text otherwise (the canonical `"Invalid Arguments"`
+  for argument-shape errors; an operator-specific message such as
+  `date_diff: unknown unit ...` where the operator reports one). A
+  missing variable is still not an error (`var` returns `null`), so
+  `try` does not fall back on absent data.
+- **WASM packaging.** The wasm-bindgen start stub is no longer exported
+  as `init`, and `pkg/bundler` no longer receives a `commonjs`
+  `package.json` override (the bundler target is ESM).
+
+### Added (UI)
+
+- **Engine settings and custom operators in the editor.** `DataLogicEditor`
+  accepts `config` (preset, NaN and division-by-zero handling, truthiness,
+  numeric coercion, recursion cap) and `customOperators`; both apply to the
+  result and the trace, and the toolbar summarises non-default settings. The
+  Studio exposes them in an Engine settings panel and carries them in share
+  links.
+- **Insert menu and shortcuts.** An Insert toolbar button (Cmd/Ctrl+K) adds an
+  argument to the selection, wraps it, or targets the root; Cmd/Ctrl+D
+  duplicates the selected node.
+- **Step timeline and failure reporting.** The debugger lists every step with
+  its node, iteration, context and result, with click-to-jump. The node on the
+  engine's failure breadcrumb is highlighted with its error, and a rule that
+  fails to compile reports the error in a banner above the diagram.
+- **flagd operators in the palette.** `fractional` and `sem_ver` join the
+  registry under a new "Feature Flags" category, so every operator the engine
+  accepts is documented and insertable.
+- **Per-operator documentation links** in the properties panel, pointing at
+  that operator's page on the docs site.
+- **Test suite (about 1,100 vitest cases).** Every operator help example is
+  evaluated against the bundled engine, a corpus covering every operator
+  round-trips through the node graph, real trace envelopes are asserted to map
+  onto the diagram, and every shipped sample is checked against its expected
+  result.
+
+### Changed (UI)
+
+- **Samples cover every operator family**, including `switch`, `??`,
+  `try`/`throw`, `type`, `keys`/`values`/`entries`, `group_by`, `distinct`,
+  `sort` with a key extractor, `slice` with a step, `sem_ver`, `fractional`,
+  IANA timezones and iteration metadata. Templating samples switch the mode on
+  automatically when loaded.
+- **`data` accepts any JSON value** (object, array or scalar) in the component,
+  the Studio and the embed, matching the engine.
+- **One CSS import.** React Flow's base styles were already vendored into
+  `styles.css`; the redundant second import is gone from the embed, the
+  examples and the docs.
+- **Dependency cleanup.** Playground-only packages (`@msgpack/msgpack`,
+  `fflate`, `@fontsource/*`) and the WASM package moved to devDependencies, so
+  consumers no longer install them; the release workflow now rewrites the
+  devDependency pin.
+- **Dead code removed**: the legacy `LogicEditor` component, `AddArgumentMenu`,
+  and the unused per-node evaluation hook.
+
+### Fixed (UI)
+
+- **Serialization round trips.** Editing a rule no longer corrupts it:
+  if/else-if chains kept duplicated operands, `switch`/`match` dropped a case
+  whose value was `null` (and every case after it), multi-segment `val` paths
+  lost segments, `var` defaults were dropped on selection, `exists` paths were
+  emitted as one dotted key, and templating structures lost inline values and
+  nesting.
+- **Editing operations.** Fixed argument reindexing after a deletion,
+  duplicate/paste/wrap on structure and fixed-slot parents, argument add and
+  remove on `if`, `switch` and `exists`, and clone id collisions.
+- **Iteration metadata.** The editor emitted `{"val": "index"}`, which the
+  engine reads as a plain key lookup; it now emits `{"val": [[1], "index"]}`.
+- **Operator help matched to the engine.** Wrong arities (`sort`, `??`,
+  `parse_date`/`format_date`, `reduce`), wrong results (`all` on an empty
+  array, `!`/`!!` on empty collections, `timestamp` normalisation), and
+  capabilities the engine does not have (datetime property access on `val`,
+  dot-notation paths for `exists`) were corrected.
+- **Trace mapping.** Steps now match their nodes through the engine's
+  canonicalised expressions (`val`/`var` forms, `?:` and `match` aliases,
+  nested `switch` cases, templating structures), so the diagram no longer
+  falls back to synthetic nodes.
+- **`ExecutionStep` type** matches the engine: `step_id` (not `id`), with
+  nullable `result` and `error`.
+- **Structured errors** in the debug panel show the type, failing operator,
+  node breadcrumb and thrown payload, and are parsed from the error object's
+  own properties rather than its message text.
+- **Menus.** The Object category was missing from the canvas menu and the
+  per-category cap silently hid `distinct`; every operator is now reachable.
+- **Embed.** Canvas edits now reach the host through `onChange`, templating is
+  supported (toolbar toggle and `data-templating`), and structured errors are
+  displayed.
+- **Duplicate edge ids** from structure nodes and `var` defaults, which made
+  React Flow drop one of the two links.
+
 ## [5.3.0] - 2026-08-25
 
 ### Added
@@ -18,7 +146,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   JSONLogic baseline plus whichever extension families were compiled
   in, including the input aliases `var`, `?:` and `match`. Derived from
   the compiler's own lookup table, so it cannot drift from dispatch.
-  Complements `custom_operator_names()` (5.2.0); the union of the two
+  Complements `custom_operator_names()` (since 5.0); the union of the two
   is the engine's full vocabulary, which authoring-side tooling needs
   under templating mode, where an unknown key is not an error but
   echoes back as data. Downstream consumers (dataflow-rs, Orion) can

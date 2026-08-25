@@ -297,12 +297,16 @@ impl<R> TracedRun<R> {
 }
 
 /// Trace-enabled view over a [`crate::Engine`] engine. Constructed via
-/// [`crate::Engine::trace`]. Mirrors [`crate::Session`] 1:1 — every
-/// `eval*` returns a [`TracedRun<R>`] carrying the trace alongside the
-/// result, where `R` is the same shape that `Session::eval*` would
-/// return. Owns its own [`bumpalo::Bump`] across calls; reset is
-/// per-call (the trace path always allocates a fresh arena to keep the
-/// borrowed-result lifetime tied to the run).
+/// [`crate::Engine::trace`]. Every `eval*` returns a [`TracedRun<R>`]
+/// carrying the trace alongside the result, where `R` is the same shape
+/// the corresponding `Session::eval*` would return. The inputs differ
+/// from [`crate::Session`], though: [`Self::eval`] and
+/// [`Self::eval_borrowed`] take compiled [`crate::Logic`], while
+/// [`Self::eval_str`] and [`Self::eval_into`] take a rule *source*
+/// ([`crate::IntoLogic`]) and compile it with the optimizer disabled so
+/// every operator surfaces a step. The trace path allocates a fresh
+/// [`bumpalo::Bump`] per call (nothing is retained between runs) to keep
+/// the borrowed-result lifetime tied to the run.
 pub struct TracedSession<'e> {
     engine: &'e crate::Engine,
 }

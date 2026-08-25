@@ -79,19 +79,24 @@ Conditional branching with if/then/else chains.
 
 ## ?: (Ternary)
 
-Ternary conditional operator (shorthand if/then/else).
+Ternary conditional operator (shorthand if/then/else). `?:` is an input alias
+of `if`: it compiles to the same operator, so it accepts every argument shape
+`if` does, including the two-argument form and else-if chains.
 
 **Syntax:**
 ```json
 { "?:": [condition, then_value, else_value] }
+{ "?:": [condition, then_value] }
+{ "?:": [cond1, value1, cond2, value2, ..., else_value] }
 ```
 
 **Arguments:**
 - `condition` - Condition to evaluate
 - `then_value` - Value if condition is truthy
-- `else_value` - Value if condition is falsy
+- `else_value` - Value if condition is falsy (optional; `null` when omitted)
+- Additional condition/value pairs for else-if chains, exactly as with `if`
 
-**Returns:** `then_value` if condition is truthy, `else_value` otherwise.
+**Returns:** `then_value` if condition is truthy, `else_value` otherwise (the same rules as `if`).
 
 **Examples:**
 
@@ -124,6 +129,13 @@ Ternary conditional operator (shorthand if/then/else).
 ]}
 // Data: { "vip": false, "total": 75 }
 // Result: 5 (shipping cost)
+
+// Two-argument and chained forms work exactly as they do for if
+{ "?:": [false, "yes"] }
+// Result: null
+
+{ "?:": [false, 1, true, 2, 3] }
+// Result: 2
 ```
 
 **Try it:**
@@ -132,7 +144,7 @@ Ternary conditional operator (shorthand if/then/else).
 </div>
 
 **Notes:**
-- Equivalent to `{ "if": [condition, then_value, else_value] }`
+- An alias of `if`, not a separate three-operand operator: `{ "?:": [c, a, b] }` is exactly `{ "if": [c, a, b] }`, and the argument rules on the `if` section apply unchanged
 - More concise for simple conditions
 - Only evaluates the matching branch
 
@@ -206,11 +218,6 @@ Match a value against a list of cases, returning the result of the first case
 whose key strictly equals the value, or a default. `match` is an alias of
 `switch`.
 
-> **Experimental / known issue:** in the current build this operator does not
-> match cases correctly; every input falls through to the default. The syntax
-> and behavior below describe the intended design. See the note at the end of
-> this section.
-
 **Syntax:**
 ```json
 { "switch": [value, [[case, result], ...]] }
@@ -224,7 +231,7 @@ whose key strictly equals the value, or a default. `match` is an alias of
 
 **Returns:** The matched case's result, the default, or `null`.
 
-**Examples (intended behavior):**
+**Examples:**
 
 ```json
 { "switch": [
@@ -233,7 +240,7 @@ whose key strictly equals the value, or a default. `match` is an alias of
     "unknown"
 ]}
 // Data: { "color": "green" }
-// Intended result: "go"
+// Result: "go"
 
 // Alias `match`
 { "match": [
@@ -242,14 +249,23 @@ whose key strictly equals the value, or a default. `match` is an alias of
     "Unknown"
 ]}
 // Data: { "status": 404 }
-// Intended result: "Not Found"
+// Result: "Not Found"
+
+// Strict matching: the number 1 does not match the string "1"
+{ "switch": [1, [["1", "str"], [1, "num"]], "none"] }
+// Result: "num"
+
+// No match and no default
+{ "switch": [{ "var": "x" }, [[1, "a"]]] }
+// Data: { "x": 2 }
+// Result: null
 ```
 
 **Notes:**
 - Case comparison is strict (no type coercion): the number `1` does not match the string `"1"`.
 - The discriminant is evaluated once and compared against each case in order.
 - Only the matching case's result (or the default) is evaluated.
-- **Known issue:** this operator is currently broken in this build, falling through to the default for every input. Avoid relying on it until it is fixed.
+- Case keys may be expressions: `{ "switch": [{ "var": "x" }, [[{ "var": "y" }, "dyn"]], "d"] }` returns `"dyn"` when `x` equals `y`.
 
 ---
 

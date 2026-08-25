@@ -166,25 +166,37 @@ fn eliminate_bool_chain(
 
     let mut remaining: Vec<CompiledNode> = Vec::new();
 
-    for arg in args {
+    let last_idx = args.len() - 1;
+    for (i, arg) in args.iter().enumerate() {
         match is_truthy_literal(arg, engine) {
             Some(b) if b == absorbing => {
-                // Absorbing element — the chain short-circuits to this value.
-                return Some(arg.clone());
+                // Absorbing element. The chain can never get past it, so
+                // everything after it is dead. But the args *before* it
+                // still run first (and may themselves short-circuit, or
+                // throw), so the literal only replaces the whole chain when
+                // nothing dynamic precedes it. Otherwise it stays in place
+                // as the chain's final element.
+                if remaining.is_empty() {
+                    return Some(arg.clone());
+                }
+                remaining.push(arg.clone());
+                break;
+            }
+            Some(_) if i < last_idx => {
+                // Identity element with something after it: skip (the op
+                // returns the value, not a bool, so the next arg takes over).
+                continue;
             }
             Some(_) => {
-                // Identity element — skip (the op returns the value, not bool).
-                continue;
+                // Identity element in tail position: `and` / `or` return the
+                // last evaluated value when nothing short-circuits, so this
+                // literal is the chain's result and must stay.
+                remaining.push(arg.clone());
             }
             None => {
                 remaining.push(arg.clone());
             }
         }
-    }
-
-    if remaining.is_empty() {
-        // Every element was an identity literal — return the last one.
-        return Some(args.last().unwrap().clone());
     }
 
     if remaining.len() == 1 {
@@ -283,6 +295,115 @@ mod tests {
         );
         let (result, _changed) = eliminate(node, &engine);
         assert!(matches!(result, CompiledNode::Var { .. }));
+    }
+
+    #[test]
+    fn test_or_dynamic_then_absorbing_keeps_dynamic_prefix() {
+        // `{"or": [{"var": "x"}, "fallback"]}` must NOT fold to "fallback":
+        // the var runs first and wins when truthy.
+        let engine = Engine::new();
+        let node = builtin(
+            OpCode::Or,
+            vec![var_node("x"), val(datavalue::OwnedDataValue::Bool(true))],
+        );
+        let (result, changed) = eliminate(node, &engine);
+        assert!(!changed);
+        match result {
+            CompiledNode::BuiltinOperator { args, .. } => assert_eq!(args.len(), 2),
+            other => panic!("expected the chain to be kept, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_or_truncates_after_absorbing_literal() {
+        // `{"or": [{"var": "x"}, true, {"var": "y"}]}` -> `{"or": [{"var": "x"}, true]}`
+        let engine = Engine::new();
+        let node = builtin(
+            OpCode::Or,
+            vec![
+                var_node("x"),
+                val(datavalue::OwnedDataValue::Bool(true)),
+                var_node("y"),
+            ],
+        );
+        let (result, changed) = eliminate(node, &engine);
+        assert!(changed);
+        match result {
+            CompiledNode::BuiltinOperator { args, .. } => {
+                assert_eq!(args.len(), 2);
+                assert!(matches!(args[0], CompiledNode::Var { .. }));
+                assert!(matches!(args[1], CompiledNode::Value { .. }));
+            }
+            other => panic!("expected a 2-arg chain, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_and_dynamic_then_absorbing_keeps_dynamic_prefix() {
+        // `{"and": [{"var": "x"}, false]}` must return x when x is falsy.
+        let engine = Engine::new();
+        let node = builtin(
+            OpCode::And,
+            vec![var_node("x"), val(datavalue::OwnedDataValue::Bool(false))],
+        );
+        let (result, changed) = eliminate(node, &engine);
+        assert!(!changed);
+        assert!(matches!(result, CompiledNode::BuiltinOperator { .. }));
+    }
+
+    #[test]
+    fn test_and_keeps_tail_identity_literal() {
+        // `{"and": [{"var": "x"}, true]}` returns true when x is truthy, so
+        // the trailing identity literal is the result and must be kept.
+        let engine = Engine::new();
+        let node = builtin(
+            OpCode::And,
+            vec![var_node("x"), val(datavalue::OwnedDataValue::Bool(true))],
+        );
+        let (result, changed) = eliminate(node, &engine);
+        assert!(!changed);
+        match result {
+            CompiledNode::BuiltinOperator { args, .. } => assert_eq!(args.len(), 2),
+            other => panic!("expected the chain to be kept, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_and_strips_middle_identity_literal() {
+        // `{"and": [{"var": "x"}, true, {"var": "y"}]}` -> `{"and": [x, y]}`
+        let engine = Engine::new();
+        let node = builtin(
+            OpCode::And,
+            vec![
+                var_node("x"),
+                val(datavalue::OwnedDataValue::Bool(true)),
+                var_node("y"),
+            ],
+        );
+        let (result, changed) = eliminate(node, &engine);
+        assert!(changed);
+        match result {
+            CompiledNode::BuiltinOperator { args, .. } => {
+                assert_eq!(args.len(), 2);
+                assert!(args.iter().all(|a| matches!(a, CompiledNode::Var { .. })));
+            }
+            other => panic!("expected a 2-arg chain, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_all_identity_literals_returns_last() {
+        // `{"or": [false, null]}` -> null (the last value)
+        let engine = Engine::new();
+        let node = builtin(
+            OpCode::Or,
+            vec![
+                val(datavalue::OwnedDataValue::Bool(false)),
+                val(datavalue::OwnedDataValue::Null),
+            ],
+        );
+        let (result, _changed) = eliminate(node, &engine);
+        assert!(matches!(result, CompiledNode::Value { .. }));
     }
 
     #[test]

@@ -22,9 +22,9 @@ dependencies installed:
 npm install @goplasmatic/datalogic-ui @xyflow/react react react-dom
 ```
 
-Then import the example component as your page/route. The required CSS
-imports (React Flow base + the component's own styles) are at the top of
-each example.
+Then import the example component as your page/route. One CSS import is
+enough (React Flow's base styles are bundled into the package's
+`styles.css`); it is at the top of each example.
 
 ## Where to look next
 

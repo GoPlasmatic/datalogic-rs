@@ -23,8 +23,8 @@ The package includes three build targets optimized for different environments:
 
 | Target | Use Case | Init Required |
 |--------|----------|---------------|
-| `web` | Browser ES Modules, CDN | Yes |
-| `bundler` | Webpack, Vite, Rollup | Yes |
+| `web` | Browser ES Modules, CDN | Yes (`await init()`) |
+| `bundler` | Webpack, Vite, Rollup | No (instantiates on import; needs the bundler's WASM ESM integration) |
 | `nodejs` | Node.js (CommonJS/ESM) | No |
 
 ### Automatic Target Selection
@@ -32,10 +32,10 @@ The package includes three build targets optimized for different environments:
 The package's `exports` field automatically selects the appropriate target:
 
 ```javascript
-// Browser/Bundler - uses web or bundler target
+// Browser/Bundler - the `import` condition resolves to the web target
 import init, { evaluate } from '@goplasmatic/datalogic-wasm';
 
-// Node.js - uses nodejs target
+// Node.js - the `node` condition resolves to the nodejs target
 const { evaluate } = require('@goplasmatic/datalogic-wasm');
 ```
 
@@ -47,12 +47,14 @@ If you need a specific target:
 // Web target (ES modules with init)
 import init, { evaluate } from '@goplasmatic/datalogic-wasm/web';
 
-// Bundler target
-import init, { evaluate } from '@goplasmatic/datalogic-wasm/bundler';
+// Bundler target (no init; the module instantiates on import)
+import { evaluate } from '@goplasmatic/datalogic-wasm/bundler';
 
 // Node.js target
 import { evaluate } from '@goplasmatic/datalogic-wasm/nodejs';
 ```
+
+The bundler target imports `datalogic_wasm_bg.wasm` as an ES module, so it needs Webpack's `experiments.asyncWebAssembly` (or the equivalent in your bundler); see [Bundler Configuration](frameworks.md#bundler-configuration).
 
 ## WASM Initialization
 
@@ -68,7 +70,14 @@ await init();
 const result = evaluate('{"==": [1, 1]}', '{}', false);
 ```
 
-> **Note:** Node.js does not require initialization - you can use functions immediately after import.
+> **Note:** Node.js does not require initialization; you can use functions immediately after import. Do not call `init()` there: with the bare specifier, Node resolves to the CommonJS `nodejs` target, so a default import binds `init` to the module namespace object and `await init()` throws `TypeError: init is not a function`. Code that has to run in both places should guard the call:
+>
+> ```javascript
+> import init, { evaluate } from '@goplasmatic/datalogic-wasm';
+> if (typeof init === 'function') await init(); // browser: loads the module; Node: no-op
+> ```
+>
+> Or import from `@goplasmatic/datalogic-wasm/nodejs` explicitly and skip `init` altogether.
 
 ## TypeScript Support
 
@@ -83,7 +92,7 @@ const result: string = evaluate('{"==": [1, 1]}', '{}', false);
 
 ## Bundle Size
 
-The WASM binary is a single self-contained module: roughly 1.6 MB uncompressed, around 400 to 500 KB gzipped, making it suitable for web applications where performance is critical.
+The WASM binary is a single self-contained module: approximately 2.84 MB uncompressed, around 600 KB gzipped (measured on the 5.3.0 release build). Most of the growth since 5.1 is the compiled-in IANA timezone database that the `datetime` feature's `format_date` / `parse_date` timezone arguments use (5.2.0). Size-sensitive embedders building from source can shrink it by setting `CHRONO_TZ_TIMEZONE_FILTER` to the zones they need; see [Building from source](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/wasm#building-from-source).
 
 ## CDN Usage
 
@@ -105,5 +114,5 @@ For quick prototyping or simple pages, you can load directly from a CDN:
 ## Next Steps
 
 - [Quick Start](quick-start.md) - Basic usage examples
-- [API Reference](api-reference.md) - Complete API documentation
+- [API Reference](api-reference.md) - Functions, classes, configuration, and error shapes
 - [Framework Integration](frameworks.md) - React, Vue, and bundler setup

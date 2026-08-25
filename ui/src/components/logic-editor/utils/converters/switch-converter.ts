@@ -6,6 +6,8 @@ import { createBranchEdge, createArgEdge } from '../node-factory';
 import { isSimpleOperand } from '../type-helpers';
 import { formatOperandLabel } from '../formatting';
 import { v4 as uuidv4 } from 'uuid';
+import { convertOperator } from './operator-converter';
+import { isWellFormedCases } from './switch-cells';
 
 /**
  * Convert switch/match to a single VerticalCellNode with all branches.
@@ -25,8 +27,18 @@ export function convertSwitch(
   operator: string,
   switchArgs: JsonLogicValue[],
   context: ConversionContext,
-  convertValue: ConverterFn
+  convertValue: ConverterFn,
+  rawOperand?: JsonLogicValue
 ): string {
+  // Only a well-formed cases operand ([[case, result], ...]) can be shown as
+  // Case/Then rows. Anything else (a computed cases array, a malformed pair)
+  // is wired as a generic operator so the rule text survives untouched.
+  const malformedCases = switchArgs.length >= 2 && !isWellFormedCases(switchArgs[1]);
+  const shorthand = rawOperand !== undefined && !Array.isArray(rawOperand);
+  if (malformedCases || shorthand) {
+    return convertOperator(operator, switchArgs, context, convertValue, rawOperand);
+  }
+
   const parentInfo = getParentInfo(context);
   const nodeId = uuidv4();
 
@@ -78,7 +90,6 @@ export function convertSwitch(
 
     for (let i = 0; i < casePairs.length; i++) {
       const pair = casePairs[i];
-      if (!Array.isArray(pair) || pair.length < 2) continue;
 
       const caseValue = pair[0];
       const resultValue = pair[1];

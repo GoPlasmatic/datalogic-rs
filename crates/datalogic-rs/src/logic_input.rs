@@ -10,7 +10,10 @@
 //!   practice).
 //! - `OwnedDataValue` — moved.
 //! - `&serde_json::Value` (`serde_json`) — deep-converted.
-//! - `&T: Serialize` (`serde_json`) — routed via `serde_json::to_value`.
+//!
+//! There is no `&T: Serialize` shape (see the note at the bottom of this
+//! file): convert with `serde_json::to_value(&t)?` first and pass the
+//! resulting `&serde_json::Value`.
 //!
 //! The trait is **sealed**. The supported set is closed.
 

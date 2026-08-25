@@ -237,12 +237,15 @@ engine := datalogic.NewEngine()
 defer engine.Close()
 
 // 2. Engine with custom operators via a fluent builder
-engineWithOps := datalogic.NewEngineBuilder().
+engineWithOps, err := datalogic.NewEngineBuilder().
     AddOperator("double", func(argsJson string) (string, error) {
         // implementation
         return "result", nil
     }).
     Build()
+if err != nil {
+    panic(err)
+}
 defer engineWithOps.Close()
 ```
 
@@ -337,7 +340,7 @@ JSONLogic operators often perform type coercion:
 
 ### Truthiness
 By default, uses JavaScript-style truthiness:
-- Falsy: `false`, `0`, `""`, `null`, `[]`
+- Falsy: `false`, `0`, `""`, `null`, `[]`, `{}`
 - Truthy: everything else
 
 This is configurable via `EvaluationConfig`.

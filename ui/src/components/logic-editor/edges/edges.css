@@ -159,6 +159,19 @@
   color: var(--color-primary, #60a5fa);
 }
 
+.dl-edge-picker-note {
+  padding: 6px 12px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-warning, #b45309);
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.logic-editor[data-theme="dark"] .dl-edge-picker-note {
+  color: var(--color-warning, #fbbf24);
+  border-color: var(--border-color, #3e3e3e);
+}
+
 /* Content */
 .dl-edge-picker-content {
   max-height: 220px;

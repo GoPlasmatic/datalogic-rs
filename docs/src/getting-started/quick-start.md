@@ -294,13 +294,15 @@ Filter, map, and reduce arrays:
 
 ## Error Handling
 
-Evaluation failures are structured values, not opaque strings. A failing rule produces an error object with a stable `type`, and the engine also reports the offending operator and a path breadcrumb to the failing node:
+Evaluation failures are structured values, not opaque strings. A failing rule produces an error object with a stable `type` tag, and the engine also reports the offending operator and a path breadcrumb to the failing node:
 
 ```json
 { "+": ["text", 1] }
 // Data: {}
-// Error: { "type": "NaN" } (arithmetic on a non-numeric string)
+// Error: { "type": "Thrown", "thrown": { "type": "NaN" }, "operator": "+", "node_ids": [3] }
 ```
+
+The stable tag here is `Thrown`; the `thrown` payload carries the JSONLogic-style `{"type": "NaN"}` value raised by arithmetic on a non-numeric string.
 
 To catch a runtime error inside the rule itself, wrap it in `try` (Rust crate: enable the `error-handling` feature; every language binding ships with it enabled):
 

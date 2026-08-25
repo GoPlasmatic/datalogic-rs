@@ -8,9 +8,9 @@ export interface JsonLogicVar {
   var: string | [string, JsonLogicValue];
 }
 
-// Val reference: { "val": "path.to.value" }
+// Val reference: { "val": "key" } or { "val": [[scope], "path", "segments"] }
 export interface JsonLogicVal {
-  val: string;
+  val: string | JsonLogicValue[];
 }
 
 // Generic JSONLogic expression

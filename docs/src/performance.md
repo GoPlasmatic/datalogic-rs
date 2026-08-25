@@ -238,15 +238,20 @@ cargo instruments --release -t "CPU Profiler"
 ### Tracing for Bottlenecks
 
 Enable the `trace` feature and call `engine.trace().eval_str(...)`
-to inspect every executed node.
+to inspect every executed node. Steps carry no timing data (use the
+profilers above for that); they tell you which nodes ran, in what order,
+and with which context, result, and iteration counts.
 
 ```rust
 #[cfg(feature = "trace")]
 {
     let run = engine.trace().eval_str(rule, data);
     for step in &run.steps {
-        // step.node_id, step.expression, step.context, step.result, ...
+        // step.step_id, step.node_id, step.context, step.result, step.error,
+        // step.iteration_index, step.iteration_total
     }
+    // run.expression_tree carries the per-node expression text, keyed by
+    // the same node ids (ExpressionNode { id, expression, children }).
 }
 ```
 

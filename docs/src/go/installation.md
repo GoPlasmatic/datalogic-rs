@@ -33,5 +33,6 @@ cgo build tags automatically select the correct static library (`libdatalogic_c.
 
 ## Requirements
 
+*   **Go 1.25 or newer** (the module's `go.mod` directive; older toolchains with `GOTOOLCHAIN=auto` download it on demand).
 *   **Compilation:** You only need a standard C compiler (e.g. `gcc` or `clang` / Xcode command line tools) to link the static library during `go build`.
 *   **No Rust Required:** You do **not** need the Rust toolchain installed on the machine building the Go application; the compiled Rust engine is already packaged inside the static library.

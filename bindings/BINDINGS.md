@@ -40,13 +40,13 @@ a deprecation notice on `npm install` pointing them at the new name.
 |---|---|
 | Location | `bindings/<lang>/` (sibling of the other bindings; the core crate lives at `crates/datalogic-rs`) |
 | Workspace | **Excluded** from the root workspace (own `[workspace]` block) |
-| Cargo | `crate-type = ["cdylib", "rlib"]` — `cdylib` for the FFI artifact, `rlib` so Rust consumers can also link it |
-| Dep on core | `datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.x", features = [...explicit list...] }` — the binding inlines the feature set it wants |
+| Cargo | `crate-type = ["cdylib", "rlib"]`: `cdylib` for the FFI artifact, `rlib` so Rust consumers can also link it. `bindings/c` additionally emits `staticlib`, because the Go cgo consumer links `libdatalogic_c.a` statically |
+| Dep on core | `datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features = [...explicit list...] }`: the `version` is the semver-compatible floor (every binding pins `"5.0"`), and the binding inlines the feature set it wants |
 | Core feature | **No umbrella feature in core.** The binding owns its operator surface; `crates/datalogic-rs/Cargo.toml` stays free of binding-specific bundling so the published crate is binding-agnostic |
-| Tests | `bindings/<lang>/tests/` in the binding's native test runner (pytest, jest, …) |
+| Tests | The binding's native layout and runner: `tests/` + pytest (Python), `__test__/` + `node --test` (Node), root-level `*_test.go` + `go test` (Go), `src/test/` + JUnit (JVM), xunit (.NET), PHPUnit (PHP), `wasm-pack test` (WASM) |
 | CI | A pair of jobs added to `.github/workflows/release.yml` — `<lang>-build-*` (one or more, possibly a matrix) followed by `publish-<lang>` (`needs: publish-crate` so a binding never ships ahead of core) |
 | Release tags | `v*` (e.g. `v5.1.0`) — single unified trigger. One tag push runs validate + tests, publishes core, then fans out every binding in parallel. |
-| Versioning | Bindings track the core version exactly (5.1.0 → 5.1.0). `validate` fails if any binding's `Cargo.toml` / `pyproject.toml` / `package.json` drifts from core. |
+| Versioning | Bindings track the core version exactly (5.3.0 → 5.3.0). `validate` fails if any binding's `Cargo.toml` / `pyproject.toml` / `package.json` / `Datalogic.csproj` / `pom.xml` drifts from core (`composer.json` carries no version: Packagist resolves it from the tag, and the Go module version lives in the `bindings/go/vX.Y.Z` tag). |
 
 ## Why these conventions
 
@@ -180,16 +180,19 @@ Two matrices in `.github/workflows/`:
   per platform; .NET, JVM, and PHP packaging jobs each consume those
   artifacts and re-stage them under their idiomatic on-disk layout.
 
-Supported (os, arch) matrix:
+Supported (os, arch) matrix. Both workflows share the same runners and
+the same Linux/macOS targets; they differ on Windows, where the Go
+staticlib must match cgo's mingw ABI while the cdylib consumers
+(.NET, JVM, PHP) want the idiomatic MSVC ABI:
 
-| OS | Arch | Runner | Rust target |
-|---|---|---|---|
-| Linux | amd64 | `ubuntu-latest` | `x86_64-unknown-linux-gnu` |
-| Linux | arm64 | `ubuntu-24.04-arm` | `aarch64-unknown-linux-gnu` |
-| macOS | amd64 | `macos-14` (cross from arm64 host) | `x86_64-apple-darwin` |
-| macOS | arm64 | `macos-14` (native) | `aarch64-apple-darwin` |
-| Windows | amd64 | `windows-latest` | `x86_64-pc-windows-gnu` (mingw — for cgo compat; PHP/JVM may need `msvc` too) |
-| Windows | arm64 | `windows-11-arm` | `aarch64-pc-windows-gnullvm` (llvm-mingw — installed in-job; no native mingw-w64 ARM64 port exists) |
+| OS | Arch | Runner | Go staticlib target (`release-build-go.yml`) | cdylib target (`release-build-c-cdylib.yml`) |
+|---|---|---|---|---|
+| Linux | amd64 | `ubuntu-latest` | `x86_64-unknown-linux-gnu` | same |
+| Linux | arm64 | `ubuntu-24.04-arm` | `aarch64-unknown-linux-gnu` | same |
+| macOS | amd64 | `macos-15` (cross from arm64 host) | `x86_64-apple-darwin` | same |
+| macOS | arm64 | `macos-15` (native) | `aarch64-apple-darwin` | same |
+| Windows | amd64 | `windows-latest` | `x86_64-pc-windows-gnu` (mingw-w64) | `x86_64-pc-windows-msvc` |
+| Windows | arm64 | `windows-11-arm` | `aarch64-pc-windows-gnullvm` (llvm-mingw, installed in-job; no native mingw-w64 ARM64 port exists) | `aarch64-pc-windows-msvc` |
 
 ### Go tag mechanics: synthetic release commits
 
@@ -226,14 +229,16 @@ New bindings follow this section order:
 2. Badge row (registry version, CI, license) plus the line
    `Part of [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs) — one engine, every runtime.`
 3. Three-sentence pitch ending with the conformance stat: every binding
-   runs the same core and passes the same 1,636-case conformance
+   runs the same core and passes the same 1,658-case conformance
    battery (58 suites)
 4. At most one version blockquote (v4 rename / "new in v5" steering)
 5. Install
 6. Quick start
 7. Compile-once / evaluate-many
-8. Sessions (hot-loop arena reuse)
-9. API surface table
+8. Sessions (hot-loop arena reuse), then the ABI v2 tiers: data
+   handles (parse once), typed results, batch evaluation
+9. API surface table (one row per tier, including Data handle, Typed,
+   Batch and Traced)
 10. Custom operators
 11. Engine configuration: the shared config table, byte-identical
     across bindings

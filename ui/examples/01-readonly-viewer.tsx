@@ -4,12 +4,13 @@
 // no editing — useful for documentation, rule explainers, and read-only
 // dashboards.
 
-import '@xyflow/react/dist/style.css';
 import '@goplasmatic/datalogic-ui/styles.css';
 
-import { DataLogicEditor } from '@goplasmatic/datalogic-ui';
+import { DataLogicEditor, type JsonLogicValue } from '@goplasmatic/datalogic-ui';
 
-const expression = {
+// The annotation matters: TypeScript widens a bare literal whose array holds
+// two different operator keys into a union that JsonLogicValue does not accept.
+const expression: JsonLogicValue = {
   and: [
     { '>': [{ var: 'age' }, 18] },
     { '==': [{ var: 'status' }, 'active'] },

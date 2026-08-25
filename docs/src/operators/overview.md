@@ -21,7 +21,7 @@ datalogic-rs provides 64 built-in operators organized into logical categories. I
 
 ## Which operators need which Cargo feature
 
-This split only affects the **Rust crate**: only the baseline set compiles in the default build (`default = []`), and using any other operator against an engine compiled without its feature errors at compile time as `InvalidOperator`. Every language binding enables all operator features, so the full set is always available there.
+This split only affects the **Rust crate**: only the baseline set is built in the default build (`default = []`). A rule that uses any other operator against an engine compiled without its feature still compiles (`Engine::compile` succeeds, because an unknown key is treated like an unregistered custom operator), but evaluating it fails with an `InvalidOperator` error naming the operator. In templating mode an unknown key is echoed as data instead of erroring (see the [API reference](../rust/api-reference.md)). Every language binding enables all operator features, so the full set is always available there.
 
 | Cargo feature | Operators |
 |---------------|-----------|
@@ -68,18 +68,18 @@ Several operators use lazy (short-circuit) evaluation:
 - **`?:`**: Only evaluates the matching branch
 - **`??`**: Only evaluates fallback if first value is null
 
-This is important when operations have side effects or when you want to avoid errors:
+This matters when a later operand could raise an error, or is expensive:
 
 ```json
 {
   "and": [
-    { "var": "user" },
-    { "var": "user.profile.name" }
+    { "var": "denominator" },
+    { "/": [100, { "var": "denominator" }] }
   ]
 }
 ```
 
-If `user` is null, the second condition is never evaluated, avoiding an error.
+If `denominator` is missing or `0`, `and` returns that falsy value and the division (which would throw a `NaN` error for an integer zero divisor) is never evaluated; with `{ "denominator": 4 }` the result is `25`. Note that `var` itself never errors on a missing path, it returns `null`, so plain property access such as `{ "var": "user.profile.name" }` needs no guard.
 
 ## Type Coercion
 

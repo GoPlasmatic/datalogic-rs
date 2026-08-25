@@ -1,13 +1,15 @@
 /**
  * Menu Builder Utility
  *
- * Provides shared logic for building operator submenus.
- * Used by AddArgumentMenu and NodeContextMenu to ensure
- * consistent operator grouping and presentation.
+ * Single source of truth for the "pick an operator" submenu used by the
+ * canvas context menu, the node context menu (Add Argument / Wrap) and the
+ * toolbar Insert menu, so every entry point lists the same operators in
+ * the same order.
  */
 
 import type { MenuItemConfig } from '../context-menu/ContextMenu';
 import { getOperatorsGroupedByCategory } from '../config/operators';
+import { categories } from '../config/categories';
 import type { OperatorCategory } from '../config/operators.types';
 
 /**
@@ -18,23 +20,22 @@ export function capitalizeFirst(str: string): string {
 }
 
 /**
- * Standard category order for operator menus.
- * This ensures consistent ordering across all menus.
+ * Category order for operator menus, derived from the category registry
+ * (declaration order in `config/categories.ts`). Any category that only
+ * exists in the operator registry is appended so nothing is ever hidden.
  */
-const OPERATOR_CATEGORY_ORDER: OperatorCategory[] = [
-  'arithmetic',
-  'comparison',
-  'logical',
-  'string',
-  'array',
-  'object',
-  'control',
-  'datetime',
-  'validation',
-  'variable',
-  'utility',
-  'error',
-];
+export function getOperatorCategoryOrder(): OperatorCategory[] {
+  const known = Object.keys(categories) as OperatorCategory[];
+  const seen = new Set<OperatorCategory>(known);
+  const extra: OperatorCategory[] = [];
+  for (const category of getOperatorsGroupedByCategory().keys()) {
+    if (!seen.has(category)) {
+      seen.add(category);
+      extra.push(category);
+    }
+  }
+  return [...known, ...extra];
+}
 
 /**
  * Options for building operator submenus.
@@ -42,7 +43,7 @@ const OPERATOR_CATEGORY_ORDER: OperatorCategory[] = [
 export interface OperatorMenuOptions {
   /** Categories to exclude from the menu */
   excludeCategories?: OperatorCategory[];
-  /** Maximum number of operators per category (default: 10) */
+  /** Maximum number of operators per category (default: unlimited) */
   maxPerCategory?: number;
 }
 
@@ -62,23 +63,27 @@ export function buildOperatorSubmenu(
 ): MenuItemConfig[] {
   const {
     excludeCategories = [],
-    maxPerCategory = 10,
+    maxPerCategory = Infinity,
   } = options ?? {};
 
   const grouped = getOperatorsGroupedByCategory();
   const items: MenuItemConfig[] = [];
 
-  for (const category of OPERATOR_CATEGORY_ORDER) {
+  for (const category of getOperatorCategoryOrder()) {
     // Skip excluded categories
     if (excludeCategories.includes(category)) continue;
 
     const operators = grouped.get(category);
     if (!operators || operators.length === 0) continue;
 
+    const visible = Number.isFinite(maxPerCategory)
+      ? operators.slice(0, maxPerCategory)
+      : operators;
+
     items.push({
       id: `category-${category}`,
-      label: capitalizeFirst(category),
-      submenu: operators.slice(0, maxPerCategory).map((op) => ({
+      label: categories[category]?.label ?? capitalizeFirst(category),
+      submenu: visible.map((op) => ({
         id: `op-${op.name}`,
         label: op.label || op.name,
         onClick: () => onSelect(op.name),

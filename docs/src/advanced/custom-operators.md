@@ -107,7 +107,7 @@ import (
     datalogic "github.com/GoPlasmatic/datalogic-rs/bindings/go/v5"
 )
 
-engine := datalogic.NewEngineBuilder().
+engine, err := datalogic.NewEngineBuilder().
     AddOperator("double", func(argsJson string) (string, error) {
         var args []float64
         if err := json.Unmarshal([]byte(argsJson), &args); err != nil {
@@ -116,6 +116,9 @@ engine := datalogic.NewEngineBuilder().
         return fmt.Sprintf("%g", args[0]*2), nil
     }).
     Build()
+if err != nil {
+    panic(err)
+}
 defer engine.Close()
 ```
 
@@ -384,7 +387,8 @@ fn value_type_name(v: &DataValue<'_>) -> &'static str {
 ```
 
 The `Error` type is structured: `tag()` returns a stable variant tag,
-and the `operator` / `path` fields are populated automatically by the engine
+and the `operator()` / `node_ids()` metadata (resolvable to a source path
+with `resolve_path(&compiled)`) is populated automatically by the engine
 when a custom operator returns an error.
 
 To wrap a foreign error type into `Error`, use `Error::wrap`:

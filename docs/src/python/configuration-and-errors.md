@@ -23,8 +23,11 @@ fail loudly instead of being silently ignored.
 
 The presets: `"default"` is JSONLogic-compatible behavior;
 `"safe_arithmetic"` skips non-numeric operands and returns `None` on
-division by zero; `"strict"` errors on any type mismatch and disables
-numeric coercion.
+float division by zero (integer/integer division by zero always
+raises, whatever `division_by_zero` says); `"strict"` errors on any
+type mismatch and disables lenient numeric coercion. See
+[Division by Zero](../advanced/configuration.md#division-by-zero) for
+the full table.
 
 ### Example: Strict Preset with One Override
 
@@ -37,13 +40,19 @@ engine = Engine(config={
     "division_by_zero": "return_null",
 })
 
-engine.eval({"/": [1, 0]}, {})        # None (the override wins)
+engine.eval({"/": [1.5, 0]}, {})      # None (the override wins)
 
 try:
-    engine.eval({"+": ["1", 2]}, {})  # strict does not coerce "1" to a number
+    engine.eval({"+": ["abc", 2]}, {})  # strict rejects non-numeric strings
 except EvaluateError as e:
-    print(e.error_type)
+    print(e.error_type)                 # "Thrown"
 ```
+
+Two details worth knowing: `division_by_zero` governs the float path
+only, so `{"/": [1, 0]}` (integer / integer) raises under every setting;
+and the strict preset rejects non-numeric strings, `None`, and `""` in
+arithmetic, while numeric strings such as `"1"` are still coerced
+(`{"+": ["1", 2]}` returns `3`).
 
 A JSON string works anywhere the dict does:
 `Engine(config='{"preset": "safe_arithmetic"}')`. Every binding shares
@@ -96,17 +105,29 @@ exception message as `Thrown: <payload JSON>`.
 
 ## Type Conversion
 
-The dict-input path (`apply`, `Engine.eval`, `Rule.evaluate`) converts
-Python values with [`pythonize`](https://crates.io/crates/pythonize):
+The dict-input path (`apply`, `Engine.eval`, `Rule.evaluate`) walks
+Python objects straight into the engine's arena representation;
+[`pythonize`](https://crates.io/crates/pythonize) is used only as a
+fallback for unusual shapes (subclasses, sets, mappings, out-of-range
+ints), with identical results either way.
 
-**Supported:** `dict`, `list`, `str`, `int`, `float`, `bool`, `None`.
+**Supported:** `dict`, `list`, `tuple`, `str`, `int`, `float`, `bool`,
+`None`. Tuples and sets (`set`, `frozenset`) are converted to JSON
+arrays (set order is unspecified).
+
+**Non-finite floats:** `float('nan')` and `float('inf')` have no JSON
+encoding, so they become `null` on input and come back as `None` in
+results. The same applies to results the engine produces: with
+`division_by_zero = "return_infinity"`, `engine.eval({"/": [1.5, 0]}, {})`
+returns `None`, indistinguishable from `"return_null"`, and the JSON
+string entry points (`eval_str`, `evaluate_str`) serialize it as
+`null` too.
 
 **Not supported**, these raise `ParseError` with a clear message:
 
 *   `datetime.datetime`, `datetime.date`: convert to an ISO string at the Python edge
 *   `decimal.Decimal`: convert to `float` or `str`
-*   `bytes`, `set`, `tuple`
-*   `float('nan')`, `float('inf')`: the JSON spec disallows them
+*   `bytes`, `bytearray`
 
 For payloads with exotic types, use `rule.evaluate_str(json_text)` and
 bring your own JSON encoder (e.g. `json.dumps(payload, default=str)`).

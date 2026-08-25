@@ -3,7 +3,7 @@
  *
  * Object take-apart operations: keys, values, entries.
  * The read-side complement of templating's computed-key object
- * construction — entries turns any object into rows the array
+ * construction; entries turns any object into rows the array
  * vocabulary (map, filter, group_by, ...) can iterate.
  */
 
@@ -41,7 +41,7 @@ export const objectOperators: Record<string, Operator> = {
       seeAlso: ['values', 'entries'],
     },
     ui: {
-      icon: 'key-round',
+      icon: 'tag',
       shortLabel: 'keys',
       nodeType: 'operator',
     },
@@ -110,7 +110,7 @@ export const objectOperators: Record<string, Operator> = {
     help: {
       summary: 'Turn an object into an array of {key, value} rows',
       details:
-        'Returns one {key, value} object per entry, in stored order — rows the array vocabulary (map, filter, group_by) can iterate. Null input yields an empty array; any other non-object input is an error.',
+        'Returns one {key, value} object per entry, in stored order, as rows the array vocabulary (map, filter, group_by) can iterate. Null input yields an empty array; any other non-object input is an error.',
       returnType: 'array',
       examples: [
         {

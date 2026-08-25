@@ -1,6 +1,6 @@
 # Rust (Native Crate)
 
-`datalogic-rs` is the core: everything the other bindings expose is implemented here. Using the crate directly gives you the full API ladder, including the zero-copy and tracing tiers no wrapper exposes.
+`datalogic-rs` is the core: everything the other bindings expose is implemented here. Using the crate directly gives you the full API ladder, including the zero-copy tier no wrapper exposes.
 
 ## Install
 
@@ -41,7 +41,7 @@ The crate exposes a fine-grained API ladder; pick the tier matching your perform
 | **Tier 3** | `Engine::evaluate(&Logic, data, &Bump)` | Zero-copy evaluation with a caller-owned `bumpalo::Bump` arena |
 | **Tier 4** | `Engine::trace()` | Full AST execution paths for debuggers and visualizers (`trace` feature) |
 
-Tiers 0–2 exist in every language binding; Tiers 3 and 4 are Rust-only.
+Tiers 0 to 2 and the trace tier exist in every language binding; Tier 3 (caller-owned arena) is Rust-only.
 
 ## Compile once, evaluate many
 

@@ -38,8 +38,9 @@ export const stringTransformOperators: Record<string, Operator> = {
         },
         {
           title: 'Array length',
-          rule: { length: [1, 2, 3, 4] },
+          rule: { length: [[1, 2, 3, 4]] },
           result: 4,
+          note: 'Wrap a literal array: the outer array is the argument list',
         },
         {
           title: 'Empty string',
@@ -53,11 +54,15 @@ export const stringTransformOperators: Record<string, Operator> = {
           result: 3,
         },
       ],
-      notes: ['Works with strings and arrays', 'Returns 0 for empty string/array'],
+      notes: [
+        'Works with strings and arrays',
+        'Returns 0 for empty string/array',
+        'A literal array must be wrapped ({"length": [[1, 2, 3]]}); a bare array is the argument list',
+      ],
       seeAlso: ['substr', 'slice'],
     },
     ui: {
-      icon: 'ruler',
+      icon: 'hash',
       shortLabel: 'len',
       nodeType: 'operator',
     },
@@ -102,7 +107,7 @@ export const stringTransformOperators: Record<string, Operator> = {
       seeAlso: ['ends_with', 'in'],
     },
     ui: {
-      icon: 'arrow-right-from-line',
+      icon: 'text',
       shortLabel: 'starts',
       nodeType: 'operator',
     },
@@ -147,7 +152,7 @@ export const stringTransformOperators: Record<string, Operator> = {
       seeAlso: ['starts_with', 'in'],
     },
     ui: {
-      icon: 'arrow-right-to-line',
+      icon: 'text',
       shortLabel: 'ends',
       nodeType: 'operator',
     },
@@ -191,7 +196,7 @@ export const stringTransformOperators: Record<string, Operator> = {
       seeAlso: ['lower', 'trim'],
     },
     ui: {
-      icon: 'case-upper',
+      icon: 'type',
       shortLabel: 'UP',
       nodeType: 'operator',
     },
@@ -235,7 +240,7 @@ export const stringTransformOperators: Record<string, Operator> = {
       seeAlso: ['upper', 'trim'],
     },
     ui: {
-      icon: 'case-lower',
+      icon: 'type',
       shortLabel: 'low',
       nodeType: 'operator',
     },
@@ -282,7 +287,7 @@ export const stringTransformOperators: Record<string, Operator> = {
       seeAlso: ['upper', 'lower'],
     },
     ui: {
-      icon: 'space',
+      icon: 'type',
       shortLabel: 'trim',
       nodeType: 'operator',
     },
@@ -328,12 +333,21 @@ export const stringTransformOperators: Record<string, Operator> = {
           result: ['a', 'b', 'c'],
           note: 'Empty delimiter splits into chars',
         },
+        {
+          title: 'Empty input',
+          rule: { split: ['', ','] },
+          result: [''],
+        },
       ],
-      notes: ['Delimiter is not included in results', 'Empty string splits into characters'],
+      notes: [
+        'Delimiter is not included in results',
+        'Empty delimiter splits into characters',
+        'Empty input string gives [""]',
+      ],
       seeAlso: ['cat', 'substr'],
     },
     ui: {
-      icon: 'split',
+      icon: 'list',
       shortLabel: 'split',
       nodeType: 'operator',
     },

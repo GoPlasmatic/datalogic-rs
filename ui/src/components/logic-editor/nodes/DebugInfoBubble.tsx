@@ -2,10 +2,17 @@ import { memo } from 'react';
 import type { ExecutionStep } from '../types/trace';
 import { formatResultValue, isComplexValue } from '../utils/formatting';
 import { getValueColorClass } from '../utils/type-helpers';
+import { formatTraceFailure, traceFailureType, type TraceFailure } from '../utils/trace/trace-failure';
 import { tokenizeValue, type JsonToken, type JsonTokenType } from '../../../utils/json-tokenizer';
 
 interface DebugInfoBubbleProps {
-  step: ExecutionStep;
+  /** The execution step to show (context, result / error, iteration) */
+  step?: ExecutionStep | null;
+  /**
+   * Trace-level failure to show instead of a step, used for the failing node
+   * at rest (before stepping) when the engine reported an error breadcrumb.
+   */
+  failure?: TraceFailure | null;
   position?: 'top' | 'right' | 'bottom';
 }
 
@@ -31,8 +38,25 @@ function renderHighlightedJson(value: unknown): React.ReactNode {
 
 export const DebugInfoBubble = memo(function DebugInfoBubble({
   step,
+  failure,
   position = 'top',
 }: DebugInfoBubbleProps) {
+  // Failure-only bubble: the engine's error for the failed node, no step data
+  if (!step) {
+    if (!failure) return null;
+    const kind = traceFailureType(failure);
+    return (
+      <div className={`debug-info-bubble debug-info-${position} error`}>
+        <div className="debug-info-section">
+          <span className="debug-info-label">
+            {'⚠ '}{kind ? `Error (${kind}):` : 'Error:'}
+          </span>
+          <pre className="debug-info-value debug-info-error">{formatTraceFailure(failure)}</pre>
+        </div>
+      </div>
+    );
+  }
+
   const hasError = !!step.error;
   const hasIteration = step.iteration_index !== undefined && step.iteration_total !== undefined;
   const result = step.result;
@@ -60,7 +84,7 @@ export const DebugInfoBubble = memo(function DebugInfoBubble({
       {/* Result section */}
       <div className="debug-info-section">
         <span className="debug-info-label">
-          {hasError ? '\u26A0 Error:' : 'Result:'}
+          {hasError ? '⚠ Error:' : 'Result:'}
         </span>
         {hasError ? (
           <pre className="debug-info-value debug-info-error">{step.error}</pre>

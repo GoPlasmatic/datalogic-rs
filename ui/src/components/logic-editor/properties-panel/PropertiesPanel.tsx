@@ -9,7 +9,7 @@ import { memo, useEffect, useState, useRef, useImperativeHandle, forwardRef, use
 import { X, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { useEditorContext } from '../context/editor';
 import './properties-panel.css';
-import { PanelRenderer, type PanelRendererRef } from '../panel-inputs';
+import { PanelRenderer, ChainableHint, ContextVariablesHint, type PanelRendererRef } from '../panel-inputs';
 import { HelpSection } from './HelpSection';
 import { ArgumentsSection } from './ArgumentsSection';
 import { isRootNode } from '../utils/node-deletion';
@@ -204,6 +204,16 @@ const SelectedNodePanel = memo(forwardRef<PanelRendererRef, SelectedNodePanelPro
         <ArgumentsSection node={node} />
       )}
 
+      {/* Operator hints (iterator context variables, chainable comparisons) */}
+      {node.data.type === 'operator' && panelConfig && (panelConfig.chainable || (panelConfig.contextVariables?.length ?? 0) > 0) && (
+        <div className="properties-panel-section">
+          {panelConfig.chainable && <ChainableHint />}
+          {panelConfig.contextVariables && panelConfig.contextVariables.length > 0 && (
+            <ContextVariablesHint variables={panelConfig.contextVariables} />
+          )}
+        </div>
+      )}
+
       {/* Properties Section - only for literals */}
       {panelConfig && node.data.type === 'literal' && (
         <div className="properties-panel-section">
@@ -233,6 +243,7 @@ const SelectedNodePanel = memo(forwardRef<PanelRendererRef, SelectedNodePanelPro
           {helpExpanded && (
             <div className="properties-panel-section-content">
               <HelpSection
+                operator={operatorConfig}
                 help={operatorConfig.help}
                 arity={operatorConfig.arity}
               />

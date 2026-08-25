@@ -7,17 +7,18 @@ This guide covers essential patterns for using the DataLogicEditor component.
 Render a JSONLogic expression as a flow diagram:
 
 ```tsx
-import '@xyflow/react/dist/style.css';
 import '@goplasmatic/datalogic-ui/styles.css';
 
-import { DataLogicEditor } from '@goplasmatic/datalogic-ui';
+import { DataLogicEditor, type JsonLogicValue } from '@goplasmatic/datalogic-ui';
 
 function App() {
-  const expression = {
-    "and": [
-      { ">": [{ "var": "age" }, 18] },
-      { "==": [{ "var": "status" }, "active"] }
-    ]
+  // Annotate the literal: TypeScript widens an array holding two different
+  // operator keys into a union that JsonLogicValue does not accept.
+  const expression: JsonLogicValue = {
+    and: [
+      { '>': [{ var: 'age' }, 18] },
+      { '==': [{ var: 'status' }, 'active'] },
+    ],
   };
 
   return (
@@ -30,7 +31,7 @@ function App() {
 
 ## Debugging
 
-Add evaluation results by providing a `data` context. When `data` is present, the editor exposes debugger controls with a step-through execution trace:
+Provide a `data` context to turn on the debugger. The toolbar gains play/pause, step, and a step timeline over the engine's execution trace:
 
 ```tsx
 function DebugExample() {
@@ -57,7 +58,7 @@ function DebugExample() {
 }
 ```
 
-With `data` provided, each node displays its evaluated result, making it easy to trace how the final value was computed.
+As you step, the current node shows its context and result in a bubble, and executed nodes stay highlighted so the taken path is visible. If evaluation fails, the node on the engine's failure breadcrumb is marked with the error (and a rule that does not compile at all reports the error in a banner above the diagram). Nodes do not display results at rest, so step through the trace to read values.
 
 ## Dynamic Data
 
@@ -179,10 +180,12 @@ Set `editable` to turn on the visual builder: node selection, a properties panel
 
 ```tsx
 import { useState } from 'react';
+import { DataLogicEditor, type JsonLogicValue } from '@goplasmatic/datalogic-ui';
 
 function EditableExample() {
-  const [expression, setExpression] = useState({
-    ">": [{ "var": "cart.total" }, 100]
+  // `onChange` hands back `JsonLogicValue | null`, so type the state to match.
+  const [expression, setExpression] = useState<JsonLogicValue | null>({
+    '>': [{ var: 'cart.total' }, 100],
   });
 
   return (
@@ -197,7 +200,52 @@ function EditableExample() {
 }
 ```
 
-Add `data` to combine editing with live debugging in the same view.
+Add `data` to combine editing with live debugging in the same view. In edit
+mode the toolbar also gains an **Insert** button (Cmd/Ctrl+K) that adds an
+argument to the selection or wraps the root, and the canvas supports
+copy/paste (Cmd/Ctrl+C / V), duplicate (Cmd/Ctrl+D), select-all (Cmd/Ctrl+A),
+undo/redo (Cmd/Ctrl+Z, Shift+Cmd/Ctrl+Z) and delete (Backspace/Delete).
+
+## Engine Settings
+
+Pass `config` to change how the engine evaluates, for both the result and the
+trace. Every key is optional and omitted keys keep the engine default:
+
+```tsx
+<DataLogicEditor
+  value={expression}
+  data={data}
+  config={{
+    preset: 'strict',
+    division_by_zero: 'return_null',
+    truthy_evaluator: 'python',
+  }}
+/>
+```
+
+When the settings differ from the defaults, the toolbar shows a compact
+summary so a surprising result is traceable to the configuration. Changing
+`config` rebuilds the engine, which resets selection and undo history.
+
+## Custom Operators
+
+Register your own operators; rules that use them evaluate and trace like any
+other. Arguments arrive already evaluated, and the return value can be any
+JSON-serializable value (`undefined` becomes `null`; a thrown exception
+becomes a runtime evaluation error):
+
+```tsx
+<DataLogicEditor
+  value={{ discounted: [{ var: 'price' }] }}
+  data={{ price: 100 }}
+  customOperators={{
+    discounted: (args) => Number(args[0]) * 0.9,
+  }}
+/>
+```
+
+The palette and help panel only know the built-in operators, so custom nodes
+render with the generic "utility" styling.
 
 ## Theme Support
 

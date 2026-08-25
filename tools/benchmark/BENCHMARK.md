@@ -180,8 +180,12 @@ computed only over the suites both subjects completed.
 
 ## Quick reading
 
-Geomeans across the 51 timed suites (54 discovered; the 3 negative-only
-suites skip). Lower is better:
+Geomeans across the 51 timed suites (54 discovered at capture time; the
+3 negative-only suites skip). Suites added after this capture are not in
+the matrix: `group_by.json`, `distinct.json`, `object-ops.json`, and
+`datetime/timezone.json` (5.2.0), and the 5.3.x regression cases in
+`control/and.json` / `control/or.json`; the suite index now holds 58
+files. Lower is better:
 
 | Subject                        | Geomean ns/op (own suite set) | Pairwise vs `dlrs:engine` (shared suites) |
 |--------------------------------|------------------------------:|------------------------------------------:|

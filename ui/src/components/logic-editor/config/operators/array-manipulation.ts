@@ -53,10 +53,16 @@ export const arrayManipulationOperators: Record<string, Operator> = {
           result: [1, 2, 3, 4],
           note: 'Non-array 3 is wrapped',
         },
+        {
+          title: 'Nulls are dropped',
+          rule: { merge: [[1, null, 2], null, 3] },
+          result: [1, 2, 3],
+        },
       ],
       notes: [
         'Flattens one level only',
         'Non-arrays are wrapped in array',
+        'null elements (and null arguments) are dropped',
         'Accepts 1 or more arguments',
       ],
       seeAlso: ['slice', 'map'],
@@ -76,22 +82,29 @@ export const arrayManipulationOperators: Record<string, Operator> = {
     arity: {
       type: 'range',
       min: 1,
-      max: 2,
+      max: 3,
       args: [
         { name: 'array', label: 'Array', type: 'array', required: true },
+        {
+          name: 'ascending',
+          label: 'Ascending',
+          type: 'boolean',
+          required: false,
+          description: 'true (default) for ascending, false for descending',
+        },
         {
           name: 'expression',
           label: 'Sort Key',
           type: 'expression',
           required: false,
-          description: 'Expression to extract sort key',
+          description: 'Expression to extract the sort key from each element',
         },
       ],
     },
     help: {
-      summary: 'Sort array elements in ascending order',
+      summary: 'Sort array elements in ascending or descending order',
       details:
-        'Sorts the array. With no expression, sorts by natural order. With an expression, sorts by the extracted key.',
+        'Sorts the array: [array, ascending?, keyExpression?]. The second argument is the direction (true = ascending, the default). With a key expression as the third argument, elements are ordered by the extracted key.',
       returnType: 'array',
       examples: [
         {
@@ -105,10 +118,17 @@ export const arrayManipulationOperators: Record<string, Operator> = {
           result: ['apple', 'banana', 'cherry'],
         },
         {
+          title: 'Descending',
+          rule: { sort: [[3, 1, 2], false] },
+          result: [3, 2, 1],
+          note: 'Second argument is the direction',
+        },
+        {
           title: 'Sort by field',
           rule: {
             sort: [
               { var: 'users' },
+              true,
               { var: 'age' },
             ],
           },
@@ -124,17 +144,34 @@ export const arrayManipulationOperators: Record<string, Operator> = {
             { name: 'Bob', age: 30 },
             { name: 'Carol', age: 35 },
           ],
+          note: 'The key expression is the third argument, after the direction',
+        },
+        {
+          title: 'Sort by field, descending',
+          rule: { sort: [{ var: 'users' }, false, { var: 'age' }] },
+          data: {
+            users: [
+              { name: 'Bob', age: 30 },
+              { name: 'Alice', age: 25 },
+              { name: 'Carol', age: 35 },
+            ],
+          },
+          result: [
+            { name: 'Carol', age: 35 },
+            { name: 'Bob', age: 30 },
+            { name: 'Alice', age: 25 },
+          ],
         },
       ],
       notes: [
-        'Returns a new sorted array',
-        'Original array unchanged',
-        'Expression extracts the sort key',
+        'Signature: [array, ascending?, keyExpression?]',
+        'Returns a new sorted array; original unchanged',
+        'A key expression in the second position is read as the direction and ignored',
       ],
       seeAlso: ['filter', 'map'],
     },
     ui: {
-      icon: 'arrow-up-down',
+      icon: 'layers',
       shortLabel: 'sort',
       nodeType: 'operator',
     },
@@ -147,8 +184,8 @@ export const arrayManipulationOperators: Record<string, Operator> = {
     description: 'Extract portion of array or string',
     arity: {
       type: 'range',
-      min: 2,
-      max: 3,
+      min: 1,
+      max: 4,
       args: [
         {
           name: 'value',
@@ -157,20 +194,33 @@ export const arrayManipulationOperators: Record<string, Operator> = {
           required: true,
           description: 'Array or string',
         },
-        { name: 'start', label: 'Start', type: 'number', required: true },
+        {
+          name: 'start',
+          label: 'Start',
+          type: 'number',
+          required: false,
+          description: 'Start index (inclusive); null or omitted = from the beginning',
+        },
         {
           name: 'end',
           label: 'End',
           type: 'number',
           required: false,
-          description: 'End index (exclusive)',
+          description: 'End index (exclusive); null or omitted = to the end',
+        },
+        {
+          name: 'step',
+          label: 'Step',
+          type: 'number',
+          required: false,
+          description: 'Stride (non-zero); negative walks backwards',
         },
       ],
     },
     help: {
       summary: 'Extract a portion of an array or string',
       details:
-        'Returns elements from start index up to (but not including) end index. Negative indices count from the end.',
+        'Returns elements from start index up to (but not including) end index, optionally every step-th element: [value, start?, end?, step?]. Negative indices count from the end; start and end may be null to leave that side open.',
       returnType: 'same',
       examples: [
         {
@@ -195,16 +245,30 @@ export const arrayManipulationOperators: Record<string, Operator> = {
           rule: { slice: ['Hello World', 0, 5] },
           result: 'Hello',
         },
+        {
+          title: 'Every other element',
+          rule: { slice: [[1, 2, 3, 4, 5], 0, 5, 2] },
+          result: [1, 3, 5],
+          note: 'Fourth argument is the step',
+        },
+        {
+          title: 'Reverse',
+          rule: { slice: [[1, 2, 3, 4, 5], null, null, -1] },
+          result: [5, 4, 3, 2, 1],
+          note: 'Open-ended start/end with a negative step',
+        },
       ],
       notes: [
-        'Start is inclusive, end is exclusive',
-        'Negative indices count from end',
-        'Works with both arrays and strings',
+        'Signature: [value, start?, end?, step?]',
+        'Start is inclusive, end is exclusive; either may be null (open-ended)',
+        'Negative indices count from end; a negative step walks backwards',
+        'Works with both arrays and strings; null input returns null',
+        'Non-numeric indices are an InvalidArguments error',
       ],
       seeAlso: ['substr', 'merge'],
     },
     ui: {
-      icon: 'scissors',
+      icon: 'list',
       shortLabel: 'slice',
       nodeType: 'operator',
     },
@@ -224,7 +288,7 @@ export const arrayManipulationOperators: Record<string, Operator> = {
           label: 'Group Key',
           type: 'expression',
           required: true,
-          description: 'Expression producing each element’s group key',
+          description: "Expression producing each element's group key",
         },
       ],
     },
@@ -259,14 +323,14 @@ export const arrayManipulationOperators: Record<string, Operator> = {
         },
       ],
       notes: [
-        'Keys keep their evaluated type — numbers, booleans, and objects group by deep equality',
+        'Keys keep their evaluated type: numbers, booleans, and objects group by deep equality',
         'Groups are ordered by first key occurrence (deterministic output)',
         'Null or empty input yields []',
       ],
       seeAlso: ['distinct', 'map', 'sort'],
     },
     ui: {
-      icon: 'group',
+      icon: 'boxes',
       shortLabel: 'group',
       nodeType: 'operator',
     },
@@ -320,14 +384,14 @@ export const arrayManipulationOperators: Record<string, Operator> = {
         },
       ],
       notes: [
-        'Uses strict deep equality — 1 and "1" stay distinct',
+        'Uses strict deep equality: 1 and "1" stay distinct',
         'First occurrence wins; order is preserved',
         'Null or empty input yields []',
       ],
       seeAlso: ['group_by', 'filter'],
     },
     ui: {
-      icon: 'list-filter',
+      icon: 'list',
       shortLabel: 'distinct',
       nodeType: 'operator',
     },

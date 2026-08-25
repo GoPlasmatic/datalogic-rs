@@ -33,11 +33,11 @@ function RuleEvaluator() {
 Create a reusable hook for JSONLogic evaluation:
 
 ```tsx
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import init, { CompiledRule } from '@goplasmatic/datalogic-wasm';
 
 // Initialize once at module level
-let initPromise: Promise<void> | null = null;
+let initPromise: Promise<unknown> | null = null;
 function ensureInit() {
   if (!initPromise) {
     initPromise = init();
@@ -45,44 +45,56 @@ function ensureInit() {
   return initPromise;
 }
 
+// Inputs are keyed by their JSON text, so callers may pass fresh object
+// literals on every render: the rule is recompiled only when its text
+// changes, and an object result can never re-trigger the effect.
 export function useJsonLogic(logic: object, data: unknown) {
   const [ready, setReady] = useState(false);
   const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
+  const ruleRef = useRef<{ json: string; rule: CompiledRule } | null>(null);
 
-  const rule = useMemo(() => {
-    if (!ready) return null;
-    try {
-      return new CompiledRule(JSON.stringify(logic), false);
-    } catch (e) {
-      setError(String(e));
-      return null;
-    }
-  }, [logic, ready]);
+  const logicJson = JSON.stringify(logic);
+  const dataJson = JSON.stringify(data);
 
   useEffect(() => {
     ensureInit().then(() => setReady(true));
   }, []);
 
   useEffect(() => {
-    if (!rule) return;
+    if (!ready) return;
     try {
-      const res = rule.evaluate(JSON.stringify(data));
-      setResult(JSON.parse(res));
+      if (!ruleRef.current || ruleRef.current.json !== logicJson) {
+        // Release the previous rule's WASM memory before compiling the next one
+        const previous = ruleRef.current;
+        ruleRef.current = null;
+        previous?.rule.free();
+        ruleRef.current = { json: logicJson, rule: new CompiledRule(logicJson, false) };
+      }
+      setResult(JSON.parse(ruleRef.current.rule.evaluate(dataJson)));
       setError(null);
     } catch (e) {
       setError(String(e));
     }
-  }, [rule, data]);
+  }, [logicJson, dataJson, ready]);
+
+  // Free the compiled rule on unmount
+  useEffect(() => () => {
+    ruleRef.current?.rule.free();
+    ruleRef.current = null;
+  }, []);
 
   return { result, error, ready };
 }
 ```
 
+Two details matter here. Effects are keyed on the serialized inputs, not the objects: an inline rule literal is a new object identity on every render, and an object result from `JSON.parse` is a new identity on every evaluation, so keying on the objects themselves would recompile per render and, for object results, loop until React reports "Maximum update depth exceeded". And every `CompiledRule` holds WASM memory, so the hook calls `free()` when it replaces a rule and on unmount rather than waiting for the garbage collector.
+
 Usage:
 
 ```tsx
 function FeatureFlag({ feature, user }) {
+  // An inline literal is fine: the hook keys on the rule's JSON text
   const rule = { "and": [
     { "in": [feature, { "var": "enabledFeatures" }] },
     { ">=": [{ "var": "accountAge" }, 30] }
@@ -156,40 +168,52 @@ const isAdult = computed(() => {
 
 ```typescript
 // useJsonLogic.ts
-import { ref, onMounted, watchEffect, Ref } from 'vue';
+import { ref, onMounted, onUnmounted, watchEffect, Ref } from 'vue';
 import init, { CompiledRule } from '@goplasmatic/datalogic-wasm';
 
-let initialized = false;
-let initPromise: Promise<void> | null = null;
+let initPromise: Promise<unknown> | null = null;
 
 export function useJsonLogic(logic: Ref<object>, data: Ref<unknown>) {
   const result = ref<unknown>(null);
   const error = ref<string | null>(null);
   const ready = ref(false);
+  let compiled: { json: string; rule: CompiledRule } | null = null;
 
   onMounted(async () => {
-    if (!initialized) {
-      if (!initPromise) initPromise = init();
-      await initPromise;
-      initialized = true;
-    }
+    if (!initPromise) initPromise = init();
+    await initPromise;
     ready.value = true;
   });
 
   watchEffect(() => {
     if (!ready.value) return;
+    const logicJson = JSON.stringify(logic.value);
+    const dataJson = JSON.stringify(data.value);
     try {
-      const rule = new CompiledRule(JSON.stringify(logic.value), false);
-      result.value = JSON.parse(rule.evaluate(JSON.stringify(data.value)));
+      // Recompile only when the rule text changes, freeing the previous rule
+      if (!compiled || compiled.json !== logicJson) {
+        const previous = compiled;
+        compiled = null;
+        previous?.rule.free();
+        compiled = { json: logicJson, rule: new CompiledRule(logicJson, false) };
+      }
+      result.value = JSON.parse(compiled.rule.evaluate(dataJson));
       error.value = null;
     } catch (e) {
       error.value = String(e);
     }
   });
 
+  onUnmounted(() => {
+    compiled?.rule.free();
+    compiled = null;
+  });
+
   return { result, error, ready };
 }
 ```
+
+As with the React hook, the composable compares the rule's JSON text so a `data` change does not recompile, and it frees each `CompiledRule` it replaces (and the last one on unmount) instead of leaving WASM memory to the garbage collector.
 
 ---
 
@@ -240,13 +264,13 @@ app.get('/admin', authorize('canAccess'), (req, res) => {
 const { evaluate } = require('@goplasmatic/datalogic-wasm');
 
 app.post('/api/evaluate', (req, res) => {
-  const { logic, data, preserveStructure = false } = req.body;
+  const { logic, data, templating = false } = req.body;
 
   try {
     const result = evaluate(
       JSON.stringify(logic),
       JSON.stringify(data),
-      preserveStructure
+      templating
     );
     res.json({ result: JSON.parse(result) });
   } catch (error) {
@@ -389,11 +413,13 @@ const { CompiledRule } = require('@goplasmatic/datalogic-wasm');
 
 if (isMainThread) {
   const worker = new Worker(__filename);
-  worker.postMessage({ logic: '{"==": [1, 1]}', data: {} });
-  worker.on('message', (result) => console.log(result));
+  worker.postMessage({ logic: '{"==": [1, 1]}', data: {} }); // logic is JSON text, data is an object
+  worker.on('message', (result) => console.log(result));      // true
 } else {
   parentPort.on('message', ({ logic, data }) => {
-    const rule = new CompiledRule(JSON.stringify(logic), false);
+    // logic is already JSON text: pass it through as is. Stringifying it
+    // again would compile the literal string '{"==": [1, 1]}' and return it.
+    const rule = new CompiledRule(logic, false);
     const result = JSON.parse(rule.evaluate(JSON.stringify(data)));
     parentPort.postMessage(result);
   });

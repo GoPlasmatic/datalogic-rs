@@ -1,7 +1,6 @@
 export { jsonLogicToNodes, type JsonLogicToNodesOptions } from './jsonlogic-to-nodes';
 export {
   traceToNodes,
-  buildEvaluationResultsFromTrace,
   traceIdToNodeId,
   type TraceConversionResult,
   type TraceToNodesOptions,

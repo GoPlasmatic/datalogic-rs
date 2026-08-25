@@ -201,23 +201,48 @@ fn try_last_with_error_context<'a>(
     // Consume the slot unconditionally: it either pairs with `last_error`
     // (set during the same failing arm) or must not leak past this catch.
     let slot = ctx.take_thrown_slot();
-    if let Some(Error {
-        kind: crate::ErrorKind::Thrown(error_obj),
-        ..
-    }) = last_error.take()
-    {
-        if matches!(arg, CompiledNode::Value { .. }) {
-            return engine.dispatch_node(arg, ctx, arena);
-        }
-        let av: &'a DataValue<'a> = match slot {
+    // A literal catch arm can't read the context, so skip the push (and
+    // any payload materialization) entirely.
+    if matches!(arg, CompiledNode::Value { .. }) {
+        return engine.dispatch_node(arg, ctx, arena);
+    }
+    let av: &'a DataValue<'a> = match last_error.take() {
+        Some(Error {
+            kind: crate::ErrorKind::Thrown(error_obj),
+            ..
+        }) => match slot {
             Some(av) => av,
             None => arena.alloc(error_obj.to_arena(arena)),
-        };
-        ctx.push(av);
-        let result = engine.dispatch_node(arg, ctx, arena);
-        ctx.pop();
-        result
-    } else {
-        engine.dispatch_node(arg, ctx, arena)
-    }
+        },
+        // Engine-raised errors (invalid arguments, unknown operator, type
+        // errors, ...) are surfaced to the catch arm the same way a thrown
+        // string is: as `{"type": <message>}`. Only `InvalidOperator` maps
+        // to a fixed json-logic-engine tag (`"Unknown Operator"`); every
+        // other kind carries its own message, so `"Invalid Arguments"`
+        // appears verbatim only where the operator did not supply a more
+        // specific sentence. A catch arm switching on `{"var": "type"}`
+        // must therefore match the text the operator actually produces —
+        // which makes those messages an observable contract that the
+        // conformance suites pin and a reword would break.
+        Some(err) => engine_error_object(&err, arena),
+        None => return engine.dispatch_node(arg, ctx, arena),
+    };
+    ctx.push(av);
+    let result = engine.dispatch_node(arg, ctx, arena);
+    ctx.pop();
+    result
+}
+
+/// Build the `{"type": <message>}` context object for a non-`Thrown`
+/// error caught by `try`. `InvalidOperator` maps to the json-logic-engine
+/// string `"Unknown Operator"`; every other kind uses its message text
+/// (`"Invalid Arguments"`, `"Variable not found: x"`, ...).
+fn engine_error_object<'a>(err: &Error, arena: &'a Bump) -> &'a DataValue<'a> {
+    let msg: &'a str = match &err.kind {
+        crate::ErrorKind::InvalidOperator(_) => "Unknown Operator",
+        crate::ErrorKind::InvalidArguments(m) => arena.alloc_str(m),
+        kind => arena.alloc_str(&crate::error::KindDisplay(kind).to_string()),
+    };
+    let entry = arena.alloc([("type", DataValue::String(msg))]);
+    arena.alloc(DataValue::Object(&entry[..]))
 }

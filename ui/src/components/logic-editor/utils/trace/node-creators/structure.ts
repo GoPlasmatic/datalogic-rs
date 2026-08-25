@@ -6,11 +6,14 @@ import type {
 } from '../../../types';
 import type { ExpressionNode } from '../../../types/trace';
 import type { ParentInfo } from '../../converters/types';
-import type { TraceContext } from '../types';
+import type { TraceContext, ChildMatch } from '../types';
 import { generateExpressionText } from '../../formatting';
-import { isJsonLogicExpression, isDataStructure } from '../../type-helpers';
+import { isJsonLogicExpression } from '../../type-helpers';
 import { createBranchEdge, createArgEdge } from '../../node-factory';
-import { findMatchingChild } from '../child-matching';
+import { matchOperandsToChildren, unmatchedChildren } from '../child-matching';
+import { mapInlinedChildren } from '../inline-mapping';
+import { traceIdToNodeId } from '../trace-ids';
+import { exprMarkerFactory, resolveExprMarkers } from '../../converters/structure-paths';
 
 // Forward declaration for processExpressionNode and createFallbackNode
 type ProcessExpressionNodeFn = (
@@ -27,63 +30,16 @@ type CreateFallbackNodeFn = (
   parentInfo: ParentInfo
 ) => void;
 
-// Placeholder marker used in formatted JSON for expressions
-const EXPR_PLACEHOLDER = '{{EXPR}}';
-// The placeholder as it appears in JSON.stringify output (with quotes)
-const EXPR_PLACEHOLDER_QUOTED = `"${EXPR_PLACEHOLDER}"`;
 
 /**
- * Check if a value should be treated as an expression branch in trace conversion
- * This includes JSONLogic expressions and nested structures (when templating is enabled)
- */
-function isExpressionBranch(item: unknown, templating: boolean): boolean {
-  if (isJsonLogicExpression(item)) return true;
-  // In templating mode, nested structures are also separate expression nodes in the trace
-  if (templating && isDataStructure(item)) return true;
-  return false;
-}
-
-/**
- * Walk through a structure and transform values (for trace conversion)
- */
-function walkAndCollectFromTrace(
-  value: unknown,
-  path: string[],
-  onValue: (path: string[], item: unknown, key?: string) => unknown,
-  context: TraceContext
-): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item, index) => {
-      const itemPath = [...path, String(index)];
-      if (isExpressionBranch(item, context.templating)) {
-        return onValue(itemPath, item);
-      } else if (typeof item === 'object' && item !== null) {
-        return walkAndCollectFromTrace(item, itemPath, onValue, context);
-      }
-      return item;
-    });
-  }
-
-  if (typeof value === 'object' && value !== null) {
-    const result: Record<string, unknown> = {};
-    for (const [key, item] of Object.entries(value)) {
-      const itemPath = [...path, key];
-      if (isExpressionBranch(item, context.templating)) {
-        result[key] = onValue(itemPath, item, key);
-      } else if (typeof item === 'object' && item !== null) {
-        result[key] = walkAndCollectFromTrace(item, itemPath, onValue, context);
-      } else {
-        result[key] = item;
-      }
-    }
-    return result;
-  }
-
-  return value;
-}
-
-/**
- * Create a structure node for data structures with embedded JSONLogic from trace data
+ * Create a structure node for data structures with embedded JSONLogic from trace data.
+ *
+ * Mirrors the static structure converter: the structure renders as one node
+ * whose JSONLogic expressions (at any nesting depth) become child nodes. The
+ * engine tree, however, gives every nested object / array its own node, so
+ * nested structures are matched to their trace child, folded onto this node
+ * (their steps highlight the structure), and their expressions are matched
+ * against that child's children.
  */
 export function createStructureNodeFromTrace(
   nodeId: string,
@@ -96,69 +52,109 @@ export function createStructureNodeFromTrace(
 ): void {
   const isArray = Array.isArray(expression);
   const elements: StructureElement[] = [];
-  const usedChildIndices = new Set<number>();
   let expressionIndex = 0;
+  // One distinct marker per expression slot, so the offset pass below is an
+  // exact lookup rather than an ordered scan for a shared token that the
+  // user's own data could also contain.
+  const marker = exprMarkerFactory(expression);
+  const markers: string[] = [];
 
-  // Build a modified structure for JSON formatting with placeholders
-  const structureWithPlaceholders = walkAndCollectFromTrace(
-    expression as Record<string, unknown> | unknown[],
-    [],
-    (path, item, key) => {
+  // Render one embedded expression as a child node (trace child or fallback)
+  const renderExpression = (
+    item: JsonLogicValue,
+    path: string[],
+    key: string | undefined,
+    match: ChildMatch | null
+  ): string => {
+    let branchId: string;
+    if (match) {
+      branchId = processExpressionNode(match.child, context, {
+        parentId: nodeId,
+        argIndex: expressionIndex,
+        branchType: 'branch', // structure node draws its own branch edges
+      }, item);
+    } else {
+      branchId = `${nodeId}-expr-${expressionIndex}`;
+      createFallbackNode(branchId, item, context, {
+        parentId: nodeId,
+        argIndex: expressionIndex,
+        branchType: 'branch', // prevents edge creation in fallback
+      });
+    }
+
+    elements.push({
+      type: 'expression',
+      path,
+      key,
+      branchId,
+      startOffset: 0,
+      endOffset: 0,
+    });
+    markers.push(marker(expressionIndex));
+    expressionIndex++;
+    return markers[markers.length - 1];
+  };
+
+  // Walk one structure level, matching its entries against the trace
+  // children in scope, and return the structure with expression placeholders.
+  const walk = (
+    value: Record<string, unknown> | unknown[],
+    path: string[],
+    scope: ExpressionNode[]
+  ): unknown => {
+    const entries: { key?: string; item: unknown }[] = Array.isArray(value)
+      ? value.map((item) => ({ item }))
+      : Object.entries(value).map(([key, item]) => ({ key, item }));
+    const matches = matchOperandsToChildren(
+      entries.map((e) => e.item as JsonLogicValue),
+      scope,
+      context.templating
+    );
+
+    const rendered = entries.map(({ key, item }, i) => {
+      const itemPath = [...path, key ?? String(i)];
+      const match = matches[i];
       if (isJsonLogicExpression(item)) {
-        // Find matching child in trace
-        const match = findMatchingChild(item as JsonLogicValue, children, usedChildIndices);
-        let branchId: string;
-
-        if (match) {
-          usedChildIndices.add(match.index);
-          branchId = processExpressionNode(match.child, context, {
-            parentId: nodeId,
-            argIndex: expressionIndex,
-          });
-        } else {
-          // Fallback: create appropriate node based on value type
-          // Use branchType to prevent createFallbackNode from adding edges (structure node handles its own edges)
-          branchId = `${nodeId}-expr-${expressionIndex}`;
-          createFallbackNode(branchId, item as JsonLogicValue, context, {
-            parentId: nodeId,
-            argIndex: expressionIndex,
-            branchType: 'branch', // Prevents edge creation in fallback
-          });
-        }
-
-        elements.push({
-          type: 'expression',
-          path,
-          key,
-          branchId,
-          startOffset: 0,
-          endOffset: 0,
-        });
-
-        expressionIndex++;
-        return EXPR_PLACEHOLDER;
+        return renderExpression(item as JsonLogicValue, itemPath, key, match);
+      }
+      if (item !== null && typeof item === 'object') {
+        // Nested structure: stays inline, its trace node folds onto this node
+        if (match) context.traceNodeMap.set(traceIdToNodeId(match.child.id), nodeId);
+        return walk(item as Record<string, unknown> | unknown[], itemPath, match ? match.child.children ?? [] : []);
       }
       return item;
-    },
-    context
+    });
+
+    // Trace children no entry claimed fold into this node
+    mapInlinedChildren(unmatchedChildren(scope, matches), nodeId, context.traceNodeMap);
+
+    if (Array.isArray(value)) return rendered;
+    const result: Record<string, unknown> = {};
+    entries.forEach(({ key }, i) => {
+      result[key as string] = rendered[i];
+    });
+    return result;
+  };
+
+  const structureWithPlaceholders = walk(
+    expression as Record<string, unknown> | unknown[],
+    [],
+    children
   );
 
-  // Format the JSON with placeholders
-  const formattedJson = JSON.stringify(structureWithPlaceholders, null, 2);
-
-  // Calculate offsets for expression placeholders
-  // Note: JSON.stringify wraps strings in quotes, so we search for "{{EXPR}}"
-  let searchPos = 0;
-  for (const element of elements) {
-    if (element.type === 'expression') {
-      const placeholderPos = formattedJson.indexOf(EXPR_PLACEHOLDER_QUOTED, searchPos);
-      if (placeholderPos !== -1) {
-        element.startOffset = placeholderPos;
-        element.endOffset = placeholderPos + EXPR_PLACEHOLDER_QUOTED.length;
-        searchPos = element.endOffset;
-      }
+  // Swap the per-slot markers back to the canonical placeholder and take
+  // each expression element's span from the same pass.
+  const { formattedJson, spans } = resolveExprMarkers(
+    JSON.stringify(structureWithPlaceholders, null, 2),
+    markers
+  );
+  elements.forEach((element, slot) => {
+    const span = spans[slot];
+    if (element.type === 'expression' && span) {
+      element.startOffset = span.startOffset;
+      element.endOffset = span.endOffset;
     }
-  }
+  });
 
   // Generate expression text for collapsed view
   const expressionText = generateExpressionText(expression, 100);

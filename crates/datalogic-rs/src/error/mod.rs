@@ -15,6 +15,9 @@ mod serde;
 
 pub use kind::{CustomErrorSource, ErrorKind};
 pub(crate) use path::ErrorPath;
+// Only `try`'s catch arm renders a kind outside this module.
+#[cfg(feature = "error-handling")]
+pub(crate) use serde::KindDisplay;
 
 use datavalue::OwnedDataValue;
 use std::borrow::Cow;

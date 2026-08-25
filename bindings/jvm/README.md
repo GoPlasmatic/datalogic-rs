@@ -10,7 +10,7 @@ Java bindings for [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs),
 the JSONLogic rules engine with one Rust core and official bindings for
 Rust, Node.js, the browser (WASM), Python, Go, Java, .NET, and PHP. Same
 rules, same semantics: every binding runs the same core and passes the
-same 1,636-case conformance battery (58 suites). Compile once, evaluate
+same 1,658-case conformance battery (58 suites). Compile once, evaluate
 many, natively in Java.
 
 For the cross-runtime overview and the API-tier model every binding
@@ -29,11 +29,11 @@ implements, see the
 <dependency>
     <groupId>io.github.goplasmatic</groupId>
     <artifactId>datalogic</artifactId>
-    <version>5.1.0</version>
+    <version>5.3.0</version>
 </dependency>
 ```
 
-Gradle: `implementation("io.github.goplasmatic:datalogic:5.1.0")`
+Gradle: `implementation("io.github.goplasmatic:datalogic:5.3.0")`
 
 The binding speaks to the engine's C ABI directly through the Java FFM
 API (`java.lang.foreign`) — no JNA, no JNI glue, zero runtime
@@ -280,18 +280,21 @@ Everything the binding throws extends `DatalogicException` (unchecked):
 | `DatalogicException` (base) | Invalid arguments at the boundary (e.g. a rule compiled by a different engine) or an internal engine error |
 
 The structured fields ride on the base class: `errorType()` is the
-stable engine tag (e.g. `"ParseError"`, `"Thrown"`, `"NaN"`),
-`operatorName()` the outermost failing operator (e.g. `"+"`), and
-`pathJson()` the root-to-leaf error path as a JSON array; each is
-`null` when not applicable.
+stable engine tag (e.g. `"ParseError"`, `"Thrown"`, `"TypeError"`,
+`"InvalidOperator"`, or the binding-level `"TypeMismatch"` /
+`"InvalidArgument"`), `operatorName()` the outermost failing operator
+(e.g. `"+"`), and `pathJson()` the root-to-leaf error path as a JSON
+array; each is `null` when not applicable. Arithmetic NaN surfaces as
+`errorType()` `"Thrown"` with a message carrying `{"type":"NaN"}`;
+there is no `"NaN"` tag.
 
 ```java
 import com.goplasmatic.datalogic.EvaluateException;
 
 try (Engine engine = new Engine()) {
-    engine.apply("{\"+\":[\"x\",1]}", "{}");  // arithmetic on a non-numeric string
+    engine.apply("{\"+\":[\"x\",1]}", "{}");  // arithmetic on a non-numeric string throws {"type":"NaN"}
 } catch (EvaluateException e) {
-    e.errorType();     // runtime error tag, e.g. "NaN"
+    e.errorType();     // "Thrown"
     e.operatorName();  // "+"
     e.pathJson();      // JSON-array path through the compiled tree
 }
@@ -321,9 +324,10 @@ try (TracedSession session = engine.openTracedSession()) {
 Same trace envelope as every other binding; the
 [React debugger](https://github.com/GoPlasmatic/datalogic-rs/tree/main/ui)
 consumes it directly. `TracedRun` exposes `result()`,
-`expressionTree()`, `steps()`, `error()`, and `structuredError()` as
-Jackson `JsonNode`s; runtime failures surface inside the run rather than
-as exceptions. Tracing disables the optimizer so every operator appears
+`expressionTree()`, `steps()`, and `structuredError()` as Jackson
+`JsonNode`s, plus `error()` as the message `String` (`null` on
+success); runtime failures surface inside the run rather than as
+exceptions. Tracing disables the optimizer so every operator appears
 in the trace: use it for debugging, not hot paths.
 
 ## Performance
@@ -349,7 +353,7 @@ git clone https://github.com/GoPlasmatic/datalogic-rs
 cd datalogic-rs/bindings/c && cargo build --release
 cd ../jvm      # needs JDK 22+
 mvn test
-mvn package    # target/datalogic-5.1.0.jar + sources + javadoc
+mvn package    # target/datalogic-5.3.0.jar + sources + javadoc
 ```
 
 ## Learn more

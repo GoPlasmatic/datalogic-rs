@@ -85,8 +85,9 @@ shim. v5 is a hard cliff — there is no transitional feature flag.
   - `DataLogic::with_config(c)` → `Engine::builder().with_config(c).build()`
   - `engine.evaluate_json(rule, data)` → `engine.eval_str(rule, data)`
     (or `datalogic_rs::eval_str(rule, data)` for the zero-config path)
-  - `engine.evaluate_owned(&rule, data)` → `engine.eval_into::<Value, _, _>(&rule, &data)`
-    (requires `feature = "serde_json"`)
+  - `engine.evaluate_owned(&compiled, data)` → `let v: serde_json::Value = engine.session().eval_into(&compiled, &data)?`
+    (requires `feature = "serde_json"`; `Engine::eval_into` takes a rule
+    source, not a compiled `&Logic`)
   - `engine.evaluate_json_with_trace(rule, data)` → `engine.trace().eval_str(rule, data)` returning `TracedRun<String>`
 
 ### Slow compilation
@@ -97,7 +98,10 @@ shim. v5 is a hard cliff — there is no transitional feature flag.
 
 - Compile once, evaluate many times
 - Break expressions into smaller composable pieces
-- Profile with `feature = "trace"` to see which sub-expressions dominate
+- Use `feature = "trace"` to see which sub-expressions run and how often
+  (the step log carries iteration counts, not timings); for timing, use a
+  sampling profiler such as perf or Instruments (see
+  [Performance](performance.md#profiling))
 
 ```rust
 let compiled = engine.compile(rule).unwrap();
@@ -209,11 +213,10 @@ for (const item of items) {
 ```
 
 ```tsx
-import '@xyflow/react/dist/style.css';
 import '@goplasmatic/datalogic-ui/styles.css';
 ```
 
-### Debug mode not showing results
+### Debugger controls not showing
 
 **Cause:** `data` prop not provided.
 
@@ -225,6 +228,10 @@ import '@goplasmatic/datalogic-ui/styles.css';
   data={{ x: 1, y: 2 }}
 />
 ```
+
+With `data` the toolbar gains the debugger controls (play/pause, step, and a
+step timeline). Values appear as you step: the current node shows its context
+and result in a bubble. Nodes do not display results at rest.
 
 ### SSR / Hydration errors in Next.js
 

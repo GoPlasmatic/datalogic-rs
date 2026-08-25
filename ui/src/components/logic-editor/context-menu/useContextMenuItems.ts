@@ -20,7 +20,10 @@ import { useEditorContext } from '../context/editor';
 import { getOperator } from '../config/operators';
 import { isRootNode } from '../utils/node-deletion';
 import { buildOperatorSubmenu } from '../utils/menu-builder';
-import { buildIfRemoveItems, getCellLabel } from './menu-helpers';
+import { canEditArguments } from '../services/argument-service';
+import { isIfOperator, isDecisionCells } from '../utils/converters/if-else-converter';
+import { buildIfRemoveItems, buildSwitchRemoveItems, getCellLabel } from './menu-helpers';
+import { isSwitchOperator, isSwitchCells } from '../utils/converters/switch-cells';
 
 interface UseContextMenuItemsParams {
   node: LogicNode;
@@ -59,8 +62,7 @@ export function useContextMenuItems({ node, onEditProperties }: UseContextMenuIt
     }
 
     const { arity } = opConfig;
-    const isVariableArity = arity.type === 'nary' || arity.type === 'variadic' ||
-      arity.type === 'chainable' || arity.type === 'special' || arity.type === 'range';
+    const isVariableArity = canEditArguments(opData.operator);
 
     if (!isVariableArity) {
       return { canAdd: false, canRemove: false, childCount: 0, minArgs: 0, maxArgs: 0 };
@@ -170,13 +172,19 @@ export function useContextMenuItems({ node, onEditProperties }: UseContextMenuIt
     // Remove Argument submenu (for operators with removable args)
     if (canModifyArgs.canRemove && canModifyArgs.childCount > 0) {
       const opData = nodeData as OperatorNodeData;
-      const isIfOp = opData.operator === 'if' || opData.operator === '?:';
+      const isIfOp = isIfOperator(opData.operator) && isDecisionCells(opData.cells);
+      const isSwitchOp = isSwitchOperator(opData.operator) && isSwitchCells(opData.cells);
 
       let removeItems: MenuItemConfig[];
 
       if (isIfOp) {
-        // For if/then: group condition+then as pairs
+        // For a decision diamond: the condition (with its then) or the else input
         removeItems = buildIfRemoveItems(opData, childNodes, (argIndex) => {
+          removeArgumentFromNode(node.id, argIndex);
+        });
+      } else if (isSwitchOp) {
+        // For switch/match: Case/Then pairs and the Default row
+        removeItems = buildSwitchRemoveItems(opData, childNodes, (argIndex) => {
           removeArgumentFromNode(node.id, argIndex);
         });
       } else {
@@ -194,7 +202,7 @@ export function useContextMenuItems({ node, onEditProperties }: UseContextMenuIt
 
       items.push({
         id: 'remove-argument',
-        label: isIfOp ? 'Remove Branch' : 'Remove Argument',
+        label: isIfOp ? 'Remove Branch' : isSwitchOp ? 'Remove Case' : 'Remove Argument',
         icon: React.createElement(Trash2, { size: 14 }),
         submenu: removeItems,
       });

@@ -22,10 +22,9 @@ export type {
   LogicEdge,
   EditorState,
   ConversionResult,
-  NodeEvaluationResult,
-  EvaluationResultsMap,
-  LogicEditorProps,
   DataLogicEditorProps,
+  DataLogicEvaluationConfig,
+  DataLogicCustomOperator,
 } from './editor';
 export type {
   ExpressionNode,

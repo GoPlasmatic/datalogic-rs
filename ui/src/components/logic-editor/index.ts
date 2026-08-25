@@ -1,9 +1,12 @@
-// Main components
+// Main component
 export { DataLogicEditor } from './DataLogicEditor';
-export { LogicEditor } from './LogicEditor';
 
 // Types
-export type { DataLogicEditorProps, LogicEditorProps } from './types';
+export type {
+  DataLogicEditorProps,
+  DataLogicEvaluationConfig,
+  DataLogicCustomOperator,
+} from './types';
 export type {
   JsonLogicPrimitive,
   JsonLogicVar,
@@ -26,11 +29,10 @@ export type {
   LogicEdge,
   EditorState,
   ConversionResult,
-  NodeEvaluationResult,
-  EvaluationResultsMap,
   ExpressionNode,
   ExecutionStep,
   TracedResult,
+  StructuredError,
 } from './types';
 export { CATEGORY_COLORS } from './types';
 
@@ -56,7 +58,6 @@ export {
   jsonLogicToNodes,
   type JsonLogicToNodesOptions,
   traceToNodes,
-  buildEvaluationResultsFromTrace,
   applyTreeLayout,
   getHiddenNodeIds,
   isOperatorNode,

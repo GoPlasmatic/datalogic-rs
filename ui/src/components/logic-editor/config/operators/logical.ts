@@ -33,7 +33,7 @@ export const logicalOperators: Record<string, Operator> = {
     help: {
       summary: 'Negates a boolean value',
       details:
-        'Returns true if the value is falsy (false, null, 0, empty string), false otherwise. Converts any value to its boolean opposite.',
+        'Returns true if the value is falsy (false, null, 0, empty string, empty array, empty object), false otherwise. Converts any value to its boolean opposite.',
       returnType: 'boolean',
       examples: [
         {
@@ -64,6 +64,12 @@ export const logicalOperators: Record<string, Operator> = {
           result: true,
         },
         {
+          title: 'Negate empty array',
+          rule: { '!': [[]] },
+          result: true,
+          note: 'Empty arrays and objects are falsy',
+        },
+        {
           title: 'With variable',
           rule: { '!': [{ var: 'isDisabled' }] },
           data: { isDisabled: false },
@@ -71,14 +77,14 @@ export const logicalOperators: Record<string, Operator> = {
         },
       ],
       notes: [
-        'Falsy values: false, null, 0, "" (empty string)',
+        'Falsy values: false, null, 0, "" (empty string), [] and {}',
         'All other values are considered truthy',
-        'Arrays and objects are always truthy (even if empty)',
+        'Empty arrays and objects are falsy; non-empty ones are truthy',
       ],
       seeAlso: ['!!', 'and', 'or'],
     },
     ui: {
-      icon: 'circle-slash',
+      icon: 'ban',
       shortLabel: '!',
       nodeType: 'operator',
     },
@@ -106,7 +112,7 @@ export const logicalOperators: Record<string, Operator> = {
     help: {
       summary: 'Convert any value to its boolean equivalent',
       details:
-        'Returns false for falsy values (false, null, 0, empty string), true for everything else. Useful for explicit boolean conversion.',
+        'Returns false for falsy values (false, null, 0, empty string, empty array, empty object), true for everything else. Useful for explicit boolean conversion.',
       returnType: 'boolean',
       examples: [
         {
@@ -137,14 +143,20 @@ export const logicalOperators: Record<string, Operator> = {
         {
           title: 'Empty array',
           rule: { '!!': [[]] },
+          result: false,
+          note: 'Empty arrays and objects are falsy',
+        },
+        {
+          title: 'Non-empty array',
+          rule: { '!!': [[0]] },
           result: true,
-          note: 'Arrays are always truthy',
+          note: 'Any element, even 0, makes the array truthy',
         },
       ],
       notes: [
         'Equivalent to double negation: !(!value)',
-        'Falsy: false, null, 0, ""',
-        'Empty arrays and objects are truthy',
+        'Falsy: false, null, 0, "", [] and {}',
+        'Non-empty arrays and objects are truthy',
       ],
       seeAlso: ['!', 'and', 'or'],
     },
@@ -161,8 +173,8 @@ export const logicalOperators: Record<string, Operator> = {
     category: 'logical',
     description: 'Logical AND - all conditions must be true',
     arity: {
-      type: 'variadic',
-      min: 2,
+      type: 'nary',
+      min: 1,
       args: [
         {
           name: 'condition',
@@ -223,13 +235,12 @@ export const logicalOperators: Record<string, Operator> = {
       notes: [
         'Short-circuit evaluation: stops at first falsy value',
         'Returns the actual value, not just true/false',
-        'Accepts 2 or more arguments',
-        'Empty and is not allowed (minimum 2 args)',
+        'Any number of arguments: one argument returns that value, none returns null',
       ],
       seeAlso: ['or', '!', '!!'],
     },
     ui: {
-      icon: 'circle-dot',
+      icon: 'binary',
       shortLabel: 'AND',
       nodeType: 'vertical',
       addArgumentLabel: 'Add Condition',
@@ -242,8 +253,8 @@ export const logicalOperators: Record<string, Operator> = {
     category: 'logical',
     description: 'Logical OR - at least one condition must be true',
     arity: {
-      type: 'variadic',
-      min: 2,
+      type: 'nary',
+      min: 1,
       args: [
         {
           name: 'condition',
@@ -301,12 +312,12 @@ export const logicalOperators: Record<string, Operator> = {
         'Short-circuit evaluation: stops at first truthy value',
         'Returns the actual value, not just true/false',
         'Useful for default values: {"or": [{"var": "x"}, default]}',
-        'Accepts 2 or more arguments',
+        'Any number of arguments: one argument returns that value, none returns null',
       ],
       seeAlso: ['and', '!', '!!', '??'],
     },
     ui: {
-      icon: 'circle',
+      icon: 'diamond',
       shortLabel: 'OR',
       nodeType: 'vertical',
       addArgumentLabel: 'Add Condition',

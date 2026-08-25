@@ -9,6 +9,12 @@
  */
 
 export { getDefaultValueForCategory, createArgumentNode } from './node-creation-service';
-export { addArgument, removeArgument, type AddArgumentResult } from './argument-service';
+export { addArgument, removeArgument, canEditArguments, type AddArgumentResult } from './argument-service';
 export { wrapInOperator, duplicateNodeTree } from './node-transform-service';
-export { cloneNodesWithIdMapping, getDescendants, updateParentChildReference } from '../utils/node-cloning';
+export { updateInlineOperand, inlineOperandForCell } from './inline-edit-service';
+export {
+  cloneNodesWithIdMapping,
+  getDescendants,
+  updateParentChildReference,
+  replaceChildReference,
+} from '../utils/node-cloning';

@@ -6,11 +6,11 @@ import type {
 } from '../../../types';
 import type { ExpressionNode } from '../../../types/trace';
 import type { ParentInfo } from '../../converters/types';
-import type { TraceContext, NodeType } from '../types';
+import type { TraceContext, ChildMatch } from '../types';
 import { generateExpressionText } from '../../formatting';
 import { createBranchEdge, createArgEdge } from '../../node-factory';
-import { findMatchingChild, getNextUnusedChild } from '../child-matching';
-import { determineNodeType } from '../node-type';
+import { matchOperandsToChildren, unmatchedChildren } from '../child-matching';
+import { mapInlinedChildren } from '../inline-mapping';
 
 type BranchType = 'yes' | 'no' | 'branch' | 'condition';
 
@@ -30,7 +30,7 @@ type CreateFallbackNodeFn = (
 ) => void;
 
 /**
- * Create a CHAIN of decision-diamond nodes for an if/then/else from trace data —
+ * Create a CHAIN of decision-diamond nodes for an if/then/else from trace data:
  * one diamond per condition (when / then / else), the else input chaining into
  * the next diamond for each else-if. The first diamond keeps the trace node id so
  * its debug mapping is preserved.
@@ -46,27 +46,23 @@ export function createIfElseNodeFromTrace(
 ): void {
   const obj = expression as Record<string, unknown>;
   const operator = Object.keys(obj)[0];
-  const ifArgs = obj[operator] as JsonLogicValue[];
-  const usedChildIndices = new Set<number>();
+  const rawArgs = obj[operator];
+  const ifArgs: JsonLogicValue[] = Array.isArray(rawArgs) ? rawArgs : [rawArgs as JsonLogicValue];
 
-  // Resolve one arg to a child node via trace matching (exact, then positional,
-  // then a fallback node), returning its id.
+  // Resolve every argument to its trace child in evaluation order, so a
+  // rewritten or constant-folded argument cannot steal a sibling's child.
+  const matches = matchOperandsToChildren(ifArgs, children, context.templating);
+
+  // Resolve one arg to a child node (its trace child, else a fallback node), returning its id.
   const processArg = (
     value: JsonLogicValue,
+    match: ChildMatch | null,
     parentId: string,
     argIndex: number,
     branchType: BranchType,
   ): string => {
-    const match = findMatchingChild(value, children, usedChildIndices);
     if (match) {
-      usedChildIndices.add(match.index);
-      return processExpressionNode(match.child, context, { parentId, argIndex, branchType });
-    }
-    const nodeType: NodeType = determineNodeType(value, context.templating);
-    const nextUnused = nodeType !== 'literal' ? getNextUnusedChild(children, usedChildIndices) : null;
-    if (nextUnused) {
-      usedChildIndices.add(nextUnused.index);
-      return processExpressionNode(nextUnused.child, context, { parentId, argIndex, branchType }, value);
+      return processExpressionNode(match.child, context, { parentId, argIndex, branchType }, value);
     }
     const fallbackId = `${parentId}-arg${argIndex}`;
     createFallbackNode(fallbackId, value, context, { parentId, argIndex, branchType });
@@ -84,18 +80,20 @@ export function createIfElseNodeFromTrace(
   // First diamond keeps the trace node id (debug mapping); the rest get fresh ids.
   const diamondIds = pairs.map((_, k) => (k === 0 ? nodeId : `${nodeId}-elif-${k}`));
 
-  // Process condition + then for each pair in evaluation order, then the else, so
-  // the positional trace-child matching consumes children in the original order.
+  // Process condition + then for each pair in evaluation order, then the else.
   const condIds: string[] = [];
   const thenIds: string[] = [];
   for (let k = 0; k < pairs.length; k++) {
-    condIds.push(processArg(pairs[k].condition, diamondIds[k], 0, 'condition'));
-    thenIds.push(processArg(pairs[k].thenValue, diamondIds[k], 1, 'yes'));
+    condIds.push(processArg(pairs[k].condition, matches[k * 2], diamondIds[k], 0, 'condition'));
+    thenIds.push(processArg(pairs[k].thenValue, matches[k * 2 + 1], diamondIds[k], 1, 'yes'));
   }
   const elseBranchId =
     elseValue !== undefined
-      ? processArg(elseValue, diamondIds[diamondIds.length - 1], 2, 'no')
+      ? processArg(elseValue, matches[ifArgs.length - 1], diamondIds[diamondIds.length - 1], 2, 'no')
       : undefined;
+
+  // Trace children no argument claimed fold into the head diamond
+  mapInlinedChildren(unmatchedChildren(children, matches), nodeId, context.traceNodeMap);
 
   // Build one diamond node per condition, chaining the else input to the next.
   for (let k = 0; k < pairs.length; k++) {

@@ -14,7 +14,7 @@ via cgo, linking `libdatalogic_c.a` statically — no runtime
 shared-library dependency for end-user binaries.
 
 Same rules, same semantics as the Rust crate: every binding runs the
-same core and passes the same 1,636-case conformance battery
+same core and passes the same 1,658-case conformance battery
 (58 suites). For the cross-runtime overview and the API-tier model
 every binding implements, see the
 [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
@@ -45,6 +45,7 @@ Released tags ship prebuilt static libraries for:
 | macOS Intel | `darwin_amd64/` | `x86_64-apple-darwin` |
 | macOS Apple Silicon | `darwin_arm64/` | `aarch64-apple-darwin` |
 | Windows x86_64 | `windows_amd64/` | `x86_64-pc-windows-gnu` (mingw-w64) |
+| Windows ARM64 | `windows_arm64/` | `aarch64-pc-windows-gnullvm` (llvm-mingw) |
 
 cgo build tags in `cgo_<os>_<arch>.go` pick the right one at build time.
 You only need a C compiler to link — no Rust toolchain required.
@@ -92,8 +93,21 @@ func main() {
 
 ## Development
 
-The in-tree development workflow (Makefile targets, toolchain
-requirements) lives in
+Requirements: Go 1.25 or newer (the `go.mod` directive; older
+toolchains with `GOTOOLCHAIN=auto` fetch it on demand) and a C compiler
+for cgo. Building from source additionally needs a Rust toolchain,
+because `make build` compiles the C ABI crate and stages the host
+platform's staticlib and header where the cgo build tags find them:
+
+```bash
+git clone https://github.com/GoPlasmatic/datalogic-rs
+cd datalogic-rs/bindings/go
+make build   # cargo build in bindings/c, stage lib/<os>_<arch>/ + include/
+make test    # go test ./...
+```
+
+The rest of the in-tree workflow (Makefile targets, repo-wide
+commands) lives in
 [DEVELOPMENT.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/DEVELOPMENT.md),
 and the release pipeline that stages prebuilt staticlibs onto
 `bindings/go/v*` tags in

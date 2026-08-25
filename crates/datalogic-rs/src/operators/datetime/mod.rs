@@ -400,6 +400,10 @@ pub(crate) fn evaluate_format_date<'a>(
     Err(Error::invalid_arguments("Failed to format date"))
 }
 
+/// Units accepted by `date_diff` (the set `DataDateTime::diff_in_unit`
+/// understands).
+const DATE_DIFF_UNITS: [&str; 5] = ["days", "hours", "minutes", "seconds", "milliseconds"];
+
 /// Native arena-mode `date_diff`.
 #[inline]
 pub(crate) fn evaluate_date_diff<'a>(
@@ -422,6 +426,14 @@ pub(crate) fn evaluate_date_diff<'a>(
     let unit = unit_av.as_str();
 
     if let (Some(a), Some(b), Some(u)) = (dt1, dt2, unit) {
+        // `diff_in_unit` returns 0 for a unit it does not know, which
+        // would silently hide a typo ("day", "weeks", "months"). Reject
+        // unknown units up front instead.
+        if !DATE_DIFF_UNITS.contains(&u) {
+            return Err(Error::invalid_arguments(format!(
+                "date_diff: unknown unit {u:?} (expected days, hours, minutes, seconds, or milliseconds)"
+            )));
+        }
         let diff = a.diff_in_unit(&b, u);
         return Ok(arena.alloc(DataValue::from_i64(diff as i64)));
     }

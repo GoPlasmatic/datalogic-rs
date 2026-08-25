@@ -29,33 +29,20 @@ The package requires:
 
 ## CSS Setup
 
-Import the required styles in your application entry point or component:
+One import, in your application entry point or component:
 
 ```tsx
-// React Flow base styles (required)
-import '@xyflow/react/dist/style.css';
-
-// DataLogicEditor styles (required)
 import '@goplasmatic/datalogic-ui/styles.css';
 ```
 
-### Style Import Order
-
-Import order matters. Always import React Flow styles before DataLogicEditor styles:
-
-```tsx
-// Correct order
-import '@xyflow/react/dist/style.css';
-import '@goplasmatic/datalogic-ui/styles.css';
-
-// Then import components
-import { DataLogicEditor } from '@goplasmatic/datalogic-ui';
-```
+React Flow's base styles are vendored into the package's `styles.css`, so
+there is no separate `@xyflow/react/dist/style.css` import and no import-order
+requirement. `@xyflow/react` itself stays a peer dependency because the
+component's JavaScript uses it; only its stylesheet is bundled.
 
 ## Minimal Example
 
 ```tsx
-import '@xyflow/react/dist/style.css';
 import '@goplasmatic/datalogic-ui/styles.css';
 
 import { DataLogicEditor } from '@goplasmatic/datalogic-ui';
@@ -100,9 +87,26 @@ Types are included in the package. Import types as needed:
 ```tsx
 import type {
   DataLogicEditorProps,
+  DataLogicEvaluationConfig,
+  DataLogicCustomOperator,
   JsonLogicValue,
 } from '@goplasmatic/datalogic-ui';
 ```
+
+A JSONLogic literal whose array holds two different operator keys needs the
+annotation, or TypeScript widens it into a union `JsonLogicValue` does not
+accept:
+
+```tsx
+const expression: JsonLogicValue = {
+  and: [
+    { '>': [{ var: 'age' }, 18] },
+    { '==': [{ var: 'status' }, 'active'] },
+  ],
+};
+```
+
+See [Props & API](props-api.md#types) for the full export list.
 
 ## Bundler Notes
 
@@ -134,7 +138,6 @@ For App Router, use client components:
 ```tsx
 'use client';
 
-import '@xyflow/react/dist/style.css';
 import '@goplasmatic/datalogic-ui/styles.css';
 
 import { DataLogicEditor } from '@goplasmatic/datalogic-ui';

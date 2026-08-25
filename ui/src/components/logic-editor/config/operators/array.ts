@@ -3,7 +3,7 @@
  *
  * Array operations and iteration.
  * - Iteration: map, filter, reduce, all, some, none
- * - Manipulation: merge, sort, slice
+ * - Manipulation: merge, sort, slice, group_by, distinct
  */
 
 import { arrayIterationOperators } from './array-iteration';

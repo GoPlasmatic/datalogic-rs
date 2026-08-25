@@ -9,7 +9,7 @@ Rust implementation of [JSONLogic](http://jsonlogic.com). Same rules,
 same semantics as the Rust crate, with the **compile-once /
 evaluate-many** pattern exposed natively — compile a rule once and
 evaluate it against thousands of data inputs without re-parsing. Every
-binding runs the same core and passes the same 1,636-case conformance
+binding runs the same core and passes the same 1,658-case conformance
 battery (58 suites).
 
 For the cross-runtime overview and the API-tier model every binding
@@ -61,6 +61,13 @@ const result = apply(
 // -> "pass"
 ```
 
+Rules and data are plain JS values, and both arguments also accept JSON
+text: a JS string passed as `rule` or `data` is parsed as JSON rather
+than treated as a string value. To evaluate against a data document
+that *is* a JSON string, pass it encoded
+(`rule.evaluate(JSON.stringify('hello'))`), or use the string-in
+methods (`evaluateStr`) or a `DataHandle`.
+
 ## Compile-once / evaluate-many
 
 For repeated evaluations of the same rule, compile once and hold the
@@ -77,8 +84,13 @@ for (const payload of inputs) {
 }
 ```
 
-`Rule` is safe to share across worker threads — share one instance and
-evaluate concurrently.
+`Rule` has no thread affinity on the Rust side, but napi class instances
+cannot be posted or transferred between `worker_threads`: a `Rule` sent
+through `postMessage` arrives as an empty plain object with no
+`evaluate`. Each worker must load the module and compile its own `Rule`
+(compiling is cheap). For parallelism from a single thread,
+`rule.evaluateStrAsync(json)` evaluates on the libuv pool (see
+[Async evaluation](#async-evaluation)).
 
 ## Sessions: hot-loop arena reuse
 
@@ -208,12 +220,14 @@ try {
 | Symbol | Description |
 |---|---|
 | `apply(rule, data)` | One-shot compile + evaluate; convenience |
+| `builtinOperatorNames()` | Every built-in operator name this build accepts (includes the aliases `var`, `?:`, `match`) |
 | `Engine` | Construct once; holds compile state, opens sessions |
 | `Engine.compile(rule)` → `Rule` | Parse a rule into a reusable handle |
 | `Engine.eval(rule, data)` | One-shot, returns JS value |
 | `Engine.evalStr(rule, data)` | One-shot, returns JSON string |
 | `Engine.evaluateWithTrace(logic, data)` | One-shot with execution trace, returns JSON string |
 | `Engine.session()` → `Session` | Open a hot-loop arena |
+| `Engine.customOperatorNames()` | Names of the custom operators registered on this engine |
 | `new DataHandle(json)` | Parse a payload once into a reusable handle |
 | `DataHandle.allocatedBytes` | Arena bytes held by the handle |
 | `Rule.evaluate(data)` | Evaluate, returns JS value |
@@ -231,7 +245,7 @@ try {
 | `Session.evaluateBatch(rule, handles)` | One rule × many handles, allSettled-style items |
 | `Session.evaluateMany(rules, handle)` | Many rules × one handle, allSettled-style items |
 | `Session.reset()` | Explicit arena reset (optional) |
-| `Session.allocatedBytes()` | High-water mark for the arena |
+| `Session.allocatedBytes()` | Bytes currently held by the arena's chunks |
 
 Constructor options:
 
@@ -290,7 +304,8 @@ const engine = new Engine({}, {
   double: (argsJson) => String(JSON.parse(argsJson)[0] * 2),
 });
 const rule = engine.compile({ double: [21] });
-rule.evaluate({}); // 42
+rule.evaluate({});             // 42
+engine.customOperatorNames();  // ['double']
 ```
 
 Callbacks run synchronously on the thread that created the engine.
@@ -302,6 +317,33 @@ operator is ever invoked from a different thread than the one that
 registered it, evaluation fails with an `EvaluateError` naming the
 operator rather than risking undefined behavior. A plain engine or a
 compiled `Rule` with no custom operators is thread-safe.
+
+## Operator names
+
+Tooling that validates or autocompletes rules (editors, linters,
+palettes) can ask the binding for its vocabulary instead of keeping a
+hand-maintained list:
+
+```js
+import { builtinOperatorNames, Engine } from '@goplasmatic/datalogic-node';
+
+const names = builtinOperatorNames();
+names.length;               // 67: the 64 built-in operators plus the aliases var, ?:, match
+names.includes('group_by'); // true
+names.includes('preserve'); // false (removed in v5)
+
+const engine = new Engine({}, { double: (a) => String(JSON.parse(a)[0] * 2) });
+engine.customOperatorNames(); // ['double']
+```
+
+`builtinOperatorNames()` mirrors `Engine::builtin_operator_names()` in
+the Rust crate and is derived from the compiler's own lookup table, so
+it cannot drift from dispatch; this binding enables every operator
+feature, so the list is the full set. `engine.customOperatorNames()`
+lists the operators passed as the second constructor argument (order
+not guaranteed). The union of the two is that engine's full vocabulary,
+which matters under templating mode, where an unknown key is not an
+error but echoes back as data.
 
 ## Tracing
 

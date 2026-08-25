@@ -1,11 +1,15 @@
 /**
  * Category Metadata
  *
- * Defines colors, icons, and labels for each operator category.
+ * Defines colors, icons, labels and docs pages for each operator category.
  * Used for consistent styling across the UI.
+ *
+ * `icon` is typed as IconName so an unregistered name is a compile error
+ * instead of a runtime crash inside <Icon> (which has no fallback).
  */
 
 import type { CategoryMeta, OperatorCategory } from './operators.types';
+import type { IconName } from '../utils/icons';
 
 export const categories: Record<OperatorCategory, CategoryMeta> = {
   variable: {
@@ -14,6 +18,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     description: 'Access data from the context',
     color: '#6366f1', // indigo
     icon: 'database',
+    docsPage: 'variable-access',
   },
   comparison: {
     name: 'comparison',
@@ -21,6 +26,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     description: 'Compare values',
     color: '#14b8a6', // teal
     icon: 'scale',
+    docsPage: 'comparison',
   },
   logical: {
     name: 'logical',
@@ -28,6 +34,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     description: 'Boolean logic operations',
     color: '#8b5cf6', // violet
     icon: 'binary',
+    docsPage: 'logical',
   },
   arithmetic: {
     name: 'arithmetic',
@@ -35,6 +42,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     description: 'Mathematical operations',
     color: '#22c55e', // green
     icon: 'calculator',
+    docsPage: 'arithmetic',
   },
   control: {
     name: 'control',
@@ -42,6 +50,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     description: 'Conditional branching',
     color: '#f59e0b', // amber
     icon: 'git-branch',
+    docsPage: 'control-flow',
   },
   string: {
     name: 'string',
@@ -49,6 +58,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     description: 'Text manipulation',
     color: '#06b6d4', // cyan
     icon: 'type',
+    docsPage: 'string',
   },
   array: {
     name: 'array',
@@ -56,6 +66,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     description: 'Array operations and iteration',
     color: '#7c3aed', // deep violet
     icon: 'layers',
+    docsPage: 'array',
   },
   object: {
     name: 'object',
@@ -63,6 +74,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     description: 'Object take-apart: keys, values, entries',
     color: '#a855f7', // purple
     icon: 'braces',
+    docsPage: 'object',
   },
   datetime: {
     name: 'datetime',
@@ -70,6 +82,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     description: 'Date and time operations',
     color: '#0ea5e9', // sky
     icon: 'clock',
+    docsPage: 'datetime',
   },
   validation: {
     name: 'validation',
@@ -77,6 +90,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     description: 'Check for missing values',
     color: '#94a3b8', // slate
     icon: 'alert-circle',
+    docsPage: 'missing',
   },
   error: {
     name: 'error',
@@ -84,13 +98,24 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     description: 'Handle errors gracefully',
     color: '#ef4444', // red
     icon: 'circle-x',
+    docsPage: 'error-handling',
   },
   utility: {
     name: 'utility',
     label: 'Utility',
     description: 'Miscellaneous utilities',
     color: '#64748b', // slate-500
-    icon: 'wrench',
+    icon: 'cog',
+    // `type` is documented on the control-flow page.
+    docsPage: 'control-flow',
+  },
+  flagd: {
+    name: 'flagd',
+    label: 'Feature Flags',
+    description: 'flagd targeting: fractional rollouts and semantic versions',
+    color: '#f97316', // orange
+    icon: 'toggle-right',
+    docsPage: 'flagd',
   },
 };
 
@@ -109,9 +134,9 @@ export function getAllCategories(): CategoryMeta[] {
 }
 
 /**
- * Get category icon
+ * Get category icon (falls back to 'list' for unknown categories)
  */
-export function getCategoryIcon(name: string): string {
+export function getCategoryIcon(name: string): IconName {
   return categories[name as OperatorCategory]?.icon ?? 'list';
 }
 
@@ -120,4 +145,11 @@ export function getCategoryIcon(name: string): string {
  */
 export function getCategoryColor(name: OperatorCategory): string {
   return categories[name]?.color ?? '#64748b';
+}
+
+/**
+ * Get the docs page slug for a category
+ */
+export function getCategoryDocsPage(name: OperatorCategory): string {
+  return categories[name]?.docsPage ?? 'overview';
 }

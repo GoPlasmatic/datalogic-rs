@@ -32,7 +32,10 @@ class DataLogicError(Exception):
     raised instance, on this class and both subclasses):
 
     - ``error_type``: stable engine error tag (e.g. ``"ParseError"``,
-      ``"TypeMismatch"``, ``"Thrown"``, ``"NaN"``).
+      ``"Thrown"``, ``"TypeError"``, ``"ArithmeticError"``,
+      ``"ConfigurationError"``, or the binding-level ``"TypeMismatch"``
+      / ``"InvalidArgument"``). Arithmetic NaN surfaces as ``"Thrown"``
+      with a ``{"type":"NaN"}`` payload; there is no ``"NaN"`` tag.
     - ``operator``: outermost failing operator, or ``None``.
     - ``node_ids``: leaf-to-root breadcrumb of compiled-node ids.
     - ``path``: root-to-leaf list of step dicts (``node_id``,

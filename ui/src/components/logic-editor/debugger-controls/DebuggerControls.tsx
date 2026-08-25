@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import {
   Bug,
   SkipBack,
@@ -7,9 +7,12 @@ import {
   Pause,
   ChevronRight,
   SkipForward,
+  ListOrdered,
 } from 'lucide-react';
 import { useDebuggerContext } from '../context';
 import { Tooltip } from '../../Tooltip';
+import { isEditableTarget } from './keyboard-guard';
+import { StepTimeline } from './StepTimeline';
 import './DebuggerControls.css';
 
 export function DebuggerControlsInline() {
@@ -39,15 +42,21 @@ function DebuggerControlsBase({ variant = 'floating' }: { variant?: 'inline' | '
   const isAtInitial = currentStepIndex < 0;
   const isAtStart = isAtInitial;
   const isAtEnd = currentStepIndex >= totalSteps - 1;
+  const errorCount = steps.reduce((n, step) => (step.error ? n + 1 : n), 0);
+
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setAnchor(rootRef.current);
+  }, []);
 
   // Keyboard shortcuts
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      // Ignore if user is typing in an input
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      ) {
+      // Nothing to drive, or the target owns its keyboard input (text fields,
+      // selects, buttons, contenteditable)
+      if (totalSteps === 0 || isEditableTarget(e.target)) {
         return;
       }
 
@@ -82,9 +91,10 @@ function DebuggerControlsBase({ variant = 'floating' }: { variant?: 'inline' | '
   );
 
   useEffect(() => {
+    if (totalSteps === 0) return;
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown]);
+  }, [handleKeyDown, totalSteps]);
 
   // Convert speed (ms) to display value (inverted for intuitive slider)
   // Lower ms = faster, but slider should go left-to-right as faster
@@ -96,7 +106,7 @@ function DebuggerControlsBase({ variant = 'floating' }: { variant?: 'inline' | '
   }
 
   return (
-    <div className={`dl-debugger-controls--${variant}`}>
+    <div className={`dl-debugger-controls--${variant}`} ref={rootRef}>
       <div className={`dl-debugger-controls-inner ${isPlaying ? 'is-playing' : ''}`}>
         {/* Bug icon indicator */}
         <div className="dl-debugger-icon">
@@ -168,6 +178,18 @@ function DebuggerControlsBase({ variant = 'floating' }: { variant?: 'inline' | '
           />
         </div>
 
+        {/* Step list toggle */}
+        <Tooltip label={timelineOpen ? 'Hide step list' : 'Show step list'} side="top">
+          <button
+            className={`dl-debugger-btn dl-debugger-timeline-toggle ${timelineOpen ? 'is-active' : ''} ${errorCount > 0 ? 'has-errors' : ''}`}
+            onClick={() => setTimelineOpen((open) => !open)}
+            aria-pressed={timelineOpen}
+            aria-label="Step list"
+          >
+            <ListOrdered size={16} />
+          </button>
+        </Tooltip>
+
         {/* Speed control */}
         <div className="dl-debugger-speed">
           <label className="dl-speed-label">Speed</label>
@@ -183,6 +205,8 @@ function DebuggerControlsBase({ variant = 'floating' }: { variant?: 'inline' | '
           />
         </div>
       </div>
+
+      {timelineOpen && <StepTimeline anchor={anchor} onClose={() => setTimelineOpen(false)} />}
     </div>
   );
 }

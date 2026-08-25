@@ -140,7 +140,7 @@ impl Serialize for Error {
 
 /// Render an [`ErrorKind`] without the operator suffix. Used by
 /// [`Error::serialize`] to populate the `message` field.
-struct KindDisplay<'a>(&'a ErrorKind);
+pub(crate) struct KindDisplay<'a>(pub(crate) &'a ErrorKind);
 
 impl<'a> fmt::Display for KindDisplay<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

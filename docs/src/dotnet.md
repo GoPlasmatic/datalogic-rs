@@ -61,7 +61,7 @@ foreach (var input in dataset)
 
 *   `Engine` and `Rule` instances are thread-safe and can be shared globally.
 *   `Session` instances are **not** thread-safe and must be kept local to individual threads.
-*   All public types implement `IDisposable`. If a developer forgets to call `Dispose()`, the wrappers contain finalizers to release native memory as a best-effort fallback. However, explicit disposal is highly recommended to prevent resource starvation.
+*   The native-handle types (`Engine`, `Rule`, `Session`, `TracedSession`, `DataHandle`) implement `IDisposable`. If a developer forgets to call `Dispose()`, these wrappers contain finalizers to release native memory as a best-effort fallback. However, explicit disposal is highly recommended to prevent resource starvation. `EngineBuilder` is not disposable; it releases its native handle when `Build()` runs.
 
 ## Going deeper
 

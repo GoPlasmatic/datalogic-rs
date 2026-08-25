@@ -1,8 +1,8 @@
 # flagd-Compat Operators
 
-Two operators specified by the [OpenFeature flagd in-process provider](https://flagd.dev/reference/custom-operations/) for feature-flag targeting. Implemented to match the canonical [Go evaluator](https://github.com/open-feature/flagd/tree/main/core/pkg/evaluator) byte-for-byte, so a flag definition that works under any flagd provider will produce identical variants here.
+Two operators specified by the OpenFeature flagd in-process provider ([fractional](https://flagd.dev/reference/custom-operations/fractional-operation/), [semantic version](https://flagd.dev/reference/custom-operations/semver-operation/)) for feature-flag targeting. Implemented to match the canonical [Go evaluator](https://github.com/open-feature/flagd/tree/main/core/pkg/evaluator) byte-for-byte, so a flag definition that works under any flagd provider will produce identical variants here.
 
-**Cargo feature:** `flagd`. Off by default — opt in via:
+**Cargo feature:** `flagd`. Off by default; opt in via:
 
 ```toml
 datalogic-rs = { version = "5", features = ["flagd"] }
@@ -12,7 +12,7 @@ Both operators return `null` on malformed input (wrong arg count, unparseable ve
 
 ## fractional
 
-Deterministic percentage bucketing for A/B tests and gradual rollouts. Buckets are sticky per bucketing key — the same input always lands in the same variant across runs.
+Deterministic percentage bucketing for A/B tests and gradual rollouts. Buckets are sticky per bucketing key: the same input always lands in the same variant across runs.
 
 **Reference:** [flagd Fractional spec](https://flagd.dev/reference/custom-operations/fractional-operation/)
 
@@ -35,11 +35,11 @@ The first argument evaluates to a string; the remaining args are `[variant, weig
 }
 ```
 
-The canonical pattern concatenates `$flagd.flagKey + email` so the same email gets different variants on different flags — users aren't always in the same cohort across your whole product.
+The canonical pattern concatenates `$flagd.flagKey + email` so the same email gets different variants on different flags; users aren't always in the same cohort across your whole product.
 
 ### 2. Implicit bucketing key
 
-Omit the first argument (or pass anything that doesn't evaluate to a string). The bucketing key is built from the root context as `flagKey + targetingKey` (the order the flagd Go evaluator uses):
+Omit the first argument, or let it evaluate to `null` (for example a missing `var`). Any other non-string first argument, such as a number or boolean, is parsed as a bucket definition and, not being an array, makes the whole call return `null`. The bucketing key is built from the root context as `flagKey + targetingKey` (the order the flagd Go evaluator uses):
 
 ```json
 {
@@ -50,7 +50,7 @@ Omit the first argument (or pass anything that doesn't evaluate to a string). Th
 }
 ```
 
-The evaluation data needs to carry both pieces. flagd in-process providers stamp them onto the context as:
+`targetingKey` (a non-empty string) is required. `$flagd.flagKey` is optional: when it is absent the key is the `targetingKey` alone, which still buckets deterministically but loses the per-flag cohort separation. flagd in-process providers stamp both onto the context as:
 
 ```json
 {
@@ -59,13 +59,13 @@ The evaluation data needs to carry both pieces. flagd in-process providers stamp
 }
 ```
 
-**Missing or empty `targetingKey`** in implicit form returns `null` — there's no key to hash and flagd's contract is to fall back to the default variant.
+**Missing, empty, or non-string `targetingKey`** in implicit form returns `null`: there's no key to hash and flagd's contract is to fall back to the default variant.
 
 ### Weights
 
-Weights are **relative**, not percentages: `[50, 50]` and `[1, 1]` produce identical splits because the operator divides by the total. This lets you grow a rollout from `[1, 99]` → `[50, 50]` → `[99, 1]` without renormalizing.
+Weights are **relative**, not percentages: `[50, 50]` and `[1, 1]` produce identical splits because the operator divides by the total. This lets you grow a rollout from `[1, 99]` to `[50, 50]` to `[99, 1]` without renormalizing.
 
-Omitted weights default to `1`, so `["red"], ["blue"]` is equivalent to `["red", 1], ["blue", 1]`. Negative weights clamp to `0`.
+Weights must be non-negative integers. Omitted weights default to `1`, so `["red"], ["blue"]` is equivalent to `["red", 1], ["blue", 1]`. A non-integer weight (a fraction such as `99.9`, or a string such as `"50"`) also falls back to `1`, so `[["a", 99.9], ["b", 0.1]]` behaves exactly like `[["a", 1], ["b", 1]]`. Negative weights clamp to `0`.
 
 ### Composing with `if`
 
@@ -116,12 +116,12 @@ Comparison follows SemVer 2.0 precedence, including pre-release ordering: `1.0.0
 
 ### Input normalizations
 
-The operator applies four normalizations to both version arguments before parsing — matching what the flagd evaluator and most other flagd providers do:
+The operator applies four normalizations to both version arguments before parsing, matching what the flagd evaluator and most other flagd providers do:
 
-1. **Strip leading `v` / `V`** — `"v1.2.3"`, `"V1.2.3"`, and `"1.2.3"` are all equivalent.
-2. **Pad partial versions** — `"1"` becomes `"1.0.0"`, `"1.2"` becomes `"1.2.0"`.
-3. **Coerce numeric input** — `1` (a JSON number) is treated as the string `"1"`, then padded.
-4. **Drop build metadata** — `"1.2.3+build.7"` is treated as `"1.2.3"`. (SemVer 2.0 specifies build metadata is ignored when determining precedence.)
+1. **Strip leading `v` / `V`**: `"v1.2.3"`, `"V1.2.3"`, and `"1.2.3"` are all equivalent.
+2. **Pad partial versions**: `"1"` becomes `"1.0.0"`, `"1.2"` becomes `"1.2.0"`.
+3. **Coerce numeric input**: `1` (a JSON number) is treated as the string `"1"`, then padded.
+4. **Drop build metadata**: `"1.2.3+build.7"` is treated as `"1.2.3"`. (SemVer 2.0 specifies build metadata is ignored when determining precedence.)
 
 ### Examples
 
@@ -131,11 +131,11 @@ The operator applies four normalizations to both version arguments before parsin
 
 // Caret: same major
 { "sem_ver": [{ "var": "app_version" }, "^", "1.0.0"] }
-// matches 1.0.0, 1.5.3, 1.99.99 — but not 2.0.0
+// matches 1.0.0, 1.5.3, 1.99.99, but not 2.0.0
 
 // Tilde: same major + minor
 { "sem_ver": [{ "var": "app_version" }, "~", "1.2.0"] }
-// matches 1.2.0, 1.2.5, 1.2.99 — but not 1.3.0
+// matches 1.2.0, 1.2.5, 1.2.99, but not 1.3.0
 
 // v-prefixed input is handled transparently
 { "sem_ver": ["v1.2.3", "=", "1.2.3"] }            // true

@@ -28,7 +28,7 @@ Because these bindings rely on compiled shared/static libraries, the release pip
 | **Go** | Go Module | Static libraries in `lib/<os>_<arch>/` | cgo static linking at compile time |
 | **JVM** | Maven JAR | Shared libraries at the classpath root under `<os-arch>/` | FFM (`java.lang.foreign`) at runtime |
 | **.NET** | NuGet | Shared libraries under `runtimes/<rid>/native/` | P/Invoke `LibraryImport` at runtime |
-| **PHP** | Composer | Shared libraries under `lib/<os>-<arch>/` | PHP `FFI::cdef` at runtime |
+| **PHP** | Composer | Shared libraries under `lib/<os>-<arch>/` | PHP FFI: preloaded `FFI::scope` (`opcache.preload`) with `FFI::cdef` fallback |
 
 ## The JSON-in/JSON-out rule
 
@@ -45,7 +45,7 @@ When you instantiate an `Engine` or compile a `Rule` in a managed language, the 
 
 Managed garbage collectors (like the JVM, .NET CLR, Go's GC, or PHP's Zend GC) **only track the size of the wrapper object itself** (which is usually a few bytes representing the pointer address). The GC has no awareness of the potentially megabytes of memory allocated on the native heap behind that pointer.
 
-If you let these wrapper objects go out of scope without calling their destructors, **the native memory will leak permanently** until the host process terminates.
+If you let these wrapper objects go out of scope without closing them, the native memory is not reclaimed by the collector's normal accounting. What happens next is language-specific: JVM handles that are never closed **leak permanently** until the host process terminates (the binding registers no `Cleaner`); the Go and .NET wrappers register best-effort finalizers, so the memory is eventually recovered, but only whenever the GC happens to run; PHP releases the handle in the wrapper's destructor as soon as the object goes out of scope. None of these fallbacks are a substitute for explicit cleanup.
 
 ### 🛡️ Best practices per language
 
@@ -53,7 +53,7 @@ Follow these patterns to ensure leak-free evaluation:
 
 #### 🟢 Go: explicit cleanup with `defer`
 
-Go does not support object finalizers or automatic destructors for local variables. You must call `.Close()` explicitly.
+Every Go handle type (`Engine`, `Rule`, `Session`, `TracedSession`, `DataHandle`) registers a `runtime.SetFinalizer` fallback, but finalizers are non-deterministic and best-effort: they run only when the GC notices the wrapper, which may be long after the native memory stopped being useful. Always `defer` `.Close()` explicitly.
 
 ```go
 engine := datalogic.NewEngine()
@@ -71,7 +71,7 @@ defer session.Close() // ALWAYS defer Close
 
 #### ☕ JVM: try-with-resources
 
-Java and Kotlin provide the `try-with-resources` statement. All `datalogic` classes implement `AutoCloseable`, making this the cleanest and safest pattern:
+Java and Kotlin provide the `try-with-resources` statement. Every native-handle class (`Engine`, `Rule`, `Session`, `TracedSession`, `DataHandle`) implements `AutoCloseable`, making this the cleanest and safest pattern (`EngineBuilder` is not closeable; it releases its native handle when `build()` runs):
 
 ```java
 // Automatic closure of Engine and Rule
@@ -127,6 +127,7 @@ When sharing compiled logic across multiple threads, remember the following thre
 | **`Rule`** | **Yes** | Compile once; share and call `Evaluate()` concurrently. |
 | **`Session`** | ❌ **No** | **Never share sessions.** Keep one `Session` instance per thread. |
 | **`TracedSession`** | **Yes** | Open once; evaluate concurrently. |
+| **`DataHandle`** | **Yes** | Parse once; share across threads and engines (evaluation only reads it); close after the last evaluation. |
 
 ### Why `Session` is not thread-safe
 

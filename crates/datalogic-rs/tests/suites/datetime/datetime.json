@@ -166,5 +166,39 @@
         ]},
         "data": {"start_date": {"datetime": "2022-07-06T13:20:06Z"}},
         "result": "2022-07-07T13:20:06Z"
+    },
+    {
+        "description": "date_diff with milliseconds unit",
+        "rule": {
+            "date_diff": [
+                {
+                    "datetime": "2024-01-01T00:00:01Z"
+                },
+                {
+                    "datetime": "2024-01-01T00:00:00Z"
+                },
+                "milliseconds"
+            ]
+        },
+        "data": null,
+        "result": 1000
+    },
+    {
+        "description": "date_diff with an unknown unit is an error, not 0",
+        "rule": {
+            "date_diff": [
+                {
+                    "datetime": "2024-01-08T00:00:00Z"
+                },
+                {
+                    "datetime": "2024-01-01T00:00:00Z"
+                },
+                "weeks"
+            ]
+        },
+        "data": null,
+        "error": {
+            "type": "date_diff: unknown unit \"weeks\" (expected days, hours, minutes, seconds, or milliseconds)"
+        }
     }
 ]

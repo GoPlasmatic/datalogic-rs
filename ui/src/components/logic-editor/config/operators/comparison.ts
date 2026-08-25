@@ -58,7 +58,7 @@ export const comparisonOperators: Record<string, Operator> = {
       seeAlso: ['===', '!=', '!=='],
     },
     ui: {
-      icon: 'equal',
+      icon: 'scale',
       shortLabel: '==',
       nodeType: 'vertical',
       addArgumentLabel: 'Add Comparison',
@@ -108,7 +108,7 @@ export const comparisonOperators: Record<string, Operator> = {
       seeAlso: ['==', '!==', '!='],
     },
     ui: {
-      icon: 'equal',
+      icon: 'scale',
       shortLabel: '===',
       nodeType: 'vertical',
       addArgumentLabel: 'Add Comparison',
@@ -154,7 +154,7 @@ export const comparisonOperators: Record<string, Operator> = {
       seeAlso: ['!==', '==', '==='],
     },
     ui: {
-      icon: 'equal-not',
+      icon: 'scale',
       shortLabel: '!=',
       nodeType: 'vertical',
       addArgumentLabel: 'Add Comparison',
@@ -195,7 +195,7 @@ export const comparisonOperators: Record<string, Operator> = {
       seeAlso: ['!=', '===', '=='],
     },
     ui: {
-      icon: 'equal-not',
+      icon: 'scale',
       shortLabel: '!==',
       nodeType: 'vertical',
       addArgumentLabel: 'Add Comparison',
@@ -254,7 +254,7 @@ export const comparisonOperators: Record<string, Operator> = {
       seeAlso: ['>=', '<', '<='],
     },
     ui: {
-      icon: 'chevron-right',
+      icon: 'scale',
       shortLabel: '>',
       nodeType: 'vertical',
       addArgumentLabel: 'Add Comparison',
@@ -318,7 +318,7 @@ export const comparisonOperators: Record<string, Operator> = {
       seeAlso: ['>', '<', '<='],
     },
     ui: {
-      icon: 'chevron-right',
+      icon: 'scale',
       shortLabel: '>=',
       nodeType: 'vertical',
       addArgumentLabel: 'Add Comparison',
@@ -395,7 +395,7 @@ export const comparisonOperators: Record<string, Operator> = {
       seeAlso: ['<=', '>', '>='],
     },
     ui: {
-      icon: 'chevron-left',
+      icon: 'scale',
       shortLabel: '<',
       nodeType: 'vertical',
       addArgumentLabel: 'Add Comparison',
@@ -459,7 +459,7 @@ export const comparisonOperators: Record<string, Operator> = {
       seeAlso: ['<', '>', '>='],
     },
     ui: {
-      icon: 'chevron-left',
+      icon: 'scale',
       shortLabel: '<=',
       nodeType: 'vertical',
       addArgumentLabel: 'Add Comparison',

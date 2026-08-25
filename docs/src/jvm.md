@@ -12,15 +12,23 @@ Add the dependency to your project:
 <dependency>
     <groupId>io.github.goplasmatic</groupId>
     <artifactId>datalogic</artifactId>
-    <version>5.1.0</version>
+    <version>5.3.0</version>
 </dependency>
 ```
 
 ### Gradle (`build.gradle`)
 
 ```groovy
-implementation 'io.github.goplasmatic:datalogic:5.1.0'
+implementation 'io.github.goplasmatic:datalogic:5.3.0'
 ```
+
+On JDK 24+ the JVM prints a restricted-method warning the first time a library uses FFM (and future JDKs will refuse by default). Grant native access explicitly when starting your application:
+
+```
+java --enable-native-access=ALL-UNNAMED ...
+```
+
+(That flag covers classpath applications; if you place the JAR on the module path instead, grant native access to its module name.)
 
 *Note: The Maven `groupId` is `io.github.goplasmatic`, but the Java package path is `com.goplasmatic.datalogic`.*
 

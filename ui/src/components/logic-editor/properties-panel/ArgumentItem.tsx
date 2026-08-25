@@ -23,7 +23,7 @@ export const ArgumentItem = memo(function ArgumentItem({
   onLiteralChange,
   onInlineLiteralChange,
 }: ArgumentItemProps) {
-  const { index, isInline, value, valueType, childNode, childId, rowLabel, fieldId, placeholder } = arg;
+  const { index, isInline, value, valueType, childNode, childId, rowLabel, fieldId, placeholder, readOnly, displayLabel } = arg;
   const indexLabel = rowLabel || String(index + 1);
 
   // For linked child nodes that are literals
@@ -138,6 +138,24 @@ export const ArgumentItem = memo(function ArgumentItem({
     [childId, onLiteralChange]
   );
 
+  // Inline operand that is not a plain literal (a collapsed var/val pill or an
+  // array): display it, never turn it into a string on blur.
+  if (isInline && readOnly) {
+    return (
+      <div className="argument-item">
+        <div className="argument-index">{indexLabel}</div>
+        <div className="argument-literal-input">
+          <span className="argument-input argument-input--readonly" title="Edit this value in the JSON">
+            {displayLabel || formatOperandLabel(value ?? null)}
+          </span>
+        </div>
+        {isVariableArity && canRemoveArg && (
+          <RemoveButton index={index} onRemove={onRemove} />
+        )}
+      </div>
+    );
+  }
+
   // Render inline literal (value stored in parent's expression)
   if (isInline) {
     return (
@@ -243,7 +261,7 @@ export const ArgumentItem = memo(function ArgumentItem({
           )}
         </div>
         {isVariableArity && canRemoveArg && (
-          <RemoveButton index={childNode?.data.argIndex ?? index} onRemove={onRemove} />
+          <RemoveButton index={index} onRemove={onRemove} />
         )}
       </div>
     );
@@ -252,7 +270,7 @@ export const ArgumentItem = memo(function ArgumentItem({
   // Render complex expression (link to child node)
   return (
     <div className="argument-item">
-      <div className="argument-index">{index + 1}</div>
+      <div className="argument-index">{indexLabel}</div>
       {childNode && childId ? (
         <button
           type="button"
@@ -269,7 +287,7 @@ export const ArgumentItem = memo(function ArgumentItem({
         </span>
       )}
       {isVariableArity && canRemoveArg && (
-        <RemoveButton index={childNode?.data.argIndex ?? index} onRemove={onRemove} />
+        <RemoveButton index={index} onRemove={onRemove} />
       )}
     </div>
   );

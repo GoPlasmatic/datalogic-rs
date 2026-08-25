@@ -29,7 +29,7 @@ rule update replace the cache entry:
 // rules.js
 import { Engine } from '@goplasmatic/datalogic-node';
 
-const engine = new Engine();          // one per process; thread-safe
+const engine = new Engine();          // one per process
 const cache = new Map();              // ruleId@version -> compiled Rule
 
 export function getRule(row) {
@@ -37,16 +37,18 @@ export function getRule(row) {
   const key = `${row.id}@${row.version}`;
   let rule = cache.get(key);
   if (!rule) {
-    rule = engine.compile(row.logic); // throws on malformed rules
+    rule = engine.compile(row.logic); // throws on malformed JSON or invalid structure
     cache.set(key, rule);
   }
   return rule;
 }
 ```
 
-Compiled `Rule` objects are immutable and safe to share, so a plain
-`Map` is all the machinery you need. If rules churn, swap the `Map`
-for an LRU: compiled rules are cheap to rebuild.
+Compiled `Rule` objects are immutable and safe to share across requests,
+so a plain `Map` is all the machinery you need. If rules churn, swap the
+`Map` for an LRU: compiled rules are cheap to rebuild. (They cannot be
+posted to `worker_threads`; a worker loads the module and keeps its own
+cache.)
 
 ## The endpoint
 
@@ -83,20 +85,32 @@ any other untrusted input path:
 app.put('/rules/:id', express.json({ limit: '64kb' }), (req, res) => {
   let compiled;
   try {
-    compiled = engine.compile(req.body.logic); // syntax + operator check
+    compiled = engine.compile(req.body.logic); // JSON + structure check only
   } catch (err) {
     return res.status(422).json({ error: `invalid rule: ${err.message}` });
   }
-  // run the rule against golden cases before activating it
-  for (const [input, expected] of req.body.tests ?? []) {
-    if (JSON.stringify(compiled.evaluate(input)) !== JSON.stringify(expected)) {
-      return res.status(422).json({ error: 'rule fails its test cases' });
+  // run the rule against golden cases before activating it; this is also
+  // where an unknown operator name surfaces (errorType 'InvalidOperator')
+  try {
+    for (const [input, expected] of req.body.tests ?? []) {
+      if (JSON.stringify(compiled.evaluate(input)) !== JSON.stringify(expected)) {
+        return res.status(422).json({ error: 'rule fails its test cases' });
+      }
     }
+  } catch (err) {
+    return res.status(422).json({ error: `rule fails its test cases: ${err.message}` });
   }
   // ...persist row with a bumped version...
   res.sendStatus(204);
 });
 ```
+
+`compile` rejects malformed JSON and structurally invalid rules (for
+example a multi-key object when templating is off), but it does **not**
+verify operator names: `{ "discuont": [...] }` compiles fine and throws
+`errorType: 'InvalidOperator'` only when the rule is evaluated. That is
+why the golden-case loop matters; if a rule ships without test cases,
+evaluate it once against a representative payload before persisting it.
 
 Two things are doing security work here: the **size limit** on the body
 (a hostile 10 MB rule is safe to compile but not free), and the
@@ -135,8 +149,10 @@ no drift between what the UI shows and what the API decides.
 ## Error handling
 
 `compile` and `evaluate` throw real `Error` objects with a stable
-`errorType` tag (`"ParseError"`, `"TypeMismatch"`, `"Thrown"`, …). Map
-them in your Express error middleware:
+`errorType` tag (`"ParseError"`, `"InvalidOperator"`, `"Thrown"`,
+`"InvalidArguments"`, ...). The typed session methods
+(`evaluateBool` / `evaluateNumber`) add `"TypeMismatch"` for a result of
+the wrong type. Map them in your Express error middleware:
 
 ```js
 app.use((err, req, res, next) => {
@@ -147,4 +163,5 @@ app.use((err, req, res, next) => {
 ```
 
 See the [Node.js chapter](../nodejs/overview.md) for the full API
-surface (sessions, data handles, typed results, tracing).
+surface (sessions, data handles, typed results, batch and async
+evaluation, tracing, operator names).

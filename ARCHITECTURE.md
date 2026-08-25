@@ -69,8 +69,9 @@ thin FFI shell that converts at the language boundary and re-exposes
 the engine. WASM, Node, Python, and C pin the core via Cargo path-deps;
 Go, JVM, .NET, and PHP all link against `bindings/c`'s artifacts (Go
 statically via `.a`; JVM/.NET/PHP dynamically via `.so` / `.dylib` /
-`.dll`). The React UI (`ui/`) consumes the published WASM (or a
-locally-linked build) and adds editing, visualisation, and trace
+`.dll`). The React UI (`ui/`) consumes the WASM package vendored from
+`bindings/wasm/pkg` (its npm lifecycle hooks copy the local build into
+`ui/vendor/datalogic`) and adds editing, visualisation, and trace
 inspection on top.
 
 Two JS-side packages, one engine: **`@goplasmatic/datalogic-node`**
@@ -84,7 +85,10 @@ artifact across runtimes beats per-platform prebuilds.
 The repo root holds a Cargo workspace with two members:
 
 - `crates/datalogic-rs` — the published crate, `datalogic-rs`.
-- `tools/benchmark` — dev-only binaries (`self`, `compare`), `publish = false`.
+- `tools/benchmark` (dev-only, `publish = false`): `self`
+  (single-engine regression baseline), `compare` (cross-library matrix),
+  `boundary_core` (rust-core runner for the per-binding boundary
+  benchmark), `profile_macro` (hot-loop feeder for sampling profilers).
 
 Each Rust-side binding (`bindings/wasm`, `bindings/node`,
 `bindings/python`, `bindings/c`) declares its own `[workspace]` table
@@ -126,8 +130,9 @@ Cargo ignores them all.
    allocate into the arena.
 
 For high-throughput callers, `Engine::session()` returns a `Session` that
-owns a reusable arena and resets it between calls — peak memory tracks the
-largest single evaluation, not the sum.
+owns a reusable arena; the caller calls `Session::reset()` (O(1)) between
+iterations so peak memory tracks the largest single evaluation, not the
+sum. The session never resets on its own.
 
 `Logic` is `Send + Sync` and wrapped in `Arc` internally, so a compiled
 rule can be shared across threads with no extra setup.
@@ -164,7 +169,7 @@ JSON test-suite files via `serde_json::Value`; it does not need
 | Public Rust API                | `crates/datalogic-rs/src/lib.rs`                  |
 | Engine + dispatcher            | `crates/datalogic-rs/src/engine/`                 |
 | Compile pipeline + optimiser   | `crates/datalogic-rs/src/compile/`                |
-| OpCode enum (59 builtins)      | `crates/datalogic-rs/src/opcode.rs`               |
+| OpCode enum (64 builtins; 67 accepted names including the `var` / `?:` / `match` aliases) | `crates/datalogic-rs/src/opcode.rs` |
 | Operator implementations       | `crates/datalogic-rs/src/operators/`              |
 | Arena value types & context    | `crates/datalogic-rs/src/arena/`                  |
 | Rust integration tests         | `crates/datalogic-rs/tests/`                      |
@@ -186,10 +191,13 @@ For day-to-day commands (build, test, run, link), see [DEVELOPMENT.md](./DEVELOP
 
 ## Compile-time optimizations
 
-The compile pipeline (`crates/datalogic-rs/src/compile/optimize/`) runs three
-passes to a fixpoint: constant folding, dead-code elimination, and
-strength reduction. Each pass is a pure tree transform with its own
-test suite, and adding another is a matter of dropping a file in the
+The compile pipeline (`crates/datalogic-rs/src/compile/optimize/`) runs a
+fixpoint loop over three per-node passes (dead-code elimination, constant
+folding, strength reduction; each iteration ends with a second dead-code
+sweep so shapes exposed by strength reduction are cleaned up in the same
+round), then one whole-tree common-subexpression-elimination pass over
+the finished tree. Each pass is a pure tree transform with its own test
+suite, and adding another is a matter of dropping a file in the
 directory and registering it from `optimize/mod.rs`.
 
 ### What runs today
@@ -199,6 +207,7 @@ directory and registering it from `optimize/mod.rs`.
 | `constant_fold`  | Pre-evaluates subtrees with no `Var` / `Missing` dependency           | `optimize/constant_fold.rs` |
 | `dead_code`      | Elides unreachable arms (`if` with constant condition, etc.)          | `optimize/dead_code.rs`     |
 | `strength`       | Strength reduction (`{"+": [x]}` → `x`, `{"*": [x]}` → `x`)           | `optimize/strength.rs`      |
+| `cse`            | Memoizes structurally identical pure subtrees into per-evaluation slots (`Logic::cse_slot_count()`); never memoizes custom operators, `try` / `throw`, `now`, `fractional`, `sem_ver`, or the per-item bodies of iterating operators. Runs once after the fixpoint loop. | `optimize/cse.rs`           |
 
 The runtime side has its own fast paths that don't need a compile-time
 pass to fire — notably:
@@ -211,9 +220,12 @@ pass to fire — notably:
 - `evaluate_invariant_no_push` short-circuits any predicate-side node
   that doesn't reference the iteration scope.
 - `dispatch_node` (`crates/datalogic-rs/src/engine/mod.rs`) carries a
-  literal fast path: trivial `Value` nodes (`Null`, `Bool`, numbers,
-  empty primitives) return their precomputed `&'static DataValue<'static>`
-  directly without entering the dispatch match.
+  literal fast path: every `CompiledNode::Value` reachable from a `Logic`
+  carries a pre-built `PreLit` view (trivial values from `precompute_lit`
+  at node construction, composite arrays and objects from the
+  `populate_lits` pass), so a literal returns a borrow without entering
+  the dispatch match. Only synthetic nodes built outside the compile
+  pipeline fall back to per-call arena conversion.
 
 ### Deferred work
 
@@ -243,8 +255,8 @@ workload.
 
 #### Single-operator-tree inlining beyond literals
 
-The literal fast path skips dispatch for `Null` / `Bool` / numbers /
-empty primitives. A natural extension: when the entire compiled tree
+The literal fast path skips dispatch for every pre-built literal,
+composites included. A natural extension: when the entire compiled tree
 is a single `Var` (the dominant template-rule shape), let
 `Engine::evaluate` short-circuit to `evaluate_val_compiled` directly
 without the `dispatch_node` wrapper.
@@ -273,18 +285,19 @@ came up in design discussion; deprioritise unless evidence appears.
 Since `datalogic-rs` utilizes `bumpalo` for arena allocation and outputs zero-copy borrowed `&DataValue<'a>` values, crossing language FFI boundaries requires clear memory and serialization strategies:
 
 ### 1. The JavaScript/WASM Boundary (`@goplasmatic/datalogic-wasm`)
-- **Lifecycle:** JavaScript objects are serialized into JSON strings before passing to Rust. Rust compiles, evaluates, and serializes the result back to a JSON string.
-- **Memory:** Memory allocated in WebAssembly is isolated. The WASM binding manages its own internal buffers, copying string contents across the boundary.
+- **Lifecycle:** Three tiers. The string tier serializes JavaScript objects into JSON text, copies it into module memory, evaluates, and serializes the result back to a JSON string on every call. The `DataHandle` tier parses a payload once into module memory and evaluates many rules against it with no per-call copy or parse (`evaluateData`). The typed (`evaluateBool` / `evaluateNumber` / `evaluateTruthy`) and batch (`evaluateBatch` / `evaluateMany`) entry points also skip the result stringify, returning primitives or one result array per call.
+- **Memory:** Memory allocated in WebAssembly is isolated. The string tier copies bytes across the boundary in both directions; a `DataHandle` keeps its parsed tree resident until `free()`.
 
 ### 2. The Node Native Boundary (`@goplasmatic/datalogic-node`)
-- **Lifecycle:** Reaches native C-like speed via N-API. JavaScript values are converted directly into napi values without mandatory string allocation where possible, though string-based payloads remain the default fallback for complex objects.
+- **Lifecycle:** Reaches native C-like speed via N-API, with the same three tiers as WASM: string in / string out through napi strings, a `DataHandle` that parses once and stays resident in native memory (`evaluateData` / `evaluateDataStr`), and typed (`evaluateBool` / `evaluateNumber`) and batch (`evaluateBatch` / `evaluateMany`) entry points that return primitives or arrays without a result stringify.
 
 ### 3. The C ABI Boundary (`bindings/c`)
-- **Lifecycle:** The C ABI accepts C-style null-terminated strings (`*const c_char`) representing JSON payloads.
-- **Memory Ownership:** 
-  - Compilation allocates `Logic` on the Rust heap and returns an opaque handle (`datalogic_rule*`).
-  - Evaluations happen within transient or session-scoped boundaries.
-  - **Crucial:** Consumers (Go, JVM, .NET, PHP) must explicitly release each handle with its paired free function — `datalogic_rule_free`, `datalogic_engine_free`, `datalogic_session_free`, `datalogic_traced_session_free` — and release returned strings with `datalogic_string_free` (see `bindings/c/include/datalogic.h`).
+- **Lifecycle:** ABI v2 (`DATALOGIC_ABI_VERSION == 2`; consumers call `datalogic_abi_version()` once at load and abort on a mismatch). Every byte input is a `(pointer, length)` UTF-8 slice, never NUL-terminated. Fallible calls return a `datalogic_status` code and take a trailing `datalogic_error **` out-parameter: pass `NULL` to skip capture, otherwise read the fine-grained engine tag via `datalogic_error_tag` and release the handle with `datalogic_error_free`.
+- **Memory Ownership:**
+  - Compilation allocates `Logic` on the Rust heap and returns an opaque handle (`datalogic_rule *`); `datalogic_data_parse` returns a `datalogic_data *` handle for the parse-once tier.
+  - Session results (`datalogic_session_evaluate*`) are **borrowed**: they point into a session-owned buffer that is valid until the next call touching the same session (any evaluate, reset, or free), so consumers copy before then.
+  - One-shot results (`datalogic_engine_apply` and friends) are **owned** `datalogic_buf` values released with `datalogic_buf_free`.
+  - **Crucial:** Consumers (Go, JVM, .NET, PHP) must explicitly release each handle with its paired free function: `datalogic_engine_builder_free`, `datalogic_engine_free`, `datalogic_rule_free`, `datalogic_data_free`, `datalogic_session_free`, `datalogic_traced_session_free`, `datalogic_error_free`, plus `datalogic_buf_free` for owned result buffers (see `bindings/c/include/datalogic.h`).
 
 ## AST Compilation Flow
 
@@ -306,23 +319,21 @@ A simple diagram mapping a JSONLogic rule to the internal `CompiledNode` tree he
 
 ```mermaid
 graph TD
-    Root["CompiledNode::Operator (OpCode::And)"]
-    Left["CompiledNode::Operator (OpCode::Ge)"]
-    Right["CompiledNode::Literal (DataValue::Bool(true))"]
-    
-    Var["CompiledNode::Operator (OpCode::Var)"]
-    ConstAge["CompiledNode::Literal (DataValue::String('age'))"]
-    Const18["CompiledNode::Literal (DataValue::Number(18))"]
-    
+    Root["CompiledNode::BuiltinOperator (OpCode::And)"]
+    Left["CompiledNode::BuiltinOperator (OpCode::GreaterThanEqual)"]
+    Right["CompiledNode::Value (Bool(true))"]
+
+    Var["CompiledNode::Var (path: age)"]
+    Const18["CompiledNode::Value (Number(18))"]
+
     Root --> Left
     Root --> Right
-    
+
     Left --> Var
     Left --> Const18
-    
-    Var --> ConstAge
 ```
 
 - String lookups (like `"and"` and `">="`) are resolved into `OpCode` variants during compilation, allowing evaluation to use `O(1)` enum dispatch rather than string hashing.
-- Constant folding passes automatically simplify subtrees like `{"and": [true, true]}` into a single literal value before evaluation starts.
+- `var` / `val` with a literal path compiles to a dedicated `CompiledNode::Var` node (`try_compile_var`) whose path segments are pre-split; it is not an operator node with a string-literal child.
+- Constant folding only collapses subtrees with no data dependency: `{"and": [true, true]}` becomes a single `Value` before evaluation starts, while the tree above keeps its `Var` and stays dynamic because `age` is only known at evaluation time.
 

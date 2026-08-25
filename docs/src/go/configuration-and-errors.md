@@ -35,8 +35,11 @@ operators are unaffected.
 
 The presets: `"default"` is JSONLogic-compatible behavior;
 `"safe_arithmetic"` skips non-numeric operands and returns `null` on
-division by zero; `"strict"` errors on any type mismatch and disables
-numeric coercion.
+float division by zero (integer/integer division by zero always
+errors, whatever `division_by_zero` says); `"strict"` errors on any
+type mismatch and disables lenient numeric coercion. See
+[Division by Zero](../advanced/configuration.md#division-by-zero) for
+the full table.
 
 ### Example: Strict Preset with One Override
 
@@ -51,9 +54,15 @@ if err != nil {
 }
 defer engine.Close()
 
-out, _ := engine.Apply(`{"/": [1, 0]}`, `{}`)    // "null" (the override wins)
+out, _ := engine.Apply(`{"/": [1.5, 0]}`, `{}`)  // "null" (the override wins)
 _, err = engine.Apply(`{"+": [null, 1]}`, `{}`)  // err != nil: strict rejects non-numeric operands
 ```
+
+`division_by_zero` governs the float path only: `{"/": [1, 0]}`
+(integer / integer) returns an error under every setting. The strict
+preset rejects non-numeric strings, `null`, and `""` in arithmetic;
+numeric strings such as `"1"` are still coerced, so
+`{"+": ["1", 2]}` returns `"3"`.
 
 Builders are not goroutine-safe: construct and `Build()` on one
 goroutine, then share the resulting `Engine` freely (see
@@ -78,7 +87,11 @@ Every fallible operation returns a `*datalogic.Error` on failure:
 `FormatError`, `IndexOutOfBounds`, `InvalidContextLevel`,
 `ConfigurationError`. Arithmetic NaN failures and the rule-level `throw`
 operator both surface as `"Thrown"`, with the thrown payload serialized
-into `Message`.
+into `Message`. Three more tags come from the binding layer rather than
+the engine: `TypeMismatch` (a typed `Session` evaluation such as
+`EvaluateBool` whose result has the wrong type), `InvalidArgument`
+(nil or closed handles, a rule compiled by a different engine than the
+session's), and `InternalError` (a panic caught at the FFI boundary).
 
 ### Compile Failures vs. Evaluate Failures
 

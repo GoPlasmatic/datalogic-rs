@@ -6,9 +6,10 @@ workflow itself — for the cross-package layout see
 [ARCHITECTURE.md](./ARCHITECTURE.md), for build / test / run commands
 per package see [DEVELOPMENT.md](./DEVELOPMENT.md).
 
-Most contributions touch only the Rust crate. You only need the
-WASM / Python / Go / UI toolchains if you are changing those layers or
-verifying an end-to-end change in the React debugger.
+Most contributions touch only the Rust crate. You only need a binding's
+toolchain (Node, Python, Go, JVM, .NET, PHP) or the UI toolchain if you
+are changing that layer or verifying an end-to-end change in the React
+debugger.
 
 ---
 
@@ -19,7 +20,7 @@ verifying an end-to-end change in the React debugger.
   (`curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh`)
 - **Node.js** 20+ — only if you are working on `ui/`, `bindings/node/` or `bindings/wasm/`
 - **Python 3.10+** with [`maturin`](https://www.maturin.rs/) — only if you are working on `bindings/python/`
-- **Go 1.22+** and a C compiler — only if you are working on `bindings/go/`
+- **Go 1.25+** and a C compiler (only if you are working on `bindings/go/`)
 - **Java JDK 22+ & Maven** — only if you are working on `bindings/jvm/`
 - **.NET SDK 8.0+** — only if you are working on `bindings/dotnet/`
 - **PHP 8.4+ & Composer** — only if you are working on `bindings/php/`
@@ -38,8 +39,9 @@ cd datalogic-rs
 cargo test --workspace --all-features
 ```
 
-For the full Rust → WASM → UI link dance, and per-binding build
-commands, see [DEVELOPMENT.md](./DEVELOPMENT.md).
+For the full Rust → WASM → UI flow (the UI vendors the locally built
+WASM package automatically), and per-binding build commands, see
+[DEVELOPMENT.md](./DEVELOPMENT.md).
 
 ---
 
@@ -105,9 +107,11 @@ for the Rust pattern, or drop into
 1. Fork and create a topic branch.
 2. Make your change. Add or update tests.
 3. Run `make lint && cargo test --workspace --all-features`. If you
-   touched WASM / Python / Go / UI, also run the relevant build scripts
-   ([DEVELOPMENT.md](./DEVELOPMENT.md) has the commands).
+   touched a binding or the UI, also run the relevant build scripts and
+   tests ([DEVELOPMENT.md](./DEVELOPMENT.md) has the commands).
 4. Open a PR with a description of the *why* and a short test plan.
 
 Architectural notes live in [ARCHITECTURE.md](./ARCHITECTURE.md).
-Questions and proposals are welcome via GitHub issues.
+Questions go to
+[GitHub Discussions (Q&A)](https://github.com/GoPlasmatic/datalogic-rs/discussions/categories/q-a);
+bugs and feature proposals go to issues using the templates.

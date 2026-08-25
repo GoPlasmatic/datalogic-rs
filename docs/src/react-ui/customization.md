@@ -71,56 +71,92 @@ Use the `className` prop for container styling:
 
 The component's theme variables are scoped to its `.logic-editor` root element (not `:root`), so they do not leak into the rest of your app. To override them, target the same scope. The dark theme is applied via `.logic-editor[data-theme="dark"]`.
 
-These are the real variable names defined by the component. The values below are the light-theme defaults:
+The primary axis is the **signal palette**: a node is coloured by the type of
+value it produces, not by its operator category. Everything else sits on a
+neutral substrate, and the accent colour is reserved for selection, root and
+focus. These are the real token names with their light-theme values:
 
 ```css
 .logic-editor {
-  /* Backgrounds */
-  --bg-primary: #fafafa;
-  --bg-secondary: #ffffff;
-  --bg-tertiary: #f6f6f7;
-  --bg-hover: #f0f0f1;
-  --bg-active: #e8e8ea;
+  /* Signal palette: colour = the value that flows out of a node.
+     Each has a matching --sig-*-bg used for fills. */
+  --sig-bool-true: #1a7f37;
+  --sig-bool-false: #cf222e;
+  --sig-bool-rest: #57708a;   /* boolean-valued, not yet evaluated */
+  --sig-number: #0959c0;
+  --sig-string: #8a5a00;
+  --sig-collection: #8250df;  /* arrays and objects */
+  --sig-data: #1b7c83;        /* var / val / exists: the data tap */
+  --sig-temporal: #bf3989;    /* datetimes and durations */
+  --sig-null: #6e7781;
 
-  /* Text */
-  --text-primary: #18181b;
-  --text-secondary: #3f3f46;
-  --text-tertiary: #71717a;
-  --text-muted: #a1a1aa;
-  --text-placeholder: #c4c4c7;
+  /* Substrate */
+  --board: #eef1f5;           /* canvas */
+  --board-grid: rgba(20, 40, 70, 0.05);
+  --surface: #ffffff;         /* node bodies, panels */
+  --surface-2: #f6f8fb;
+  --chip: #ffffff;
+  --hairline: #d6dde6;
+  --hairline-2: #e6ebf1;
 
-  /* Borders */
-  --border-primary: rgba(0, 0, 0, 0.10);
-  --border-secondary: rgba(0, 0, 0, 0.06);
-  --border-light: rgba(0, 0, 0, 0.04);
+  /* Ink */
+  --ink: #0e1826;
+  --ink-2: #33475e;
+  --muted: #5b6a7d;
+  --faint: #9aa9ba;           /* non-text only: idle wires, dot grid */
 
-  /* Accents */
-  --accent-blue: #6366f1;
-  --accent-blue-light: #e0e7ff;
-  --accent-blue-hover: #4f46e5;
-  --accent-amber: #f59e0b;
-  --accent-amber-light: #fef3c7;
+  /* Structural accent: selection, root, focus ring */
+  --accent: #4b56d6;
+  --accent-soft: #e7e9fb;
+  --accent-hover: #3a44c0;
 
-  /* Nodes */
-  --node-bg: #ffffff;
-  --node-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --node-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.05);
+  /* Type */
+  --font-ui: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+
+  /* Shape, elevation, motion */
+  --radius-sm: 7px;  --radius-md: 10px; --radius-lg: 14px;
+  --shadow-sm: 0 1px 2px rgba(16, 30, 54, 0.05);
+  --shadow-md: 0 1px 2px rgba(16, 30, 54, 0.06), 0 2px 6px rgba(16, 30, 54, 0.06);
+  --shadow-lg: 0 8px 30px rgba(16, 30, 54, 0.14), 0 2px 8px rgba(16, 30, 54, 0.08);
+  --motion-fast: 120ms; --motion-base: 180ms; --motion-slow: 260ms;
 }
 ```
 
-Override any of them by re-declaring on the same scope (the dark variant lives on `.logic-editor[data-theme="dark"]`):
+The dark theme redefines the same tokens under
+`.logic-editor[data-theme="dark"]` (for example `--board: #0a0f16`,
+`--surface: #10161f`, `--ink: #e6edf5`).
+
+Older token names (`--bg-primary`, `--bg-secondary`, `--text-primary`,
+`--border-primary`, `--accent-blue`, `--node-bg`, `--syntax-*`, `--debug-*`,
+and the `--success-*` / `--error-*` / `--warning-*` families) are kept as
+aliases mapped onto the tokens above, so existing overrides keep working.
+Prefer the tokens above for new work.
+
+### Fonts
+
+The default stacks name Space Grotesk and JetBrains Mono, but the package does
+not ship the font files. Either install them yourself:
+
+```bash
+npm install @fontsource/space-grotesk @fontsource/jetbrains-mono
+```
+
+```tsx
+import '@fontsource/space-grotesk';
+import '@fontsource/jetbrains-mono';
+```
+
+or point the two tokens at fonts you already load:
 
 ```css
 .logic-editor {
-  --accent-blue: #3b82f6;
-  --node-bg: #ffffff;
-}
-
-.logic-editor[data-theme="dark"] {
-  --node-bg: #18181b;
-  --node-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --font-ui: 'Inter', system-ui, sans-serif;
+  --font-mono: 'Fira Code', ui-monospace, monospace;
 }
 ```
+
+Without either step the stacks fall back to the system UI and monospace fonts.
 
 ### Node Styling
 
@@ -225,10 +261,10 @@ function CustomEditor({ expression }) {
 Create custom node components:
 
 ```tsx
-import { Handle, Position } from '@xyflow/react';
-import { CATEGORY_COLORS } from '@goplasmatic/datalogic-ui';
+import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
+import { CATEGORY_COLORS, type OperatorNodeData } from '@goplasmatic/datalogic-ui';
 
-function CustomOperatorNode({ data }) {
+function CustomOperatorNode({ data }: NodeProps<Node<OperatorNodeData>>) {
   const color = CATEGORY_COLORS[data.category];
 
   return (
@@ -242,11 +278,7 @@ function CustomOperatorNode({ data }) {
     >
       <Handle type="target" position={Position.Top} />
       <div>{data.label}</div>
-      {data.result !== undefined && (
-        <div style={{ fontSize: '0.75em', opacity: 0.8 }}>
-          = {JSON.stringify(data.result)}
-        </div>
-      )}
+      <div style={{ fontSize: '0.75em', opacity: 0.8 }}>{data.operator}</div>
       <Handle type="source" position={Position.Bottom} />
     </div>
   );
@@ -258,9 +290,17 @@ const customNodeTypes = {
 };
 ```
 
+Node data describes the expression, not its value: there is no `result` field
+on any node shape. Evaluated values live in the trace steps
+(`evaluateWithTrace`), so a custom renderer that wants to show results should
+keep its own map keyed by node id and look values up from there.
+
 ### Category Colors
 
-Access and customize category colors:
+`CATEGORY_COLORS` is a palette for your own legends, pickers and custom node
+renderers. The shipped nodes do not use it: they are coloured by the value
+type they produce, through the `--sig-*` tokens above. Its keys are the
+operator categories plus `literal`:
 
 ```tsx
 import { CATEGORY_COLORS } from '@goplasmatic/datalogic-ui';
@@ -274,11 +314,13 @@ console.log(CATEGORY_COLORS);
 //   arithmetic: '#22c55e',
 //   string: '#06b6d4',
 //   array: '#7c3aed',
+//   object: '#a855f7',
 //   control: '#f59e0b',
 //   datetime: '#0ea5e9',
 //   validation: '#94a3b8',
 //   utility: '#64748b',
 //   error: '#ef4444',
+//   flagd: '#f97316',
 //   literal: '#64748b'
 // }
 

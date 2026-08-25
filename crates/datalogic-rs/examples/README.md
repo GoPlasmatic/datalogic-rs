@@ -37,5 +37,5 @@ cargo build -p datalogic-rs --examples --all-features
 ```
 
 If you're unsure where to start, open `getting_started.rs` first — it
-walks through `Engine::new`, `eval_str`, and `Session` in roughly
-sixty lines.
+walks through `Engine::new`, `eval_str`, and `Session` in under a
+hundred lines.

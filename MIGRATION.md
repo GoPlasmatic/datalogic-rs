@@ -138,7 +138,7 @@ versions remain installable for consumers not ready to move.
 | Trace one-shot              | `engine.evaluate_json_with_trace(rule, data)`        | `engine.trace().eval_str(rule, data) -> TracedRun<String>`      |
 | Custom-op context type      | `&mut ContextStack<'a>`                              | `&mut EvalContext<'_, 'a>`                                      |
 | `Arc<Logic>` shortcut       | (manual `Arc::new(...)`)                             | `engine.compile_arc(rule) -> Arc<Logic>`                        |
-| Module-level conveniences   | none                                                 | `datalogic::eval` / `eval_str` / `eval_into` / `compile`        |
+| Module-level conveniences   | none                                                 | `datalogic_rs::eval` / `eval_str` / `eval_into` / `compile`     |
 
 ## Cargo.toml
 
@@ -205,14 +205,16 @@ input goes via `serde_json::to_value(&t)?` first.
 
 | v4                                                      | v5                                                                                          |
 |---------------------------------------------------------|---------------------------------------------------------------------------------------------|
-| `engine.evaluate(&logic, Arc<Value>)` → `Value`         | `engine.session().eval_into::<serde_json::Value, _, _>(&compiled, &*arc)` (compiled logic evaluates through a session) |
+| `engine.evaluate(&logic, Arc<Value>)` → `Value`         | `engine.session().eval_into::<serde_json::Value, _>(&compiled, &*arc)` (compiled logic evaluates through a session) |
 | `engine.evaluate_owned(&logic, value)`                  | `let v: serde_json::Value = engine.session().eval_into(&compiled, &value)?`                 |
 | `engine.evaluate_json(rule_str, data_str)` → `Value`    | `let v: serde_json::Value = engine.eval_into(rule_str, data_str)?` *or* `engine.eval_str(...)` for String result |
 
-The v5 `eval_into::<T>` has three generic parameters (`T`, `R`, `D`).
-You can either annotate the binding (`let v: T = ...`) and let
-inference fill in `R`/`D`, or use turbofish placeholders:
-`engine.eval_into::<T, _, _>(rule, data)`.
+The v5 `Engine::eval_into::<T>` has three generic parameters (`T`, `R`,
+`D`) because it also takes the rule source; `Session::eval_into` takes a
+compiled `&Logic` and so has only two (`T`, `D`). You can either annotate
+the binding (`let v: T = ...`) and let inference fill in the rest, or use
+turbofish placeholders: `engine.eval_into::<T, _, _>(rule, data)` and
+`session.eval_into::<T, _>(&compiled, data)`.
 
 ### Trace
 
@@ -300,15 +302,21 @@ Registration is unchanged: `Engine::builder().add_operator("double", Double).bui
 
 You don't need these to migrate, but they're worth knowing:
 
-- **Module-level helpers.** `datalogic::eval`, `eval_str`, `eval_into`,
-  `compile` — backed by a default engine, no construction required.
+- **Module-level helpers.** `datalogic_rs::eval`, `eval_str`, `eval_into`,
+  `compile`, backed by a default engine, no construction required.
 - **Owned and typed result paths.** `engine.eval(...) -> OwnedDataValue`
   for raw owned, `engine.eval_into::<MyStruct, _, _>(...)` for typed.
 - **`compile_arc`** for the cross-thread sharing pattern.
 - **`with_constant_folding(false)`** on the builder for callers that
   walk the compiled tree (debuggers, alternate evaluators).
-- **`TracedSession` mirrors `Session` 1:1** — `eval`, `eval_str`,
-  `eval_into`, `eval_borrowed` all return `TracedRun<R>`.
+- **`TracedSession` returns the same result shapes as `Session`**:
+  `eval`, `eval_str`, `eval_into`, `eval_borrowed` all return
+  `TracedRun<R>` with the `R` that `Session` would return. The inputs
+  differ: `eval_str` / `eval_into` take a rule source (`IntoLogic`) and
+  compile it with folding disabled, `eval` takes `&Logic` plus an
+  `OwnedInput`, and `eval_borrowed` takes `&Logic`, an `EvalInput`, and a
+  caller-owned `&Bump`. There is no session-owned arena: each owned call
+  allocates a fresh `Bump`.
 
 ## Common patterns side-by-side
 
@@ -428,8 +436,8 @@ embedded JSONLogic.
 - `EvaluationConfig` field set, defaults, presets (`safe_arithmetic`,
   `strict`).
 - `DataValue` / `OwnedDataValue` shape and accessors.
-- `Error::kind()` variants, error-recovery behaviour, structured
-  error fields.
+- `Error::kind` (a public field) and its `ErrorKind` variants,
+  error-recovery behaviour, structured error metadata.
 - `PathStep` shape.
 - The two-phase compile/evaluate model and arena-allocated dispatch.
 

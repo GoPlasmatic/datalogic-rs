@@ -5,7 +5,7 @@
 // what lets CI's `wasm-pack test --node` actually execute them. With the
 // browser configuration set, the node runner skips the whole suite.
 
-use datalogic_wasm::{CompiledRule, DataHandle, Engine, evaluate};
+use datalogic_wasm::{CompiledRule, DataHandle, Engine, builtin_operator_names, evaluate};
 use js_sys::{Array, Function, Object, Reflect};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_test::*;
@@ -665,4 +665,71 @@ fn test_invalid_config_rejects_with_configuration_error() {
     };
     let error: &js_sys::Error = err.dyn_ref().expect("must be an Error object");
     assert_eq!(String::from(error.name()), "ConfigurationError");
+}
+
+#[wasm_bindgen_test]
+fn test_builtin_operator_names_reflects_feature_set() {
+    let names = builtin_operator_names();
+    for expected in [
+        "val",
+        "var",
+        "if",
+        "?:",
+        "switch",
+        "match",
+        "sem_ver",
+        "fractional",
+        "now",
+    ] {
+        assert!(names.iter().any(|n| n == expected), "missing {expected}");
+    }
+    // Canonical name precedes its alias.
+    let pos = |n: &str| names.iter().position(|x| x == n).unwrap();
+    assert!(pos("val") < pos("var"));
+}
+
+#[wasm_bindgen_test]
+fn test_engine_evaluate_with_trace_honors_config() {
+    let options = Object::new();
+    let config = Object::new();
+    Reflect::set(&config, &"division_by_zero".into(), &"return_null".into()).unwrap();
+    Reflect::set(&options, &"config".into(), &config).unwrap();
+    let engine = Engine::new(options.into()).unwrap();
+    let out = engine.evaluate_with_trace(r#"{"/": [1.5, 0]}"#, "null");
+    let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert!(parsed["result"].is_null());
+    assert!(
+        parsed.get("error").is_none(),
+        "config should suppress the error: {out}"
+    );
+    assert!(parsed["steps"].is_array());
+    assert!(parsed["expression_tree"]["id"].is_number());
+}
+
+#[wasm_bindgen_test]
+fn test_engine_evaluate_with_trace_reports_errors_in_envelope() {
+    let engine = Engine::new(JsValue::UNDEFINED).unwrap();
+    let out = engine.evaluate_with_trace(r#"{"throw": "boom"}"#, "null");
+    let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert!(parsed["result"].is_null());
+    assert_eq!(parsed["structured_error"]["type"], "Thrown");
+    assert_eq!(parsed["structured_error"]["thrown"]["type"], "boom");
+    assert!(parsed["error"].is_string());
+}
+
+#[wasm_bindgen_test]
+fn test_engine_custom_operator_names() {
+    let options = Object::new();
+    let ops = Object::new();
+    let f = Function::new_no_args("return \"1\"");
+    Reflect::set(&ops, &"myop".into(), &f).unwrap();
+    Reflect::set(&options, &"customOperators".into(), &ops).unwrap();
+    let engine = Engine::new(options.into()).unwrap();
+    assert_eq!(engine.custom_operator_names(), vec!["myop".to_string()]);
+    assert!(
+        Engine::new(JsValue::UNDEFINED)
+            .unwrap()
+            .custom_operator_names()
+            .is_empty()
+    );
 }

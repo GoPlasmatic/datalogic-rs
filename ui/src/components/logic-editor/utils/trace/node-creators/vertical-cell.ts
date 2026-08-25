@@ -15,9 +15,9 @@ import { generateExpressionText, generateArgSummary, formatOperandLabel } from '
 import { isSimpleOperand } from '../../type-helpers';
 import { createBranchEdge, createArgEdge } from '../../node-factory';
 import { inlineVarIndices } from '../../inline-vars';
-import { findMatchingChild } from '../child-matching';
+import { matchOperandsToChildren, unmatchedChildren } from '../child-matching';
 import { mapInlinedChildren } from '../inline-mapping';
-import { traceIdToNodeId } from '../evaluation-results';
+import { traceIdToNodeId } from '../trace-ids';
 
 // Forward declaration for processExpressionNode and createFallbackNode
 type ProcessExpressionNodeFn = (
@@ -35,7 +35,9 @@ type CreateFallbackNodeFn = (
 ) => void;
 
 /**
- * Create a vertical cell node for multi-arg operators from trace data
+ * Create a cells-based operator node (any arity) from trace data. Mirrors the
+ * static converter's convertOperator: simple literals and collapsible static
+ * var reads render as inline cells, everything else as a wired child.
  */
 export function createVerticalCellNodeFromTrace(
   nodeId: string,
@@ -54,7 +56,6 @@ export function createVerticalCellNodeFromTrace(
   const op = getOperator(operator);
   const opCategory = op?.category ?? 'utility';
   const cells: CellData[] = [];
-  const usedChildIndices = new Set<number>();
 
   // Determine icon
   let icon: IconName = getCategoryIcon(opCategory) as IconName;
@@ -62,27 +63,26 @@ export function createVerticalCellNodeFromTrace(
 
   const iteratorIcons = ITERATOR_ARG_ICONS[operator];
 
-  // Static var/val reads collapse into inline pills (capped — see inline-vars);
+  // Static var/val reads collapse into inline pills (capped, see inline-vars);
   // AND / OR / NOT force every operand to a child so the gate silhouette renders.
   const forceChildren = opCategory === 'logical';
   const inlineVarIdx = forceChildren ? new Set<number>() : inlineVarIndices(operandArray);
 
+  // Resolve every operand to its trace child up front (exact, loose, positional)
+  const matches = matchOperandsToChildren(operandArray, children, context.templating);
+
   operandArray.forEach((operand, idx) => {
     const typeIcon = getOperandTypeIcon(operand as JsonLogicValue);
     const cellIcon = iteratorIcons ? iteratorIcons[idx] || typeIcon : typeIcon;
+    const match = matches[idx];
 
     if (!forceChildren && (isSimpleOperand(operand as JsonLogicValue) || inlineVarIdx.has(idx))) {
-      // Simple literal or collapsible static var — inline. Map the trace child to
+      // Simple literal or collapsible static var: inline. Map the trace child to
       // this parent node so its debug highlight folds into the parent.
-      const match = findMatchingChild(operand as JsonLogicValue, children, usedChildIndices);
       if (match) {
-        usedChildIndices.add(match.index);
         const traceId = traceIdToNodeId(match.child.id);
         context.traceNodeMap.set(traceId, nodeId);
-        // Also map any nested children
-        if (match.child.children && match.child.children.length > 0) {
-          mapInlinedChildren(match.child.children, nodeId, context.traceNodeMap);
-        }
+        mapInlinedChildren(match.child.children ?? [], nodeId, context.traceNodeMap);
       }
 
       cells.push({
@@ -92,19 +92,16 @@ export function createVerticalCellNodeFromTrace(
         index: idx,
       });
     } else {
-      // Complex expression - find matching child by expression content
-      const match = findMatchingChild(operand as JsonLogicValue, children, usedChildIndices);
+      // Complex expression: render the matched trace child, else a node without trace data
       let branchId: string;
 
       if (match) {
-        usedChildIndices.add(match.index);
         branchId = processExpressionNode(match.child, context, {
           parentId: nodeId,
           argIndex: idx,
           branchType: 'branch',
-        });
+        }, operand as JsonLogicValue);
       } else {
-        // Fallback: create appropriate node based on value type
         branchId = `${nodeId}-arg-${idx}`;
         createFallbackNode(branchId, operand as JsonLogicValue, context, {
           parentId: nodeId,
@@ -128,6 +125,9 @@ export function createVerticalCellNodeFromTrace(
       context.edges.push(createBranchEdge(nodeId, branchId, idx));
     }
   });
+
+  // Trace children no operand claimed fold into this node
+  mapInlinedChildren(unmatchedChildren(children, matches), nodeId, context.traceNodeMap);
 
   const expressionText = generateExpressionText(expression);
 

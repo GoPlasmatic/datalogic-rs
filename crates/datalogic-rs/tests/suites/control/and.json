@@ -151,5 +151,118 @@
         "rule": { "and": [true, 1, 2, 3, 4, [], { "throw": "Not Lazy" }] },
         "data": null,
         "result": []
+    },
+    "Dynamic prefix before a literal (regression: constant folding must not skip the dynamic args)",
+    {
+        "description": "Falsy var before a falsy literal returns the var, not the literal",
+        "rule": {
+            "and": [
+                {
+                    "var": "b"
+                },
+                0
+            ]
+        },
+        "data": {
+            "b": ""
+        },
+        "result": ""
+    },
+    {
+        "description": "Truthy var before a falsy literal returns the literal",
+        "rule": {
+            "and": [
+                {
+                    "var": "b"
+                },
+                0
+            ]
+        },
+        "data": {
+            "b": "x"
+        },
+        "result": 0
+    },
+    {
+        "description": "Args after a falsy literal are dead, args before it still run",
+        "rule": {
+            "and": [
+                {
+                    "var": "a"
+                },
+                false,
+                {
+                    "throw": "Not Lazy"
+                }
+            ]
+        },
+        "data": {
+            "a": 1
+        },
+        "result": false
+    },
+    {
+        "description": "A throw before a falsy literal still throws",
+        "rule": {
+            "and": [
+                {
+                    "throw": "boom"
+                },
+                false
+            ]
+        },
+        "data": null,
+        "error": {
+            "type": "boom"
+        }
+    },
+    {
+        "description": "Trailing identity literal is the result when nothing short-circuits",
+        "rule": {
+            "and": [
+                {
+                    "var": "a"
+                },
+                "x"
+            ]
+        },
+        "data": {
+            "a": 1
+        },
+        "result": "x"
+    },
+    {
+        "description": "Trailing true literal is returned, not the preceding var",
+        "rule": {
+            "and": [
+                {
+                    "var": "a"
+                },
+                true
+            ]
+        },
+        "data": {
+            "a": 1
+        },
+        "result": true
+    },
+    {
+        "description": "Middle identity literal is skipped, last value wins",
+        "rule": {
+            "and": [
+                {
+                    "var": "a"
+                },
+                1,
+                {
+                    "var": "b"
+                }
+            ]
+        },
+        "data": {
+            "a": 1,
+            "b": 2
+        },
+        "result": 2
     }
 ]

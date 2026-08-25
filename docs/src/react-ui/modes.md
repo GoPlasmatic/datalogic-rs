@@ -7,9 +7,11 @@ The DataLogicEditor has no `mode` enum. Its behavior is driven entirely by which
 | Behavior | Enabled by | Description | Requires `data` |
 |----------|------------|-------------|-----------------|
 | Read-only | (none) | Static diagram visualization | No |
-| Debugger | `data` | Diagram with per-node evaluation results and a step-through trace | Yes |
+| Debugger | `data` | Step-through execution trace with a step timeline and failure highlighting | Yes |
 | Editing | `editable` | Visual builder: node selection, properties panel, context menus, undo/redo | No |
 | Templating | `templating` | Multi-key objects and arrays become output-shaping templates | No |
+| Engine settings | `config` | Evaluation semantics: presets, NaN and division-by-zero handling, truthiness, coercion, recursion cap | No |
+| Custom operators | `customOperators` | Extra operators registered on the engine | No |
 
 These are not mutually exclusive. Setting `editable` and providing `data` at the same time gives you live debugging while you edit.
 
@@ -30,11 +32,12 @@ With only a `value`, the editor renders a static flow diagram of the JSONLogic e
 - Interactive pan and zoom
 - Node highlighting on hover
 - Tree-based automatic layout
-- Color-coded operator categories
+- Nodes coloured by the type of value they produce (boolean, number, string, collection, data, temporal, null), with a category icon in the header
+- A Flow/Hierarchy toolbar toggle: **Flow** (default) puts sources on the left and the result on the right, **Hierarchy** puts the root on the left in JSON nesting order. The choice is reflected as `data-direction` on the `.logic-editor` root
 
 ## Debugging
 
-Provide a `data` prop and the editor overlays evaluation results on each node, showing how the expression evaluates against the data, and exposes debugger controls for stepping through the execution trace.
+Provide a `data` prop and the editor evaluates the expression with the engine's tracing API and exposes debugger controls for stepping through the execution.
 
 ```tsx
 <DataLogicEditor
@@ -51,10 +54,13 @@ Provide a `data` prop and the editor overlays evaluation results on each node, s
 
 **Features:**
 - All read-only features, plus:
-- Evaluation results displayed on each node
-- Step-by-step execution visibility via debugger controls
-- Context values shown for variable nodes
-- Highlighted execution path
+- Play/pause, step forward and back, and jump to first/last (Space, arrow keys, Home/End)
+- A step timeline listing every recorded step with its node, iteration index, context and result, with click-to-jump
+- A bubble on the current node showing the context it evaluated against and the value it produced
+- A highlighted execution path, so the branch actually taken is visible
+- Failure reporting: the node on the engine's failure breadcrumb (`node_ids` in the structured error) is marked with the error, and a rule that fails to compile reports the error in a banner above the diagram
+
+Values appear as you step. No node shows a result at rest.
 
 Internally, when `data` is provided the component uses the WASM `evaluateWithTrace` API to capture the result of each sub-expression, the order of evaluation, context values at each step, and the final computed result.
 
@@ -72,15 +78,17 @@ Set `editable` to turn on the full visual builder.
 
 **Features:**
 - Node selection
-- Properties panel for the selected node
+- Properties panel for the selected node, with per-operator help and a link to that operator's documentation page
 - Context menus (right-click a node or the canvas)
-- Undo/redo
+- An **Insert** toolbar button (Cmd/Ctrl+K) that adds an argument to the selection, wraps it, or targets the root
+- Undo/redo, from the toolbar or the keyboard
+- Keyboard shortcuts: copy/paste (Cmd/Ctrl+C / V), duplicate (Cmd/Ctrl+D), select all (Cmd/Ctrl+A), undo/redo (Cmd/Ctrl+Z, Shift+Cmd/Ctrl+Z or Cmd/Ctrl+Y), delete (Backspace/Delete), deselect (Escape)
 
 When `editable` is set, `onChange` is active: edits are debounced (about 300ms) and the rebuilt JSONLogic expression is passed back so you can keep your own state in sync.
 
 ## Editing with Live Debugging
 
-Combine `editable` with `data` to edit and debug in the same view: each node shows its evaluated result while you build the expression.
+Combine `editable` with `data` to edit and debug in the same view: the trace re-runs as you build, so you can step through the expression you are editing.
 
 ```tsx
 <DataLogicEditor
@@ -93,7 +101,7 @@ Combine `editable` with `data` to edit and debug in the same view: each node sho
 
 ## Templating
 
-Set `templating` so that multi-key objects and arrays in the compiled rule become output-shaping templates with embedded JSONLogic, rather than being rejected as invalid JSONLogic. This matches the v5 core API (`Engine::builder().with_templating(true)`). The toolbar also surfaces a templating checkbox; wire `onTemplatingChange` to keep your state in sync.
+Set `templating` so that multi-key objects and arrays in the compiled rule become output-shaping templates with embedded JSONLogic, rather than being rejected as invalid JSONLogic. This matches the v5 core API (`Engine::builder().with_templating(true)`). Passing `onTemplatingChange` adds a Templating checkbox to the toolbar; with `templating` alone the mode is fixed and no checkbox renders.
 
 ```tsx
 <DataLogicEditor
@@ -103,12 +111,32 @@ Set `templating` so that multi-key objects and arrays in the compiled rule becom
 />
 ```
 
+## Engine Settings and Custom Operators
+
+`config` changes evaluation semantics for both the result and the trace, and
+`customOperators` registers extra operators on the engine:
+
+```tsx
+<DataLogicEditor
+  value={expression}
+  data={contextData}
+  config={{ preset: 'safe_arithmetic', truthy_evaluator: 'python' }}
+  customOperators={{ double: (args) => Number(args[0]) * 2 }}
+/>
+```
+
+The toolbar shows a summary whenever settings differ from the engine defaults.
+Both props rebuild the engine when they change, which resets selection and
+undo history, so keep them referentially stable (for example with `useMemo`)
+if the surrounding component re-renders often. See
+[Props & API](props-api.md#config) for every key.
+
 ## Behavior Comparison
 
 | Aspect | Read-only | Debugger (`data`) | Editing (`editable`) |
 |--------|-----------|-------------------|----------------------|
-| Node display | Structure only | Structure + values | Editable nodes |
-| Interactivity | Pan/zoom | Pan/zoom + inspection | Full editing |
+| Node display | Structure only | Structure, plus values on the current step | Editable nodes |
+| Interactivity | Pan/zoom | Pan/zoom + stepping | Full editing |
 | `data` required | No | Yes | No |
 | Output | Static | Static + trace | Two-way bound via `onChange` |
 
@@ -146,7 +174,7 @@ function DebugToggle() {
   return (
     <div>
       <button onClick={() => setDebug((d) => !d)}>
-        {debug ? 'Hide results' : 'Show results'}
+        {debug ? 'Stop debugging' : 'Debug'}
       </button>
 
       <DataLogicEditor

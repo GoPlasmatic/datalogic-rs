@@ -166,9 +166,10 @@ pub use config::{
 /// Conversions to / from `serde_json::Value` are gated behind the
 /// `serde_json` feature (kept off by default so the crate has zero
 /// external dependencies in the minimal build). With `serde_json`
-/// enabled, pass a `&serde_json::Value` (or any `&T: Serialize`) into
-/// any `eval*` method via [`EvalInput`] / [`IntoLogic`], and ask for a
-/// `serde_json::Value` (or any `T: DeserializeOwned`) back via
+/// enabled, pass a `&serde_json::Value` into any `eval*` method via
+/// [`EvalInput`] / [`IntoLogic`] (a `T: Serialize` is converted first with
+/// `serde_json::to_value`; there is no blanket `&T: Serialize` impl), and
+/// ask for a `serde_json::Value` (or any `T: DeserializeOwned`) back via
 // `Engine::eval_into` / `Session::eval_into` are gated behind
 // `serde_json`; link them when the feature is on, otherwise emit them
 // as code text so default-features `cargo doc` doesn't break.

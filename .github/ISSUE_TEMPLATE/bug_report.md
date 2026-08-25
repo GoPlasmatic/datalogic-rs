@@ -15,12 +15,17 @@ labels: bug
 - [ ] `@goplasmatic/datalogic-ui` (React component)
 - [ ] `datalogic-py` (Python)
 - [ ] `datalogic-go` (Go)
+- [ ] `io.github.goplasmatic:datalogic` (JVM, Maven Central)
+- [ ] `Goplasmatic.Datalogic` (.NET, NuGet)
+- [ ] `goplasmatic/datalogic` (PHP, Packagist)
+- [ ] `datalogic-c` (C ABI, in-tree)
 - [ ] `datalogic-bench` (benchmark harness)
 
 ## Versions
 
 - Package + version:
 - Rust toolchain (`rustc --version`) / Node version, if applicable:
+- JDK / .NET SDK / PHP / Go / Python version, if applicable:
 - OS + architecture:
 
 ## Repro

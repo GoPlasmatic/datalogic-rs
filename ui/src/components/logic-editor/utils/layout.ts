@@ -16,6 +16,7 @@ import {
 } from '../constants';
 import { isOperatorNode, isLiteralNode, isStructureNode } from './type-guards';
 import { operatorRenderKind, cellDisplayText } from './nodeShape';
+import { buildEdgesFromNodes } from './edge-builder';
 import type { FlowDirection } from '../context/DirectionContextDef';
 
 // Compact single-row shapes render far smaller than the old header+rows card;
@@ -244,8 +245,10 @@ export function applyTreeLayout(
     g.setNode(node.id, { width, height });
   });
 
-  // Build edges from node relationships if edges not provided
-  const edgesToUse = edges || buildEdgesFromNodes(nodes);
+  // Build edges from node relationships if edges not provided. The layout
+  // wants parent->child edges (source = parent), which is the 'hierarchy'
+  // orientation of the shared edge builder.
+  const edgesToUse = edges || buildEdgesFromNodes(nodes, 'hierarchy');
 
   // Build set of valid node IDs for edge validation
   const nodeIdSet = new Set(nodes.map((n) => n.id));
@@ -606,52 +609,4 @@ function tightenDepthAxis(
     }
   };
   for (const rootId of roots) place(rootId); // roots keep their dagre X as anchor
-}
-
-// Build edges from node parent relationships
-function buildEdgesFromNodes(nodes: LogicNode[]): LogicEdge[] {
-  const edges: LogicEdge[] = [];
-
-  nodes.forEach((node) => {
-    // Handle operator nodes with cells
-    if (isOperatorNode(node)) {
-      const opData = node.data as OperatorNodeData;
-      if (!opData.collapsed) {
-        opData.cells.forEach((cell) => {
-          // 1. Condition branch (if exists)
-          if (cell.conditionBranchId) {
-            edges.push({
-              id: `${node.id}-cond-${cell.conditionBranchId}`,
-              source: node.id,
-              target: cell.conditionBranchId,
-              sourceHandle: `branch-${cell.index}-cond`,
-              targetHandle: 'left',
-            });
-          }
-          // 2. Then branch (if exists)
-          if (cell.thenBranchId) {
-            edges.push({
-              id: `${node.id}-then-${cell.thenBranchId}`,
-              source: node.id,
-              target: cell.thenBranchId,
-              sourceHandle: `branch-${cell.index}-then`,
-              targetHandle: 'left',
-            });
-          }
-          // 3. Standard branch - ONLY if no condition/then (mutually exclusive)
-          if (cell.branchId && !cell.conditionBranchId && !cell.thenBranchId) {
-            edges.push({
-              id: `${node.id}-branch-${cell.branchId}`,
-              source: node.id,
-              target: cell.branchId,
-              sourceHandle: `branch-${cell.index}`,
-              targetHandle: 'left',
-            });
-          }
-        });
-      }
-    }
-  });
-
-  return edges;
 }

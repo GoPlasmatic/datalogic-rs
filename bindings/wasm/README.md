@@ -9,7 +9,7 @@ runtimes** — powered by WebAssembly. WASM bindings for
 [`datalogic-rs`](https://github.com/GoPlasmatic/datalogic-rs).
 
 Same rules, same semantics as the Rust crate: every binding runs the
-same core and passes the same 1,636-case conformance battery
+same core and passes the same 1,658-case conformance battery
 (58 suites). For the cross-runtime overview and the API-tier model
 that every binding implements, see the
 [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
@@ -38,9 +38,10 @@ required to consume it. If you want to build from source instead, see
 ```javascript
 import init, { evaluate, CompiledRule } from '@goplasmatic/datalogic-wasm';
 
-// Browser / ES modules — initialise the WASM module once on startup.
-// (Skip this on Node.js — see "Usage by environment" below.)
-await init();
+// Browser / ES modules: initialise the WASM module once on startup.
+// On Node.js the default import is not a function (see "Usage by
+// environment" below), so guard the call when the same code runs there.
+if (typeof init === 'function') await init();
 
 // One-shot evaluation
 const result = evaluate('{"==": [1, 1]}', '{}', false);
@@ -86,6 +87,14 @@ import { evaluate, CompiledRule } from '@goplasmatic/datalogic-wasm';
 const result = evaluate('{"==": [1, 1]}', '{}', false);
 ```
 
+Under Node the bare specifier resolves (via the `node` export
+condition) to the CommonJS `nodejs` target, which has no loader: a
+default import (`import init from '@goplasmatic/datalogic-wasm'`)
+binds `init` to the module namespace object, and `await init()` throws
+`TypeError: init is not a function`. Code shared with a browser build
+should guard the call (`if (typeof init === 'function') await init();`)
+or import `@goplasmatic/datalogic-wasm/nodejs` explicitly.
+
 ### Bundlers (Webpack, Vite, …)
 
 ```javascript
@@ -99,10 +108,15 @@ const result = evaluate('{">=": [{"var": "score"}, 80]}', '{"score": 85}', false
 If you need a specific target build:
 
 ```javascript
-import init, { evaluate } from '@goplasmatic/datalogic-wasm/web';      // web target
-import init, { evaluate } from '@goplasmatic/datalogic-wasm/bundler';  // bundler target
-import { evaluate }       from '@goplasmatic/datalogic-wasm/nodejs';   // nodejs target
+import init, { evaluate } from '@goplasmatic/datalogic-wasm/web';      // web target (call init() first)
+import { evaluate }       from '@goplasmatic/datalogic-wasm/bundler';  // bundler target (instantiates on import)
+import { evaluate }       from '@goplasmatic/datalogic-wasm/nodejs';   // nodejs target (no init)
 ```
+
+The bundler target has no `init`: it imports `datalogic_wasm_bg.wasm`
+as an ES module and instantiates on load, which needs the bundler's
+WASM ESM integration (Webpack's `experiments.asyncWebAssembly`, for
+example).
 
 ## API reference
 
@@ -112,10 +126,11 @@ The WASM binding mirrors the Rust engine's
 | Tier        | Entry point                            | Use when                                                     |
 |-------------|----------------------------------------|--------------------------------------------------------------|
 | One-shot    | `evaluate(logic, data, templating)`    | Ad-hoc evaluation, one rule + one data shape                 |
-| Compile once | `new CompiledRule(logic, templating)` | Same rule evaluated against many data inputs                 |
+| Compile once | `new CompiledRule(logic, templating, config?)` | Same rule evaluated against many data inputs          |
 | Hot loop    | `engine.session()`                     | Tight loops; one arena reused across evaluations             |
 | Parse once  | `new DataHandle(json)`                 | Same payload evaluated repeatedly (rule sets, bulk scoring); typed + batch results |
-| Traced       | `evaluateWithTrace(logic, data, …)`   | Debugging, inspector UIs, anything that visualises execution |
+| Traced       | `evaluateWithTrace(logic, data, …)` / `engine.evaluateWithTrace(logic, data)` | Debugging, inspector UIs, anything that visualises execution |
+| Introspection | `builtinOperatorNames()` / `engine.customOperatorNames()` | Tooling that validates rules against the engine's vocabulary |
 
 ### `evaluate(logic, data, templating)`
 
@@ -196,9 +211,30 @@ const trace = evaluateWithTrace('{"and": [true, {"var": "x"}]}',
 JSON.parse(trace);
 // {
 //   "result": true,
-//   "expression_tree": { "id": 0, "expression": "{\"and\": [...]}", ... },
-//   "steps": [ /* per-node execution steps */ ]
+//   "expression_tree": { "id": 4, "expression": "{\"and\": [true, {\"var\": \"x\"}]}",
+//                        "children": [ { "id": 3, "expression": "{\"var\": \"x\"}", "children": [] } ] },
+//   "steps": [ /* 2 steps: the var lookup (node 3), then and (node 4) */ ]
 // }
+```
+
+Node ids are assigned at compile time, children first, so the root is
+the highest id (`id: 0` with an empty `expression` is only the
+placeholder returned when compilation fails). Literal operands (the
+`true` above) never record a step. Runtime failures do not throw:
+`result` is `null`, `error` carries the message, and `structured_error`
+the structured form (`{ type, message, operator?, node_ids?, ... }`).
+
+This function uses default engine settings. To trace with a custom
+config or custom operators, use `engine.evaluateWithTrace(logic, data)`
+on an [`Engine`](#engine-and-custom-operators); it returns the same
+envelope:
+
+```javascript
+const engine = new Engine({ config: { preset: 'strict' } });
+const run = JSON.parse(engine.evaluateWithTrace('{"+": [null, 1]}', '{}'));
+run.result;                 // null
+run.structured_error.type;  // "Thrown"  (strict mode rejects the null operand)
+run.steps[0].error;         // 'Thrown: {"type":"NaN"}'
 ```
 
 ## Engine and custom operators
@@ -221,13 +257,41 @@ engine.evalStr('{"double": [21]}', '{}'); // "42"
 ```
 
 `Engine` also exposes `compile(logic)` returning a `Rule` for compile-once
-reuse. **Built-ins win**: a custom registration of a built-in name (`+`,
+reuse, `evaluateWithTrace(logic, data)` for a trace that honours the
+engine's config and operators, and `customOperatorNames()` (below).
+**Built-ins win**: a custom registration of a built-in name (`+`,
 `if`, `var`, ...) never dispatches. A custom-operator engine is confined to
 the Worker that created it (see Threading below).
 
 The full options bag is
 `{ templating?: boolean, customOperators?: Record<string, fn>, config?: string | object }`.
 See [Engine configuration](#engine-configuration) for `config`.
+
+### Operator names
+
+Tooling that validates or autocompletes rules (the visual editor,
+linters, palettes) can ask the module for its vocabulary instead of
+keeping a hand-maintained list:
+
+```javascript
+import init, { builtinOperatorNames, Engine } from '@goplasmatic/datalogic-wasm';
+await init();
+
+const names = builtinOperatorNames();
+names.length;               // 67: the 64 built-in operators plus the aliases var, ?:, match
+names.includes('group_by'); // true
+names.includes('preserve'); // false (removed in v5)
+
+const engine = new Engine({ customOperators: { double: (a) => String(JSON.parse(a)[0] * 2) } });
+engine.customOperatorNames(); // ["double"]
+```
+
+`builtinOperatorNames()` is derived from the compiler's own lookup table
+for this build, so it cannot drift from dispatch. `engine.customOperatorNames()`
+lists the operators registered through `customOperators` (order not
+guaranteed); the union of the two is that engine's full vocabulary,
+which matters under templating mode, where an unknown key is not an
+error but echoes back as data.
 
 ### Sessions: hot-loop arena reuse
 
@@ -416,12 +480,12 @@ The thrown object carries:
 
 | Property | Contents |
 |----------|----------|
-| `name` | Stable error-kind tag: `"ParseError"`, `"InvalidArguments"`, `"VariableNotFound"`, `"TypeError"`, `"ArithmeticError"`, `"Thrown"`, `"IndexOutOfBounds"`, `"ConfigurationError"`, `"Custom"`, ... plus this binding's `"TypeMismatch"` (typed evaluations whose result has the wrong type) |
+| `name` | Stable error-kind tag: `"ParseError"`, `"InvalidOperator"`, `"InvalidArguments"`, `"TypeError"`, `"ArithmeticError"`, `"Thrown"`, `"IndexOutOfBounds"`, `"ConfigurationError"`, `"Custom"`, ... plus this binding's `"TypeMismatch"` (typed evaluations whose result has the wrong type) |
 | `message` | Human-readable message, including the failing operator when known |
 | `type` | Same tag as `name` (mirrors the wire JSON, kept for migration) |
 | `operator` | Outermost failing operator (runtime errors only) |
 | `node_ids` | Breadcrumb of compiled-node ids from the failure site toward the root (runtime errors only) |
-| variant extras | Kind-specific fields: `variable` (VariableNotFound), `thrown` (Thrown, as a parsed JS value), `index` / `length` (IndexOutOfBounds), `stage` (boundary input errors, e.g. `"parse-data"`) |
+| variant extras | Kind-specific fields: `thrown` (Thrown, as a parsed JS value), `index` / `length` (IndexOutOfBounds), `stage` (boundary input errors, e.g. `"parse-data"`) |
 | `detailJson` | The exact JSON string that 5.0.0 used as the rejection value |
 
 ```javascript
@@ -439,11 +503,16 @@ try {
 The two broad categories:
 
 - **Parse errors** (`e.name === "ParseError"`): malformed JSON in either
-  argument, or unsupported operator names. Surface immediately.
-- **Runtime errors** (everything else): `var` misses (under a strict
-  config), arithmetic on non-numbers, explicit `throw` operators. Carry
-  the failing `operator` and the `node_ids` path through the compiled
-  tree.
+  argument. Surface immediately, before the engine runs.
+- **Runtime errors** (everything else): unknown operator names
+  (`"InvalidOperator"`; compiling does not reject them), arithmetic on
+  non-numbers (`"Thrown"` with `thrown: { type: "NaN" }`, e.g.
+  `{"+": ["abc", 1]}`), explicit `throw` operators, invalid operator
+  arguments (`"InvalidArguments"`). Carry the failing `operator` and the
+  `node_ids` path through the compiled tree.
+
+A missing variable is not an error under any configuration:
+`{"var": "missing"}` evaluates to `null`.
 
 ### Migrating from 5.0.0
 
@@ -520,7 +589,13 @@ WASM-specific notes:
   handle costs about one string-path evaluation, so it pays for itself
   from the second evaluation onward — for one-off payloads, stay on
   the string path.
-- **Self-contained module** — roughly 1.7 MB uncompressed, around 400 to 500 KB gzipped
+- **Self-contained module**: approximately 2.84 MB uncompressed, around
+  600 KB gzipped (5.3.0 release build). Most of the growth since 5.1 is
+  the compiled-in IANA timezone database behind the `datetime`
+  feature's timezone arguments (5.2.0); see
+  [Building from source](#building-from-source) for the
+  `CHRONO_TZ_TIMEZONE_FILTER` knob that shrinks it and the measured
+  per-profile sizes
 - Measured as `dlrs:wasm:compiled` in the benchmark report
 - If your data already lives as JS objects and your rules are small, a
   pure-JS engine (e.g. `json-logic-engine`'s compiled mode) runs with
@@ -541,6 +616,18 @@ cd bindings/wasm
 ./build.sh   # produces pkg/{web,bundler,nodejs}
 ```
 
+The `datetime` feature compiles in the full IANA timezone database
+(`chrono-tz`), which accounts for roughly 1 MB of the module. If your
+rules only ever name a handful of zones, set `chrono-tz`'s build-time
+filter (a regular expression matched against zone names) before
+building to keep just those:
+
+```bash
+CHRONO_TZ_TIMEZONE_FILTER='(UTC|Europe/.*|America/New_York)' ./build.sh
+```
+
+The published package is built without a filter so every zone resolves.
+
 ### Build profiles
 
 The published package (and a plain `./build.sh`) uses the
@@ -555,12 +642,16 @@ WASM_PROFILE=speed ./build.sh   # same pkg/ layout, speed-optimized
 ```
 
 Measured tradeoff (Apple M2 Pro, Node 24; sizes are the per-target
-`.wasm`, speeds from the repo's boundary harness, median of 5):
+`.wasm`, speeds from the repo's boundary harness, median of 5). The
+release sizes are from the 5.3.0 build, which carries the IANA timezone
+table; the speed-profile sizes were measured before that table landed
+(5.1, when the release build was 1,746,378 B / 409,269 B gzipped) and
+are kept for the relative +8% raw / -1% gzipped tradeoff:
 
 | Measure | release (default) | speed (opt-in) |
 |---------|-------------------|----------------|
-| `.wasm` size, per target | 1,746,378 B (1.67 MB) | 1,887,386 B (1.80 MB, +8.1%) |
-| `.wasm` gzipped | 409,269 B | 403,550 B (−1.4%) |
+| `.wasm` size, per target | 2,843,821 B (2.84 MB) | 1,887,386 B pre-tz (+8.1% vs. release at the time) |
+| `.wasm` gzipped | 603,466 B | 403,550 B pre-tz (−1.4%) |
 | `session.evaluate`, string, 68 B data | 592 ns/op | 439 ns/op (1.35×) |
 | `session.evaluate`, string, 8 KB data | 30.6 µs/op | 27.0 µs/op (1.13×) |
 | `session.evaluateData`, handle, 8 KB data | 3.97 µs/op | 2.15 µs/op (1.85×) |

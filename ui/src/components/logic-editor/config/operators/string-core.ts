@@ -54,9 +54,16 @@ export const stringCoreOperators: Record<string, Operator> = {
           data: { base: '/home', file: 'data.json' },
           result: '/home/data.json',
         },
+        {
+          title: 'Arrays and null',
+          rule: { cat: [['a', 'b'], '-', null, 'c'] },
+          result: 'ab-c',
+          note: 'Array arguments are flattened; null renders as ""',
+        },
       ],
       notes: [
         'All values are converted to strings',
+        'Array arguments are flattened one level; null renders as ""',
         'Accepts 1 or more arguments',
         'Use + for numeric addition',
       ],
@@ -76,24 +83,30 @@ export const stringCoreOperators: Record<string, Operator> = {
     description: 'Extract part of a string',
     arity: {
       type: 'range',
-      min: 2,
+      min: 1,
       max: 3,
       args: [
         { name: 'string', label: 'String', type: 'string', required: true },
-        { name: 'start', label: 'Start', type: 'number', required: true },
+        {
+          name: 'start',
+          label: 'Start',
+          type: 'number',
+          required: false,
+          description: 'Start index (negative counts from the end; omit for the whole string)',
+        },
         {
           name: 'length',
           label: 'Length',
           type: 'number',
           required: false,
-          description: 'Number of characters (omit for rest of string)',
+          description: 'Number of characters; negative = stop that many characters before the end',
         },
       ],
     },
     help: {
       summary: 'Extract a portion of a string',
       details:
-        'Returns a substring starting at the given index. If length is provided, returns that many characters; otherwise returns to the end of the string. Negative start counts from the end.',
+        'Returns a substring starting at the given index. If length is provided, returns that many characters; a negative length stops that many characters before the end. Without a length, returns to the end of the string. Negative start counts from the end.',
       returnType: 'string',
       examples: [
         {
@@ -114,6 +127,12 @@ export const stringCoreOperators: Record<string, Operator> = {
           note: '-5 = 5 chars from end',
         },
         {
+          title: 'Negative length',
+          rule: { substr: ['Hello World', 1, -3] },
+          result: 'ello Wo',
+          note: 'Stop 3 characters before the end',
+        },
+        {
           title: 'With variable',
           rule: { substr: [{ var: 'text' }, 0, 10] },
           data: { text: 'This is a long sentence' },
@@ -123,12 +142,13 @@ export const stringCoreOperators: Record<string, Operator> = {
       notes: [
         'Index is 0-based',
         'Negative start counts from end',
-        'Length is optional (defaults to rest of string)',
+        'Length is optional (defaults to rest of string); a negative length is an end position counted from the end',
+        'Start is optional too: {"substr": ["text"]} returns the whole string',
       ],
       seeAlso: ['cat', 'split', 'length'],
     },
     ui: {
-      icon: 'scissors',
+      icon: 'quote',
       shortLabel: 'sub',
       nodeType: 'operator',
     },

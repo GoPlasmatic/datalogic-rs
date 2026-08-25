@@ -151,5 +151,134 @@
         "rule": { "or": [false, 0, null, { "val": [] }, [], 4, { "throw": "Not Lazy" }] },
         "data": null,
         "result": 4
+    },
+    "Dynamic prefix before a literal (regression: constant folding must not skip the dynamic args)",
+    {
+        "description": "Truthy var before a truthy literal returns the var, not the literal",
+        "rule": {
+            "or": [
+                {
+                    "var": "nickname"
+                },
+                "Anonymous"
+            ]
+        },
+        "data": {
+            "nickname": "Ali"
+        },
+        "result": "Ali"
+    },
+    {
+        "description": "Falsy var before a truthy literal returns the literal",
+        "rule": {
+            "or": [
+                {
+                    "var": "nickname"
+                },
+                "Anonymous"
+            ]
+        },
+        "data": {},
+        "result": "Anonymous"
+    },
+    {
+        "description": "Middle var wins over a trailing literal default",
+        "rule": {
+            "or": [
+                {
+                    "var": "nickname"
+                },
+                {
+                    "var": "name"
+                },
+                "Anonymous"
+            ]
+        },
+        "data": {
+            "name": "Alice"
+        },
+        "result": "Alice"
+    },
+    {
+        "description": "Args after a truthy literal are dead, args before it still run",
+        "rule": {
+            "or": [
+                {
+                    "var": "a"
+                },
+                true,
+                {
+                    "throw": "Not Lazy"
+                }
+            ]
+        },
+        "data": {
+            "a": 0
+        },
+        "result": true
+    },
+    {
+        "description": "A throw before a truthy literal still throws",
+        "rule": {
+            "or": [
+                {
+                    "throw": "boom"
+                },
+                true
+            ]
+        },
+        "data": null,
+        "error": {
+            "type": "boom"
+        }
+    },
+    {
+        "description": "Trailing false literal is the result when every arg is falsy",
+        "rule": {
+            "or": [
+                {
+                    "var": "a"
+                },
+                false
+            ]
+        },
+        "data": {
+            "a": 0
+        },
+        "result": false
+    },
+    {
+        "description": "Trailing null literal is returned, not the preceding var",
+        "rule": {
+            "or": [
+                {
+                    "var": "a"
+                },
+                null
+            ]
+        },
+        "data": {
+            "a": ""
+        },
+        "result": null
+    },
+    {
+        "description": "Middle identity literal is skipped, last value wins",
+        "rule": {
+            "or": [
+                {
+                    "var": "a"
+                },
+                0,
+                {
+                    "var": "b"
+                }
+            ]
+        },
+        "data": {
+            "a": 0,
+            "b": ""
+        },
+        "result": ""
     }
 ]

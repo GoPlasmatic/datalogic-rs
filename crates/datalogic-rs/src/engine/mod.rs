@@ -325,7 +325,9 @@ impl Engine {
 
     /// Creates a new Engine with all built-in operators.
     ///
-    /// The engine includes 50+ built-in operators optimized with OpCode dispatch.
+    /// The engine includes every built-in operator compiled into this build
+    /// (64 canonical operators with all operator features on; see
+    /// [`Self::builtin_operator_names`]), dispatched via `OpCode`.
     /// Templating mode is disabled by default. For non-default
     /// configuration (custom [`EvaluationConfig`], templating mode,
     /// pre-registered custom operators) prefer [`Self::builder`].
@@ -426,7 +428,7 @@ impl Engine {
     //   - One-shot:   `eval` / `eval_str` / `eval_into`   (engine-owned arena per call)
     //   - Power tier: `evaluate(&Logic, D, &Bump)`        (caller-owned arena, borrowed result)
     //   - Hot loop:   `engine.session().eval*(...)`       (pooled arena, manual reset)
-    //   - Trace:      `engine.trace().eval*(...)`         (Session mirror with TracedRun<R>)
+    //   - Trace:      `engine.trace().eval*(...)`         (same shapes wrapped in TracedRun<R>; eval_str/eval_into take a rule source)
     // ============================================================
 
     /// Compile a rule source into reusable [`Logic`].

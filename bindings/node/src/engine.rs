@@ -180,6 +180,17 @@ impl Engine {
     pub fn session(&self) -> Session {
         Session::new(self.inner.clone())
     }
+
+    /// Names of the custom operators registered on this engine (second
+    /// constructor argument), in registration order. Built-ins are listed
+    /// by the module-level `builtinOperatorNames()`.
+    #[napi(js_name = "customOperatorNames")]
+    pub fn custom_operator_names(&self) -> Vec<String> {
+        self.inner
+            .custom_operator_names()
+            .map(str::to_owned)
+            .collect()
+    }
 }
 
 /// A compiled JSONLogic rule.

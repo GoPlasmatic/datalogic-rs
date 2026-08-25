@@ -9,14 +9,15 @@
 > Apache-2.0.
 
 Key facts: rules compile once to opcode programs and evaluate in a
-reusable memory arena (8.9 ns geomean across the 50-suite benchmark
+reusable memory arena (10.3 ns geomean across the 51-suite benchmark
 matrix); the core is `#![forbid(unsafe_code)]` with no eval, no I/O,
 and no scripting runtime, so user-submitted rules are safe to evaluate;
-every binding runs the same 1,565-case conformance battery (54 suites)
-in CI, so semantics never drift between languages; 59 built-in
-operators including datetime, string/array extensions, error handling
-(try/throw), and flagd-compatible feature-flag operators (fractional,
-sem_ver) with murmur3 bucketing byte-compatible with OpenFeature flagd.
+every binding runs the same 1,658-case conformance battery (58 suites)
+in CI, so semantics never drift between languages; 64 built-in
+operators including datetime, string/array/object extensions, error
+handling (try/throw), and flagd-compatible feature-flag operators
+(fractional, sem_ver) with murmur3 bucketing byte-compatible with
+OpenFeature flagd.
 
 Install per language: Rust `cargo add datalogic-rs` · Node.js
 `npm i @goplasmatic/datalogic-node` · Browser/Edge WASM
@@ -42,7 +43,7 @@ templating mode and step-by-step trace output.
 - [Quick start](https://goplasmatic.github.io/datalogic-rs/getting-started/quick-start.html):
   first evaluation in every language
 - [Operator reference](https://goplasmatic.github.io/datalogic-rs/operators/overview.html):
-  all 59 built-in operators with examples
+  all 64 built-in operators with examples
 - [Language guides](https://goplasmatic.github.io/datalogic-rs/rust/overview.html):
   per-binding chapters (Rust, Node, WASM, Python, Go, JVM, .NET, PHP, React UI)
 - [Security & sandboxing](https://goplasmatic.github.io/datalogic-rs/advanced/security.html):
@@ -66,8 +67,14 @@ templating mode and step-by-step trace output.
   Go, JVM, .NET, and PHP take JSON strings at the primary surface.
 - Compile once and reuse the compiled rule; compiled rules are
   thread-safe in every binding. Sessions are single-threaded.
-- Errors carry a stable tag (`ParseError`, `TypeMismatch`, `Thrown`,
-  `NaN`, …) with the same taxonomy in every language.
+- Errors carry a stable tag (`ParseError`, `InvalidOperator`,
+  `InvalidArguments`, `TypeError`, `Thrown`, ...) with the same taxonomy
+  in every language. Arithmetic on non-numeric input surfaces as
+  `Thrown` whose payload is `{"type": "NaN"}`; `NaN` itself is not a tag.
+- `and` / `or` return the deciding operand, not a boolean, so the
+  json-logic-js default-value idiom works unchanged:
+  `{"or": [{"var": "nickname"}, "Anonymous"]}` yields the nickname when
+  it is truthy and `"Anonymous"` otherwise.
 - The old v4 npm package `@goplasmatic/datalogic` no longer exists on
   the registry; use `@goplasmatic/datalogic-node` (native Node) or
   `@goplasmatic/datalogic-wasm` (browser/edge).

@@ -1,419 +1,438 @@
 # Operator Configuration Schema
 
-This document defines the structure for the operator configuration file that serves as the single source of truth for all operator documentation and UI rendering.
+The operator registry under `ui/src/components/logic-editor/config/` is the
+single source of truth for operator documentation, arity validation and UI
+rendering in the visual editor. This document describes the TypeScript
+types in `operators.types.ts` and the conventions the registry follows. The
+types file is authoritative; if the two disagree, fix this document.
 
-## Proposed File Structure
+## File layout
 
 ```
 ui/src/components/logic-editor/config/
-├── operators.json          # Main operator definitions (or operators.ts for type safety)
-├── operators.schema.md     # This documentation
-└── categories.ts           # Category metadata (colors, icons, labels)
+├── operators.types.ts      # All interfaces described below
+├── operators/
+│   ├── index.ts            # `operators` map + getOperator / isOperator / search helpers
+│   ├── variable.ts         # var, val, exists
+│   ├── comparison.ts       # ==, ===, !=, !==, >, >=, <, <=
+│   ├── logical.ts          # !, !!, and, or
+│   ├── arithmetic.ts       # aggregates arithmetic-basic.ts (+ - * / %) and
+│   │                       #   arithmetic-functions.ts (max min abs ceil floor)
+│   ├── control.ts          # if, ?:, switch, match, ??
+│   ├── string.ts           # aggregates string-core.ts (cat substr in) and
+│   │                       #   string-transform.ts (length starts_with ends_with upper lower trim split)
+│   ├── array.ts            # aggregates array-iteration.ts (map filter reduce all some none) and
+│   │                       #   array-manipulation.ts (merge sort slice group_by distinct)
+│   ├── object.ts           # keys, values, entries
+│   ├── datetime.ts         # datetime, timestamp, parse_date, format_date, date_diff, now
+│   ├── validation.ts       # missing, missing_some
+│   ├── error.ts            # try, throw
+│   ├── utility.ts          # type
+│   └── flagd.ts            # fractional, sem_ver
+├── categories.ts           # CategoryMeta per category (colour, icon, docs page)
+├── docs.ts                 # Per-operator documentation URL (page + mdBook anchor)
+├── arity.ts                # formatArity(): the "Args: ..." badge text
+├── literalPanel.ts         # Panel config for literal nodes (and the structure-node variant)
+└── __tests__/
+    ├── examples.test.ts    # Every help example is evaluated by the WASM engine
+    └── registry.test.ts    # Registry == engine builtin names, docs links, arity text
 ```
 
-## Schema Definition
+The registry covers exactly the engine's `builtinOperatorNames()`: 64
+canonical operators plus the aliases `var` (val), `?:` (if) and `match`
+(switch). Each alias has its own entry so the picker and help panel work
+for either spelling; alias entries say so in their notes and list the
+canonical operator in `seeAlso`.
 
-### Root Structure
+## Root structure
 
 ```typescript
 interface OperatorConfig {
-  version: string;                    // Schema version for future migrations
+  version: string;
   operators: Record<string, Operator>;
 }
 ```
 
-### Operator Definition
+`operators/index.ts` exports the flat `operators` map directly (there is no
+versioned wrapper object in use today) together with these helpers:
+
+```typescript
+getOperator(name): Operator | undefined
+getOperatorsByCategory(category): Operator[]
+isOperator(name): boolean
+getOperatorsGroupedByCategory(): Map<OperatorCategory, Operator[]>
+searchOperators(query): Operator[]
+```
+
+## Operator
 
 ```typescript
 interface Operator {
-  // === Identity ===
-  name: string;                       // Operator key (e.g., "+", "var", "map")
-  label: string;                      // Display label (e.g., "Add", "Variable", "Transform Each")
-  category: OperatorCategory;         // Category for grouping and styling
-
-  // === Arity ===
-  arity: AritySpec;                   // Argument specification
-
-  // === Documentation ===
-  description: string;                // One-line description (shown in picker)
-  help: OperatorHelp;                 // Detailed help content
-
-  // === UI Hints ===
-  ui?: OperatorUIHints;               // Optional UI-specific configuration
+  name: string;               // Engine operator key ("+", "var", "map", ...)
+  label: string;              // Display label ("Add", "Variable", "Map")
+  category: OperatorCategory; // Grouping, colour and docs page
+  description: string;        // One-liner shown in pickers
+  arity: AritySpec;           // Argument specification (drives the panel)
+  help: OperatorHelp;         // Help panel content
+  ui?: OperatorUIHints;       // Rendering hints
+  panel?: PanelConfig;        // Properties-panel layout (see Panel configuration)
 }
 ```
 
-### Category Enum
+The map key must equal `name` (checked by `registry.test.ts`).
+
+### Categories
 
 ```typescript
 type OperatorCategory =
-  | 'variable'      // var, val, exists
-  | 'comparison'    // ==, ===, !=, !==, >, >=, <, <=
-  | 'logical'       // !, !!, and, or
-  | 'arithmetic'    // +, -, *, /, %, max, min, abs, ceil, floor
-  | 'control'       // if, ?:, ??
-  | 'string'        // cat, substr, in, length, starts_with, ends_with, upper, lower, trim, split
-  | 'array'         // merge, filter, map, reduce, all, some, none, sort, slice
-  | 'datetime'      // datetime, timestamp, parse_date, format_date, date_diff, now
-  | 'validation'    // missing, missing_some
-  | 'error'         // try, throw
-  | 'utility';      // type
+  | 'variable'     // var, val, exists
+  | 'comparison'   // ==, ===, !=, !==, >, >=, <, <=
+  | 'logical'      // !, !!, and, or
+  | 'arithmetic'   // +, -, *, /, %, max, min, abs, ceil, floor
+  | 'control'      // if, ?:, switch, match, ??
+  | 'string'       // cat, substr, in, length, starts_with, ends_with, upper, lower, trim, split
+  | 'array'        // map, filter, reduce, all, some, none, merge, sort, slice, group_by, distinct
+  | 'object'       // keys, values, entries
+  | 'datetime'     // datetime, timestamp, parse_date, format_date, date_diff, now
+  | 'validation'   // missing, missing_some
+  | 'error'        // try, throw
+  | 'utility'      // type
+  | 'flagd';       // fractional, sem_ver
 ```
 
-### Arity Specification
+`types/jsonlogic.ts` derives `NodeCategory = OperatorCategory | 'literal'`
+from this union, so adding a category also requires entries in
+`categories.ts` and `constants/colors.ts` (`CATEGORY_COLORS`); the compiler
+enforces both.
 
 ```typescript
+interface CategoryMeta {
+  name: OperatorCategory;
+  label: string;
+  description: string;
+  color: string;      // Hex colour used for nodes and badges
+  icon: IconName;     // Must be registered in utils/Icon.tsx (no runtime fallback)
+  docsPage: string;   // Slug under https://goplasmatic.github.io/datalogic-rs/operators/
+}
+```
+
+## Arity
+
+```typescript
+type ArityType =
+  | 'nullary'    // 0 args (now)
+  | 'unary'      // 1 arg (!, upper)
+  | 'binary'     // 2 args (in, starts_with)
+  | 'ternary'    // 3 args (date_diff, sem_ver)
+  | 'nary'       // min+ args, min defaults to 1 (+, cat, ??)
+  | 'variadic'   // min+ args, min defaults to 2
+  | 'chainable'  // 2+ args compared pairwise (<, ==)
+  | 'range'      // min..max args (substr 1-3, sort 1-3, slice 1-4, throw 0-1)
+  | 'special';   // Structured argument list (if, val, switch, fractional)
+
 interface AritySpec {
   type: ArityType;
-  min?: number;                       // Minimum arguments (default: 0)
-  max?: number;                       // Maximum arguments (undefined = unlimited)
-  args?: ArgSpec[];                   // Named argument specifications
+  min?: number;      // Explicit minimum; wins over the nominal count of `type`
+  max?: number;      // Explicit maximum (undefined = unlimited)
+  args?: ArgSpec[];  // Named argument slots, in order
 }
 
-type ArityType =
-  | 'nullary'       // 0 args (e.g., now)
-  | 'unary'         // 1 arg (e.g., !, abs)
-  | 'binary'        // 2 args (e.g., /, %)
-  | 'ternary'       // 3 args (e.g., ?:, reduce)
-  | 'nary'          // 1+ args (e.g., +, cat)
-  | 'variadic'      // 2+ args (e.g., *, and)
-  | 'chainable'     // 2+ args with chaining (e.g., <, >)
-  | 'special';      // Custom structure (e.g., if, val)
-
 interface ArgSpec {
-  name: string;                       // Argument name (e.g., "left", "right", "array")
-  label: string;                      // Display label
-  description?: string;               // Tooltip description
-  type?: ArgType;                     // Expected type hint
-  required?: boolean;                 // Is this argument required? (default: true)
-  repeatable?: boolean;               // Can this arg repeat? (for nary operators)
+  name: string;
+  label: string;
+  description?: string;
+  type?: ArgType;
+  required?: boolean;   // default true
+  repeatable?: boolean; // the slot may repeat (nary / variadic tails)
 }
 
 type ArgType =
-  | 'any'
-  | 'number'
-  | 'string'
-  | 'boolean'
-  | 'array'
-  | 'object'
-  | 'expression'    // A JSONLogic expression
-  | 'path'          // A variable path (dot notation or array)
-  | 'datetime'
-  | 'duration';
+  | 'any' | 'number' | 'string' | 'boolean' | 'array' | 'object'
+  | 'expression'   // A JSONLogic expression evaluated per element (map, sort key)
+  | 'path'         // A data path (var / val / exists)
+  | 'datetime' | 'duration';
 ```
 
-### Help Content
+The properties panel derives its behaviour from `arity`: `nary`, `variadic`,
+`chainable`, `range` and `special` allow adding/removing arguments (bounded by
+`min` / `max`); the fixed types do not. `formatArity()` in `arity.ts` renders
+the badge text and always honours explicit `min` / `max`, so `throw`
+(`unary`, 0-1) reads "Args: 0-1".
+
+## Help content
 
 ```typescript
 interface OperatorHelp {
-  summary: string;                    // One-line summary (always visible)
-  details?: string;                   // Extended explanation (markdown supported)
-  returnType: ReturnType;             // What type does this operator return
-  examples: OperatorExample[];        // Code examples with results
-  notes?: string[];                   // Tips, gotchas, edge cases
-  seeAlso?: string[];                 // Related operator names
+  summary: string;            // One line, always visible
+  details?: string;           // Longer explanation
+  returnType: ReturnType;
+  examples: OperatorExample[];
+  notes?: string[];           // Gotchas and edge cases
+  seeAlso?: string[];         // Related operator names (must exist in the registry)
 }
 
 type ReturnType =
-  | 'any'
-  | 'number'
-  | 'string'
-  | 'boolean'
-  | 'array'
-  | 'object'
-  | 'null'
-  | 'datetime'
-  | 'duration'
-  | 'number | string'                 // For operators like + that can return either
-  | 'same';                           // Returns same type as input
+  | 'any' | 'number' | 'string' | 'boolean' | 'array' | 'object' | 'null'
+  | 'datetime' | 'duration'
+  | 'number | string'
+  | 'same'      // Same shape as the input (slice: array or string)
+  | 'never';    // Always throws (throw)
 
 interface OperatorExample {
-  title: string;                      // Example title
-  rule: unknown;                      // JSONLogic expression (will be JSON)
-  data?: unknown;                     // Sample input data
-  result: unknown;                    // Expected output
-  note?: string;                      // Optional note for this example
+  title: string;
+  rule: unknown;            // JSONLogic expression
+  data?: unknown;           // Input data (null when omitted)
+  result?: unknown;         // Expected engine result
+  error?: { type: string }; // Expected structured error type instead of a result
+  note?: string;
+  templating?: boolean;     // Evaluate in templating mode
 }
 ```
 
-### UI Hints (Optional)
+`returnType` also drives node colouring (`utils/signal.ts`): boolean is the
+resting boolean signal, `array` / `object` / `same` the collection signal,
+`datetime` / `duration` the temporal signal.
+
+### Example rules
+
+`__tests__/examples.test.ts` evaluates every example with the vendored WASM
+engine and asserts:
+
+- with `error` set: evaluation throws and the error `type` matches
+  (`Thrown`, `InvalidArguments`, `InvalidOperator`, ...);
+- with `result` set: the parsed result deep-equals `result`;
+- with neither: evaluation succeeds and `note` explains why there is no
+  fixed result (only `now` uses this).
+
+Because the examples are executed, they must be written the way the engine
+reads them:
+
+- A bare array is the argument list. Wrap array literals:
+  `{"length": [[1, 2, 3]]}`, `{"type": [[1, 2, 3]]}`.
+- Multi-key object literals only parse in templating mode. Either read the
+  object from `data` (`{"throw": {"var": "err"}}`) or set `templating: true`.
+- Iteration metadata is only reachable through the scope form
+  `{"val": [[1], "index"]}` / `{"val": [[1], "key"]}`. The string form
+  `{"val": "index"}` is a plain key lookup and returns null.
+- Missing variables return null; they are not errors, so `try` does not
+  catch them.
+- `sort` is `[array, ascending?, keyExpression?]`; `slice` is
+  `[value, start?, end?, step?]`; `??` is variadic.
+
+## UI hints
 
 ```typescript
-interface OperatorUIHints {
-  // === Display ===
-  icon?: string;                      // Lucide icon name (e.g., "plus", "variable")
-  shortLabel?: string;                // Very short label for compact display (e.g., "+")
-
-  // === Node Rendering ===
-  nodeType?: NodeType;                // How to render this operator
-
-  // === Editor Behavior ===
-  inlineEditable?: boolean;           // Can value be edited inline on canvas?
-  showArgLabels?: boolean;            // Show argument labels in node?
-  collapsible?: boolean;              // Can this node be collapsed?
-
-  // === Special Features ===
-  scopeJump?: boolean;                // Does this support scope jumps? (val)
-  metadata?: boolean;                 // Does this access metadata? (val)
-  datetimeProps?: boolean;            // Does this access datetime properties? (val)
-  iteratorContext?: boolean;          // Does this create iterator context? (map, filter, etc.)
-}
-
 type NodeType =
-  | 'operator'      // Standard operator node
-  | 'variable'      // Variable access node (var, val, exists)
-  | 'literal'       // Literal value node
-  | 'decision'      // If/then/else diamond
-  | 'vertical'      // Vertical cell layout (comparisons, logical)
-  | 'iterator'      // Array iterator (map, filter, reduce)
-  | 'structure';    // Object/array structure
-```
+  | 'operator'   // Standard operator node
+  | 'variable'   // var / val / exists
+  | 'literal'    // Literal value
+  | 'decision'   // if / ?: / switch / try
+  | 'vertical'   // Vertical cell layout (comparison, and / or)
+  | 'iterator'   // map / filter / reduce / all / some / none
+  | 'structure'; // Array / object structure
 
-## Example Operator Entries
-
-### Simple Unary Operator
-
-```json
-{
-  "!": {
-    "name": "!",
-    "label": "Not",
-    "category": "logical",
-    "description": "Logical NOT - negates a boolean value",
-    "arity": {
-      "type": "unary",
-      "min": 1,
-      "max": 1,
-      "args": [
-        {
-          "name": "value",
-          "label": "Value",
-          "type": "any",
-          "description": "Value to negate"
-        }
-      ]
-    },
-    "help": {
-      "summary": "Negates a boolean value",
-      "details": "Returns true if the value is falsy (false, null, 0, \"\"), false otherwise.",
-      "returnType": "boolean",
-      "examples": [
-        {
-          "title": "Negate true",
-          "rule": {"!": [true]},
-          "result": false
-        },
-        {
-          "title": "Negate falsy value",
-          "rule": {"!": [0]},
-          "result": true
-        },
-        {
-          "title": "With variable",
-          "rule": {"!": [{"var": "isActive"}]},
-          "data": {"isActive": false},
-          "result": true
-        }
-      ],
-      "notes": [
-        "Falsy values: false, null, 0, \"\" (empty string)",
-        "All other values are considered truthy"
-      ],
-      "seeAlso": ["!!", "and", "or"]
-    },
-    "ui": {
-      "icon": "circle-slash",
-      "shortLabel": "!",
-      "nodeType": "operator"
-    }
-  }
+interface OperatorUIHints {
+  icon?: IconName;           // Help-header icon; falls back to the category icon
+  shortLabel?: string;       // Compact label on the node ("+", "map")
+  nodeType?: NodeType;
+  inlineEditable?: boolean;
+  showArgLabels?: boolean;
+  collapsible?: boolean;
+  scopeJump?: boolean;       // val: supports [[N], ...] scope jumps
+  metadata?: boolean;        // val: supports index / key metadata
+  iteratorContext?: boolean; // Creates an iteration frame (map, filter, ...)
+  addArgumentLabel?: string; // Label for the add-argument button ("Add Else If")
 }
 ```
 
-### Variable Operator (val with special features)
+`icon` is an `IconName` (see `utils/icons.ts`), so a name that has no
+registered component is a compile error rather than a canvas crash.
 
-```json
-{
-  "val": {
-    "name": "val",
-    "label": "Value",
-    "category": "variable",
-    "description": "Access data using array path with scope jump support",
-    "arity": {
-      "type": "special",
-      "min": 1,
-      "args": [
-        {
-          "name": "path",
-          "label": "Path",
-          "type": "path",
-          "description": "Array of path components, optionally starting with scope level"
-        }
-      ]
-    },
-    "help": {
-      "summary": "Access data using array path components with scope jump and metadata support",
-      "details": "Retrieves a value using an array of path components. Supports scope jumps for accessing parent contexts in nested iterators. Use [[N], \"field\", ...] to jump up N context levels (sign is ignored).",
-      "returnType": "any",
-      "examples": [
-        {
-          "title": "Array path",
-          "rule": {"val": ["user", "profile", "name"]},
-          "data": {"user": {"profile": {"name": "Alice"}}},
-          "result": "Alice"
-        },
-        {
-          "title": "Current element",
-          "rule": {"val": []},
-          "result": "(current element in iterator)"
-        },
-        {
-          "title": "Parent scope",
-          "rule": {"val": [[1], "multiplier"]},
-          "result": "(parent context's multiplier)"
-        },
-        {
-          "title": "Get iteration index",
-          "rule": {"val": "index"},
-          "result": "(current index: 0, 1, 2, ...)"
-        },
-        {
-          "title": "DateTime property",
-          "rule": {"val": [{"var": "date"}, "year"]},
-          "data": {"date": "2024-01-15"},
-          "result": 2024
-        }
-      ],
-      "notes": [
-        "Path is array of components: [\"a\", \"b\", \"c\"]",
-        "Scope jump: [[N], ...] goes up N context levels",
-        "Sign is ignored: [1] and [-1] are equivalent",
-        "If level exceeds depth, returns root data",
-        "Special metadata: \"index\" and \"key\" for iteration",
-        "DateTime props: year, month, day, hour, minute, second, timestamp, iso",
-        "Duration props: days, hours, minutes, seconds, total_seconds"
-      ],
-      "seeAlso": ["var", "exists"]
-    },
-    "ui": {
-      "icon": "brackets",
-      "nodeType": "variable",
-      "scopeJump": true,
-      "metadata": true,
-      "datetimeProps": true
-    }
-  }
-}
-```
-
-### Iterator Operator (map)
-
-```json
-{
-  "map": {
-    "name": "map",
-    "label": "Transform Each",
-    "category": "array",
-    "description": "Apply an expression to each element of an array",
-    "arity": {
-      "type": "binary",
-      "min": 2,
-      "max": 2,
-      "args": [
-        {
-          "name": "array",
-          "label": "Array",
-          "type": "array",
-          "description": "Array to iterate over"
-        },
-        {
-          "name": "expression",
-          "label": "Expression",
-          "type": "expression",
-          "description": "Expression applied to each element"
-        }
-      ]
-    },
-    "help": {
-      "summary": "Apply an expression to each element of an array",
-      "details": "Iterates over an array and applies the given expression to each element. Use {\"var\": \"\"} to access the current element. Use {\"val\": [[1], \"field\"]} to access parent scope.",
-      "returnType": "array",
-      "examples": [
-        {
-          "title": "Double each number",
-          "rule": {"map": [[1, 2, 3], {"*": [{"var": ""}, 2]}]},
-          "result": [2, 4, 6]
-        },
-        {
-          "title": "Extract field",
-          "rule": {"map": [{"var": "users"}, {"var": "name"}]},
-          "data": {"users": [{"name": "Alice"}, {"name": "Bob"}]},
-          "result": ["Alice", "Bob"]
-        },
-        {
-          "title": "With index",
-          "rule": {"map": [{"var": "items"}, {"cat": ["Item ", {"val": "index"}]}]},
-          "data": {"items": ["a", "b"]},
-          "result": ["Item 0", "Item 1"]
-        }
-      ],
-      "notes": [
-        "Use {\"var\": \"\"} to access current element",
-        "Use {\"val\": \"index\"} to get current index",
-        "Use {\"val\": [[1], \"field\"]} to access parent scope",
-        "Returns a new array; does not modify the original"
-      ],
-      "seeAlso": ["filter", "reduce", "all", "some", "none"]
-    },
-    "ui": {
-      "icon": "repeat",
-      "nodeType": "iterator",
-      "iteratorContext": true
-    }
-  }
-}
-```
-
-## File Format Options
-
-### Option A: JSON (operators.json)
-- **Pros**: Language-agnostic, can be loaded dynamically, easy to parse
-- **Cons**: No type checking, no comments, verbose
-
-### Option B: TypeScript (operators.ts)
-- **Pros**: Type safety, IDE support, can include comments, functions for derived values
-- **Cons**: Needs compilation, slightly larger bundle
-
-### Option C: Hybrid (operators.config.ts + operators.data.json)
-- **Pros**: Types in TS, data in JSON, best of both
-- **Cons**: Two files to maintain
-
-## Recommendation
-
-**Option B: TypeScript (operators.ts)** with exported const:
+## Panel configuration
 
 ```typescript
-// operators.ts
-import { Operator, OperatorConfig } from './operators.types';
+type PanelInputType =
+  | 'text' | 'textarea' | 'number' | 'boolean' | 'select'
+  | 'path' | 'pathArray' | 'expression' | 'json';
 
-export const operatorConfig: OperatorConfig = {
-  version: '1.0.0',
-  operators: {
-    '!': { ... },
-    '!!': { ... },
-    // ... all 64 operators
-  }
-};
+interface VisibilityCondition {
+  field: string;
+  operator: 'equals' | 'notEquals' | 'exists' | 'notExists';
+  value?: unknown;
+}
 
-// Helper functions
-export function getOperator(name: string): Operator | undefined;
-export function getOperatorsByCategory(category: OperatorCategory): Operator[];
-export function searchOperators(query: string): Operator[];
+interface SelectOption {
+  value: string | number | boolean;
+  label: string;
+  description?: string;
+}
+
+interface PanelField {
+  id: string;
+  label: string;
+  inputType: PanelInputType;
+  helpText?: string;
+  placeholder?: string;
+  required?: boolean;
+  defaultValue?: unknown;
+  options?: SelectOption[];        // for 'select'
+  showWhen?: VisibilityCondition[];
+  min?: number;                    // for 'number'
+  max?: number;
+  repeatable?: boolean;
+}
+
+interface PanelSection {
+  id: string;
+  title?: string;
+  fields: PanelField[];
+  defaultCollapsed?: boolean;
+  showWhen?: VisibilityCondition[];
+}
+
+interface ContextVariable {          // Variables an iterator body can read
+  name: string;
+  label: string;
+  description: string;
+  accessor: 'var' | 'val';
+  example: string;                   // e.g. '{"val": [[1], "index"]}'
+}
+
+interface PanelConfig {
+  sections: PanelSection[];
+  contextVariables?: ContextVariable[];
+  chainable?: boolean;
+}
 ```
 
-This provides:
-1. Full type safety during development
-2. IDE autocompletion for operator names
-3. Compile-time validation of the configuration
-4. Helper functions for common queries
-5. Tree-shaking if needed
+`literalPanel.ts` exports `literalPanelConfig` (string / number / boolean /
+null / array) for literal nodes and `structurePanelConfig`, which adds the
+object type and its template mode, for structure nodes.
+
+## Documentation links
+
+`docs.ts` builds `https://goplasmatic.github.io/datalogic-rs/operators/<docsPage>.html#<anchor>`
+for every operator. The anchor is the operator's `## heading` normalised the
+way mdBook does it (lowercase, spaces to `-`, other symbols dropped), so
+word-named operators anchor as themselves (`#starts_with`, `#keys`) while
+symbolic ones go through their heading text (`+ (Add)` becomes `#-add`,
+`?? (Null Coalesce)` becomes `#-null-coalesce`). The `type` operator lives on
+the control-flow page, which is why the `utility` category maps there.
+
+## Example entries
+
+### Unary operator
+
+```typescript
+'!': {
+  name: '!',
+  label: 'Not',
+  category: 'logical',
+  description: 'Logical NOT - negates a boolean value',
+  arity: {
+    type: 'unary',
+    min: 1,
+    max: 1,
+    args: [{ name: 'value', label: 'Value', type: 'any', required: true }],
+  },
+  help: {
+    summary: 'Negates a boolean value',
+    returnType: 'boolean',
+    examples: [
+      { title: 'Negate true', rule: { '!': [true] }, result: false },
+      { title: 'Negate empty array', rule: { '!': [[]] }, result: true },
+    ],
+    notes: ['Falsy values: false, null, 0, "" (empty string), [] and {}'],
+    seeAlso: ['!!', 'and', 'or'],
+  },
+  ui: { icon: 'ban', shortLabel: '!', nodeType: 'operator' },
+}
+```
+
+### Variable operator with scope jumps
+
+```typescript
+val: {
+  name: 'val',
+  label: 'Value',
+  category: 'variable',
+  description: 'Access data using array path with scope jump support',
+  arity: {
+    type: 'special',
+    min: 1,
+    args: [{ name: 'path', label: 'Path', type: 'path', required: true }],
+  },
+  help: {
+    summary: 'Access data using array path components with scope jump and metadata support',
+    returnType: 'any',
+    examples: [
+      {
+        title: 'Array path',
+        rule: { val: ['user', 'profile', 'name'] },
+        data: { user: { profile: { name: 'Alice' } } },
+        result: 'Alice',
+      },
+      {
+        title: 'Get iteration index',
+        rule: { map: [['a', 'b', 'c'], { val: [[1], 'index'] }] },
+        result: [0, 1, 2],
+      },
+    ],
+    notes: ['No default argument: use var\'s second argument or ?? for fallbacks'],
+    seeAlso: ['var', 'exists'],
+  },
+  ui: { icon: 'database', nodeType: 'variable', scopeJump: true, metadata: true },
+}
+```
+
+### Iterator with context variables
+
+```typescript
+map: {
+  name: 'map',
+  label: 'Map',
+  category: 'array',
+  description: 'Transform each element of an array',
+  arity: {
+    type: 'binary',
+    min: 2,
+    max: 2,
+    args: [
+      { name: 'array', label: 'Array', type: 'array', required: true },
+      { name: 'expression', label: 'Expression', type: 'expression', required: true },
+    ],
+  },
+  help: {
+    summary: 'Apply an expression to each element of an array',
+    returnType: 'array',
+    examples: [
+      {
+        title: 'With index',
+        rule: { map: [{ var: 'items' }, { cat: ['Item ', { val: [[1], 'index'] }] }] },
+        data: { items: ['a', 'b'] },
+        result: ['Item 0', 'Item 1'],
+      },
+    ],
+    seeAlso: ['filter', 'reduce'],
+  },
+  ui: { icon: 'repeat', nodeType: 'iterator', iteratorContext: true },
+  panel: {
+    sections: [/* array + expression fields */],
+    contextVariables: [
+      { name: '', label: 'Current Element', accessor: 'var', example: '{"var": ""}', description: '...' },
+      { name: 'index', label: 'Index', accessor: 'val', example: '{"val": [[1], "index"]}', description: '...' },
+    ],
+  },
+}
+```
+
+## Adding an operator
+
+1. Add the entry to the matching `operators/<category>.ts` module (or a new
+   module spread into `operators/index.ts`).
+2. Verify every example against the engine (`cargo run` the CLI or rely on
+   `examples.test.ts`) and write the results exactly as the engine returns
+   them.
+3. Run `npx vitest run src/components/logic-editor/config` and `npx tsc -b`.
+   The registry test fails until the UI set equals the engine's
+   `builtinOperatorNames()`.

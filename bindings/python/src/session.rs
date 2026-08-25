@@ -103,9 +103,9 @@ fn type_of(v: &DataValue<'_>) -> &'static str {
 /// (and JSON-string results in every successful slot), so one bad
 /// payload can't abort the other N-1.
 ///
-/// ``tag`` is the stable engine error tag (e.g. ``"NaN"``,
-/// ``"Thrown"``), ``operator`` the outermost failing operator when
-/// known.
+/// ``tag`` is the stable engine error tag (e.g. ``"Thrown"``,
+/// ``"TypeError"``, ``"ArithmeticError"``), ``operator`` the outermost
+/// failing operator when known.
 #[pyclass(name = "BatchItemError", module = "datalogic_py", frozen)]
 pub struct BatchItemError {
     /// Stable error tag (`datalogic_rs::Error::tag()`), or

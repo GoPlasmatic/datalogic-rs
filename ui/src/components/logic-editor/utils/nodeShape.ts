@@ -6,6 +6,7 @@
 import { getOperator } from '../config/operators';
 import type { OperatorCategory } from '../config/operators.types';
 import type { CellData, OperatorNodeData } from '../types';
+import { isIfOperator, isDecisionCells } from './converters/if-else-converter';
 
 export type NodeShape =
   | 'tap'        // var / val / exists — a plug into the data
@@ -116,8 +117,10 @@ export function operatorRenderKind(
   // computed path needs the full card (the plug can't host a child handle).
   if (data.category === 'variable' && !hasChildCell(data.cells)) return 'tap';
 
-  // if / else-if — each condition is its own decision diamond (when/then/else).
-  if (data.operator === 'if') return 'decision';
+  // if / else-if: each condition is its own decision diamond (when/then/else).
+  // A generic `if` node (shorthand or single-operand form) has no diamond
+  // inputs and renders as a card so its wired operand keeps a handle.
+  if (isIfOperator(data.operator) && isDecisionCells(data.cells)) return 'decision';
 
   // Boolean AND / OR / NOT with EVERY operand wired to a child renders as a real
   // logic-gate silhouette (design-system gate shapes) — input ports on the left,

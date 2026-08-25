@@ -23,7 +23,16 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /* Path aliases: mirror vite.lib.config.ts so the dts build resolves the
+       WASM dep to the vendored copy (refreshed by `sync-wasm`) rather than
+       the node_modules pin, which tracks the last published version. */
+    "paths": {
+      "@/*": ["./src/*"],
+      "@logic-editor/*": ["./src/components/logic-editor/*"],
+      "@goplasmatic/datalogic-wasm": ["./vendor/datalogic"]
+    }
   },
   "include": [
     "src/css.d.ts",
@@ -36,6 +45,8 @@
     "src/hooks/**/*",
     "src/contexts/**/*",
     "src/components/debug-panel/**/*",
-    "src/components/logic-editor/LogicEditor.tsx"
+    "src/**/__tests__/**",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
   ]
 }

@@ -98,10 +98,9 @@ export function useNodeOperations(
   const addArgumentToNode = useCallback(
     (nodeId: string, nodeType: 'literal' | 'variable' | 'operator' = 'literal', operatorName?: string) => {
       setInternalNodes((prev) => {
-        pushToUndoStack(prev);
-
         const result = addArgument(prev, nodeId, nodeType, operatorName);
         if (!result) return prev;
+        pushToUndoStack(prev);
 
         hasEditedRef.current = true;
         onNodesChange?.(result.nodes);
@@ -114,10 +113,9 @@ export function useNodeOperations(
   const removeArgumentFromNode = useCallback(
     (nodeId: string, argIndex: number) => {
       setInternalNodes((prev) => {
-        pushToUndoStack(prev);
-
         const result = removeArgument(prev, nodeId, argIndex);
         if (!result) return prev;
+        pushToUndoStack(prev);
 
         hasEditedRef.current = true;
         onNodesChange?.(result);
@@ -130,10 +128,9 @@ export function useNodeOperations(
   const wrapNodeInOperatorFn = useCallback(
     (nodeId: string, operator: string) => {
       setInternalNodes((prev) => {
-        pushToUndoStack(prev);
-
         const result = wrapInOperator(prev, nodeId, operator);
         if (!result) return prev;
+        pushToUndoStack(prev);
 
         const wrapperNode = result[result.length - 1];
         const newOperatorId = wrapperNode.id;
@@ -151,10 +148,9 @@ export function useNodeOperations(
   const duplicateNodeFn = useCallback(
     (nodeId: string) => {
       setInternalNodes((prev) => {
-        pushToUndoStack(prev);
-
         const result = duplicateNodeTree(prev, nodeId);
         if (!result) return prev;
+        pushToUndoStack(prev);
 
         hasEditedRef.current = true;
         onNodesChange?.(result.nodes);

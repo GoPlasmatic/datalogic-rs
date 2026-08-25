@@ -10,7 +10,7 @@ PHP bindings for [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs),
 the JSONLogic rules engine with one Rust core and official bindings for
 Rust, Node.js, the browser (WASM), Python, Go, Java, .NET, and PHP. Same
 rules, same semantics: every binding runs the same core and passes the
-same 1,636-case conformance battery (58 suites). Compile once, evaluate
+same 1,658-case conformance battery (58 suites). Compile once, evaluate
 many, natively in PHP.
 
 For the cross-runtime overview and the API-tier model every binding
@@ -131,8 +131,8 @@ foreach ($results as $i => $r) {
 ```
 
 `BatchItemError` exposes `$status` (the raw C-ABI status code), `$tag`
-(stable engine tag, e.g. `"Thrown"`, `"NaN"`), `$message`, and
-`$operator` (outermost failing operator, when known).
+(stable engine tag, e.g. `"Thrown"`, `"TypeError"`, `"InvalidOperator"`),
+`$message`, and `$operator` (outermost failing operator, when known).
 
 ## Sessions (hot loops)
 
@@ -240,17 +240,20 @@ Everything the binding throws extends
 
 The structured fields ride on the base class as public readonly
 properties: `$errorType` is the stable engine tag (e.g. `"ParseError"`,
-`"Thrown"`, `"NaN"`), `$operatorName` the outermost failing operator
+`"Thrown"`, `"TypeError"`, `"InvalidOperator"`, or the binding-level
+`"TypeMismatch"`), `$operatorName` the outermost failing operator
 (e.g. `"+"`), and `$pathJson` the root-to-leaf error path as a JSON
-array; each is `null` when not applicable.
+array; each is `null` when not applicable. Arithmetic NaN surfaces as
+`$errorType === "Thrown"` with a message carrying `{"type":"NaN"}`;
+there is no `"NaN"` tag.
 
 ```php
 use Goplasmatic\Datalogic\Exception\EvaluateException;
 
 try {
-    $engine->apply('{"+":["x",1]}', '{}');  // arithmetic on a non-numeric string
+    $engine->apply('{"+":["x",1]}', '{}');  // arithmetic on a non-numeric string throws {"type":"NaN"}
 } catch (EvaluateException $e) {
-    echo $e->errorType;     // runtime error tag, e.g. "Thrown", "NaN"
+    echo $e->errorType;     // "Thrown"
     echo $e->operatorName;  // "+"
     echo $e->pathJson;      // JSON-array path through the compiled tree
 }

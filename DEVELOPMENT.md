@@ -12,8 +12,8 @@ picture (what depends on what, why the layout is shaped this way), see
 | `wasm-pack` | latest  | Builds `bindings/wasm` (only for WASM/UI changes)              |
 | Node.js     | 20+     | Builds and runs `ui`, `bindings/wasm`, and `bindings/node`     |
 | Python      | 3.10+   | Builds `bindings/python` via `maturin`                         |
-| Go          | 1.22+   | Builds `bindings/go` (also needs a C compiler for cgo)         |
-| Java JDK    | 11+     | Runs JVM tests and packages the JAR via Maven                  |
+| Go          | 1.25+   | Builds `bindings/go` (`go.mod` declares `go 1.25`; also needs a C compiler for cgo) |
+| Java JDK    | 22+     | FFM (`java.lang.foreign`) downcalls; `--enable-native-access=ALL-UNNAMED` on 24+ |
 | Maven       | 3.8+    | Builds `bindings/jvm` (only for JVM changes)                   |
 | .NET SDK    | 8.0+    | Builds and tests `bindings/dotnet` (only for .NET changes)     |
 | PHP         | 8.4+    | Runs PHP tests (requires `ext-ffi` enabled in `php.ini`)       |
@@ -80,15 +80,16 @@ cd bindings/wasm && ./build.sh && cd ../..
 #    WASM or browser side.
 cd bindings/node && npm install && npx napi build --platform --release && cd ../..
 
-# 4. UI — needs the locally-built WASM linked into node_modules first.
-cd bindings/wasm/pkg && npm link
-cd ../../../ui && npm link @goplasmatic/datalogic-wasm && npm install
+# 4. UI: picks up the WASM built in step 2 automatically.
+cd ui && npm install
 npm run dev   # or: npm run build:lib for the publishable bundle
 ```
 
-The `npm link` step is what wires the *just-built* WASM into the UI; without
-it, `npm install` would pull `@goplasmatic/datalogic-wasm` from the registry and
-silently mask any local Rust changes you wanted to test.
+The UI does not resolve `@goplasmatic/datalogic-wasm` from the registry:
+its Vite and TypeScript configs alias the package to `ui/vendor/datalogic`,
+and the `predev` / `prebuild*` lifecycle hooks copy `../bindings/wasm/pkg`
+there (`npm run sync-wasm`). Rebuild WASM first, then start the UI, and the
+fresh build is what you are testing; see [`ui` below](#ui--react-component).
 
 ## `crates/datalogic-rs` — Rust library
 
@@ -284,12 +285,27 @@ target: Packagist `goplasmatic/datalogic`. End-user API:
 cd ui
 npm install
 npm run dev              # local playground, hot reload (auto-syncs WASM)
+npm test                 # vitest: registry, round trips, trace, samples
 npm run build            # standalone playground (dist/)
 npm run build:lib        # publishable component (dist/)
 npm run build:embed      # embeddable widget for the docs site (dist-embed/)
 npm run lint
 npm run sync-wasm        # manually re-copy ../bindings/wasm/pkg/ → vendor/datalogic/
 ```
+
+`npm test` runs against the vendored engine rather than fixtures, so it fails
+when the UI's picture of the engine drifts:
+
+| Suite | Location | Guards |
+|-------|----------|--------|
+| Registry and help | `src/components/logic-editor/config/__tests__/` | Registry matches `builtinOperatorNames()`; every help example evaluates to its documented result |
+| Round trips | `src/components/logic-editor/utils/__tests__/` | A corpus covering every operator plus the shipped samples survives `jsonLogicToNodes` → `nodesToJsonLogic` and evaluates identically; edge ids stay unique |
+| Editing | `src/components/logic-editor/services/__tests__/` | Argument add/remove, deletion reindexing, duplicate/paste/wrap, inline edits |
+| Trace | `src/components/logic-editor/utils/trace/__tests__/` | Real `evaluateWithTrace` envelopes map onto the diagram with no synthetic nodes |
+| App surface | `ui/tests/` | Samples evaluate to their stored results, share URLs round trip, every operator is reachable from the menus, evaluator/config helpers |
+
+Adding an operator, a help example, or a sample means giving it the result the
+engine actually produces: the suites compare against a live evaluation.
 
 Three Vite configs power the three build modes:
 
@@ -305,6 +321,14 @@ hooks run it automatically, so the typical loop is just:
 cd bindings/wasm && ./build.sh    # rebuild after Rust changes
 cd ../../ui && npm run dev        # predev re-vendors the fresh pkg/
 ```
+
+`@goplasmatic/datalogic-wasm` is listed as a **devDependency** pinned to the
+last published release. Nothing in the build resolves it: `vite.config.ts`,
+`vite.lib.config.ts`, `vite.embed.config.ts`, `tsconfig.app.json` and
+`tsconfig.lib.json` all alias the package to `vendor/datalogic`. The pin
+exists so the package name resolves for editors and for a plain `npm install`;
+`release-build-ui.yml` rewrites it to the version being published. The library
+bundle embeds the WASM engine, so consumers install neither.
 
 ## Releases
 
@@ -335,9 +359,14 @@ up. Still open:
 
 ### One-time registry / marketing ops (added 2026-07-03; maintainer-only)
 
-Registry state: **all nine registries serve 5.1.0** (2026-07-17) —
-crates.io, npm ×3, PyPI, NuGet, the Go proxy, Packagist (registered
-2026-07-03), and Maven Central (first publish 2026-07-07). Done on 2026-07-03: Packagist
+Registry state is a living figure; the release workflow run for the
+latest `v*` tag is the source of truth, not this paragraph. Last
+recorded check (2026-08-19, the 5.2.0 release): eight of the nine
+registries served the tag (crates.io, npm ×3, PyPI, NuGet, the Go proxy,
+and Maven Central, first published 2026-07-07); Packagist (registered
+2026-07-03) lagged because the PHP dist push token had expired, so the
+PHP leg needs `PHP_DIST_PUSH_TOKEN` rotated and `release.yml` rerun on
+the tag. Done on 2026-07-03: Packagist
 registration + webhook, GitHub Discussions enabled, wiki disabled. Done
 on 2026-07-07: first Maven Central publish (`io.github.goplasmatic:datalogic`);
 the root README's Maven row now carries the shields.io maven-central
@@ -360,7 +389,11 @@ Promotion sequencing, launch checklists, and adoption metrics live in
 
 ## `tools/benchmark` — performance harness
 
-Dev-only, never published. Two binaries share `src/lib.rs`:
+Dev-only, never published. Four binaries share `src/lib.rs`: `self`
+(regression baseline), `compare` (cross-library matrix), `boundary_core`
+(the rust-core runner for the per-binding boundary benchmark under
+`tools/benchmark/boundary/`), and `profile_macro` (hammers one macro
+suite in a hot loop as a feeder for samply / Instruments):
 
 ```bash
 # datalogic-rs alone, fast arena path
@@ -369,6 +402,13 @@ cargo run --release -p datalogic-bench --bin self -- --all   # every suite + JSO
 
 # Cross-library comparison (only datalogic-rs ships by default)
 cargo run --release -p datalogic-bench --bin compare -- --all
+
+# Per-binding boundary cost, rust-core column (other runtimes: boundary/run.sh).
+# The workloads dir defaults to tools/benchmark/boundary/workloads/.
+cargo run --release -p datalogic-bench --bin boundary_core
+
+# Profiler feeder: <suite-substring> [seconds], one macro suite in a hot loop
+cargo run --release -p datalogic-bench --bin profile_macro -- checkout 10
 ```
 
 Reports land in `tools/benchmark/output/` (gitignored). To add another
@@ -377,21 +417,58 @@ JSONLogic implementation as a comparison subject, see
 
 ## Adding a built-in operator
 
-1. Add a variant to `OpCode` in `crates/datalogic-rs/src/opcode.rs` and wire its
-   `FromStr` + `as_str()` entries. `Engine::builtin_operator_names()` is derived
-   from the same table, so the new name is reported automatically.
-2. Implement `evaluate_<op>` under `crates/datalogic-rs/src/operators/<category>/`
-   following the established signature
-   (`args: &'a [CompiledNode], ctx: &mut ContextStack<'a>, engine: &Engine, arena: &'a Bump`).
-3. Add a dispatch arm in `crates/datalogic-rs/src/engine/dispatch.rs` (or in
-   `OpCode::evaluate_direct()` — same path).
-4. Add a JSON suite under `crates/datalogic-rs/tests/suites/<category>/` covering
-   the happy path and at least one error case. See
-   [crates/datalogic-rs/tests/README.md](./crates/datalogic-rs/tests/README.md) for the
-   suite format.
-5. If you also want it accessible from JS, no further work — the WASM
-   wrapper exposes the engine as-is; new operators are picked up
-   automatically once you rebuild WASM.
+A built-in operator is wired through several places in the tree. The
+module doc at the top of `crates/datalogic-rs/src/opcode.rs` carries the
+short form of this list; this is the full one.
+
+1. **OpCode.** In `crates/datalogic-rs/src/opcode.rs`, add a variant to
+   `OpCode`, an entry to `OPCODE_NAMES` (canonical name first, then any
+   aliases; `FromStr` is a scan over this table, so there is no separate
+   parse arm to write), and an `as_str()` arm. The opcode unit tests
+   enforce that every name round-trips. `Engine::builtin_operator_names()`
+   is derived from the same table, so the new name is reported
+   automatically.
+2. **Implementation.** Add `evaluate_<op>` under
+   `crates/datalogic-rs/src/operators/<category>/` following the
+   established signature
+   (`args: &'a [CompiledNode], ctx: &mut ContextStack<'a>, engine: &Engine, arena: &'a Bump`)
+   returning `Result<&'a DataValue<'a>>`.
+3. **Dispatch.** Add an arm to the `dispatch_node_inner` match in
+   `crates/datalogic-rs/src/engine/dispatch.rs`.
+4. **Optimizer classification.** The compiler treats an operator as a
+   pure function of its arguments unless told otherwise. If the new
+   operator reads the data context, runs a callback per element, has
+   side effects, or depends on runtime state, add it to the dynamic
+   arms of `opcode_is_static` in `crates/datalogic-rs/src/node/logic.rs`
+   (so it is never constant-folded) and to `opcode_is_cse_pure`,
+   `is_iterator_opcode`, or `child_never_cacheable` in
+   `crates/datalogic-rs/src/compile/optimize/cse.rs` (so the CSE pass
+   neither memoizes it nor caches inside its per-item bodies). `group_by`
+   and keyed `distinct` (5.2.0) are the worked example; a pure operator
+   needs nothing here.
+5. **Suite.** Add a JSON suite under
+   `crates/datalogic-rs/tests/suites/<category>/` covering the happy path
+   and at least one error case, and register its path in
+   `crates/datalogic-rs/tests/suites/index.json`; the runner only
+   discovers files listed there. See
+   [crates/datalogic-rs/tests/README.md](./crates/datalogic-rs/tests/README.md)
+   for the suite format.
+6. **Feature gating (new family only).** If the operator starts a new
+   feature family, declare the feature in `crates/datalogic-rs/Cargo.toml`,
+   `#[cfg]`-gate the variant, dispatch arm, and implementation, and add
+   the feature to every consumer that enables families explicitly:
+   `bindings/wasm/Cargo.toml`, `bindings/node/Cargo.toml`,
+   `bindings/python/Cargo.toml`, `bindings/c/Cargo.toml` (Go, JVM, .NET,
+   and PHP inherit from it), `tools/benchmark/Cargo.toml` (otherwise its
+   suites show `ERR` in the matrix), and the `feature-matrix` job in
+   `.github/workflows/ci.yml`. An operator joining an existing family
+   reuses that family's gate.
+7. **Editor and docs.** Add the operator's picker entry under
+   `ui/src/components/logic-editor/config/operators/` (one file per
+   category) so the React editor offers it, and document it on the
+   matching page under `docs/src/operators/`. The WASM and Node bindings
+   need no change: they expose the engine as-is, so the operator is live
+   once you rebuild them.
 
 ## Adding a custom operator (your own application)
 

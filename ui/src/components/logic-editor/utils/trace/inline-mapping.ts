@@ -1,5 +1,5 @@
 import type { ExpressionNode } from '../../types/trace';
-import { traceIdToNodeId } from './evaluation-results';
+import { traceIdToNodeId } from './trace-ids';
 
 /**
  * Map all children of an expression node to a parent visual node ID (for inlined children)

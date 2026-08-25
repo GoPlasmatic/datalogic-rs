@@ -5,15 +5,15 @@ import { getParentInfo } from './types';
 import { createArgEdge, createBranchEdge } from '../node-factory';
 import { isJsonLogicExpression } from '../type-helpers';
 import { generateExpressionText } from '../formatting';
-
-// Placeholder marker used in formatted JSON for expressions
-const EXPR_PLACEHOLDER = '{{EXPR}}';
-// The placeholder as it appears in JSON.stringify output (with quotes)
-const EXPR_PLACEHOLDER_QUOTED = `"${EXPR_PLACEHOLDER}"`;
+import { formatStructureWithPlaceholders } from './structure-paths';
 
 /**
  * Convert a data structure (object or array with potential JSONLogic expressions)
  * to a structure node that displays formatted JSON with linked expression branches.
+ *
+ * Only embedded expressions become elements (and child nodes); every literal
+ * field stays inside `data.expression`, which the serializer walks, substituting
+ * each element's child at its recorded path.
  */
 export function convertStructure(
   value: Record<string, unknown> | unknown[],
@@ -24,59 +24,41 @@ export function convertStructure(
   const nodeId = uuidv4();
   const isArray = Array.isArray(value);
 
-  // Collect elements and build formatted JSON with placeholders
-  const elements: StructureElement[] = [];
+  // Collect expression elements in document order
+  const collected: StructureElement[] = [];
   let expressionIndex = 0;
 
-  // Build a modified structure for JSON formatting with placeholders
-  const structureWithPlaceholders = walkAndCollect(
-    value,
-    [],
-    (path, item, key) => {
-      if (isJsonLogicExpression(item)) {
-        // This is a JSONLogic expression - create a child node for it
-        const branchId = convertValue(item as JsonLogicValue, {
-          nodes: context.nodes,
-          edges: context.edges,
-          parentId: nodeId,
-          argIndex: expressionIndex,
-          templating: context.templating,
-        });
+  walkStructure(value, [], (path, item, key) => {
+    // This is a JSONLogic expression - create a child node for it
+    // `branchType: 'branch'` keeps the child from adding its own arg edge:
+    // this node pushes one branch edge per expression element below, and
+    // edge ids are `${source}-${target}`, so both would collide.
+    const branchId = convertValue(item as JsonLogicValue, {
+      nodes: context.nodes,
+      edges: context.edges,
+      parentId: nodeId,
+      argIndex: expressionIndex,
+      branchType: 'branch',
+      templating: context.templating,
+    });
 
-        elements.push({
-          type: 'expression',
-          path,
-          key,
-          branchId,
-          startOffset: 0, // Will be calculated after formatting
-          endOffset: 0,
-        });
+    collected.push({
+      type: 'expression',
+      path,
+      key,
+      branchId,
+      startOffset: 0,
+      endOffset: 0,
+    });
 
-        expressionIndex++;
-        return EXPR_PLACEHOLDER;
-      } else {
-        // Inline value - keep as-is for formatting
-        return item;
-      }
-    }
+    expressionIndex++;
+  });
+
+  // Format the JSON with placeholders and compute the element offsets
+  const { formattedJson, elements } = formatStructureWithPlaceholders(
+    value as JsonLogicValue,
+    collected
   );
-
-  // Format the JSON with placeholders
-  const formattedJson = JSON.stringify(structureWithPlaceholders, null, 2);
-
-  // Calculate offsets for expression placeholders in the formatted JSON
-  // Note: JSON.stringify wraps strings in quotes, so we search for "{{EXPR}}"
-  let searchPos = 0;
-  for (const element of elements) {
-    if (element.type === 'expression') {
-      const placeholderPos = formattedJson.indexOf(EXPR_PLACEHOLDER_QUOTED, searchPos);
-      if (placeholderPos !== -1) {
-        element.startOffset = placeholderPos;
-        element.endOffset = placeholderPos + EXPR_PLACEHOLDER_QUOTED.length;
-        searchPos = element.endOffset;
-      }
-    }
-  }
 
   // Generate expression text for collapsed view
   const expressionText = generateExpressionText(value as JsonLogicValue, 100);
@@ -123,43 +105,35 @@ export function convertStructure(
 }
 
 /**
- * Walk through a structure (object or array) and transform values.
- * For JSONLogic expressions, the callback returns the replacement value.
- * For other values, they are walked recursively if they are objects/arrays.
+ * Walk a structure (object or array) in document order and call `onExpression`
+ * for every embedded JSONLogic expression with its path. Nested plain
+ * structures are descended into; expressions are not.
  */
-function walkAndCollect(
+function walkStructure(
   value: unknown,
   path: string[],
-  onValue: (path: string[], item: unknown, key?: string) => unknown
-): unknown {
+  onExpression: (path: string[], item: unknown, key?: string) => void
+): void {
   if (Array.isArray(value)) {
-    return value.map((item, index) => {
+    value.forEach((item, index) => {
       const itemPath = [...path, String(index)];
       if (isJsonLogicExpression(item)) {
-        return onValue(itemPath, item);
+        onExpression(itemPath, item);
       } else if (typeof item === 'object' && item !== null) {
-        // Recursively walk nested structures
-        return walkAndCollect(item, itemPath, onValue);
+        walkStructure(item, itemPath, onExpression);
       }
-      return item;
     });
+    return;
   }
 
   if (typeof value === 'object' && value !== null) {
-    const result: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value)) {
       const itemPath = [...path, key];
       if (isJsonLogicExpression(item)) {
-        result[key] = onValue(itemPath, item, key);
+        onExpression(itemPath, item, key);
       } else if (typeof item === 'object' && item !== null) {
-        // Recursively walk nested structures
-        result[key] = walkAndCollect(item, itemPath, onValue);
-      } else {
-        result[key] = item;
+        walkStructure(item, itemPath, onExpression);
       }
     }
-    return result;
   }
-
-  return value;
 }

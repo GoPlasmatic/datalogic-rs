@@ -2,7 +2,7 @@
 
 Operations for taking objects apart: enumerate keys, values, or key/value rows.
 These are the read-side complement of templating's computed-key object
-construction — `entries` in particular turns any object into rows that the
+construction; `entries` in particular turns any object into rows that the
 array vocabulary (`map`, `filter`, `group_by`, ...) can iterate.
 
 > **Feature flags (Rust crate).** All object operators require the `ext-object` feature. Every language binding enables all operator features. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
@@ -113,6 +113,6 @@ Turn an object into an array of `{key, value}` rows.
 ---
 
 **Notes (all three operators):**
-- `null` input yields `[]` — convenient when the object field may be absent.
+- `null` input yields `[]`, convenient when the object field may be absent.
 - Any other non-object input (array, string, number, boolean) is an error.
-- Keys come out in stored order, duplicates included, exactly as the object carries them.
+- Keys come out in stored order, duplicates included, exactly as the object carries them. What order an object carries depends on how the data entered: JSON text parsed by the engine (the `ParsedData` and string entry points, and the Node, WASM, and C-based bindings) keeps source-text order and duplicate keys, while data passed as a `serde_json::Value` or as a Python dict is key-sorted and duplicate-free (so `{ "zed": 10, "alpha": 7 }` comes out as `["alpha", "zed"]`). Do not rely on source-text order across input routes.

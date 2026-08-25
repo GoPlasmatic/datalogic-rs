@@ -4,7 +4,7 @@
  * Context menu for canvas (pane) operations:
  * - Add Variable
  * - Add Literal
- * - Add Operator (submenu by category)
+ * - Add Operator (submenu by category, shared with every other picker)
  * - Add Condition
  * - Paste
  * - Select All
@@ -26,8 +26,7 @@ import {
 import { useReactFlow } from '@xyflow/react';
 import { ContextMenu, type MenuItemConfig } from './ContextMenu';
 import { useEditorContext } from '../context/editor';
-import { getOperatorsGroupedByCategory } from '../config/operators';
-import type { OperatorCategory } from '../config/operators.types';
+import { buildOperatorSubmenu } from '../utils/menu-builder';
 import { REACT_FLOW_OPTIONS } from '../constants/layout';
 
 export interface CanvasContextMenuProps {
@@ -54,43 +53,11 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
 
   const { fitView, zoomTo } = useReactFlow();
 
-  // Build operator submenu grouped by category
-  const operatorSubmenu = useMemo<MenuItemConfig[]>(() => {
-    const grouped = getOperatorsGroupedByCategory();
-    const items: MenuItemConfig[] = [];
-
-    // Priority order for categories
-    const categoryOrder = [
-      'arithmetic',
-      'comparison',
-      'logical',
-      'string',
-      'array',
-      'control',
-      'datetime',
-      'validation',
-      'variable',
-      'utility',
-      'error',
-    ];
-
-    for (const category of categoryOrder) {
-      const operators = grouped.get(category as OperatorCategory);
-      if (!operators || operators.length === 0) continue;
-
-      items.push({
-        id: `category-${category}`,
-        label: capitalizeFirst(category),
-        submenu: operators.slice(0, 10).map((op) => ({
-          id: `op-${op.name}`,
-          label: op.label || op.name,
-          onClick: () => createNode('operator', op.name),
-        })),
-      });
-    }
-
-    return items;
-  }, [createNode]);
+  // Operator submenu grouped by category (single source of truth)
+  const operatorSubmenu = useMemo<MenuItemConfig[]>(
+    () => buildOperatorSubmenu((opName) => createNode('operator', opName)),
+    [createNode]
+  );
 
   // Build menu items
   const menuItems = useMemo<MenuItemConfig[]>(() => {
@@ -135,7 +102,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
       id: 'paste',
       label: 'Paste',
       icon: <Clipboard size={14} />,
-      shortcut: '\u2318V',
+      shortcut: '⌘V',
       disabled: !canPaste,
       onClick: () => pasteNode(),
     });
@@ -145,7 +112,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
       id: 'select-all',
       label: 'Select All',
       icon: <MousePointer2 size={14} />,
-      shortcut: '\u2318A',
+      shortcut: '⌘A',
       disabled: !hasNodes(),
       onClick: () => selectAllNodes(),
     });
@@ -187,7 +154,3 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
 
   return <ContextMenu x={x} y={y} items={menuItems} onClose={onClose} />;
 });
-
-function capitalizeFirst(str: string): string {
-  return str.charAt(0).toUpperCase() + str.slice(1);
-}

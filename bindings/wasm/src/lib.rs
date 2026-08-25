@@ -179,9 +179,27 @@ fn parse_config_value(value: &JsValue) -> Result<Option<EvaluationConfig>, JsVal
         .map_err(|e| engine_err_to_js(&e))
 }
 
+// Not `pub`: a start function only needs to run at instantiation. Making
+// it public also exported a no-op `init(): void` in every target's
+// `.d.ts`, which shadowed the web target's real loader for anyone writing
+// `import { init } from '@goplasmatic/datalogic-wasm'`.
 #[wasm_bindgen(start)]
-pub fn init() {
+fn start() {
     console_error_panic_hook::set_once();
+}
+
+/// Every built-in operator name this WASM build accepts, in the engine's
+/// registry order: canonical names first, then their aliases (`var`,
+/// `?:`, `match`). Reflects the compiled feature set, so tooling (the
+/// visual editor, linters, palettes) can validate rules against the
+/// engine instead of a hand-maintained list. Mirrors
+/// `Engine::builtin_operator_names()` in the Rust crate.
+#[wasm_bindgen(js_name = builtinOperatorNames)]
+pub fn builtin_operator_names() -> Vec<String> {
+    RsEngine::new()
+        .builtin_operator_names()
+        .map(str::to_owned)
+        .collect()
 }
 
 /// Evaluate a JSONLogic expression against data.
@@ -218,9 +236,17 @@ pub fn evaluate(logic: &str, data: &str, templating: bool) -> Result<String, JsV
 /// * `templating` - If true, enables templating mode (multi-key objects compile to output-shaping templates with embedded JSONLogic)
 ///
 /// # Returns
-/// JSON string of the form `{ result, steps, expression_tree, error? }`. On
-/// runtime failure the `error` field carries the merged structured `Error`
-/// JSON (`type`, `message`, variant extras, optional `operator`/`path`).
+/// JSON string of the form
+/// `{ result, steps, expression_tree, error?, structured_error? }`. On
+/// runtime failure `result` is `null`, `error` carries the human-readable
+/// message, and `structured_error` the merged structured `Error` JSON
+/// (`type`, `message`, variant extras, optional `operator` / `node_ids`).
+/// Compile failures use the same envelope with an empty `steps` array and
+/// a placeholder `expression_tree` (`id: 0`, empty `expression`).
+///
+/// Uses default engine settings. To trace with a custom
+/// [`EvaluationConfig`] or custom operators, build an [`Engine`] and call
+/// [`Engine::evaluate_with_trace`].
 #[wasm_bindgen(js_name = evaluateWithTrace)]
 pub fn evaluate_with_trace(logic: &str, data: &str, templating: bool) -> Result<String, JsValue> {
     let engine = make_engine(templating, None);
@@ -514,6 +540,29 @@ impl Engine {
             engine: self.inner.clone(),
             arena: Bump::new(),
         }
+    }
+
+    /// Evaluate `logic` against `data` with an execution trace, honoring
+    /// this engine's templating flag, [`EvaluationConfig`], and custom
+    /// operators. Same envelope as the top-level [`evaluate_with_trace`]:
+    /// `{ result, steps, expression_tree, error?, structured_error? }`,
+    /// with runtime failures reported inside the envelope rather than
+    /// thrown. Mirrors `Engine.evaluateWithTrace` in the Node binding.
+    #[wasm_bindgen(js_name = evaluateWithTrace)]
+    pub fn evaluate_with_trace(&self, logic: &str, data: &str) -> String {
+        let run = self.inner.trace().eval_str(logic, data);
+        traced_run_to_json(&run)
+    }
+
+    /// Names of the custom operators registered on this engine via
+    /// `customOperators`, in registration order. Built-ins are listed by
+    /// the module-level [`builtin_operator_names`].
+    #[wasm_bindgen(js_name = customOperatorNames)]
+    pub fn custom_operator_names(&self) -> Vec<String> {
+        self.inner
+            .custom_operator_names()
+            .map(str::to_owned)
+            .collect()
     }
 }
 

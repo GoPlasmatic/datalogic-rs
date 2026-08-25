@@ -11,7 +11,7 @@ a fast Rust implementation of [JSONLogic](http://jsonlogic.com). Same
 rules, same semantics as the Rust crate, with the **compile-once /
 evaluate-many** pattern exposed natively — compile a rule once and
 evaluate it against thousands of data inputs without re-parsing. Every
-binding runs the same core and passes the same 1,636-case conformance
+binding runs the same core and passes the same 1,658-case conformance
 battery (58 suites).
 
 For the cross-runtime overview and the API-tier model every binding
@@ -76,6 +76,7 @@ The Python binding mirrors the Rust engine's
 | Data handle  | `DataHandle(json)` → `sess.evaluate_data(rule, data)` | Same payload evaluated many times: parse once, zero parse work per call |
 | Typed        | `sess.evaluate_bool/int/float/truthy(rule, data)` | Predicates and scalar results, no JSON decode on the way out |
 | Batch        | `sess.evaluate_batch(rule, datas)` / `sess.evaluate_many(rules, data)` | Many evaluations per native call, per-item errors |
+| Traced       | `engine.evaluate_with_trace(logic_json, data_json)` | Step-by-step debugging; feeds the React debugger |
 
 ### One-shot — `apply(rule, data)`
 
@@ -406,6 +407,22 @@ boundary harness's 8 KB workload, `session.evaluate_data_str` measures
 parse) and ~24 µs for the dict path (the per-call conversion walk).
 Every evaluate call releases the GIL, so a multi-threaded server gains
 real parallelism on top of the engine's native speed.
+
+## Building from source
+
+The binding lives in
+[`bindings/python/`](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/python)
+and builds with [maturin](https://www.maturin.rs) (needs a Rust
+toolchain and Python 3.10+):
+
+```bash
+git clone https://github.com/GoPlasmatic/datalogic-rs
+cd datalogic-rs/bindings/python
+python -m venv .venv && source .venv/bin/activate
+pip install maturin pytest
+maturin develop --release   # build + install into the venv
+pytest                      # run the test suite
+```
 
 ## Learn more
 

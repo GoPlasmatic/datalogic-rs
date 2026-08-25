@@ -15,10 +15,13 @@ import "fmt"
 type Error struct {
 	// Message is the human-readable error string.
 	Message string
-	// Type is the engine's stable error tag — one of "ParseError",
-	// "Thrown", "NaN", "Custom", "TypeMismatch", "InvalidArgument",
-	// "InternalError", etc. Match on this for programmatic error
-	// handling; Message is for humans.
+	// Type is the engine's stable error tag: one of "ParseError",
+	// "Thrown", "TypeError", "ArithmeticError", "InvalidOperator",
+	// "ConfigurationError", "Custom", etc., plus the binding-level
+	// "TypeMismatch", "InvalidArgument", and "InternalError". Arithmetic
+	// NaN failures surface as "Thrown" (the payload carries
+	// {"type":"NaN"}), never as a "NaN" tag. Match on this for
+	// programmatic error handling; Message is for humans.
 	Type string
 	// Operator is the outermost failing operator's name (e.g. "+" or
 	// "var"). Empty when the error didn't originate inside a named

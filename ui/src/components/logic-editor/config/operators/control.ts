@@ -177,9 +177,9 @@ export const controlOperators: Record<string, Operator> = {
       ],
     },
     help: {
-      summary: 'Ternary operator - exactly 3 arguments (condition, then, else)',
+      summary: 'Ternary form of if: condition, then, else',
       details:
-        'Simplified version of "if" that requires exactly 3 arguments. If the condition is truthy, returns the second argument; otherwise returns the third.',
+        'Alias of "if", presented as a 3-argument conditional. If the condition is truthy, returns the second argument; otherwise returns the third. Extra arguments behave exactly like an "if" else-if chain.',
       returnType: 'any',
       examples: [
         {
@@ -206,14 +206,14 @@ export const controlOperators: Record<string, Operator> = {
         },
       ],
       notes: [
-        'Exactly 3 arguments required',
-        'Use "if" for else-if chains',
-        'Equivalent to: if [condition, then, else]',
+        'Alias of "if": the engine treats both names identically',
+        'Extra arguments form else-if chains; a missing else returns null',
+        'Use "if" when you want the editor to manage else-if branches',
       ],
       seeAlso: ['if', '??'],
     },
     ui: {
-      icon: 'help-circle',
+      icon: 'circle-help',
       shortLabel: '?:',
       nodeType: 'decision',
     },
@@ -510,18 +510,23 @@ export const controlOperators: Record<string, Operator> = {
     category: 'control',
     description: 'Return first non-null value',
     arity: {
-      type: 'binary',
-      min: 2,
-      max: 2,
+      type: 'nary',
+      min: 1,
       args: [
-        { name: 'value', label: 'Value', type: 'any', required: true },
-        { name: 'fallback', label: 'Fallback', type: 'any', required: true },
+        {
+          name: 'value',
+          label: 'Value',
+          type: 'any',
+          required: true,
+          repeatable: true,
+          description: 'Candidates, checked left to right',
+        },
       ],
     },
     help: {
-      summary: 'Return the first value if not null/undefined, otherwise the fallback',
+      summary: 'Return the first non-null value of any number of arguments',
       details:
-        'Nullish coalescing operator. Unlike "or", this only checks for null/undefined, not other falsy values like 0 or empty string.',
+        'Nullish coalescing operator. Evaluates arguments left to right and returns the first that is not null. Unlike "or", this only skips null, not other falsy values like 0 or empty string. Returns null if every argument is null.',
       returnType: 'any',
       examples: [
         {
@@ -552,18 +557,27 @@ export const controlOperators: Record<string, Operator> = {
           data: { nickname: null, name: 'Alice' },
           result: 'Alice',
         },
+        {
+          title: 'Several fallbacks',
+          rule: { '??': [{ var: 'a' }, { var: 'b' }, 'fallback'] },
+          data: {},
+          result: 'fallback',
+          note: 'Any number of candidates; missing variables are null',
+        },
       ],
       notes: [
-        'Only replaces null/undefined',
+        'Only replaces null',
         '0, false, "" are NOT replaced (unlike "or")',
+        'Accepts any number of values; returns null when all are null',
         'Use "or" to also replace falsy values',
       ],
       seeAlso: ['or', 'if', '?:'],
     },
     ui: {
-      icon: 'circle-dot',
+      icon: 'circle-help',
       shortLabel: '??',
       nodeType: 'operator',
+      addArgumentLabel: 'Add Fallback',
     },
     panel: {
       sections: [
@@ -571,18 +585,12 @@ export const controlOperators: Record<string, Operator> = {
           id: 'args',
           fields: [
             {
-              id: 'value',
-              label: 'Value',
+              id: 'values',
+              label: 'Values',
               inputType: 'expression',
+              repeatable: true,
               required: true,
-              helpText: 'Value to check for null/undefined',
-            },
-            {
-              id: 'fallback',
-              label: 'Fallback',
-              inputType: 'expression',
-              required: true,
-              helpText: 'Value to return if first value is null/undefined',
+              helpText: 'Candidates checked left to right; the first non-null wins',
             },
           ],
         },

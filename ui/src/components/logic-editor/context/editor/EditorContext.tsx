@@ -15,7 +15,7 @@ import { useState, useCallback, useMemo, useEffect, useRef, type ReactNode } fro
 import type { LogicNode } from '../../types';
 import type { EditorContextValue } from './types';
 import { EditorContext } from './context';
-import { panelValuesToNodeData } from '../../utils/node-updaters';
+import { panelValuesToNodeData, nodeEditsEqual } from '../../utils/node-updaters';
 import { useSelectionState } from './useSelectionState';
 import { useHistoryState } from './useHistoryState';
 import { useClipboardState } from './useClipboardState';
@@ -209,7 +209,9 @@ export function EditorProvider({
 
     const updatedData = panelValuesToNodeData(selection.selectedNode.data, panelValues);
 
-    if (JSON.stringify(selection.selectedNode.data) !== JSON.stringify(updatedData)) {
+    // Only the editable parts count: seeding the panel from a node must not
+    // register as an edit (or push an undo entry).
+    if (!nodeEditsEqual(selection.selectedNode.data, updatedData)) {
       mutations.updateNode(selection.selectedNode.id, updatedData);
     }
   }, [selection.selectedNode, panelValues, mutations]);

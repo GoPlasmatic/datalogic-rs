@@ -30,7 +30,7 @@ export const arrayIterationOperators: Record<string, Operator> = {
     help: {
       summary: 'Apply an expression to each element of an array',
       details:
-        'Iterates over an array and applies the given expression to each element. Use {"var": ""} to access the current element. Use {"val": "index"} for the current index. Use {"val": [[1], "field"]} to access parent scope.',
+        'Iterates over an array and applies the given expression to each element. Use {"var": ""} to access the current element, {"val": [[1], "index"]} for the current index and {"val": [[1], "field"]} to read a field from the parent scope.',
       returnType: 'array',
       examples: [
         {
@@ -49,11 +49,21 @@ export const arrayIterationOperators: Record<string, Operator> = {
           rule: {
             map: [
               { var: 'items' },
-              { cat: ['Item ', { val: 'index' }, ': ', { var: '' }] },
+              { cat: ['Item ', { val: [[1], 'index'] }, ': ', { var: '' }] },
             ],
           },
           data: { items: ['a', 'b', 'c'] },
           result: ['Item 0: a', 'Item 1: b', 'Item 2: c'],
+          note: 'The index is only reachable through the [[1], "index"] scope form',
+        },
+        {
+          title: 'Object keys',
+          rule: {
+            map: [{ var: 'o' }, { cat: [{ val: [[1], 'key'] }, '=', { var: '' }] }],
+          },
+          data: { o: { a: 1, b: 2 } },
+          result: ['a=1', 'b=2'],
+          note: 'Mapping an object visits its values; [[1], "key"] is the current key',
         },
         {
           title: 'Access parent scope',
@@ -69,7 +79,8 @@ export const arrayIterationOperators: Record<string, Operator> = {
       ],
       notes: [
         '{"var": ""} = current element',
-        '{"val": "index"} = current index (0, 1, 2...)',
+        '{"val": [[1], "index"]} = current index (0, 1, 2...); {"val": [[1], "key"]} = current key when mapping an object',
+        '{"val": "index"} (plain string) is a normal key lookup and returns null',
         '{"val": [[1], "field"]} = parent scope field',
         'Returns a new array; original unchanged',
       ],
@@ -115,7 +126,7 @@ export const arrayIterationOperators: Record<string, Operator> = {
           name: 'index',
           label: 'Index',
           accessor: 'val',
-          example: '{"val": "index"}',
+          example: '{"val": [[1], "index"]}',
           description: 'Zero-based index of the current element (0, 1, 2...)',
         },
       ],
@@ -178,7 +189,7 @@ export const arrayIterationOperators: Record<string, Operator> = {
           rule: {
             filter: [
               ['a', 'b', 'c', 'd'],
-              { '==': [{ '%': [{ val: 'index' }, 2] }, 0] },
+              { '==': [{ '%': [{ val: [[1], 'index'] }, 2] }, 0] },
             ],
           },
           result: ['a', 'c'],
@@ -188,13 +199,13 @@ export const arrayIterationOperators: Record<string, Operator> = {
       notes: [
         'Condition must return truthy to keep element',
         '{"var": ""} = current element',
-        '{"val": "index"} = current index',
+        '{"val": [[1], "index"]} = current index',
         'Returns empty array if nothing matches',
       ],
       seeAlso: ['map', 'all', 'some', 'none'],
     },
     ui: {
-      icon: 'filter',
+      icon: 'search',
       shortLabel: 'filter',
       nodeType: 'iterator',
       iteratorContext: true,
@@ -233,7 +244,7 @@ export const arrayIterationOperators: Record<string, Operator> = {
           name: 'index',
           label: 'Index',
           accessor: 'val',
-          example: '{"val": "index"}',
+          example: '{"val": [[1], "index"]}',
           description: 'Zero-based index of the current element (0, 1, 2...)',
         },
       ],
@@ -246,8 +257,8 @@ export const arrayIterationOperators: Record<string, Operator> = {
     category: 'array',
     description: 'Reduce array to a single value',
     arity: {
-      type: 'ternary',
-      min: 3,
+      type: 'range',
+      min: 2,
       max: 3,
       args: [
         { name: 'array', label: 'Array', type: 'array', required: true },
@@ -262,8 +273,8 @@ export const arrayIterationOperators: Record<string, Operator> = {
           name: 'initial',
           label: 'Initial',
           type: 'any',
-          required: true,
-          description: 'Starting value for accumulator',
+          required: false,
+          description: 'Starting value for accumulator (null when omitted)',
         },
       ],
     },
@@ -313,46 +324,48 @@ export const arrayIterationOperators: Record<string, Operator> = {
           result: 5,
         },
         {
-          title: 'Build object',
+          title: 'Build an array',
           rule: {
             reduce: [
-              { var: 'pairs' },
-              {
-                merge: [
-                  { var: 'accumulator' },
-                  {
-                    cat: [
-                      '{"',
-                      { var: 'current.key' },
-                      '":"',
-                      { var: 'current.value' },
-                      '"}',
-                    ],
-                  },
-                ],
-              },
-              {},
+              { var: 'words' },
+              { merge: [{ var: 'accumulator' }, { upper: { var: 'current' } }] },
+              [],
             ],
           },
-          data: {
-            pairs: [
-              { key: 'a', value: '1' },
-              { key: 'b', value: '2' },
+          data: { words: ['a', 'b'] },
+          result: ['A', 'B'],
+        },
+        {
+          title: 'Sum a field',
+          rule: {
+            reduce: [
+              { var: 'items' },
+              { '+': [{ var: 'accumulator' }, { var: 'current.qty' }] },
+              0,
             ],
           },
-          result: { a: '1', b: '2' },
+          data: { items: [{ qty: 2 }, { qty: 3 }] },
+          result: 5,
+        },
+        {
+          title: 'Without initial value',
+          rule: {
+            reduce: [[1, 2, 3], { '+': [{ var: 'accumulator' }, { var: 'current' }] }],
+          },
+          result: 6,
+          note: 'The accumulator starts as null, which coerces to 0 in arithmetic',
         },
       ],
       notes: [
         '{"var": "current"} = current element',
         '{"var": "accumulator"} = running result',
-        '{"val": "index"} = current index',
-        'Initial value is required',
+        'No iteration index is available inside reduce',
+        'Initial value is optional: when omitted the accumulator starts as null (0 in arithmetic, null for an empty array), so pass one for anything but sums',
       ],
       seeAlso: ['map', 'filter'],
     },
     ui: {
-      icon: 'fold-vertical',
+      icon: 'boxes',
       shortLabel: 'reduce',
       nodeType: 'iterator',
       iteratorContext: true,
@@ -380,8 +393,8 @@ export const arrayIterationOperators: Record<string, Operator> = {
               id: 'initial',
               label: 'Initial Value',
               inputType: 'expression',
-              required: true,
-              helpText: 'Starting value for the accumulator',
+              required: false,
+              helpText: 'Starting value for the accumulator (null when omitted)',
             },
           ],
         },
@@ -400,13 +413,6 @@ export const arrayIterationOperators: Record<string, Operator> = {
           accessor: 'var',
           example: '{"var": "accumulator"}',
           description: 'The running result value',
-        },
-        {
-          name: 'index',
-          label: 'Index',
-          accessor: 'val',
-          example: '{"val": "index"}',
-          description: 'Zero-based index of the current element (0, 1, 2...)',
         },
       ],
     },
@@ -429,7 +435,7 @@ export const arrayIterationOperators: Record<string, Operator> = {
     help: {
       summary: 'Check if all elements satisfy a condition',
       details:
-        'Returns true if the condition returns truthy for every element. Returns true for empty arrays.',
+        'Returns true if the condition returns truthy for every element. Returns false for an empty array (JSONLogic-compatible; not vacuous truth).',
       returnType: 'boolean',
       examples: [
         {
@@ -458,19 +464,19 @@ export const arrayIterationOperators: Record<string, Operator> = {
         {
           title: 'Empty array',
           rule: { all: [[], { '>': [{ var: '' }, 0] }] },
-          result: true,
-          note: 'Vacuous truth: all of nothing is true',
+          result: false,
+          note: 'JSONLogic-compatible: all of nothing is false, not vacuous truth',
         },
       ],
       notes: [
         'Short-circuits: stops on first false',
-        'Empty array returns true',
+        'Empty array returns false (JSONLogic-compatible; not vacuous truth)',
         '{"var": ""} = current element',
       ],
       seeAlso: ['some', 'none', 'filter'],
     },
     ui: {
-      icon: 'check-check',
+      icon: 'check',
       shortLabel: 'all',
       nodeType: 'iterator',
       iteratorContext: true,
@@ -509,7 +515,7 @@ export const arrayIterationOperators: Record<string, Operator> = {
           name: 'index',
           label: 'Index',
           accessor: 'val',
-          example: '{"val": "index"}',
+          example: '{"val": [[1], "index"]}',
           description: 'Zero-based index of the current element (0, 1, 2...)',
         },
       ],
@@ -612,7 +618,7 @@ export const arrayIterationOperators: Record<string, Operator> = {
           name: 'index',
           label: 'Index',
           accessor: 'val',
-          example: '{"val": "index"}',
+          example: '{"val": [[1], "index"]}',
           description: 'Zero-based index of the current element (0, 1, 2...)',
         },
       ],
@@ -671,7 +677,7 @@ export const arrayIterationOperators: Record<string, Operator> = {
       seeAlso: ['some', 'all', 'filter'],
     },
     ui: {
-      icon: 'x-circle',
+      icon: 'circle-x',
       shortLabel: 'none',
       nodeType: 'iterator',
       iteratorContext: true,
@@ -710,7 +716,7 @@ export const arrayIterationOperators: Record<string, Operator> = {
           name: 'index',
           label: 'Index',
           accessor: 'val',
-          example: '{"val": "index"}',
+          example: '{"val": [[1], "index"]}',
           description: 'Zero-based index of the current element (0, 1, 2...)',
         },
       ],

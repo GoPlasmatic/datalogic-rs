@@ -68,14 +68,23 @@ let config = EvaluationConfig::default()
     .with_division_by_zero(DivisionByZeroHandling::ThrowError);
 ```
 
-**Behavior comparison** for `{"/": [10, 0]}`:
+**Behavior comparison** for `{"/": [10.5, 0]}`:
 
 | Setting | Result |
 |---------|--------|
-| `ReturnSaturated` (default) | `f64::MAX` (sign of dividend) |
+| `ReturnSaturated` (default) | `1.7976931348623157e308` (`f64::MAX`, sign of dividend) |
 | `ThrowError` | `Err(Thrown { type: "NaN" })` |
 | `ReturnNull` | `null` |
-| `ReturnInfinity` | `Infinity` (sign of dividend) |
+| `ReturnInfinity` | `f64::INFINITY` (sign of dividend) as an `OwnedDataValue` / `DataValue`; `null` on the JSON-string paths |
+
+The setting only governs the float path. An integer dividend over an
+integer zero (`{"/": [10, 0]}`, and likewise `{"%": [10, 0]}`) always
+raises `Err(Thrown { type: "NaN" })`, whatever the setting, because there
+is no in-range integer sentinel to return; only a genuinely fractional
+dividend such as `10.5` takes the configurable path. `ReturnInfinity`
+yields the infinite `f64` from `Engine::eval` / `Session::eval`, but
+`eval_str` (and every language binding) renders it as `null` because JSON
+cannot encode infinity.
 
 ### Truthiness Evaluation
 
@@ -106,13 +115,20 @@ let config = EvaluationConfig::default()
 |-------|-----------|--------|---------------|
 | `true` | truthy | truthy | truthy |
 | `false` | falsy | falsy | falsy |
-| `1` | truthy | truthy | falsy |
-| `0` | falsy | falsy | falsy |
-| `""` | falsy | falsy | falsy |
-| `"0"` | truthy | truthy | falsy |
-| `[]` | falsy | falsy | falsy |
-| `[0]` | truthy | truthy | falsy |
+| `1` | truthy | truthy | truthy |
+| `0` | falsy | falsy | truthy |
+| `""` | falsy | falsy | truthy |
+| `"0"` | truthy | truthy | truthy |
+| `[]` | falsy | falsy | truthy |
+| `[0]` | truthy | truthy | truthy |
+| `{}` | falsy | falsy | truthy |
 | `null` | falsy | falsy | falsy |
+
+`StrictBoolean` treats only `null` and `false` as falsy; every other
+value, including `0`, `""`, and empty collections, is truthy. `Python`
+differs from `JavaScript` on exactly one value: `NaN` (which only arises
+from arithmetic, never from a JSON literal) is falsy in JavaScript and
+truthy in Python.
 
 ### Loose Equality Errors
 
@@ -268,8 +284,10 @@ let engine = Engine::builder()
     .with_config(EvaluationConfig::strict())
     .build();
 
-let result = engine.eval_str(r#"{"+": [1, "2"]}"#, r#"{}"#);
-// Err(...) — strict mode does not coerce "2" to a number
+let result = engine.eval_str(r#"{"+": [1, null]}"#, r#"{}"#);
+// Err(Thrown { type: "NaN" }): strict mode does not coerce null, "",
+// true/false, or non-numeric strings such as "abc" to a number.
+// Numeric strings still parse, so {"+": [1, "2"]} is 3 even under strict().
 ```
 
 ### Custom Business Logic Truthiness

@@ -11,7 +11,7 @@ export const arithmeticBasicOperators: Record<string, Operator> = {
     name: '+',
     label: 'Add',
     category: 'arithmetic',
-    description: 'Add numbers or concatenate values',
+    description: 'Add numbers (strings are coerced; no concatenation)',
     arity: {
       type: 'nary',
       min: 1,
@@ -28,7 +28,7 @@ export const arithmeticBasicOperators: Record<string, Operator> = {
     help: {
       summary: 'Add numbers together or convert to number',
       details:
-        'With multiple arguments, adds all values together. With a single argument, converts the value to a number (unary plus). Strings are coerced to numbers when possible.',
+        'With multiple arguments, adds all values together. With a single argument, converts the value to a number (unary plus), or sums it when it evaluates to an array. Strings are coerced to numbers; a non-numeric string is a NaN error, never concatenation.',
       returnType: 'number',
       examples: [
         {
@@ -59,17 +59,30 @@ export const arithmeticBasicOperators: Record<string, Operator> = {
           result: 18,
           note: 'String "5" coerced to number',
         },
+        {
+          title: 'Sum an array',
+          rule: { '+': [{ var: 'nums' }] },
+          data: { nums: [1, 2, 3, 4] },
+          result: 10,
+          note: 'A single argument that evaluates to an array is folded',
+        },
+        {
+          title: 'Non-numeric strings throw',
+          rule: { '+': ['a', 'b'] },
+          error: { type: 'Thrown' },
+          note: 'Throws {"type": "NaN"}; use cat to join strings',
+        },
       ],
       notes: [
-        'Accepts 1 or more arguments',
-        'Single argument: converts to number',
-        'Strings are coerced to numbers',
+        'Accepts 1 or more arguments (none returns 0)',
+        'Single argument: converts to number, or sums an array',
+        'Strings are coerced to numbers; non-numeric strings throw NaN',
         'Use "cat" for string concatenation',
       ],
       seeAlso: ['-', '*', '/', 'cat'],
     },
     ui: {
-      icon: 'plus',
+      icon: 'calculator',
       shortLabel: '+',
       nodeType: 'operator',
     },
@@ -123,14 +136,14 @@ export const arithmeticBasicOperators: Record<string, Operator> = {
         },
       ],
       notes: [
-        '1 arg: negation (-x)',
+        '1 arg: negation (-x), or a fold when it evaluates to an array ([10, 3] gives 7)',
         '2 args: subtraction (a - b)',
         '3+ args: sequential (a - b - c)',
       ],
       seeAlso: ['+', '*', '/'],
     },
     ui: {
-      icon: 'minus',
+      icon: 'calculator',
       shortLabel: '-',
       nodeType: 'operator',
     },
@@ -142,8 +155,8 @@ export const arithmeticBasicOperators: Record<string, Operator> = {
     category: 'arithmetic',
     description: 'Multiply numbers together',
     arity: {
-      type: 'variadic',
-      min: 2,
+      type: 'nary',
+      min: 1,
       args: [
         {
           name: 'value',
@@ -156,7 +169,8 @@ export const arithmeticBasicOperators: Record<string, Operator> = {
     },
     help: {
       summary: 'Multiply all values together',
-      details: 'Multiplies all arguments together. Requires at least 2 arguments.',
+      details:
+        'Multiplies all arguments together. A single argument is returned as a number, or folded when it evaluates to an array.',
       returnType: 'number',
       examples: [
         {
@@ -175,8 +189,18 @@ export const arithmeticBasicOperators: Record<string, Operator> = {
           data: { quantity: 5, price: 10 },
           result: 50,
         },
+        {
+          title: 'Product of an array',
+          rule: { '*': [{ var: 'a' }] },
+          data: { a: [2, 3, 4] },
+          result: 24,
+          note: 'A single argument that evaluates to an array is folded',
+        },
       ],
-      notes: ['Requires at least 2 arguments', 'Strings are coerced to numbers'],
+      notes: [
+        'Accepts 1 or more arguments (none returns 1)',
+        'Strings are coerced to numbers',
+      ],
       seeAlso: ['/', '+', '-'],
     },
     ui: {
@@ -190,19 +214,25 @@ export const arithmeticBasicOperators: Record<string, Operator> = {
     name: '/',
     label: 'Divide',
     category: 'arithmetic',
-    description: 'Divide first number by second',
+    description: 'Divide numbers left to right',
     arity: {
-      type: 'binary',
-      min: 2,
-      max: 2,
+      type: 'nary',
+      min: 1,
       args: [
         { name: 'dividend', label: 'Dividend', type: 'number', required: true },
-        { name: 'divisor', label: 'Divisor', type: 'number', required: true },
+        {
+          name: 'divisor',
+          label: 'Divisor',
+          type: 'number',
+          required: false,
+          repeatable: true,
+        },
       ],
     },
     help: {
-      summary: 'Divide the first number by the second',
-      details: 'Performs division. Division by zero behavior depends on engine configuration.',
+      summary: 'Divide the first number by the following ones',
+      details:
+        'Performs division left to right (a / b / c). A single argument returns its reciprocal. Division by zero behavior depends on engine configuration (the default throws a NaN error).',
       returnType: 'number',
       examples: [
         {
@@ -221,10 +251,29 @@ export const arithmeticBasicOperators: Record<string, Operator> = {
           data: { total: 100, count: 4 },
           result: 25,
         },
+        {
+          title: 'Sequential division',
+          rule: { '/': [100, 5, 2] },
+          result: 10,
+          note: '100 / 5 / 2',
+        },
+        {
+          title: 'Reciprocal',
+          rule: { '/': [8] },
+          result: 0.125,
+          note: 'One argument: 1 / x',
+        },
+        {
+          title: 'Division by zero',
+          rule: { '/': [1, 0] },
+          error: { type: 'Thrown' },
+          note: 'Default config throws {"type": "NaN"}; division_by_zero can change this',
+        },
       ],
       notes: [
-        'Exactly 2 arguments required',
-        'Division by zero may return error or infinity',
+        'Two or more arguments divide left to right (a / b / c)',
+        'One argument returns its reciprocal',
+        'Division by zero throws by default; the division_by_zero config can return null, infinity or a saturated value',
       ],
       seeAlso: ['*', '%', '+', '-'],
     },
@@ -241,17 +290,23 @@ export const arithmeticBasicOperators: Record<string, Operator> = {
     category: 'arithmetic',
     description: 'Get remainder of division',
     arity: {
-      type: 'binary',
+      type: 'nary',
       min: 2,
-      max: 2,
       args: [
         { name: 'dividend', label: 'Dividend', type: 'number', required: true },
-        { name: 'divisor', label: 'Divisor', type: 'number', required: true },
+        {
+          name: 'divisor',
+          label: 'Divisor',
+          type: 'number',
+          required: true,
+          repeatable: true,
+        },
       ],
     },
     help: {
       summary: 'Get the remainder after division',
-      details: 'Returns the remainder when dividing the first number by the second.',
+      details:
+        'Returns the remainder when dividing the first number by the second. Extra arguments apply left to right ((a % b) % c).',
       returnType: 'number',
       examples: [
         {
@@ -274,12 +329,22 @@ export const arithmeticBasicOperators: Record<string, Operator> = {
           result: 1,
           note: '1 means odd',
         },
+        {
+          title: 'Sequential modulo',
+          rule: { '%': [100, 7, 3] },
+          result: 2,
+          note: '(100 % 7) % 3',
+        },
       ],
-      notes: ['Useful for even/odd checks', 'Useful for cycling through values'],
+      notes: [
+        'Useful for even/odd checks',
+        'Useful for cycling through values',
+        'At least 2 arguments; extra arguments fold left to right',
+      ],
       seeAlso: ['/', '*'],
     },
     ui: {
-      icon: 'percent',
+      icon: 'divide',
       shortLabel: '%',
       nodeType: 'operator',
     },

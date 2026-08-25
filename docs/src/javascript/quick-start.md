@@ -9,8 +9,9 @@ The simplest way to evaluate JSONLogic:
 ```javascript
 import init, { evaluate } from '@goplasmatic/datalogic-wasm';
 
-// Initialize WASM (required for browser/bundler)
-await init();
+// Initialize WASM (browser/bundler only; on Node the default import is not
+// a function, so guard the call or import from '@goplasmatic/datalogic-wasm/nodejs')
+if (typeof init === 'function') await init();
 
 // Evaluate a simple expression
 const result = evaluate('{"==": [1, 1]}', '{}', false);
@@ -41,7 +42,7 @@ For repeated evaluation of the same logic, use `CompiledRule` for better perform
 ```javascript
 import init, { CompiledRule } from '@goplasmatic/datalogic-wasm';
 
-await init();
+if (typeof init === 'function') await init();
 
 // Compile once
 const rule = new CompiledRule('{">=": [{"var": "age"}, 18]}', false);
@@ -134,19 +135,20 @@ const data = JSON.stringify({
 const result = JSON.parse(evaluate(template, data, true));
 // {
 //   "user": { "fullName": "Alice Smith", "isAdult": true },
-//   "timestamp": "2024-01-15T10:30:00Z"
+//   "timestamp": "2024-01-15T10:30:00Z"   (the current time, ISO 8601 UTC)
 // }
 ```
 
 ## Error Handling
 
-Wrap evaluations in try-catch:
+Wrap evaluations in try-catch. Failures throw a real `Error` whose `name` is a stable tag (`"ParseError"`, `"InvalidOperator"`, `"Thrown"`, ...); see [Error Handling](api-reference.md#error-handling) for the full shape:
 
 ```javascript
 try {
   const result = evaluate('{"invalid": "json', '{}', false);
 } catch (error) {
-  console.error('Evaluation failed:', error);
+  console.error('Evaluation failed:', error.name, error.message);
+  // Evaluation failed: ParseError Parse error: json parse error at byte 17: unexpected end of input
 }
 ```
 
@@ -157,7 +159,7 @@ Use `evaluateWithTrace` for step-by-step debugging:
 ```javascript
 import init, { evaluateWithTrace } from '@goplasmatic/datalogic-wasm';
 
-await init();
+if (typeof init === 'function') await init();
 
 const trace = evaluateWithTrace(
   '{"and": [{"var": "a"}, {"var": "b"}]}',
@@ -166,9 +168,11 @@ const trace = evaluateWithTrace(
 );
 
 const traceData = JSON.parse(trace);
-console.log('Result:', traceData.result);
-console.log('Steps:', traceData.steps);
+console.log('Result:', traceData.result);      // Result: false
+console.log('Steps:', traceData.steps.length); // Steps: 3 (var a, var b, and)
 ```
+
+Each step records the node id, the data context it saw, and its result (or error). Literal operands do not record steps.
 
 ## Next Steps
 

@@ -18,6 +18,7 @@ import { datetimeOperators } from './datetime';
 import { validationOperators } from './validation';
 import { errorOperators } from './error';
 import { utilityOperators } from './utility';
+import { flagdOperators } from './flagd';
 
 // Re-export individual category modules
 export {
@@ -33,6 +34,7 @@ export {
   validationOperators,
   errorOperators,
   utilityOperators,
+  flagdOperators,
 };
 
 /**
@@ -51,6 +53,7 @@ export const operators: Record<string, Operator> = {
   ...validationOperators,
   ...errorOperators,
   ...utilityOperators,
+  ...flagdOperators,
 };
 
 /**

@@ -7,7 +7,10 @@
 export {
   addArgument,
   removeArgument,
+  canEditArguments,
   wrapInOperator,
   duplicateNodeTree,
+  updateInlineOperand,
+  inlineOperandForCell,
   type AddArgumentResult,
 } from './node-mutation-service';

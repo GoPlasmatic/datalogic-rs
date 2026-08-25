@@ -2,6 +2,14 @@
  * Argument Service
  *
  * Provides pure functions for adding and removing arguments from operator nodes.
+ *
+ * The service is parent-shape aware:
+ * - n-ary operators append / drop an operand
+ * - decision diamonds (if / ?:) add an else-if as a new diamond chained into
+ *   the else input, and remove either the else input or a whole diamond
+ * - switch/match add or remove a Case/Then pair (or the Default row)
+ * - val adds / removes a path component cell; var drops its default
+ * - exists takes exactly one path, so nothing can be added
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -14,6 +22,27 @@ import type {
 } from '../types';
 import { getOperator } from '../config/operators';
 import { deleteNodeAndDescendants } from '../utils/node-deletion';
+import { replaceChildReference } from '../utils/node-cloning';
+import { formatOperandLabel } from '../utils/formatting';
+import {
+  isIfOperator,
+  isDecisionCells,
+  decisionCell,
+  decisionSlotOf,
+  makeDecisionBranchCell,
+} from '../utils/converters/if-else-converter';
+import {
+  isSwitchOperator,
+  isSwitchCells,
+  resolveSwitchCellValues,
+  switchArgsFromCells,
+  switchPairPartner,
+} from '../utils/converters/switch-cells';
+import {
+  hasVariableCells,
+  variableCellsToExpression,
+  rawOperandOf,
+} from '../utils/converters/variable-cells';
 import { createArgumentNode } from './node-creation-service';
 
 /**
@@ -22,6 +51,53 @@ import { createArgumentNode } from './node-creation-service';
 export interface AddArgumentResult {
   nodes: LogicNode[];
   newNodeId: string;
+}
+
+/** True when the operator's arity lets the editor add / remove arguments. */
+export function canEditArguments(operator: string): boolean {
+  const opConfig = getOperator(operator);
+  if (!opConfig) return false;
+  // exists takes a single path, so there is nothing to add or remove.
+  if (operator === 'exists') return false;
+  const { arity } = opConfig;
+  return (
+    arity.type === 'nary' ||
+    arity.type === 'variadic' ||
+    arity.type === 'chainable' ||
+    arity.type === 'special' ||
+    arity.type === 'range'
+  );
+}
+
+/** The stored operands of a node's expression, normalized to an array. */
+function storedOperandsOf(data: OperatorNodeData): JsonLogicValue[] {
+  const raw = rawOperandOf(data.expression);
+  if (raw === undefined) return [];
+  return Array.isArray(raw) ? raw : [raw];
+}
+
+/** A literal node parented to `parentId` at `argIndex`. */
+function literalNode(
+  value: JsonLogicValue,
+  valueType: LiteralNodeData['valueType'],
+  parentId: string,
+  argIndex: number,
+  branchType?: LiteralNodeData['branchType']
+): LogicNode {
+  return {
+    id: uuidv4(),
+    type: 'literal',
+    position: { x: 0, y: 0 },
+    data: {
+      type: 'literal',
+      value,
+      valueType,
+      expression: value,
+      parentId,
+      argIndex,
+      branchType,
+    } as LiteralNodeData,
+  };
 }
 
 /**
@@ -43,36 +119,29 @@ export function addArgument(
   const operatorData = parentData as OperatorNodeData;
   const opConfig = getOperator(operatorData.operator);
 
-  if (!opConfig) return null;
+  if (!opConfig || !canEditArguments(operatorData.operator)) return null;
 
-  // Allow adding for nary, variadic, chainable, special, and range arity types
   const { arity } = opConfig;
-  const allowAdd = arity.type === 'nary' || arity.type === 'variadic' ||
-    arity.type === 'chainable' || arity.type === 'special' || arity.type === 'range';
-
-  if (!allowAdd) return null;
-
   if (arity.max && operatorData.cells.length >= arity.max) {
     return null;
   }
 
-  // Special handling for if operator: add condition+then pair
-  if (operatorData.operator === 'if' || operatorData.operator === '?:') {
-    return addIfElsePair(nodes, parentNode, operatorData);
+  // Special handling for if operator: chain a new else-if diamond
+  if (isIfOperator(operatorData.operator) && isDecisionCells(operatorData.cells)) {
+    return addElseIfDiamond(nodes, parentNode, operatorData);
+  }
+
+  // Special handling for switch/match: add a Case/Then pair
+  if (isSwitchOperator(operatorData.operator) && isSwitchCells(operatorData.cells)) {
+    return addSwitchCase(nodes, parentNode, operatorData);
   }
 
   // Special handling for val operator: add editable path component cell
-  if (operatorData.operator === 'val') {
+  if (operatorData.operator === 'val' && hasVariableCells(operatorData.cells)) {
     return addValPathCell(nodes, parentNode, operatorData);
   }
 
-  const expr = operatorData.expression;
-  let currentOperands: JsonLogicValue[] = [];
-  if (expr && typeof expr === 'object' && !Array.isArray(expr)) {
-    const opKey = Object.keys(expr)[0];
-    const operands = (expr as Record<string, unknown>)[opKey];
-    currentOperands = Array.isArray(operands) ? operands : [operands as JsonLogicValue];
-  }
+  const currentOperands = storedOperandsOf(operatorData);
 
   const newIndex = currentOperands.length;
   const newNodes = createArgumentNode(nodeType, parentId, newIndex, opConfig.category, operatorName);
@@ -113,119 +182,153 @@ export function addArgument(
 }
 
 /**
- * Add an Else If condition+then pair to an if operator.
- * Inserts before the final Else cell (if exists).
+ * Add an else-if to a decision diamond: a new 'elif' diamond (condition true,
+ * then 0) is wired into the else input, and the previous else value (if any)
+ * becomes the new diamond's else input.
  */
-function addIfElsePair(
+function addElseIfDiamond(
   nodes: LogicNode[],
   parentNode: LogicNode,
   operatorData: OperatorNodeData
 ): AddArgumentResult {
-  const conditionId = uuidv4();
-  const thenId = uuidv4();
+  const elifId = uuidv4();
+  const elseCell = decisionCell(operatorData.cells, 'else');
+  const oldElseId = elseCell?.type === 'branch' ? elseCell.branchId : undefined;
+  const stored = storedOperandsOf(operatorData);
 
-  // Create condition node (literal true by default)
-  const conditionNode: LogicNode = {
-    id: conditionId,
-    type: 'literal',
-    position: { x: 0, y: 0 },
-    data: {
-      type: 'literal',
-      value: true,
-      valueType: 'boolean',
-      expression: true,
-      parentId: parentNode.id,
-      argIndex: 0, // Will be set below
-    } as LiteralNodeData,
-  };
+  const conditionNode = literalNode(true, 'boolean', elifId, 0, 'condition');
+  const thenNode = literalNode(0, 'number', elifId, 1, 'yes');
 
-  // Create then node (literal 0 by default)
-  const thenNode: LogicNode = {
-    id: thenId,
-    type: 'literal',
-    position: { x: 0, y: 0 },
-    data: {
-      type: 'literal',
-      value: 0,
-      valueType: 'number',
-      expression: 0,
-      parentId: parentNode.id,
-      argIndex: 0, // Will be set below
-    } as LiteralNodeData,
-  };
+  const elifCells: CellData[] = [
+    makeDecisionBranchCell('when', conditionNode.id, 'true'),
+    makeDecisionBranchCell('then', thenNode.id, '0'),
+  ];
+  const elifArgs: JsonLogicValue[] = [true, 0];
 
-  // Determine insertion point: before the Else cell if it exists
-  const cells = [...operatorData.cells];
-  const hasElse = cells.length > 0 && cells[cells.length - 1].rowLabel === 'Else';
-  const insertIndex = hasElse ? cells.length - 1 : cells.length;
-
-  // Build the new condition cell and then cell
-  const conditionCell: CellData = {
-    type: 'branch',
-    icon: 'diamond',
-    rowLabel: 'Else If',
-    branchId: conditionId,
-    index: insertIndex,
-  };
-  const thenCell: CellData = {
-    type: 'branch',
-    icon: 'check',
-    rowLabel: 'Then',
-    branchId: thenId,
-    index: insertIndex + 1,
-  };
-
-  // Insert the pair and reindex
-  cells.splice(insertIndex, 0, conditionCell, thenCell);
-  const reindexedCells = cells.map((c, i) => ({ ...c, index: i }));
-
-  // Rebuild expression operands
-  const expr = operatorData.expression;
-  let currentOperands: JsonLogicValue[] = [];
-  if (expr && typeof expr === 'object' && !Array.isArray(expr)) {
-    const opKey = Object.keys(expr)[0];
-    const operands = (expr as Record<string, unknown>)[opKey];
-    currentOperands = Array.isArray(operands) ? operands : [operands as JsonLogicValue];
+  let oldElseExpression: JsonLogicValue | undefined;
+  if (elseCell) {
+    if (oldElseId) {
+      const oldElseNode = nodes.find((n) => n.id === oldElseId);
+      oldElseExpression = oldElseNode?.data.expression ?? stored[elseCell.index] ?? null;
+      elifCells.push(makeDecisionBranchCell('else', oldElseId, elseCell.label));
+    } else {
+      // Inline else placeholder: keep its value on the new diamond as an inline row
+      oldElseExpression = stored[elseCell.index] ?? null;
+      elifCells.push({ ...elseCell, index: 2 });
+    }
+    elifArgs.push(oldElseExpression === undefined ? null : oldElseExpression);
   }
 
-  // Insert condition (true) and then (0) at the expression level
-  // The expression operands map: [cond, then, cond, then, ..., else?]
-  // Insert point in operands is the same as insertIndex in cells
-  const newOperands = [...currentOperands];
-  newOperands.splice(insertIndex, 0, true, 0);
-  const newExpression = { [operatorData.operator]: newOperands } as JsonLogicValue;
+  const elifNode: LogicNode = {
+    id: elifId,
+    type: 'operator',
+    position: { x: 0, y: 0 },
+    data: {
+      type: 'operator',
+      operator: operatorData.operator,
+      category: 'control',
+      label: 'elif',
+      icon: 'diamond',
+      cells: elifCells,
+      collapsed: false,
+      parentId: parentNode.id,
+      argIndex: 2,
+      branchType: 'no',
+      expression: { [operatorData.operator]: elifArgs },
+    } as OperatorNodeData,
+  };
 
-  // Update argIndex on condition and then nodes
-  conditionNode.data.argIndex = insertIndex;
-  thenNode.data.argIndex = insertIndex + 1;
+  // The parent's else input now points at the new diamond
+  const parentCells = operatorData.cells.filter((c) => decisionSlotOf(c) !== 'else');
+  parentCells.push(makeDecisionBranchCell('else', elifId, 'else if'));
+  const parentArgs: JsonLogicValue[] = [stored[0] ?? null, stored[1] ?? null, elifNode.data.expression as JsonLogicValue];
 
   const updatedParent: LogicNode = {
     ...parentNode,
     data: {
       ...operatorData,
-      cells: reindexedCells,
-      expression: newExpression,
+      cells: parentCells,
+      expression: { [operatorData.operator]: parentArgs },
       expressionText: undefined,
     },
   };
 
-  // Reindex argIndex on existing children that shifted
   const result = nodes.map((n) => {
     if (n.id === parentNode.id) return updatedParent;
-    if (n.data.parentId === parentNode.id && (n.data.argIndex ?? 0) >= insertIndex) {
-      return {
-        ...n,
-        data: {
-          ...n.data,
-          argIndex: (n.data.argIndex ?? 0) + 2,
-        },
-      };
+    if (oldElseId && n.id === oldElseId) {
+      return { ...n, data: { ...n.data, parentId: elifId, argIndex: 2, branchType: 'no' as const } };
     }
     return n;
   });
-  result.push(conditionNode, thenNode);
+  result.push(elifNode, conditionNode, thenNode);
 
-  return { nodes: result, newNodeId: conditionId };
+  return { nodes: result, newNodeId: elifId };
+}
+
+/**
+ * Append a Case/Then pair to a switch/match node (before the Default row).
+ * The case value is an inline literal 0; the result is a literal child node.
+ */
+function addSwitchCase(
+  nodes: LogicNode[],
+  parentNode: LogicNode,
+  operatorData: OperatorNodeData
+): AddArgumentResult {
+  const stored = storedOperandsOf(operatorData);
+  const values = resolveSwitchCellValues(operatorData.cells, stored);
+
+  const defaultPos = operatorData.cells.findIndex((c) => c.rowLabel === 'Default');
+  const insertAt = defaultPos === -1 ? operatorData.cells.length : defaultPos;
+
+  const thenNode = literalNode(0, 'number', parentNode.id, insertAt + 1, 'yes');
+  const caseCell: CellData = {
+    type: 'inline',
+    icon: 'tag',
+    rowLabel: 'Case',
+    label: formatOperandLabel(0),
+    index: insertAt,
+  };
+  const thenCell: CellData = {
+    type: 'branch',
+    icon: 'check',
+    rowLabel: 'Then',
+    label: '0',
+    branchId: thenNode.id,
+    index: insertAt + 1,
+  };
+
+  const cells = [...operatorData.cells];
+  cells.splice(insertAt, 0, caseCell, thenCell);
+  // Resolved values are keyed by the OLD indices; shift the rows after the insert point
+  const shifted = new Map<number, JsonLogicValue>();
+  for (const [index, value] of values) {
+    shifted.set(index >= insertAt ? index + 2 : index, value);
+  }
+  shifted.set(insertAt, 0);
+  shifted.set(insertAt + 1, 0);
+  const reindexed = cells.map((cell, idx) => ({ ...cell, index: idx }));
+  const args = switchArgsFromCells(reindexed, shifted, true);
+
+  const updatedParent: LogicNode = {
+    ...parentNode,
+    data: {
+      ...operatorData,
+      cells: reindexed,
+      expression: { [operatorData.operator]: args },
+      expressionText: undefined,
+    },
+  };
+
+  const result = nodes.map((n) => {
+    if (n.id === parentNode.id) return updatedParent;
+    if (n.data.parentId === parentNode.id && (n.data.argIndex ?? 0) >= insertAt) {
+      return { ...n, data: { ...n.data, argIndex: (n.data.argIndex ?? 0) + 2 } };
+    }
+    return n;
+  });
+  result.push(thenNode);
+
+  return { nodes: result, newNodeId: thenNode.id };
 }
 
 /**
@@ -244,14 +347,17 @@ function addValPathCell(
     icon: 'type',
     fieldId: 'path',
     fieldType: 'text',
-    value: '',
+    value: [],
+    label: '',
     placeholder: 'field.name',
     index: newIndex,
   };
 
   // Rebuild expression from current cells + new cell
   const newCells = [...operatorData.cells, newCell];
-  const newExpression = rebuildValExpression(newCells);
+  const newExpression =
+    variableCellsToExpression('val', newCells, { rawOperand: rawOperandOf(operatorData.expression) }) ??
+    { val: [] };
 
   const updatedParent: LogicNode = {
     ...parentNode,
@@ -268,38 +374,8 @@ function addValPathCell(
 }
 
 /**
- * Rebuild val expression from cells.
- */
-function rebuildValExpression(cells: CellData[]): JsonLogicValue {
-  const scopeCell = cells.find((c) => c.fieldId === 'scopeLevel');
-  const pathCells = cells.filter((c) => c.fieldId === 'path');
-  const scopeJump = typeof scopeCell?.value === 'number' ? scopeCell.value : 0;
-
-  const pathComponents: string[] = [];
-  for (const pc of pathCells) {
-    const pathStr = String(pc.value ?? '');
-    if (pathStr) {
-      pathStr.split('.').forEach((comp) => {
-        if (comp) pathComponents.push(comp);
-      });
-    }
-  }
-
-  if (scopeJump === 0 && pathComponents.length === 1 &&
-      (pathComponents[0] === 'index' || pathComponents[0] === 'key')) {
-    return { val: pathComponents[0] };
-  }
-
-  const args: JsonLogicValue[] = [];
-  if (scopeJump > 0) {
-    args.push([-scopeJump]);
-  }
-  args.push(...pathComponents);
-  return { val: args.length === 0 ? [] : args };
-}
-
-/**
- * Remove an argument from an operator node (unified cells-based logic)
+ * Remove an argument from an operator node (unified cells-based logic).
+ * `argIndex` is the cell index of the argument to remove.
  */
 export function removeArgument(
   nodes: LogicNode[],
@@ -314,28 +390,52 @@ export function removeArgument(
   if (parentData.type !== 'operator') return null;
 
   const operatorData = parentData as OperatorNodeData;
+  if (!canEditArguments(operatorData.operator)) return null;
   const opConfig = getOperator(operatorData.operator);
+
+  // Special handling for if operator: remove a diamond or its else input
+  if (isIfOperator(operatorData.operator) && isDecisionCells(operatorData.cells)) {
+    return removeDecisionInput(nodes, parentNode, operatorData, argIndex);
+  }
+
+  // Special handling for switch/match: remove a Case/Then pair or the Default
+  if (isSwitchOperator(operatorData.operator) && isSwitchCells(operatorData.cells)) {
+    return removeSwitchRow(nodes, parentNode, operatorData, argIndex);
+  }
 
   const minArgs = opConfig?.arity.min ?? 0;
   if (operatorData.cells.length <= minArgs) {
     return null;
   }
 
-  // Special handling for if operator: remove condition+then pair
-  if (operatorData.operator === 'if' || operatorData.operator === '?:') {
-    return removeIfElsePair(nodes, parentNode, operatorData, argIndex);
-  }
-
   const cellToRemove = operatorData.cells.find((c) => c.index === argIndex);
   if (!cellToRemove) return null;
 
-  const expr = operatorData.expression;
-  let currentOperands: JsonLogicValue[] = [];
-  if (expr && typeof expr === 'object' && !Array.isArray(expr)) {
-    const opKey = Object.keys(expr)[0];
-    const operands = (expr as Record<string, unknown>)[opKey];
-    currentOperands = Array.isArray(operands) ? operands : [operands as JsonLogicValue];
+  // Variable operators (var default, val path components): rebuild from cells
+  if (hasVariableCells(operatorData.cells)) {
+    if (cellToRemove.fieldId === 'scopeLevel' || (operatorData.operator === 'var' && cellToRemove.fieldId === 'path')) {
+      return null;
+    }
+    let newNodes = cellToRemove.branchId
+      ? deleteNodeAndDescendants(cellToRemove.branchId, nodes)
+      : nodes;
+    const remaining = operatorData.cells
+      .filter((c) => c.index !== argIndex)
+      .map((c, i) => ({ ...c, index: i }));
+    const expression =
+      variableCellsToExpression(operatorData.operator, remaining, {
+        // A var without its default reads best in the plain string form
+        rawOperand: operatorData.operator === 'var' ? undefined : rawOperandOf(operatorData.expression),
+      }) ?? operatorData.expression ?? null;
+    newNodes = newNodes.map((n) =>
+      n.id === parentId
+        ? { ...n, data: { ...operatorData, cells: remaining, expression, expressionText: undefined } }
+        : n
+    );
+    return newNodes;
   }
+
+  const currentOperands = storedOperandsOf(operatorData);
 
   let newNodes = cellToRemove.branchId
     ? deleteNodeAndDescendants(cellToRemove.branchId, nodes)
@@ -378,15 +478,13 @@ export function removeArgument(
 }
 
 /**
- * Remove an Else If condition+then pair (or the Else) from an if operator.
- * argIndex is the "pair index" (0 = first if/then, 1 = second else-if/then, etc.)
- * or the special else index.
- *
- * We use the cell's rowLabel to determine what to remove:
- * - 'If' or 'Else If' row: remove condition + following Then cell (2 cells)
- * - 'Else' row: remove just the Else cell (1 cell)
+ * Remove an input of a decision diamond.
+ * - else: the else subtree is deleted and the else row removed
+ * - when / then: the whole diamond is removed. That is only possible when an
+ *   else-if diamond follows in the chain (it takes this diamond's place);
+ *   the last condition of a chain cannot be removed.
  */
-function removeIfElsePair(
+function removeDecisionInput(
   nodes: LogicNode[],
   parentNode: LogicNode,
   operatorData: OperatorNodeData,
@@ -394,72 +492,128 @@ function removeIfElsePair(
 ): LogicNode[] | null {
   const cell = operatorData.cells.find((c) => c.index === argIndex);
   if (!cell) return null;
+  const slot = decisionSlotOf(cell);
+  if (!slot) return null;
 
-  let cellIndicesToRemove: number[];
+  if (slot === 'else') {
+    if (cell.branchId) {
+      // deleteNodeAndDescendants drops the else row and rebuilds the expression
+      return deleteNodeAndDescendants(cell.branchId, nodes);
+    }
+    const stored = storedOperandsOf(operatorData);
+    const cells = operatorData.cells.filter((c) => c.index !== argIndex);
+    return nodes.map((n) =>
+      n.id === parentNode.id
+        ? {
+            ...n,
+            data: {
+              ...operatorData,
+              cells,
+              expression: { [operatorData.operator]: [stored[0] ?? null, stored[1] ?? null] },
+              expressionText: undefined,
+            },
+          }
+        : n
+    );
+  }
 
-  if (cell.rowLabel === 'If' || cell.rowLabel === 'Else If') {
-    // Remove condition + the following Then cell
-    cellIndicesToRemove = [argIndex, argIndex + 1];
-  } else if (cell.rowLabel === 'Then') {
-    // User clicked on the Then cell — remove its paired condition + this Then
-    cellIndicesToRemove = [argIndex - 1, argIndex];
-  } else if (cell.rowLabel === 'Else') {
-    // Remove just the Else cell
-    cellIndicesToRemove = [argIndex];
-  } else {
+  // Removing the condition: promote the chained else-if diamond
+  const elseCell = decisionCell(operatorData.cells, 'else');
+  const nextId = elseCell?.branchId;
+  const nextNode = nextId ? nodes.find((n) => n.id === nextId) : undefined;
+  if (
+    !nextNode ||
+    nextNode.data.type !== 'operator' ||
+    nextNode.data.label !== 'elif' ||
+    !isIfOperator((nextNode.data as OperatorNodeData).operator)
+  ) {
     return null;
   }
 
-  // Don't remove the last If/Then pair (must keep at least one condition+then)
-  const conditionCells = operatorData.cells.filter(
-    (c) => c.rowLabel === 'If' || c.rowLabel === 'Else If'
-  );
-  const removingConditions = cellIndicesToRemove.filter((idx) => {
-    const c = operatorData.cells.find((cell) => cell.index === idx);
-    return c?.rowLabel === 'If' || c?.rowLabel === 'Else If';
-  });
-  if (conditionCells.length - removingConditions.length < 1) {
-    return null;
-  }
-
-  // Delete child nodes for removed cells
-  let newNodes = [...nodes];
-  for (const idx of cellIndicesToRemove) {
-    const cellToRemove = operatorData.cells.find((c) => c.index === idx);
-    if (cellToRemove?.branchId) {
-      newNodes = deleteNodeAndDescendants(cellToRemove.branchId, newNodes);
+  // Delete this diamond's when/then subtrees
+  let newNodes = nodes;
+  for (const c of operatorData.cells) {
+    if (decisionSlotOf(c) !== 'else' && c.branchId) {
+      newNodes = newNodes.filter((n) => n.id !== c.branchId && !descendantOf(n, c.branchId!, nodes));
     }
   }
 
-  // Remove operands from expression
-  const expr = operatorData.expression;
-  let currentOperands: JsonLogicValue[] = [];
-  if (expr && typeof expr === 'object' && !Array.isArray(expr)) {
-    const opKey = Object.keys(expr)[0];
-    const operands = (expr as Record<string, unknown>)[opKey];
-    currentOperands = Array.isArray(operands) ? operands : [operands as JsonLogicValue];
+  // The next diamond takes this diamond's place in the tree
+  const grandParentId = operatorData.parentId;
+  newNodes = newNodes
+    .filter((n) => n.id !== parentNode.id)
+    .map((n) => {
+      if (n.id === nextNode.id) {
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            label: operatorData.label,
+            parentId: grandParentId,
+            argIndex: operatorData.argIndex,
+            branchType: operatorData.branchType,
+          },
+        };
+      }
+      if (grandParentId && n.id === grandParentId) {
+        return replaceChildReference(n, parentNode.id, nextNode.id);
+      }
+      return n;
+    });
+
+  return newNodes;
+}
+
+/** True when `node` is (transitively) parented to `ancestorId`. */
+function descendantOf(node: LogicNode, ancestorId: string, allNodes: LogicNode[]): boolean {
+  let current = node;
+  const seen = new Set<string>();
+  while (current.data.parentId && !seen.has(current.id)) {
+    seen.add(current.id);
+    if (current.data.parentId === ancestorId) return true;
+    const parent = allNodes.find((n) => n.id === current.data.parentId);
+    if (!parent) return false;
+    current = parent;
   }
+  return false;
+}
 
-  const removeSet = new Set(cellIndicesToRemove);
-  const newOperands = currentOperands.filter((_, i) => !removeSet.has(i));
-  const newExpression = { [operatorData.operator]: newOperands } as JsonLogicValue;
+/**
+ * Remove a row of a switch/match node: a Case or Then removes the whole pair
+ * (both subtrees), Default removes the default row. The Match row cannot be
+ * removed.
+ */
+function removeSwitchRow(
+  nodes: LogicNode[],
+  parentNode: LogicNode,
+  operatorData: OperatorNodeData,
+  argIndex: number
+): LogicNode[] | null {
+  const cell = operatorData.cells.find((c) => c.index === argIndex);
+  if (!cell || cell.rowLabel === 'Match') return null;
 
-  // Remove cells and reindex
-  const removedCount = cellIndicesToRemove.length;
-  const minRemovedIndex = Math.min(...cellIndicesToRemove);
+  const partner = switchPairPartner(operatorData.cells, cell);
+  const removedIndices = new Set([cell.index, ...(partner ? [partner.index] : [])]);
 
-  // Update the first remaining condition to be "If" if we removed the original "If"
-  const updatedCells = operatorData.cells
-    .filter((c) => !removeSet.has(c.index))
-    .map((c, i) => ({
-      ...c,
-      index: i,
-    }));
+  const stored = storedOperandsOf(operatorData);
+  const childExpr = (c: CellData): JsonLogicValue | undefined => {
+    const child = c.branchId ? nodes.find((n) => n.id === c.branchId) : undefined;
+    return child ? (child.data.expression ?? null) : undefined;
+  };
+  const values = resolveSwitchCellValues(operatorData.cells, stored, childExpr);
 
-  // Ensure the first condition cell is labeled "If" (not "Else If")
-  if (updatedCells.length > 0 && updatedCells[0].rowLabel === 'Else If') {
-    updatedCells[0] = { ...updatedCells[0], rowLabel: 'If' };
-  }
+  // Delete the subtrees of the removed rows
+  const removedRoots = [cell, ...(partner ? [partner] : [])]
+    .map((c) => c.branchId)
+    .filter((id): id is string => !!id);
+  let newNodes = nodes.filter(
+    (n) => !removedRoots.some((rootId) => n.id === rootId || descendantOf(n, rootId, nodes))
+  );
+
+  const survivors = operatorData.cells.filter((c) => !removedIndices.has(c.index));
+  const args = switchArgsFromCells(survivors, values, stored.length >= 2);
+  const reindexed = survivors.map((c, i) => ({ ...c, index: i }));
+  const argIndexMap = new Map(survivors.map((c, i) => [c.index, i]));
 
   newNodes = newNodes.map((n) => {
     if (n.id === parentNode.id) {
@@ -467,20 +621,17 @@ function removeIfElsePair(
         ...n,
         data: {
           ...operatorData,
-          cells: updatedCells,
-          expression: newExpression,
+          cells: reindexed,
+          expression: { [operatorData.operator]: args },
           expressionText: undefined,
         },
       };
     }
-    if (n.data.parentId === parentNode.id && (n.data.argIndex ?? 0) > minRemovedIndex) {
-      return {
-        ...n,
-        data: {
-          ...n.data,
-          argIndex: Math.max(0, (n.data.argIndex ?? 0) - removedCount),
-        },
-      };
+    if (n.data.parentId === parentNode.id && n.data.argIndex !== undefined) {
+      const next = argIndexMap.get(n.data.argIndex);
+      if (next !== undefined && next !== n.data.argIndex) {
+        return { ...n, data: { ...n.data, argIndex: next } };
+      }
     }
     return n;
   });

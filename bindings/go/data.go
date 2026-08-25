@@ -86,7 +86,7 @@ func (d *DataHandle) cptr() *C.datalogic_data {
 func (r *Rule) EvaluateData(data *DataHandle) (string, error) {
 	var out C.datalogic_buf
 	var cerr *C.datalogic_error
-	rc := C.datalogic_rule_evaluate_data(r.ptr, data.cptr(), &out, &cerr)
+	rc := C.datalogic_rule_evaluate_data(r.cptr(), data.cptr(), &out, &cerr)
 	runtime.KeepAlive(r)
 	runtime.KeepAlive(data)
 	if rc != C.DATALOGIC_STATUS_OK {
@@ -104,7 +104,7 @@ func (s *Session) EvaluateData(rule *Rule, data *DataHandle) (string, error) {
 	var outPtr *C.uint8_t
 	var outLen C.size_t
 	var cerr *C.datalogic_error
-	rc := C.datalogic_session_evaluate_data(s.ptr, rule.ptr, data.cptr(), &outPtr, &outLen, &cerr)
+	rc := C.datalogic_session_evaluate_data(s.cptr(), rule.cptr(), data.cptr(), &outPtr, &outLen, &cerr)
 	if rc != C.DATALOGIC_STATUS_OK {
 		runtime.KeepAlive(s)
 		runtime.KeepAlive(rule)
@@ -133,7 +133,7 @@ func (s *Session) EvaluateData(rule *Rule, data *DataHandle) (string, error) {
 func (s *Session) EvaluateBool(rule *Rule, data *DataHandle) (bool, error) {
 	var out C.int32_t
 	var cerr *C.datalogic_error
-	rc := C.datalogic_session_evaluate_bool(s.ptr, rule.ptr, data.cptr(), &out, &cerr)
+	rc := C.datalogic_session_evaluate_bool(s.cptr(), rule.cptr(), data.cptr(), &out, &cerr)
 	runtime.KeepAlive(s)
 	runtime.KeepAlive(rule)
 	runtime.KeepAlive(data)
@@ -148,7 +148,7 @@ func (s *Session) EvaluateBool(rule *Rule, data *DataHandle) (bool, error) {
 func (s *Session) EvaluateInt64(rule *Rule, data *DataHandle) (int64, error) {
 	var out C.int64_t
 	var cerr *C.datalogic_error
-	rc := C.datalogic_session_evaluate_i64(s.ptr, rule.ptr, data.cptr(), &out, &cerr)
+	rc := C.datalogic_session_evaluate_i64(s.cptr(), rule.cptr(), data.cptr(), &out, &cerr)
 	runtime.KeepAlive(s)
 	runtime.KeepAlive(rule)
 	runtime.KeepAlive(data)
@@ -163,7 +163,7 @@ func (s *Session) EvaluateInt64(rule *Rule, data *DataHandle) (int64, error) {
 func (s *Session) EvaluateFloat64(rule *Rule, data *DataHandle) (float64, error) {
 	var out C.double
 	var cerr *C.datalogic_error
-	rc := C.datalogic_session_evaluate_f64(s.ptr, rule.ptr, data.cptr(), &out, &cerr)
+	rc := C.datalogic_session_evaluate_f64(s.cptr(), rule.cptr(), data.cptr(), &out, &cerr)
 	runtime.KeepAlive(s)
 	runtime.KeepAlive(rule)
 	runtime.KeepAlive(data)
@@ -180,7 +180,7 @@ func (s *Session) EvaluateFloat64(rule *Rule, data *DataHandle) (float64, error)
 func (s *Session) EvaluateTruthy(rule *Rule, data *DataHandle) (bool, error) {
 	var out C.int32_t
 	var cerr *C.datalogic_error
-	rc := C.datalogic_session_evaluate_truthy(s.ptr, rule.ptr, data.cptr(), &out, &cerr)
+	rc := C.datalogic_session_evaluate_truthy(s.cptr(), rule.cptr(), data.cptr(), &out, &cerr)
 	runtime.KeepAlive(s)
 	runtime.KeepAlive(rule)
 	runtime.KeepAlive(data)
@@ -225,7 +225,7 @@ func (s *Session) EvaluateBatch(rule *Rule, datas []*DataHandle) ([]BatchResult,
 	statuses := make([]C.datalogic_status, n)
 	var cerr *C.datalogic_error
 	rc := C.datalogic_session_evaluate_batch(
-		s.ptr, rule.ptr,
+		s.cptr(), rule.cptr(),
 		&cDatas[0], C.size_t(n),
 		&results[0], &statuses[0], &cerr,
 	)
@@ -257,15 +257,13 @@ func (s *Session) EvaluateMany(rules []*Rule, data *DataHandle) ([]BatchResult, 
 	}
 	cRules := make([]*C.datalogic_rule, n)
 	for i, r := range rules {
-		if r != nil {
-			cRules[i] = r.ptr
-		}
+		cRules[i] = r.cptr()
 	}
 	results := make([]C.datalogic_slice, n)
 	statuses := make([]C.datalogic_status, n)
 	var cerr *C.datalogic_error
 	rc := C.datalogic_session_evaluate_many(
-		s.ptr,
+		s.cptr(),
 		&cRules[0], C.size_t(n),
 		data.cptr(),
 		&results[0], &statuses[0], &cerr,

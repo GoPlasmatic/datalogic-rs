@@ -3,7 +3,7 @@ import type { ConversionContext } from './types';
 import { isPlainObject, isDataStructure } from '../type-helpers';
 import { convertPrimitive, convertInvalidObject } from './primitive-converter';
 import { isVariableOperator, convertVariable } from './variable-converter';
-import { convertIfElse } from './if-else-converter';
+import { convertIfElse, isIfOperator } from './if-else-converter';
 import { convertSwitch } from './switch-converter';
 import { convertOperator } from './operator-converter';
 import { convertStructure } from './structure-converter';
@@ -35,16 +35,22 @@ export function convertValue(
   const operator = keys[0];
   const operands = value[operator];
 
-  // Handle if/else
-  if (operator === 'if' || operator === '?:') {
-    const ifArgs: JsonLogicValue[] = Array.isArray(operands) ? operands : [operands];
-    return convertIfElse(ifArgs, context, convertValue);
+  // Normalize operands to array (the raw form is kept on the node's expression)
+  const operandArray: JsonLogicValue[] = Array.isArray(operands) ? operands : [operands];
+
+  // Handle if / ?: as a decision-diamond chain. Anything shorter than
+  // condition + then (including the non-array shorthand the engine rejects)
+  // is kept as a generic node so it serializes back exactly as written.
+  if (isIfOperator(operator)) {
+    if (Array.isArray(operands) && operands.length >= 2) {
+      return convertIfElse(operator, operands, context, convertValue);
+    }
+    return convertOperator(operator, operandArray, context, convertValue, operands);
   }
 
   // Handle switch/match
   if (operator === 'switch' || operator === 'match') {
-    const switchArgs: JsonLogicValue[] = Array.isArray(operands) ? operands : [operands];
-    return convertSwitch(operator, switchArgs, context, convertValue);
+    return convertSwitch(operator, operandArray, context, convertValue, operands);
   }
 
   // Handle variable operators
@@ -52,9 +58,6 @@ export function convertValue(
     return convertVariable(operator, operands, context, convertValue);
   }
 
-  // Normalize operands to array
-  const operandArray: JsonLogicValue[] = Array.isArray(operands) ? operands : [operands];
-
   // All operators use the unified convertOperator - produces cells-based nodes
-  return convertOperator(operator, operandArray, context, convertValue);
+  return convertOperator(operator, operandArray, context, convertValue, operands);
 }

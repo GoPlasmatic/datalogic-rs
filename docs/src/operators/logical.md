@@ -42,10 +42,14 @@ Logical NOT - negates a boolean value.
 // Result: true (null is falsy)
 
 { "!": [] }
-// Result: true (empty array is falsy)
+// Result: true (no argument, treated as null)
 
-{ "!": [1, 2] }
-// Note: This negates the array [1, 2], not [value]
+// An array argument is the argument list: only the first element is negated
+{ "!": [0, 2] }
+// Result: true (negates 0; the 2 is ignored)
+
+// To negate a literal array, wrap it so the array is the single argument
+{ "!": [[1, 2]] }
 // Result: false (non-empty array is truthy)
 ```
 
@@ -56,8 +60,9 @@ Logical NOT - negates a boolean value.
 
 **Notes:**
 - Uses configurable truthiness rules (default: JavaScript-style)
-- Falsy values: `false`, `0`, `""`, `null`, `[]`
+- Falsy values: `false`, `0`, `""`, `null`, `[]`, `{}`
 - Truthy values: everything else
+- An array argument is read as the argument list, and `!` uses only its first element. A literal array to be negated must be wrapped: `{ "!": [[1, 2]] }`
 
 ---
 
@@ -97,10 +102,15 @@ Convert a value to its boolean equivalent.
 { "!!": "" }
 // Result: false
 
-{ "!!": [1, 2, 3] }
+// A literal array must be wrapped so it is the single argument
+{ "!!": [[1, 2, 3]] }
 // Result: true
 
 { "!!": [] }
+// Result: false
+
+// Unwrapped, the array is the argument list and only the first element counts
+{ "!!": [0, 2, 3] }
 // Result: false
 
 { "!!": null }
@@ -115,6 +125,7 @@ Convert a value to its boolean equivalent.
 **Notes:**
 - Equivalent to `{ "!": { "!": value } }`
 - Useful for ensuring a boolean result from any value
+- Like `!`, an array argument is the argument list and only its first element is inspected; wrap a literal array (`{ "!!": [[]] }` is `false`, `{ "!!": [{}] }` is `false`)
 
 ---
 
@@ -128,7 +139,7 @@ Logical AND with short-circuit evaluation.
 ```
 
 **Arguments:**
-- `a`, `b`, ... - Two or more values to AND together
+- `a`, `b`, ... - One or more values to AND together, always passed as an array. A single-element array returns that element; an empty array returns `null`; a bare scalar (`{ "and": 5 }`) is an Invalid Arguments error
 
 **Returns:** The first falsy value encountered, or the last value if all are truthy.
 
@@ -183,7 +194,7 @@ Logical OR with short-circuit evaluation.
 ```
 
 **Arguments:**
-- `a`, `b`, ... - Two or more values to OR together
+- `a`, `b`, ... - One or more values to OR together, always passed as an array. A single-element array returns that element; an empty array returns `null`; a bare scalar (`{ "or": "x" }`) is an Invalid Arguments error
 
 **Returns:** The first truthy value encountered, or the last value if all are falsy.
 

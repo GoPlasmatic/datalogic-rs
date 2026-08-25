@@ -20,5 +20,6 @@ export const CATEGORY_COLORS: Record<NodeCategory, string> = {
   validation: '#94a3b8',
   utility: '#64748b',
   error: '#ef4444',
+  flagd: '#f97316',
   literal: '#64748b',
 };

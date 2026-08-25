@@ -1019,3 +1019,76 @@
   border: none;
   box-shadow: none;
 }
+
+/* ============================================
+   Templating toggle (playground header)
+   ============================================ */
+
+.datalogic-playground .playground-templating-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+}
+
+.datalogic-playground .playground-templating-toggle input {
+  margin: 0;
+  cursor: pointer;
+}
+
+/* ============================================
+   Structured error rendering inside embeds
+   (shares the .error-* classes from DebugPanel.css)
+   ============================================ */
+
+.embed-error {
+  display: block;
+  font-family: inherit;
+  font-size: 0.8rem;
+  --error-text: #dc2626;
+  --error-border: rgba(220, 38, 38, 0.35);
+  --error-bg: rgba(220, 38, 38, 0.08);
+  --text-primary: var(--dl-text, #1f2937);
+  --text-secondary: var(--dl-text-muted, #6b7280);
+  --text-tertiary: var(--dl-text-muted, #6b7280);
+  --text-muted: var(--dl-text-muted, #6b7280);
+  --bg-tertiary: var(--dl-bg-secondary, #f9fafb);
+  --border-primary: var(--dl-border, #e5e7eb);
+  --border-light: var(--dl-border, #e5e7eb);
+  --code-bg: var(--dl-bg, #ffffff);
+  --radius-sm: 4px;
+  --font-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+}
+
+.embed-error .error-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  background: var(--error-text);
+  color: white;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.embed-error .error-display-head {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.embed-error .error-thrown-json .json-highlight,
+.embed-error .error-thrown-json {
+  font-size: 0.75rem;
+}

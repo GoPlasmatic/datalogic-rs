@@ -116,8 +116,9 @@ let engine = Engine::builder()
 
 ### Tier 2 — Session (the right default for repeated evaluation)
 
-`Session` owns a reusable `bumpalo::Bump` and resets it between calls,
-so peak memory tracks the largest single evaluation, not the sum.
+`Session` owns a reusable `bumpalo::Bump`; call `reset()` between
+iterations so peak memory tracks the largest single evaluation, not
+the sum. The session never resets on its own.
 
 ```rust
 use datalogic_rs::Engine;
@@ -202,10 +203,14 @@ Per-call cost differs:
 | `&OwnedDataValue`                         | deep-borrow into the arena          |
 | `DataValue<'a>` (by value)                | one arena alloc for the top node    |
 | `&'a DataValue<'a>` (by reference)        | **zero** — pass-through             |
+| `&ParsedData` (parse once via `ParsedData::from_json`) | **zero**: same as the pre-parsed row |
 
 For the same-input-many-rules case, or when upstream stages already
 produced an arena value, prefer the `&'a DataValue<'a>` path — it's
-genuinely allocation-free.
+genuinely allocation-free. `ParsedData` is the owned form of that
+pattern: it parses a JSON payload once into its own arena and hands out
+`&DataValue` borrows for as long as the handle lives, which is what the
+bindings expose as their `DataHandle` tier.
 
 The Tier 0 / Tier 1 one-shot methods (`eval`, `eval_str`,
 `eval_into`) accept a similar set via the [`OwnedInput`] trait, which
@@ -256,6 +261,7 @@ Conversion to other shapes:
 | [`EngineBuilder`]              | Builder for engines with custom config, operators, modes    |
 | [`Logic`]                      | Compiled, thread-safe rule snapshot                         |
 | [`Session`]                    | Arena-reusing handle for hot loops; caller resets           |
+| [`ParsedData`]                 | Self-contained parsed payload; evaluate many rules against one parse |
 | [`DataValue`]                  | Arena-borrowed JSON-shaped value (returned from `evaluate`) |
 | `OwnedDataValue`               | Heap-owned counterpart of `DataValue` (via `datavalue`)     |
 | [`EvaluationConfig`]           | Behaviour knobs: NaN, division by zero, truthiness, coercion |
@@ -268,6 +274,7 @@ Conversion to other shapes:
 [`EngineBuilder`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.EngineBuilder.html
 [`Logic`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.Logic.html
 [`Session`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.Session.html
+[`ParsedData`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.ParsedData.html
 [`DataValue`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/enum.DataValue.html
 [`EvaluationConfig`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.EvaluationConfig.html
 [`CustomOperator`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/trait.CustomOperator.html
@@ -311,6 +318,28 @@ Full guide: [Custom Operators](https://goplasmatic.github.io/datalogic-rs/advanc
 The `CustomOperator` trait is the headline extension point and is
 **stable for the 5.x series** — no required-method additions, no
 signature changes.
+
+### Introspection
+
+`engine.builtin_operator_names()` iterates every built-in key this
+build resolves (canonical name first, then its aliases such as `var`,
+`?:`, and `match`), reflecting the compiled feature set;
+`engine.custom_operator_names()` lists the registered custom operators
+and `engine.has_custom_operator(name)` checks a single name. The union
+of the two is the engine's full vocabulary, which authoring tools need
+under templating mode, where an unknown key is data rather than an
+error. A custom operator registered under a built-in name is never
+reached: built-in resolution wins at compile time.
+
+```rust
+use datalogic_rs::Engine;
+
+let engine = Engine::new();
+let names: Vec<&str> = engine.builtin_operator_names().collect();
+assert!(names.contains(&"val"));
+assert!(names.contains(&"var")); // alias of `val`
+assert_eq!(engine.custom_operator_names().count(), 0);
+```
 
 ## Configuration
 
@@ -357,22 +386,33 @@ templating mode. Runnable example:
 
 ## Error model
 
-Every fallible path returns `Result<T, Error>`. `Error` carries:
+Every fallible path returns `Result<T, Error>`. `Error` is
+`#[non_exhaustive]`; it exposes one public field and reads the rest
+through accessors:
 
-- `kind: ErrorKind` — the discriminant (`ParseError`, `Thrown`,
-  `VariableNotFound`, `TypeError`, `ArithmeticError`, `Custom`, …)
-- `operator: Option<&'static str>` — the outermost failing operator
-- `node_ids: Vec<u32>` — breadcrumbs from the compiled tree; resolve
-  to a JSON path via `Error::resolve_path(&logic)` which returns a
-  `Vec<PathStep>` you can print or serialise
+- `kind: ErrorKind`: the discriminant (`ParseError`, `Thrown`,
+  `InvalidArguments`, `TypeError`, `ArithmeticError`, `Custom`, …),
+  public for pattern matching
+- `operator() -> Option<&str>`: the outermost failing operator
+- `node_ids() -> &[u32]`: breadcrumbs from the compiled tree
+  (leaf to root); resolve to a JSON path via
+  `Error::resolve_path(&logic)`, which returns a `Vec<PathStep>` you
+  can print or serialise
+- `thrown_value() -> Option<&OwnedDataValue>`: the payload of a
+  `throw`, or the structured value the engine threw (division by zero
+  under the default config throws `{"type": "NaN"}`)
 
 ```rust
 use datalogic_rs::{Engine, ErrorKind};
 
 let engine = Engine::new();
-let err = engine.eval_str(r#"{"var": "missing"}"#, r#"{}"#);
-// Default config: variable misses return null, not an error.
-// Switch to a strict config to surface them as `VariableNotFound`.
+let err = engine.eval_str(r#"{"/": [1, 0]}"#, r#"{}"#).unwrap_err();
+assert!(matches!(err.kind, ErrorKind::Thrown(_)));
+assert_eq!(err.operator(), Some("/"));
+assert_eq!(err.thrown_value().map(|v| v.to_string()), Some(r#"{"type":"NaN"}"#.to_string()));
+
+// Missing variables are not errors in any config: `{"var": "missing"}`
+// evaluates to null. Use `exists`, `missing`, or `??` to detect them.
 ```
 
 Runnable example: [`examples/error_handling.rs`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/examples/error_handling.rs).
@@ -407,6 +447,7 @@ Runnable example: [`examples/thread_safety.rs`](https://github.com/GoPlasmatic/d
 | `error-handling`  | `try` / `throw` operators                                                 |
 | `ext-string`, `ext-array`, `ext-object`, `ext-control`, `ext-math` | Optional operator families |
 | `flagd`           | flagd-compat operators (`fractional`, `sem_ver`); pulls in `semver`       |
+| `wasm-clock`      | JS-host clock for `now` on `wasm32-unknown-unknown` (`chrono/wasmbind`). Enable only when a JS host runs the module; never for wasmtime / wazero / Chicory (issue #47). Without it `now` traps on that target |
 
 The default build is `serde_json`-free; opt in via
 `features = ["serde_json"]` when you need the value boundary.
@@ -460,7 +501,7 @@ let result: String = engine.eval_str(
 ```
 
 Conformance test suites under
-[`tests/suites/flagd/`](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs/tests/suites/) mirror the canonical Go test
+[`tests/suites/flagd/`](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs/tests/suites/flagd/) mirror the canonical Go test
 files in `open-feature/flagd` so every release is checked against the
 upstream behaviour.
 

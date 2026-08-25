@@ -35,9 +35,9 @@ cargo test
 contract mechanics — abi/version, status codes, error handles,
 borrowed session results, owned bufs, data handles, typed results,
 batch, callbacks, and NULL-safety. `tests/conformance.rs` drives the
-full JSONLogic suite (3,000+ cases) through the ABI twice per case:
-once via one-shot `apply` and once via the compile + data-handle +
-session hot path.
+full 1,658-case conformance suite (58 suites) through the ABI, each
+case evaluated twice: once via one-shot `apply` and once via the
+compile + data-handle + session hot path.
 
 ## API surface
 

@@ -19,7 +19,7 @@ export { JsonInput } from './JsonInput';
 // Renderers
 export { FieldRenderer, type FieldRendererRef } from './FieldRenderer';
 export { SectionRenderer, type SectionRendererRef } from './SectionRenderer';
-export { PanelRenderer, type PanelRendererRef } from './PanelRenderer';
+export { PanelRenderer, ChainableHint, ContextVariablesHint, type PanelRendererRef } from './PanelRenderer';
 
 // Utilities
 export { evaluateCondition, evaluateConditions } from './visibility';

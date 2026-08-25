@@ -2,7 +2,10 @@
 
 Use JSONLogic as a templating engine with templating mode.
 
-> Requires `feature = "templating"`. The mode is off by default.
+> Requires `feature = "templating"`. The mode is off by default. Some
+> examples on this page also use operators behind other Rust features:
+> `??` needs `ext-control` and `length` needs `ext-string`. Every language
+> binding ships with all operator features enabled.
 
 ## Enabling Structure Preservation
 

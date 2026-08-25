@@ -518,3 +518,115 @@
 .logic-editor[data-theme="dark"] .dl-context-menu-item--danger:hover:not(:disabled) {
   background: rgba(239, 68, 68, 0.15);
 }
+
+/* ============================================================================
+   Toolbar: Insert button + engine settings indicator
+   ============================================================================ */
+
+.logic-editor-toolbar .dl-toolbar-insert {
+  width: auto;
+  gap: 5px;
+  padding: 0 10px 0 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--hairline, #ddd);
+  color: var(--text-secondary, #666);
+}
+
+.logic-editor-toolbar .dl-toolbar-insert:hover:not(:disabled) {
+  border-color: var(--accent, #6366f1);
+  color: var(--accent, #6366f1);
+  background: var(--accent-soft, rgba(99, 102, 241, 0.08));
+}
+
+.logic-editor-toolbar .dl-toolbar-config {
+  flex-shrink: 1;
+  min-width: 0;
+  border: 1px solid var(--warning-border, #f5d48a);
+  color: var(--warning-text, #92400e);
+  background: var(--warning-bg, #fef3c7);
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.logic-editor-toolbar button.dl-toolbar-config {
+  cursor: pointer;
+}
+
+.logic-editor-toolbar button.dl-toolbar-config:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.logic-editor-toolbar .dl-toolbar-config .engine-config-badge-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Empty / error states mention the active engine settings */
+.logic-editor-empty-config,
+.logic-editor-error-config {
+  margin-top: 6px !important;
+  font-family: var(--font-mono);
+  font-size: 11px !important;
+  font-weight: 400 !important;
+  color: var(--warning-text) !important;
+}
+
+@media (max-width: 1024px) {
+  .logic-editor-toolbar .dl-toolbar-insert {
+    width: auto;
+    padding: 0 10px;
+  }
+
+  .logic-editor-toolbar .dl-toolbar-insert span {
+    display: none;
+  }
+
+  .logic-editor-toolbar .dl-toolbar-config {
+    max-width: 140px;
+  }
+}
+
+/* Trace-level failure banner: shown under the toolbar when the engine could
+   not produce a trace at all (compile-stage error), so no node can carry the
+   error bubble. Runtime failures that map onto a node are shown there. */
+.logic-editor-trace-error {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--error-border);
+  background: var(--error-bg-light);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--error-text);
+}
+
+.logic-editor-trace-error-kind {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border: 1px solid var(--error-border);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.logic-editor-trace-error-message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

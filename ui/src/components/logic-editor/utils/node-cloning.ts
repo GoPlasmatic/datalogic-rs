@@ -7,7 +7,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import type { LogicNode, OperatorNodeData } from '../types';
+import type { LogicNode, OperatorNodeData, StructureNodeData } from '../types';
 
 /**
  * Result of cloning nodes with ID remapping
@@ -28,6 +28,7 @@ export interface CloneResult {
  * - Generating new UUIDs for each node
  * - Remapping parentId references within the cloned set
  * - Remapping cell branch IDs for operator nodes
+ * - Remapping element branch IDs for structure (template) nodes
  *
  * @param nodes - The nodes to clone (should include the root and all descendants)
  * @param rootId - The ID of the root node in the original set
@@ -55,6 +56,9 @@ export function cloneNodesWithIdMapping(
     idMap.set(n.id, uuidv4());
   });
 
+  const remap = (id: string | undefined): string | undefined =>
+    id && idMap.has(id) ? idMap.get(id) : id;
+
   // Clone and remap IDs
   const clonedNodes: LogicNode[] = nodes.map((n) => {
     const newId = idMap.get(n.id)!;
@@ -64,9 +68,7 @@ export function cloneNodesWithIdMapping(
       data: {
         ...JSON.parse(JSON.stringify(n.data)),
         // Remap parentId if it's in the cloned set
-        parentId: n.data.parentId && idMap.has(n.data.parentId)
-          ? idMap.get(n.data.parentId)
-          : n.data.parentId,
+        parentId: remap(n.data.parentId),
       },
     };
 
@@ -77,15 +79,21 @@ export function cloneNodesWithIdMapping(
         ...opData,
         cells: opData.cells.map((cell) => ({
           ...cell,
-          branchId: cell.branchId && idMap.has(cell.branchId)
-            ? idMap.get(cell.branchId)
-            : cell.branchId,
-          conditionBranchId: cell.conditionBranchId && idMap.has(cell.conditionBranchId)
-            ? idMap.get(cell.conditionBranchId)
-            : cell.conditionBranchId,
-          thenBranchId: cell.thenBranchId && idMap.has(cell.thenBranchId)
-            ? idMap.get(cell.thenBranchId)
-            : cell.thenBranchId,
+          branchId: remap(cell.branchId),
+          conditionBranchId: remap(cell.conditionBranchId),
+          thenBranchId: remap(cell.thenBranchId),
+        })),
+      };
+    }
+
+    // Remap elements for structure (template) nodes
+    if (newNode.data.type === 'structure') {
+      const structData = newNode.data as StructureNodeData;
+      newNode.data = {
+        ...structData,
+        elements: structData.elements.map((element) => ({
+          ...element,
+          branchId: remap(element.branchId),
         })),
       };
     }
@@ -152,10 +160,67 @@ export function getDescendants(
 }
 
 /**
+ * Return a copy of `node` whose references to child `oldChildId` point at
+ * `newChildId` instead: operator cells (branch / condition / then) and
+ * structure elements alike. Nodes that do not reference the child are
+ * returned unchanged (same object).
+ */
+export function replaceChildReference(
+  node: LogicNode,
+  oldChildId: string,
+  newChildId: string
+): LogicNode {
+  if (node.data.type === 'operator') {
+    const opData = node.data as OperatorNodeData;
+    if (
+      !opData.cells.some(
+        (cell) =>
+          cell.branchId === oldChildId ||
+          cell.conditionBranchId === oldChildId ||
+          cell.thenBranchId === oldChildId
+      )
+    ) {
+      return node;
+    }
+    return {
+      ...node,
+      data: {
+        ...opData,
+        cells: opData.cells.map((cell) => ({
+          ...cell,
+          branchId: cell.branchId === oldChildId ? newChildId : cell.branchId,
+          conditionBranchId: cell.conditionBranchId === oldChildId ? newChildId : cell.conditionBranchId,
+          thenBranchId: cell.thenBranchId === oldChildId ? newChildId : cell.thenBranchId,
+        })),
+      },
+    };
+  }
+
+  if (node.data.type === 'structure') {
+    const structData = node.data as StructureNodeData;
+    if (!structData.elements.some((el) => el.branchId === oldChildId)) {
+      return node;
+    }
+    return {
+      ...node,
+      data: {
+        ...structData,
+        elements: structData.elements.map((el) => ({
+          ...el,
+          branchId: el.branchId === oldChildId ? newChildId : el.branchId,
+        })),
+      },
+    };
+  }
+
+  return node;
+}
+
+/**
  * Update parent references when replacing a node in the tree.
  *
  * When a node is replaced (e.g., during paste), the parent's
- * cells array needs to be updated to point to the new node ID.
+ * cells (or structure elements) need to be updated to point to the new node ID.
  *
  * @param nodes - The nodes to update
  * @param parentId - The ID of the parent node to update
@@ -171,24 +236,6 @@ export function updateParentChildReference(
 ): LogicNode[] {
   return nodes.map((n) => {
     if (n.id !== parentId) return n;
-
-    // Update cells for operator nodes
-    if (n.data.type === 'operator') {
-      const opData = n.data as OperatorNodeData;
-      return {
-        ...n,
-        data: {
-          ...opData,
-          cells: opData.cells.map((cell) => ({
-            ...cell,
-            branchId: cell.branchId === oldChildId ? newChildId : cell.branchId,
-            conditionBranchId: cell.conditionBranchId === oldChildId ? newChildId : cell.conditionBranchId,
-            thenBranchId: cell.thenBranchId === oldChildId ? newChildId : cell.thenBranchId,
-          })),
-        },
-      };
-    }
-
-    return n;
+    return replaceChildReference(n, oldChildId, newChildId);
   });
 }

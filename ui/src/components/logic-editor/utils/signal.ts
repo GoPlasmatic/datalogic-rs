@@ -1,9 +1,9 @@
 /**
- * Signal mapping — the Signal Board colour axis.
+ * Signal mapping: the Signal Board colour axis.
  *
  * A node is coloured by the *type of value it produces* (its signal), not by
  * its operator category. This maps an operator's declared `returnType`
- * (from the operator config) — or a literal's value type — to a signal key,
+ * (from the operator config), or a literal's value type, to a signal key,
  * which resolves to a `--sig-*` CSS variable defined in theme.css.
  *
  * Consumers override the palette by redefining `--sig-*` on `.logic-editor`.
@@ -31,6 +31,9 @@ const RETURN_TYPE_SIGNAL: Record<string, SignalKey> = {
   string: 'string',
   array: 'collection',
   object: 'collection',
+  // 'same' = returns the input's shape (slice: array or string); it sits with
+  // the collection-transform frame (merge / sort / slice) on the board.
+  same: 'collection',
   null: 'null',
   datetime: 'temporal',
   duration: 'temporal',
@@ -42,13 +45,13 @@ export function signalForOperator(
   operator: string,
   category?: OperatorCategory,
 ): SignalKey {
-  // var / val / exists read the data context — always the teal data tap.
+  // var / val / exists read the data context: always the teal data tap.
   if (category === 'variable') return 'data';
 
   const rt = getOperator(operator)?.help?.returnType;
   if (rt && RETURN_TYPE_SIGNAL[rt]) return RETURN_TYPE_SIGNAL[rt];
 
-  // Generic returnTypes ('any' | 'same' | 'never') fall back to the category.
+  // Generic returnTypes ('any' | 'never') fall back to the category.
   if (category === 'datetime') return 'temporal';
   if (category === 'error') return 'bool-false';
   return 'bool-rest';

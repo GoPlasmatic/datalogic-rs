@@ -6,12 +6,37 @@
 //! `serde_json` gate would skip the whole file.
 
 use bumpalo::Bump;
+#[cfg(feature = "templating")]
 use datalogic_rs::datavalue::OwnedDataValue;
 use datalogic_rs::operator::EvalContext;
 use datalogic_rs::{CustomOperator, DataValue, Engine, Result};
 
 fn names() -> Vec<&'static str> {
     Engine::new().builtin_operator_names().collect()
+}
+
+/// JSON-quote an operator name. Rust's `{:?}` is close but not JSON: it
+/// escapes `'` as `\'` and emits `\u{1f600}` for non-ASCII, neither of
+/// which parses. Every name is plain ASCII today, so a `{:?}` rule would
+/// silently become unparseable — and the test below would pass vacuously
+/// — the first time one is not.
+#[cfg(feature = "templating")]
+fn json_quoted(name: &str) -> String {
+    let mut out = String::with_capacity(name.len() + 2);
+    out.push('"');
+    for c in name.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 #[test]
@@ -102,7 +127,7 @@ fn builtin_and_custom_sets_are_disjoint() {
 fn every_reported_name_is_live_under_templating() {
     let engine = Engine::builder().with_templating(true).build();
     for name in engine.builtin_operator_names() {
-        let rule = format!("{{{name:?}: [1]}}");
+        let rule = format!("{{{}: [1]}}", json_quoted(name));
         if let Ok(OwnedDataValue::Object(fields)) = engine.eval(rule.as_str(), "{}") {
             assert!(
                 !(fields.len() == 1 && fields[0].0 == name),

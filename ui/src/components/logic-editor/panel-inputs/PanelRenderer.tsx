@@ -93,7 +93,7 @@ export const PanelRenderer = memo(forwardRef<PanelRendererRef, PanelRendererProp
 /**
  * Hint displayed for chainable comparison operators
  */
-const ChainableHint = memo(function ChainableHint() {
+export const ChainableHint = memo(function ChainableHint() {
   return (
     <div className="panel-hint panel-hint-chainable">
       <div className="panel-hint-icon">⛓</div>
@@ -114,7 +114,7 @@ interface ContextVariablesHintProps {
 /**
  * Hint displayed for iterator operators showing available context variables
  */
-const ContextVariablesHint = memo(function ContextVariablesHint({
+export const ContextVariablesHint = memo(function ContextVariablesHint({
   variables,
 }: ContextVariablesHintProps) {
   return (

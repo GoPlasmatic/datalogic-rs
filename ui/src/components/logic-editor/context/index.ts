@@ -1,4 +1,3 @@
-export { EvaluationContext, useEvaluationResult, useEvaluationResults } from './EvaluationContext';
 export { DebuggerProvider, useDebuggerContext, useNodeDebugState } from './debugger';
 export { ConnectedHandlesProvider } from './ConnectedHandlesContext';
 export { useIsHandleConnected } from './useConnectedHandles';

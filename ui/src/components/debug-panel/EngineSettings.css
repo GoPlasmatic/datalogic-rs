@@ -1,0 +1,222 @@
+/* Engine settings panel: preset + EvaluationConfig knobs */
+.engine-settings {
+  width: 360px;
+  max-width: calc(100vw - 24px);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  max-height: min(80vh, 640px);
+}
+
+.engine-settings--popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 1000;
+}
+
+.engine-settings--sheet {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10001;
+  width: min(420px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+}
+
+.engine-settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.engine-settings-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--hairline-2);
+}
+
+.engine-settings-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.engine-settings-subtitle {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.engine-settings-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.engine-settings-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-family: inherit;
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.engine-settings-reset:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-primary);
+  color: var(--text-primary);
+}
+
+.engine-settings-reset:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.engine-settings-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.engine-settings-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.engine-settings-reset:focus-visible,
+.engine-settings-close:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.engine-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px 14px;
+  overflow-y: auto;
+}
+
+.engine-settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.engine-settings-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.engine-settings-field select,
+.engine-settings-field input[type="number"] {
+  width: 100%;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-sm);
+}
+
+.engine-settings-field select:focus-visible,
+.engine-settings-field input:focus-visible,
+.engine-settings-check input:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.engine-settings-hint {
+  display: block;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.engine-settings-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.engine-settings-check input {
+  margin: 3px 0 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.engine-settings-check-label {
+  display: block;
+  font-size: 12.5px;
+  color: var(--text-primary);
+}
+
+.engine-settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.engine-settings-group legend {
+  padding: 0;
+  margin-bottom: 2px;
+}
+
+/* Compact "engine settings active" badge shared by header, toolbar and result pane */
+.engine-config-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 260px;
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--warning-text);
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  border-radius: 999px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.engine-config-badge-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

@@ -153,5 +153,96 @@
         },
         "error": { "type": "Some error" },
         "data": { "x": 1 }
+    },
+    "Engine errors reach the catch arm as {type: ...} too",
+    {
+        "description": "An unknown operator surfaces as {type: 'Unknown Operator'}",
+        "rule": {
+            "try": [
+                {
+                    "risky_operation": []
+                },
+                {
+                    "var": "type"
+                }
+            ]
+        },
+        "data": {
+            "type": "DATA"
+        },
+        "result": "Unknown Operator"
+    },
+    {
+        "description": "Invalid arguments surface as {type: 'Invalid Arguments'}",
+        "rule": {
+            "try": [
+                {
+                    "max": [
+                        "a"
+                    ]
+                },
+                {
+                    "val": "type"
+                }
+            ]
+        },
+        "data": {
+            "type": "DATA"
+        },
+        "result": "Invalid Arguments"
+    },
+    {
+        "description": "The catch arm sees the error object, not the original data",
+        "rule": {
+            "try": [
+                {
+                    "risky_operation": []
+                },
+                {
+                    "var": "foo"
+                }
+            ]
+        },
+        "data": {
+            "foo": 1
+        },
+        "result": null
+    },
+    {
+        "description": "Whole error object for an engine error",
+        "rule": {
+            "try": [
+                {
+                    "risky_operation": []
+                },
+                {
+                    "var": ""
+                }
+            ]
+        },
+        "data": {
+            "foo": 1
+        },
+        "result": {
+            "type": "Unknown Operator"
+        }
+    },
+    {
+        "description": "NaN errors keep their thrown shape",
+        "rule": {
+            "try": [
+                {
+                    "/": [
+                        1,
+                        0
+                    ]
+                },
+                {
+                    "var": "type"
+                }
+            ]
+        },
+        "data": null,
+        "result": "NaN"
     }
 ]

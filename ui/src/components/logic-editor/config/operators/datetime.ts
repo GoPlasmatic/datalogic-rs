@@ -28,15 +28,15 @@ export const datetimeOperators: Record<string, Operator> = {
           label: 'Value',
           type: 'string',
           required: true,
-          description: 'ISO 8601 datetime string',
+          description: 'ISO 8601 datetime string (date and time)',
         },
       ],
     },
     help: {
       summary: 'Parse or validate a datetime string',
       details:
-        'Parses an ISO 8601 datetime string and validates it. Returns the datetime if valid, or throws an error if invalid. Preserves the original timezone information.',
-      returnType: 'string',
+        'Parses a full ISO 8601 datetime (date and time; offset optional) and validates it. Returns the datetime if valid, or throws an error if invalid. Preserves the original timezone information.',
+      returnType: 'datetime',
       examples: [
         {
           title: 'UTC datetime',
@@ -54,11 +54,18 @@ export const datetimeOperators: Record<string, Operator> = {
           data: { createdAt: '2024-01-15T10:30:00Z' },
           result: '2024-01-15T10:30:00Z',
         },
+        {
+          title: 'Date-only string is invalid',
+          rule: { datetime: '2024-01-15' },
+          error: { type: 'InvalidArguments' },
+          note: 'A time part is required; use parse_date with a format for date-only input',
+        },
       ],
       notes: [
-        'Supports ISO 8601 format',
+        'Requires a full ISO 8601 datetime (date + time); the offset is optional',
+        'Date-only strings like "2024-01-15" are an error (use parse_date)',
         'Preserves timezone information',
-        'Throws error for invalid format',
+        '{"datetime": ...} objects pass through unchanged',
       ],
       seeAlso: ['parse_date', 'format_date', 'now'],
     },
@@ -66,7 +73,6 @@ export const datetimeOperators: Record<string, Operator> = {
       icon: 'calendar',
       shortLabel: 'dt',
       nodeType: 'operator',
-      datetimeProps: true,
     },
   },
 
@@ -92,40 +98,48 @@ export const datetimeOperators: Record<string, Operator> = {
     help: {
       summary: 'Parse or validate a duration string',
       details:
-        'Parses a duration string in various formats (e.g., "2h30m", "1d", "90s") and returns the normalized duration.',
-      returnType: 'string',
+        'Parses a duration string such as "2h30m", "1d" or "90s" and returns it normalized to the "Dd:Hh:Mm:Ss" form (units carried over, e.g. 90s becomes 1m:30s).',
+      returnType: 'duration',
       examples: [
         {
           title: 'Hours and minutes',
           rule: { timestamp: '2h30m' },
-          result: '2h30m',
+          result: '0d:2h:30m:0s',
         },
         {
           title: 'Days',
           rule: { timestamp: '1d' },
-          result: '1d',
+          result: '1d:0h:0m:0s',
         },
         {
           title: 'Seconds',
           rule: { timestamp: '90s' },
-          result: '90s',
+          result: '0d:0h:1m:30s',
+          note: 'Overflowing units carry over',
         },
         {
           title: 'With variable',
           rule: { timestamp: { var: 'timeout' } },
           data: { timeout: '30m' },
-          result: '30m',
+          result: '0d:0h:30m:0s',
+        },
+        {
+          title: 'Unsupported unit',
+          rule: { timestamp: '1w' },
+          error: { type: 'InvalidArguments' },
+          note: 'Only d, h, m and s are accepted',
         },
       ],
       notes: [
-        'Supports d (days), h (hours), m (minutes), s (seconds)',
-        'Multiple units can be combined: "1d2h30m"',
-        'Throws error for invalid format',
+        'Units: d (days), h (hours), m (minutes), s (seconds) with integer counts',
+        'Combine units as "1d2h30m" or in the colon form "1d:2h:30m:0s"',
+        'Result is always the normalized "Dd:Hh:Mm:Ss" string',
+        'Weeks, decimals and ISO 8601 durations ("PT2H30M") are an error',
       ],
       seeAlso: ['datetime', 'date_diff'],
     },
     ui: {
-      icon: 'timer',
+      icon: 'clock',
       shortLabel: 'dur',
       nodeType: 'operator',
     },
@@ -137,9 +151,9 @@ export const datetimeOperators: Record<string, Operator> = {
     category: 'datetime',
     description: 'Parse a date string with a custom format',
     arity: {
-      type: 'binary',
+      type: 'range',
       min: 2,
-      max: 2,
+      max: 3,
       args: [
         {
           name: 'dateString',
@@ -155,13 +169,20 @@ export const datetimeOperators: Record<string, Operator> = {
           required: true,
           description: 'Format pattern (e.g., "yyyy-MM-dd")',
         },
+        {
+          name: 'timezone',
+          label: 'Timezone',
+          type: 'string',
+          required: false,
+          description: 'Optional IANA zone name (e.g. "Asia/Kolkata", "America/New_York")',
+        },
       ],
     },
     help: {
       summary: 'Parse a date string using a custom format pattern',
       details:
-        'Parses a date string according to the specified format pattern and returns an ISO 8601 datetime string. Useful for handling non-standard date formats.',
-      returnType: 'string',
+        'Parses a date string according to the specified format pattern and returns an ISO 8601 datetime. Input without an offset is read as UTC, or as local time in the optional IANA timezone (third argument) and converted to UTC.',
+      returnType: 'datetime',
       examples: [
         {
           title: 'Date only',
@@ -184,16 +205,34 @@ export const datetimeOperators: Record<string, Operator> = {
           data: { dateStr: '2024-12-25' },
           result: '2024-12-25T00:00:00Z',
         },
+        {
+          title: 'Month name',
+          rule: { parse_date: ['15 Jan 2024', 'dd MMM yyyy'] },
+          result: '2024-01-15T00:00:00Z',
+        },
+        {
+          title: 'Local time in a timezone',
+          rule: { parse_date: ['2024-01-15 10:30', 'yyyy-MM-dd HH:mm', 'Asia/Kolkata'] },
+          result: '2024-01-15T05:00:00Z',
+          note: '10:30 IST is 05:00 UTC',
+        },
+        {
+          title: 'No match',
+          rule: { parse_date: ['nope', 'yyyy-MM-dd'] },
+          error: { type: 'InvalidArguments' },
+        },
       ],
       notes: [
-        'Format tokens: yyyy (year), MM (month), dd (day), HH (hour), mm (minute), ss (second)',
-        'Returns ISO 8601 format',
+        'Format tokens: yyyy, MM, dd, HH, mm, ss, plus MMM/MMMM (month name), EEE/EEEE (weekday name)',
+        'Raw strftime tokens (%Y, %m, %d, %A, ...) pass through unchanged',
+        'Optional third argument: IANA timezone the input is expressed in (DST-aware)',
+        'Returns ISO 8601 (UTC unless the input carried an offset)',
         'Throws error if string does not match format',
       ],
       seeAlso: ['format_date', 'datetime'],
     },
     ui: {
-      icon: 'calendar-search',
+      icon: 'calendar',
       shortLabel: 'parse',
       nodeType: 'operator',
     },
@@ -205,9 +244,9 @@ export const datetimeOperators: Record<string, Operator> = {
     category: 'datetime',
     description: 'Format a datetime with a custom format string',
     arity: {
-      type: 'binary',
+      type: 'range',
       min: 2,
-      max: 2,
+      max: 3,
       args: [
         {
           name: 'datetime',
@@ -223,12 +262,19 @@ export const datetimeOperators: Record<string, Operator> = {
           required: true,
           description: 'Format pattern (e.g., "yyyy-MM-dd")',
         },
+        {
+          name: 'timezone',
+          label: 'Timezone',
+          type: 'string',
+          required: false,
+          description: 'Optional IANA zone name (e.g. "Asia/Kolkata", "America/New_York")',
+        },
       ],
     },
     help: {
       summary: 'Format a datetime value using a custom format pattern',
       details:
-        'Takes a datetime value (ISO string or datetime object) and formats it according to the specified pattern.',
+        'Takes a datetime value (ISO string or datetime object) and formats it according to the specified pattern. With an optional IANA timezone as the third argument the instant is rendered in that zone (DST-aware).',
       returnType: 'string',
       examples: [
         {
@@ -252,16 +298,45 @@ export const datetimeOperators: Record<string, Operator> = {
           data: { timestamp: '2024-06-15T14:30:00Z' },
           result: '2024-06-15',
         },
+        {
+          title: 'Names of day and month',
+          rule: { format_date: ['2024-01-15T10:30:00Z', 'EEEE, dd MMMM yyyy'] },
+          result: 'Monday, 15 January 2024',
+        },
+        {
+          title: 'In a timezone',
+          rule: { format_date: ['2024-01-15T10:30:00Z', 'HH:mm', 'Asia/Kolkata'] },
+          result: '16:00',
+          note: '10:30 UTC is 16:00 IST',
+        },
+        {
+          title: 'Raw strftime tokens with zone name',
+          rule: {
+            format_date: [
+              { datetime: '2024-01-15T10:30:00Z' },
+              '%Y-%m-%d %H:%M %Z',
+              'America/New_York',
+            ],
+          },
+          result: '2024-01-15 05:30 EST',
+        },
+        {
+          title: 'Timezone offset',
+          rule: { format_date: ['2024-01-15T10:30:00+05:30', 'z'] },
+          result: '+0530',
+        },
       ],
       notes: [
-        'Format tokens: yyyy (year), MM (month), dd (day), HH (hour), mm (minute), ss (second)',
+        'Format tokens: yyyy, MM, dd, HH, mm, ss, plus MMM/MMMM (month name), EEE/EEEE (weekday name)',
+        'Raw strftime tokens (%Y, %m, %d, %A, %Z, ...) pass through unchanged',
+        'Optional third argument: IANA timezone to render in (DST-correct)',
         'Input can be ISO string or datetime object',
-        'Special format "z" returns timezone offset',
+        'Special format "z" returns the timezone offset',
       ],
       seeAlso: ['parse_date', 'datetime'],
     },
     ui: {
-      icon: 'calendar-check',
+      icon: 'calendar',
       shortLabel: 'fmt',
       nodeType: 'operator',
     },
@@ -296,7 +371,7 @@ export const datetimeOperators: Record<string, Operator> = {
           label: 'Unit',
           type: 'string',
           required: true,
-          description: 'Unit of measurement (days, hours, minutes, seconds)',
+          description: 'Unit: days, hours, minutes, seconds or milliseconds',
         },
       ],
     },
@@ -336,16 +411,32 @@ export const datetimeOperators: Record<string, Operator> = {
           data: { start: '2024-01-01T00:00:00Z', end: '2024-01-31T00:00:00Z' },
           result: 30,
         },
+        {
+          title: 'Milliseconds',
+          rule: {
+            date_diff: ['2024-01-15T00:00:01Z', '2024-01-15T00:00:00Z', 'milliseconds'],
+          },
+          result: 1000,
+        },
+        {
+          title: 'Unknown unit',
+          rule: {
+            date_diff: ['2024-01-15T00:00:00Z', '2024-01-15T00:00:00Z', 'weeks'],
+          },
+          error: { type: 'InvalidArguments' },
+          note: 'Only days, hours, minutes, seconds and milliseconds are accepted',
+        },
       ],
       notes: [
-        'Supported units: days, hours, minutes, seconds',
+        'Supported units: days, hours, minutes, seconds, milliseconds',
+        'Any other unit is an InvalidArguments error',
         'Result is integer (truncated)',
         'Positive if date1 > date2, negative otherwise',
       ],
       seeAlso: ['datetime', 'now'],
     },
     ui: {
-      icon: 'calendar-range',
+      icon: 'calendar',
       shortLabel: 'diff',
       nodeType: 'operator',
     },
@@ -366,13 +457,17 @@ export const datetimeOperators: Record<string, Operator> = {
       summary: 'Returns the current UTC datetime',
       details:
         'Returns the current date and time in ISO 8601 format with UTC timezone. Useful for timestamps, age calculations, and time-based logic.',
-      returnType: 'string',
+      returnType: 'datetime',
       examples: [
         {
           title: 'Get current time',
           rule: { now: [] },
-          result: '2024-01-15T10:30:00Z',
-          note: 'Actual result depends on current time',
+          note: 'Returns the current instant, e.g. "2024-01-15T10:30:00Z"; the value changes on every evaluation',
+        },
+        {
+          title: 'It is a datetime',
+          rule: { type: [{ now: [] }] },
+          result: 'datetime',
         },
         {
           title: 'Compare with date',
@@ -384,13 +479,13 @@ export const datetimeOperators: Record<string, Operator> = {
           note: 'Check if current time is past expiration',
         },
         {
-          title: 'Calculate age in days',
+          title: 'Age in days is never negative',
           rule: {
-            date_diff: [{ now: [] }, { var: 'createdAt' }, 'days'],
+            '>=': [{ date_diff: [{ now: [] }, { var: 'createdAt' }, 'days'] }, 0],
           },
           data: { createdAt: '2024-01-01T00:00:00Z' },
-          result: 14,
-          note: 'Days since creation (example value)',
+          result: true,
+          note: 'date_diff with now gives the days since creation',
         },
       ],
       notes: [

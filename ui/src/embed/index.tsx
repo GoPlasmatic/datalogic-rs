@@ -5,20 +5,26 @@
  * DataLogic visual widgets and playgrounds in mdBook or any static HTML page.
  *
  * Usage:
- * 1. Load React and ReactDOM from CDN
- * 2. Load this bundle (datalogic-embed.js)
- * 3. Call DataLogicEmbed.init() to auto-render all widgets
+ * 1. Load this bundle (datalogic-embed.js) via <script type="module">.
+ *    React and ReactDOM are bundled, so no CDN scripts are needed.
+ * 2. Call DataLogicEmbed.init() to auto-render every widget on the page
+ *    (elements with data-logic / data-datalogic, plus #datalogic-playground).
  *
  * Or manually:
- * - DataLogicEmbed.renderWidget(element, { logic, data })
- * - DataLogicEmbed.renderPlayground(element)
+ * - DataLogicEmbed.renderWidget(element, { logic, data, templating, editable })
+ * - DataLogicEmbed.renderPlayground(element, { editable })
+ *
+ * Supported data attributes on widget elements: data-logic, data-data,
+ * data-height, data-theme, data-editable, data-templating.
  */
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 
-// Import styles - include all component CSS (but NOT index.css which has global styles)
-import '@xyflow/react/dist/style.css';
+// Import styles - include all component CSS (but NOT index.css which has global styles).
+// React Flow's base styles arrive with the component CSS below
+// (styles/reactflow-base.css, a vendored copy), so there is no separate
+// '@xyflow/react/dist/style.css' import here.
 // theme.css is the Signal Board token layer (--sig-*, --font-*, --ink, --surface,
 // …). It is fully scoped to `.logic-editor`, so — unlike index.css — it is safe to
 // bundle here: it defines the tokens the component CSS below consumes without

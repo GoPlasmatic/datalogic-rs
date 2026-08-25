@@ -11,15 +11,22 @@ import {
 import { Workflow } from 'lucide-react';
 import './styles/reactflow-base.css';
 
-import type { DataLogicEditorProps, LogicNode, LogicEdge } from './types';
+import type {
+  DataLogicEditorProps,
+  LogicNode,
+  LogicEdge,
+  TracedResult,
+} from './types';
 import { nodeTypes } from './nodes';
 import { edgeTypes } from './edges';
-import { useLogicEditor, useWasmEvaluator, type EvaluationResultsMap } from './hooks';
+import { useLogicEditor, useWasmEvaluator, customOperatorNamesKey } from './hooks';
+import { normalizeEvaluationConfig, summarizeEvaluationConfig } from './hooks/useWasmEvaluator';
 import { useContextMenu } from './hooks/useContextMenu';
 import { getHiddenNodeIds } from './utils/visibility';
 import { buildEdgesFromNodes } from './utils/edge-builder';
 import { nodesToJsonLogic } from './utils/nodes-to-jsonlogic';
-import { EvaluationContext, DebuggerProvider, ConnectedHandlesProvider, EditorProvider, DirectionContext, useDirection, type FlowDirection } from './context';
+import { formatTraceFailure, traceFailureType, type TraceFailure } from './utils/trace';
+import { DebuggerProvider, ConnectedHandlesProvider, EditorProvider, DirectionContext, useDirection, type FlowDirection } from './context';
 import { useEditorContext } from './context/editor';
 import { DebuggerControls } from './debugger-controls';
 import { PropertiesPanel } from './properties-panel';
@@ -33,8 +40,6 @@ import { useSystemTheme } from './hooks/useSystemTheme';
 import './styles/nodes.css';
 import './LogicEditor.css';
 
-const emptyResults: EvaluationResultsMap = new Map();
-
 // Producer(child)->consumer(parent) edges: the arrowhead sits at the target end
 // and points right, toward the result. Shared by the read-only and editable canvases.
 const DEFAULT_EDGE_MARKER = {
@@ -47,9 +52,11 @@ const DEFAULT_EDGE_MARKER = {
 function EmptyState({
   exampleSuggestions,
   onSelectExample,
+  configSummary,
 }: {
   exampleSuggestions?: string[];
   onSelectExample?: (name: string) => void;
+  configSummary?: string | null;
 }) {
   const chips = exampleSuggestions && onSelectExample ? exampleSuggestions : [];
   return (
@@ -76,6 +83,25 @@ function EmptyState({
           ))}
         </div>
       )}
+      {configSummary && (
+        <p className="logic-editor-empty-config">Engine settings: {configSummary}</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Banner for a trace-level failure the debugger cannot show on a node:
+ * a compile-stage error (no steps, no expression tree) or a runtime error
+ * with no resolvable breadcrumb. Runtime failures that do map onto a node
+ * are shown there by the debugger instead.
+ */
+function TraceErrorBanner({ failure }: { failure: TraceFailure }) {
+  const kind = traceFailureType(failure);
+  return (
+    <div className="logic-editor-trace-error" role="alert">
+      {kind && <span className="logic-editor-trace-error-kind">{kind}</span>}
+      <span className="logic-editor-trace-error-message">{formatTraceFailure(failure)}</span>
     </div>
   );
 }
@@ -91,6 +117,7 @@ function ReadOnlyEditorInner({
   showDebugger,
   exampleSuggestions,
   onSelectExample,
+  configSummary,
 }: {
   initialNodes: LogicNode[];
   initialEdges: LogicEdge[];
@@ -98,6 +125,7 @@ function ReadOnlyEditorInner({
   showDebugger: boolean;
   exampleSuggestions?: string[];
   onSelectExample?: (name: string) => void;
+  configSummary?: string | null;
 }) {
   const bgColor = theme === 'dark' ? '#404040' : '#cccccc';
   const direction = useDirection();
@@ -129,8 +157,7 @@ function ReadOnlyEditorInner({
   );
 
   return (
-    <EvaluationContext.Provider value={emptyResults}>
-      <ConnectedHandlesProvider edges={visibleEdges}>
+    <ConnectedHandlesProvider edges={visibleEdges}>
         <ReactFlowProvider>
           <ReactFlow
             nodes={visibleNodes}
@@ -163,10 +190,10 @@ function ReadOnlyEditorInner({
           <EmptyState
             exampleSuggestions={exampleSuggestions}
             onSelectExample={onSelectExample}
+            configSummary={configSummary}
           />
         )}
-      </ConnectedHandlesProvider>
-    </EvaluationContext.Provider>
+    </ConnectedHandlesProvider>
   );
 }
 
@@ -177,19 +204,19 @@ function ReadOnlyEditorInner({
 function EditableEditorInner({
   initialNodes,
   initialEdges,
-  evaluationResults,
   theme,
   showDebugger,
   exampleSuggestions,
   onSelectExample,
+  configSummary,
 }: {
   initialNodes: LogicNode[];
   initialEdges: LogicEdge[];
-  evaluationResults: EvaluationResultsMap;
   theme: 'light' | 'dark';
   showDebugger: boolean;
   exampleSuggestions?: string[];
   onSelectExample?: (name: string) => void;
+  configSummary?: string | null;
 }) {
   // Background dot colors based on theme
   const bgColor = theme === 'dark' ? '#404040' : '#cccccc';
@@ -264,8 +291,7 @@ function EditableEditorInner({
   );
 
   return (
-    <EvaluationContext.Provider value={evaluationResults}>
-      <ConnectedHandlesProvider edges={visibleEdges}>
+    <ConnectedHandlesProvider edges={visibleEdges}>
         <ReactFlowProvider>
           <ReactFlow
             nodes={visibleNodes}
@@ -319,44 +345,56 @@ function EditableEditorInner({
           <EmptyState
             exampleSuggestions={exampleSuggestions}
             onSelectExample={onSelectExample}
+            configSummary={configSummary}
           />
         )}
-      </ConnectedHandlesProvider>
-    </EvaluationContext.Provider>
+    </ConnectedHandlesProvider>
   );
 }
 
-export function DataLogicEditor({
+interface EditorBodyProps {
+  value: DataLogicEditorProps['value'];
+  onChange?: DataLogicEditorProps['onChange'];
+  data?: unknown;
+  resolvedTheme: 'light' | 'dark';
+  className: string;
+  templating: boolean;
+  onTemplatingChange?: (value: boolean) => void;
+  editable: boolean;
+  exampleSuggestions?: string[];
+  onSelectExample?: (name: string) => void;
+  direction: FlowDirection;
+  onDirectionChange: (direction: FlowDirection) => void;
+  configSummary: string | null;
+  evaluateWithTrace?: (logic: unknown, data: unknown) => TracedResult;
+}
+
+/**
+ * Everything below the engine boundary. Keyed by the engine identity
+ * (config + custom operators) so a settings change re-runs the trace with
+ * fresh results even though the expression and data are unchanged.
+ */
+function DataLogicEditorBody({
   value,
   onChange,
   data,
-  theme: themeProp,
-  className = '',
-  templating = false,
+  resolvedTheme,
+  className,
+  templating,
   onTemplatingChange,
-  editable = false,
+  editable,
   exampleSuggestions,
   onSelectExample,
-}: DataLogicEditorProps) {
+  direction,
+  onDirectionChange,
+  configSummary,
+  evaluateWithTrace,
+}: EditorBodyProps) {
   // Debounce timer ref for onChange
   const onChangeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Determine if we're in edit mode
   const isEditMode = editable;
-
-  // Diagram direction — 'flow' (data flow, root on the right) by default, or
-  // 'hierarchy' (root on the left, JSON nesting order). Toggled from the toolbar.
-  const [direction, setDirection] = useState<FlowDirection>('flow');
-
-  // Theme handling - use prop override or system preference
-  const systemTheme = useSystemTheme();
-  const resolvedTheme = themeProp ?? systemTheme;
-
-  // Internal WASM evaluator
-  const {
-    ready: wasmReady,
-    evaluateWithTrace,
-  } = useWasmEvaluator({ templating });
 
   // Evaluation is enabled whenever data is provided (unified mode - no mode switching needed)
   const evalEnabled = data !== undefined;
@@ -364,7 +402,7 @@ export function DataLogicEditor({
   // Use trace-based evaluation when data is available
   const editor = useLogicEditor({
     value,
-    evaluateWithTrace: evalEnabled && wasmReady ? evaluateWithTrace : undefined,
+    evaluateWithTrace: evalEnabled ? evaluateWithTrace : undefined,
     data: evalEnabled ? data : undefined,
     templating,
     direction,
@@ -413,6 +451,9 @@ export function DataLogicEditor({
         <div className="logic-editor-error">
           <p className="logic-editor-error-title">Error rendering expression</p>
           <p className="logic-editor-error-message">{editor.error}</p>
+          {configSummary && (
+            <p className="logic-editor-error-config">Engine settings: {configSummary}</p>
+          )}
         </div>
       </div>
     );
@@ -420,6 +461,18 @@ export function DataLogicEditor({
 
   // Build the class name
   const editorClassName = ['logic-editor', className].filter(Boolean).join(' ');
+
+  const toolbar = (
+    <EditorToolbar
+      isEditMode={isEditMode}
+      hasDebugger={hasDebugger}
+      templating={templating}
+      onTemplatingChange={onTemplatingChange}
+      direction={direction}
+      onDirectionChange={onDirectionChange}
+      configSummary={configSummary}
+    />
+  );
 
   // --- Read-only mode: skip EditorProvider entirely ---
   if (!isEditMode) {
@@ -433,6 +486,7 @@ export function DataLogicEditor({
           showDebugger={false}
           exampleSuggestions={exampleSuggestions}
           onSelectExample={onSelectExample}
+          configSummary={configSummary}
         />
       </DirectionContext.Provider>
     );
@@ -444,15 +498,10 @@ export function DataLogicEditor({
             steps={editor.steps}
             traceNodeMap={editor.traceNodeMap}
             nodes={editor.nodes}
+            failedNodeIds={editor.failedNodeIds}
+            traceError={editor.traceError}
           >
-            <EditorToolbar
-              isEditMode={false}
-              hasDebugger={hasDebugger}
-              templating={templating}
-              onTemplatingChange={onTemplatingChange}
-              direction={direction}
-              onDirectionChange={setDirection}
-            />
+            {toolbar}
             <div className="logic-editor-body">
               <div className="logic-editor-main">
                 {readOnlyInner}
@@ -461,14 +510,8 @@ export function DataLogicEditor({
           </DebuggerProvider>
         ) : (
           <>
-            <EditorToolbar
-              isEditMode={false}
-              hasDebugger={hasDebugger}
-              templating={templating}
-              onTemplatingChange={onTemplatingChange}
-              direction={direction}
-              onDirectionChange={setDirection}
-            />
+            {toolbar}
+            {editor.traceError && <TraceErrorBanner failure={editor.traceError} />}
             <div className="logic-editor-body">
               <div className="logic-editor-main">
                 {readOnlyInner}
@@ -487,11 +530,11 @@ export function DataLogicEditor({
         key={expressionKey}
         initialNodes={editor.nodes}
         initialEdges={editor.edges}
-        evaluationResults={emptyResults}
         theme={resolvedTheme}
         showDebugger={false}
         exampleSuggestions={exampleSuggestions}
         onSelectExample={onSelectExample}
+        configSummary={configSummary}
       />
     </DirectionContext.Provider>
   );
@@ -509,15 +552,10 @@ export function DataLogicEditor({
             steps={editor.steps}
             traceNodeMap={editor.traceNodeMap}
             nodes={editor.nodes}
+            failedNodeIds={editor.failedNodeIds}
+            traceError={editor.traceError}
           >
-            <EditorToolbar
-              isEditMode={isEditMode}
-              hasDebugger={hasDebugger}
-              templating={templating}
-              onTemplatingChange={onTemplatingChange}
-              direction={direction}
-              onDirectionChange={setDirection}
-            />
+            {toolbar}
             <div className="logic-editor-body">
               <div className="logic-editor-main">
                 {editableInner}
@@ -527,14 +565,8 @@ export function DataLogicEditor({
           </DebuggerProvider>
         ) : (
           <>
-            <EditorToolbar
-              isEditMode={isEditMode}
-              hasDebugger={hasDebugger}
-              templating={templating}
-              onTemplatingChange={onTemplatingChange}
-              direction={direction}
-              onDirectionChange={setDirection}
-            />
+            {toolbar}
+            {editor.traceError && <TraceErrorBanner failure={editor.traceError} />}
             <div className="logic-editor-body">
               <div className="logic-editor-main">
                 {editableInner}
@@ -545,6 +577,66 @@ export function DataLogicEditor({
         )}
       </div>
     </EditorProvider>
+  );
+}
+
+export function DataLogicEditor({
+  value,
+  onChange,
+  data,
+  theme: themeProp,
+  className = '',
+  templating = false,
+  onTemplatingChange,
+  config,
+  customOperators,
+  editable = false,
+  exampleSuggestions,
+  onSelectExample,
+}: DataLogicEditorProps) {
+  // Diagram direction: 'flow' (data flow, root on the right) by default, or
+  // 'hierarchy' (root on the left, JSON nesting order). Toggled from the toolbar.
+  const [direction, setDirection] = useState<FlowDirection>('flow');
+
+  // Theme handling - use prop override or system preference
+  const systemTheme = useSystemTheme();
+  const resolvedTheme = themeProp ?? systemTheme;
+
+  // Internal WASM evaluator: one Engine per (templating, config, customOperators)
+  const {
+    ready: wasmReady,
+    evaluateWithTrace,
+  } = useWasmEvaluator({ templating, config, customOperators });
+
+  const configKey = useMemo(
+    () => JSON.stringify(normalizeEvaluationConfig(config) ?? null),
+    [config],
+  );
+  const configSummary = useMemo(() => summarizeEvaluationConfig(config), [config]);
+  // Remount only when the vocabulary actually changes. Keying on the object
+  // identity instead would remount on every parent render for the idiomatic
+  // inline `customOperators={{ ... }}`, discarding selection, undo history
+  // and debugger position each time.
+  const engineKey = `${configKey}|${customOperatorNamesKey(customOperators)}`;
+
+  return (
+    <DataLogicEditorBody
+      key={engineKey}
+      value={value}
+      onChange={onChange}
+      data={data}
+      resolvedTheme={resolvedTheme}
+      className={className}
+      templating={templating}
+      onTemplatingChange={onTemplatingChange}
+      editable={editable}
+      exampleSuggestions={exampleSuggestions}
+      onSelectExample={onSelectExample}
+      direction={direction}
+      onDirectionChange={setDirection}
+      configSummary={configSummary}
+      evaluateWithTrace={wasmReady ? evaluateWithTrace : undefined}
+    />
   );
 }
 

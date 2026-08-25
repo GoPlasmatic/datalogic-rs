@@ -143,10 +143,11 @@ export function useNodeCreation(
                 category: ifConfig?.category || 'control',
                 label: ifConfig?.label || 'if',
                 icon: 'diamond',
+                // Same when/then/else layout the converter builds for a diamond
                 cells: [
-                  { type: 'branch', icon: 'diamond', rowLabel: 'If', branchId: conditionId, index: 0 },
-                  { type: 'branch', icon: 'check', rowLabel: 'Then', branchId: thenId, index: 1 },
-                  { type: 'branch', icon: 'x', rowLabel: 'Else', branchId: elseId, index: 2 },
+                  { type: 'branch', icon: 'diamond', rowLabel: 'when', branchId: conditionId, index: 0 },
+                  { type: 'branch', icon: 'check', rowLabel: 'then', branchId: thenId, index: 1 },
+                  { type: 'branch', icon: 'x', rowLabel: 'else', branchId: elseId, index: 2 },
                 ],
                 expression: { if: [true, 'yes', 'no'] },
               } as OperatorNodeData,
@@ -169,6 +170,7 @@ export function useNodeCreation(
                   ...rootNode.data,
                   parentId: newNodeId,
                   argIndex: 1,
+                  branchType: 'yes' as const,
                 },
               };
 
@@ -177,10 +179,11 @@ export function useNodeCreation(
                 data: {
                   ...newNode.data,
                   cells: [
-                    { type: 'branch' as const, icon: 'diamond', rowLabel: 'If', branchId: conditionId, index: 0 },
-                    { type: 'branch' as const, icon: 'check', rowLabel: 'Then', branchId: rootNode.id, index: 1 },
-                    { type: 'branch' as const, icon: 'x', rowLabel: 'Else', branchId: elseId, index: 2 },
+                    { type: 'branch' as const, icon: 'diamond', rowLabel: 'when', branchId: conditionId, index: 0 },
+                    { type: 'branch' as const, icon: 'check', rowLabel: 'then', branchId: rootNode.id, index: 1 },
+                    { type: 'branch' as const, icon: 'x', rowLabel: 'else', branchId: elseId, index: 2 },
                   ],
+                  expression: { if: [true, rootNode.data.expression ?? null, 'no'] },
                 },
               };
 
@@ -229,6 +232,7 @@ export function useNodeCreation(
               data: {
                 ...newNode.data,
                 cells: [{ type: 'branch' as const, branchId: rootNode.id, index: 0 }],
+                expression: { [operatorName || '+']: [rootNode.data.expression ?? null] },
               },
             };
 

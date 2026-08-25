@@ -7,7 +7,6 @@
 
 import { useState } from 'react';
 
-import '@xyflow/react/dist/style.css';
 import '@goplasmatic/datalogic-ui/styles.css';
 
 import { DataLogicEditor, type JsonLogicValue } from '@goplasmatic/datalogic-ui';

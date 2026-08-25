@@ -6,7 +6,7 @@ Operations for working with arrays, including iteration and transformation.
 
 ## merge
 
-Merge multiple arrays into one.
+Concatenate multiple arrays into one.
 
 **Syntax:**
 ```json
@@ -14,9 +14,9 @@ Merge multiple arrays into one.
 ```
 
 **Arguments:**
-- `array1`, `array2`, ... - Arrays to merge
+- `array1`, `array2`, ... - Arrays to concatenate; scalars and objects are wrapped as single elements
 
-**Returns:** Single flattened array.
+**Returns:** A single array: the arguments concatenated one level deep. Nested arrays inside an argument are kept as elements (no deep flatten), and `null` arguments and `null` elements are dropped.
 
 **Examples:**
 
@@ -37,12 +37,24 @@ Merge multiple arrays into one.
 { "merge": [{ "var": "arr1" }, { "var": "arr2" }] }
 // Data: { "arr1": [1, 2], "arr2": [3, 4] }
 // Result: [1, 2, 3, 4]
+
+// Only one level is flattened
+{ "merge": [[1, [2, [3]]], [4]] }
+// Result: [1, [2, [3]], 4]
+
+// Nulls are dropped
+{ "merge": [[1, null, 2], null] }
+// Result: [1, 2]
 ```
 
 **Try it:**
 
 <div class="playground-widget" data-logic='{"merge": [{"var":"arr1"}, {"var":"arr2"}]}' data-data='{"arr1": [1, 2], "arr2": [3, 4]}'>
 </div>
+
+**Notes:**
+- Flattens exactly one level; use nested `merge` calls for deeper structures
+- `null` arguments and `null` elements are skipped; a scalar argument is wrapped (`{ "merge": 1 }` is `[1]`)
 
 ---
 
@@ -56,10 +68,10 @@ Filter array elements based on a condition.
 ```
 
 **Arguments:**
-- `array` - Array to filter
+- `array` - Array to filter (an object is also accepted, see Notes)
 - `condition` - Condition applied to each element (use `{"var": ""}` for current element)
 
-**Returns:** Array of elements where condition is truthy.
+**Returns:** Array of elements where condition is truthy. For an object input, an object of the key/value pairs whose value passes.
 
 **Examples:**
 
@@ -110,6 +122,8 @@ Filter array elements based on a condition.
 **Notes:**
 - Inside the condition, `{"var": ""}` refers to the current element
 - The original array is not modified
+- An object input is filtered by its values and returns an object of the kept pairs: `{ "filter": [{ "var": "x" }, { ">": [{ "var": "" }, 3] }] }` with `{ "x": { "a": 1, "b": 5 } }` is `{ "b": 5 }`
+- A `null` or missing input yields `[]`; a scalar input is an Invalid Arguments error
 
 ---
 
@@ -172,6 +186,10 @@ Transform each element of an array.
 <div class="playground-widget" data-logic='{"map": [[1, 2, 3], {"*": [{"var": ""}, 2]}]}' data-data='{}'>
 </div>
 
+**Notes:**
+- An object input maps over its values and returns an array (`{ "a": 1, "b": 5 }` doubled is `[2, 10]`)
+- A `null` or missing input yields `[]`; a scalar input is treated as a one-element array (`{ "map": [5, { "*": [{ "var": "" }, 2] }] }` is `[10]`)
+
 ---
 
 ## reduce
@@ -181,12 +199,13 @@ Reduce an array to a single value.
 **Syntax:**
 ```json
 { "reduce": [array, reducer, initial] }
+{ "reduce": [array, reducer] }
 ```
 
 **Arguments:**
 - `array` - Array to reduce
 - `reducer` - Operation combining accumulator and current element
-- `initial` - Initial value for accumulator
+- `initial` - Initial value for accumulator (optional). When omitted, the first element seeds the accumulator and reduction starts from the second; an empty array without `initial` yields `null`
 
 **Returns:** Final accumulated value.
 
@@ -243,12 +262,30 @@ Reduce an array to a single value.
     0
 ]}
 // Result: 3 (count of numbers > 3)
+
+// Without initial: the first element seeds the accumulator
+{ "reduce": [
+    [1, 2, 3],
+    { "+": [{ "var": "accumulator" }, { "var": "current" }] }
+]}
+// Result: 6
+
+// Empty array without initial
+{ "reduce": [
+    [],
+    { "+": [{ "var": "accumulator" }, { "var": "current" }] }
+]}
+// Result: null
 ```
 
 **Try it:**
 
 <div class="playground-widget" data-logic='{"reduce": [[1, 2, 3, 4, 5], {"+": [{"var": "accumulator"}, {"var": "current"}]}, 0]}' data-data='{}'>
 </div>
+
+**Notes:**
+- An object input reduces over its values
+- A `null`, missing, or scalar input returns `initial` unchanged (`null` when `initial` is omitted)
 
 ---
 
@@ -301,6 +338,10 @@ Check if all elements satisfy a condition.
 
 <div class="playground-widget" data-logic='{"all": [[1, 2, 3], {">": [{"var": ""}, 0]}]}' data-data='{}'>
 </div>
+
+**Notes (all, some, none):**
+- An object input checks the object's values
+- A `null`, missing, or scalar input is treated as an empty collection: `all` is `false`, `some` is `false`, `none` is `true`
 
 ---
 
@@ -470,25 +511,28 @@ Sort an array.
 **Notes:**
 - The second argument is a direction boolean, not a comparator: `true` (or omitted) sorts ascending, `false` descending. A non-boolean direction falls back to ascending.
 - The optional third argument is a per-element key extractor (evaluated with each element as its context), not an `a`/`b` binary comparator. There is no `a`/`b` comparator form.
+- A `null` or missing input yields `null` (a literal `null` argument is Invalid Arguments). This differs from `group_by` and `distinct`, which yield `[]` for `null` input.
 
 ---
 
 ## slice
 
-Extract a portion of an array.
+Extract a portion of an array or string.
 
 **Syntax:**
 ```json
-{ "slice": [array, start] }
-{ "slice": [array, start, end] }
+{ "slice": [collection, start] }
+{ "slice": [collection, start, end] }
+{ "slice": [collection, start, end, step] }
 ```
 
 **Arguments:**
-- `array` - Source array
-- `start` - Starting index (negative counts from end)
-- `end` - Ending index, exclusive (optional, negative counts from end)
+- `collection` - Source array, or a string (sliced by character)
+- `start` - Starting index (negative counts from end); `null` means the default (the first element)
+- `end` - Ending index, exclusive (optional, negative counts from end); `null` means the default (the end of the collection)
+- `step` - Optional stride (default `1`); a negative step walks backwards, so `[null, null, -1]` reverses
 
-**Returns:** Array slice.
+**Returns:** Array slice, or a string slice for string input.
 
 **Examples:**
 
@@ -517,12 +561,31 @@ Extract a portion of an array.
 ]}
 // Data: { "items": [...], "page": 0 }
 // Result: first 10 items
+
+// Step: every second element
+{ "slice": [[1, 2, 3, 4, 5], 0, 5, 2] }
+// Result: [1, 3, 5]
+
+// Negative step reverses
+{ "slice": [[1, 2, 3, 4, 5], null, null, -1] }
+// Result: [5, 4, 3, 2, 1]
+
+// Strings are sliced by character
+{ "slice": ["hello", 1, 3] }
+// Result: "el"
+
+{ "slice": ["hello", null, null, -1] }
+// Result: "olleh"
 ```
 
 **Try it:**
 
 <div class="playground-widget" data-logic='{"slice": [[1, 2, 3, 4, 5], 1, 3]}' data-data='{}'>
 </div>
+
+**Notes:**
+- A `null` or missing collection yields `null`
+- `step` of `0` is an Invalid Arguments error; a non-numeric index (`{ "slice": [[1, 2, 3], "1"] }`) throws `NaN`
 
 ---
 
@@ -539,7 +602,7 @@ Collapse an array into groups on a computed key.
 - `array` - Array to group (a value that resolves to an array)
 - `key_expression` - Per-element expression that produces each element's group key (evaluated with the element as its context, like `sort`'s key extractor)
 
-**Returns:** Array of `{"key": ..., "items": [...]}` rows — an *array* of groups rather than an object, so the result composes directly with `map`, `filter`, and `sort`. Groups appear in order of first key occurrence, so output is deterministic for a given input.
+**Returns:** Array of `{"key": ..., "items": [...]}` rows, an *array* of groups rather than an object, so the result composes directly with `map`, `filter`, and `sort`. Groups appear in order of first key occurrence, so output is deterministic for a given input.
 
 **Examples:**
 
@@ -577,7 +640,7 @@ Collapse an array into groups on a computed key.
 </div>
 
 **Notes:**
-- Keys are kept as their evaluated values — numbers, booleans, `null`, and even objects group correctly by deep equality; they are not stringified.
+- Keys are kept as their evaluated values: numbers, booleans, `null`, and even objects group correctly by deep equality; they are not stringified.
 - Elements whose key expression misses (resolves to `null`) group together under a `null` key.
 - `null` or empty input yields `[]`. Non-array input (scalar or object) is an error.
 

@@ -4,7 +4,7 @@
  * General-purpose utility operations.
  * - type: Get the type of a value
  *
- * Note: the v4 `preserve` operator was removed in v5 — literal scalars and
+ * Note: the v4 `preserve` operator was removed in v5: literal scalars and
  * arrays pass through inline already, and templated objects are handled by
  * templating mode (the toolbar toggle), not by an operator.
  */
@@ -59,13 +59,22 @@ export const utilityOperators: Record<string, Operator> = {
         },
         {
           title: 'Array type',
-          rule: { type: [1, 2, 3] },
+          rule: { type: [[1, 2, 3]] },
           result: 'array',
+          note: 'Wrap a literal array: the outer array is the argument list',
         },
         {
           title: 'Object type',
-          rule: { type: { key: 'value' } },
+          rule: { type: { var: 'obj' } },
+          data: { obj: { key: 'value' } },
           result: 'object',
+        },
+        {
+          title: 'Object literal (templating mode)',
+          rule: { type: { key: 'value' } },
+          templating: true,
+          result: 'object',
+          note: 'Multi-key object literals only parse in templating mode',
         },
         {
           title: 'Datetime detection',
@@ -89,13 +98,15 @@ export const utilityOperators: Record<string, Operator> = {
       notes: [
         'Returns: "null", "boolean", "number", "string", "array", "object", "datetime", "duration"',
         'Datetime: detected by ISO 8601 format (contains T, :, and Z or +)',
-        'Duration: detected by time units (d, h, m, s) with digits',
+        'Duration heuristic: no spaces, at least one digit and one of d/h/m/s (can misclassify e.g. "item5")',
+        'A literal array must be wrapped ({"type": [[1, 2, 3]]}) because the outer array is the argument list',
+        'Multi-key object literals need templating mode; in the default mode read the object from data',
         'Empty arrays and objects are still "array" and "object"',
       ],
       seeAlso: ['!!'],
     },
     ui: {
-      icon: 'info',
+      icon: 'tag',
       shortLabel: 'type',
       nodeType: 'operator',
     },

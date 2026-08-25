@@ -31,7 +31,7 @@ export const validationOperators: Record<string, Operator> = {
     help: {
       summary: 'Returns an array of variable paths that are missing from the data',
       details:
-        'Checks if the specified variable paths exist in the data. Returns an array containing paths that are missing (not present or null). Useful for form validation and required field checks.',
+        'Checks if the specified variable paths exist in the data. Returns an array containing paths whose key is not present. Useful for form validation and required field checks.',
       returnType: 'array',
       examples: [
         {
@@ -59,6 +59,13 @@ export const validationOperators: Record<string, Operator> = {
           result: ['user.email'],
         },
         {
+          title: 'Null value counts as present',
+          rule: { missing: ['a'] },
+          data: { a: null },
+          result: [],
+          note: 'Only key presence is checked',
+        },
+        {
           title: 'Check array of paths',
           rule: { missing: [['name', 'email', 'phone']] },
           data: { name: 'Alice', email: 'alice@example.com' },
@@ -70,7 +77,7 @@ export const validationOperators: Record<string, Operator> = {
         'Returns empty array if all paths exist',
         'Paths use dot notation for nesting',
         'Can accept arrays of paths as arguments',
-        'null values are considered missing',
+        'Checks key presence only: a key whose value is null or "" counts as present',
       ],
       seeAlso: ['missing_some', 'exists', 'var'],
     },
@@ -150,7 +157,7 @@ export const validationOperators: Record<string, Operator> = {
       seeAlso: ['missing', 'exists'],
     },
     ui: {
-      icon: 'list-checks',
+      icon: 'alert-circle',
       shortLabel: 'some',
       nodeType: 'operator',
     },

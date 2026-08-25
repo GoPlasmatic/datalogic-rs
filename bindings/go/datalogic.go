@@ -160,13 +160,22 @@ func (e *Engine) Close() {
 	runtime.SetFinalizer(e, nil)
 }
 
+// cptr returns the underlying C handle, tolerating nil receivers (the
+// C side reports a proper InvalidArgument error for NULL handles).
+func (e *Engine) cptr() *C.datalogic_engine {
+	if e == nil {
+		return nil
+	}
+	return e.ptr
+}
+
 // Compile parses a JSONLogic rule (as a JSON string) into a reusable
 // Rule that can be evaluated against many data inputs without re-parsing.
 func (e *Engine) Compile(ruleJSON string) (*Rule, error) {
 	rp, rl := strBytes(ruleJSON)
 	var rulePtr *C.datalogic_rule
 	var cerr *C.datalogic_error
-	rc := C.datalogic_engine_compile(e.ptr, rp, rl, &rulePtr, &cerr)
+	rc := C.datalogic_engine_compile(e.cptr(), rp, rl, &rulePtr, &cerr)
 	runtime.KeepAlive(e)
 	if rc != C.DATALOGIC_STATUS_OK {
 		return nil, takeError(cerr)
@@ -186,7 +195,7 @@ func (e *Engine) Apply(ruleJSON, dataJSON string) (string, error) {
 	dp, dl := strBytes(dataJSON)
 	var out C.datalogic_buf
 	var cerr *C.datalogic_error
-	rc := C.datalogic_engine_apply(e.ptr, rp, rl, dp, dl, &out, &cerr)
+	rc := C.datalogic_engine_apply(e.cptr(), rp, rl, dp, dl, &out, &cerr)
 	runtime.KeepAlive(e)
 	if rc != C.DATALOGIC_STATUS_OK {
 		return "", takeError(cerr)
@@ -199,8 +208,11 @@ func (e *Engine) Apply(ruleJSON, dataJSON string) (string, error) {
 // start of every call to bound peak memory.
 //
 // Sessions are NOT goroutine-safe — open one per goroutine that needs it.
+//
+// A nil or closed Engine yields a Session whose every evaluation
+// returns an InvalidArgument *Error rather than panicking.
 func (e *Engine) Session() *Session {
-	s := &Session{ptr: C.datalogic_engine_session(e.ptr)}
+	s := &Session{ptr: C.datalogic_engine_session(e.cptr())}
 	runtime.KeepAlive(e)
 	runtime.SetFinalizer(s, (*Session).Close)
 	return s
@@ -231,13 +243,22 @@ func (r *Rule) Close() {
 	runtime.SetFinalizer(r, nil)
 }
 
+// cptr returns the underlying C handle, tolerating nil receivers (the
+// C side reports a proper InvalidArgument error for NULL handles).
+func (r *Rule) cptr() *C.datalogic_rule {
+	if r == nil {
+		return nil
+	}
+	return r.ptr
+}
+
 // Evaluate runs the compiled rule against dataJSON and returns the
 // result as a JSON string. Safe to call from multiple goroutines.
 func (r *Rule) Evaluate(dataJSON string) (string, error) {
 	dp, dl := strBytes(dataJSON)
 	var out C.datalogic_buf
 	var cerr *C.datalogic_error
-	rc := C.datalogic_rule_evaluate(r.ptr, dp, dl, &out, &cerr)
+	rc := C.datalogic_rule_evaluate(r.cptr(), dp, dl, &out, &cerr)
 	runtime.KeepAlive(r)
 	if rc != C.DATALOGIC_STATUS_OK {
 		return "", takeError(cerr)
@@ -266,16 +287,26 @@ func (s *Session) Close() {
 	runtime.SetFinalizer(s, nil)
 }
 
+// cptr returns the underlying C handle, tolerating nil receivers (the
+// C side reports a proper InvalidArgument error for NULL handles).
+func (s *Session) cptr() *C.datalogic_session {
+	if s == nil {
+		return nil
+	}
+	return s.ptr
+}
+
 // Evaluate runs rule against dataJSON using this session's arena.
 //
 // The rule must have been compiled by the same Engine this session was
-// opened on.
+// opened on. A nil or closed session or rule returns a *Error with
+// Type "InvalidArgument" instead of panicking.
 func (s *Session) Evaluate(rule *Rule, dataJSON string) (string, error) {
 	dp, dl := strBytes(dataJSON)
 	var outPtr *C.uint8_t
 	var outLen C.size_t
 	var cerr *C.datalogic_error
-	rc := C.datalogic_session_evaluate(s.ptr, rule.ptr, dp, dl, &outPtr, &outLen, &cerr)
+	rc := C.datalogic_session_evaluate(s.cptr(), rule.cptr(), dp, dl, &outPtr, &outLen, &cerr)
 	if rc != C.DATALOGIC_STATUS_OK {
 		runtime.KeepAlive(s)
 		runtime.KeepAlive(rule)
@@ -293,14 +324,14 @@ func (s *Session) Evaluate(rule *Rule, dataJSON string) (string, error) {
 // resets at the start of every call. Exposed for consumers that want to
 // release memory between long idle periods.
 func (s *Session) Reset() {
-	C.datalogic_session_reset(s.ptr)
+	C.datalogic_session_reset(s.cptr())
 	runtime.KeepAlive(s)
 }
 
 // AllocatedBytes returns the bytes currently held by the session's arena
 // (sum across all chunks). Useful for sizing and diagnostics.
 func (s *Session) AllocatedBytes() uint64 {
-	n := uint64(C.datalogic_session_allocated_bytes(s.ptr))
+	n := uint64(C.datalogic_session_allocated_bytes(s.cptr()))
 	runtime.KeepAlive(s)
 	return n
 }
@@ -342,7 +373,7 @@ type TracedSession struct {
 // Tracing pays for compile-per-call plus step recording — use it for
 // debugging and tooling, not hot paths.
 func (e *Engine) TracedSession() *TracedSession {
-	ts := &TracedSession{ptr: C.datalogic_engine_traced_session(e.ptr)}
+	ts := &TracedSession{ptr: C.datalogic_engine_traced_session(e.cptr())}
 	runtime.KeepAlive(e)
 	runtime.SetFinalizer(ts, (*TracedSession).Close)
 	return ts
@@ -358,6 +389,15 @@ func (ts *TracedSession) Close() {
 	runtime.SetFinalizer(ts, nil)
 }
 
+// cptr returns the underlying C handle, tolerating nil receivers (the
+// C side reports a proper InvalidArgument error for NULL handles).
+func (ts *TracedSession) cptr() *C.datalogic_traced_session {
+	if ts == nil {
+		return nil
+	}
+	return ts.ptr
+}
+
 // Evaluate compiles ruleJSON (optimizer disabled), evaluates it against
 // dataJSON, and returns the trace envelope documented on TracedSession
 // as a JSON string.
@@ -366,7 +406,7 @@ func (ts *TracedSession) Evaluate(ruleJSON, dataJSON string) (string, error) {
 	dp, dl := strBytes(dataJSON)
 	var out C.datalogic_buf
 	var cerr *C.datalogic_error
-	rc := C.datalogic_traced_session_evaluate(ts.ptr, rp, rl, dp, dl, &out, &cerr)
+	rc := C.datalogic_traced_session_evaluate(ts.cptr(), rp, rl, dp, dl, &out, &cerr)
 	runtime.KeepAlive(ts)
 	if rc != C.DATALOGIC_STATUS_OK {
 		return "", takeError(cerr)

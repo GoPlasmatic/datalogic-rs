@@ -10,13 +10,24 @@ Add the Composer dependency to your project:
 composer require goplasmatic/datalogic
 ```
 
-Ensure that PHP's FFI extension is enabled in your `php.ini` configuration:
+Ensure that PHP's FFI extension is enabled in your `php.ini` configuration. Two setups are supported:
 
 ```ini
 extension=ffi
-# For command line tools and web servers, allow FFI
+; Simplest setup (CLI tools, or any SAPI): allow runtime FFI::cdef
 ffi.enable=true
 ```
+
+For PHP-FPM and other web SAPIs, PHP's default `ffi.enable=preload` forbids runtime `FFI::cdef` outside the CLI, so preload the package's FFI scope instead (it also moves header parsing to server start):
+
+```ini
+extension=ffi
+opcache.preload=/path/to/vendor/goplasmatic/datalogic/preload.php
+opcache.preload_user=www-data
+ffi.enable=preload
+```
+
+The binding looks for the preloaded `FFI::scope("datalogic")` first and falls back to `FFI::cdef` when no scope is registered. Details are in the [Preloading section of the PHP README](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/php#preloading-opcachepreload--ffi).
 
 The Composer package ships with precompiled shared libraries under `lib/<os>-<arch>/`. The loader automatically detects and loads the library for the current platform.
 

@@ -24,6 +24,7 @@ export function KeyboardHandler() {
     canPaste,
     selectAllNodes,
     clearSelection,
+    duplicateNode,
   } = useEditorContext();
 
   const handleKeyDown = useCallback(
@@ -58,6 +59,15 @@ export function KeyboardHandler() {
         if (canPaste) {
           e.preventDefault();
           pasteNode();
+        }
+        return;
+      }
+
+      // Duplicate: Cmd/Ctrl + D (advertised in the node context menu)
+      if (ctrlOrCmd && e.key === 'd') {
+        if (selectedNode && !isRootNode(selectedNode)) {
+          e.preventDefault();
+          duplicateNode(selectedNode.id);
         }
         return;
       }
@@ -106,7 +116,7 @@ export function KeyboardHandler() {
         return;
       }
     },
-    [isEditMode, selectedNode, selectedNodes, deleteNode, undo, redo, canUndo, canRedo, copyNode, pasteNode, canPaste, selectAllNodes, clearSelection]
+    [isEditMode, selectedNode, selectedNodes, deleteNode, undo, redo, canUndo, canRedo, copyNode, pasteNode, canPaste, selectAllNodes, clearSelection, duplicateNode]
   );
 
   useEffect(() => {

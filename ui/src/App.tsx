@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { Sun, Moon, Monitor, BookOpen, ChevronDown, Link2, Check, Plus, Menu, X } from "lucide-react";
+import { Sun, Moon, Monitor, BookOpen, ChevronDown, Link2, Check, Plus, Menu, X, Settings2 } from "lucide-react";
 import { Tooltip } from "./components/Tooltip";
 
 // GitHub icon (removed from lucide-react as a brand icon)
@@ -14,11 +14,17 @@ import { generateShareableUrl, parseShareableUrl } from "./utils/url-share";
 import {
   DataLogicEditor,
   type JsonLogicValue,
+  type DataLogicEvaluationConfig,
 } from "./components/logic-editor";
-import { DebugPanel } from "./components/debug-panel";
-import type { DebugError } from "./components/debug-panel/DebugPanel";
+import { DebugPanel, EngineSettingsPanel } from "./components/debug-panel";
+import type { DebugError } from "./components/debug-panel";
 import { MobileNav, type MobileTab } from "./components/mobile-nav/MobileNav";
-import { useWasmEvaluator, DataLogicEvaluationError } from "./components/logic-editor/hooks";
+import {
+  useWasmEvaluator,
+  DataLogicEvaluationError,
+  summarizeEvaluationConfig,
+  normalizeEvaluationConfig,
+} from "./components/logic-editor/hooks";
 import { useTheme, useIsMobile } from "./hooks";
 import { SAMPLE_EXPRESSIONS } from "./constants/sample-expressions";
 import "./App.css";
@@ -31,16 +37,24 @@ function App() {
   const [logicError, setLogicError] = useState<string | null>(null);
 
   const [dataText, setDataText] = useState<string>("{}");
-  const [data, setData] = useState<object>({});
+  // Any JSON value is a valid root context (object, array or scalar)
+  const [data, setData] = useState<unknown>({});
   const [dataError, setDataError] = useState<string | null>(null);
 
   const [result, setResult] = useState<unknown>(undefined);
   const [resultError, setResultError] = useState<DebugError>(null);
 
-  // Templating mode state — multi-key objects compile to output-shaping
+  // Templating mode state: multi-key objects compile to output-shaping
   // templates with embedded JSONLogic. Matches the v5 core API
   // (`Engine::builder().with_templating(true)`).
   const [templating, setTemplating] = useState<boolean>(false);
+
+  // Engine evaluation settings (presets, NaN / division-by-zero handling,
+  // truthiness, numeric coercion, recursion cap). `{}` means engine defaults.
+  const [engineConfig, setEngineConfig] = useState<DataLogicEvaluationConfig>({});
+  const [engineSettingsOpen, setEngineSettingsOpen] = useState(false);
+  const engineSettingsRef = useRef<HTMLDivElement>(null);
+  const configSummary = useMemo(() => summarizeEvaluationConfig(engineConfig), [engineConfig]);
 
   // Examples dropdown state
   const [selectedExample, setSelectedExample] = useState<string>(
@@ -68,7 +82,7 @@ function App() {
     ready: wasmReady,
     loading: wasmLoading,
     evaluate,
-  } = useWasmEvaluator({ templating });
+  } = useWasmEvaluator({ templating, config: engineConfig });
 
   // Update expression when logic text changes
   const handleLogicChange = useCallback((text: string) => {
@@ -89,7 +103,7 @@ function App() {
     }
   }, []);
 
-  // Update data when data text changes
+  // Update data when data text changes (any JSON value is accepted)
   const handleDataChange = useCallback((text: string) => {
     setDataText(text);
 
@@ -100,16 +114,7 @@ function App() {
     }
 
     try {
-      const parsed = JSON.parse(text);
-      if (
-        typeof parsed !== "object" ||
-        parsed === null ||
-        Array.isArray(parsed)
-      ) {
-        setDataError("Data must be a JSON object");
-        return;
-      }
-      setData(parsed);
+      setData(JSON.parse(text));
       setDataError(null);
     } catch (err) {
       setDataError(err instanceof Error ? err.message : "Invalid JSON");
@@ -126,7 +131,7 @@ function App() {
     [],
   );
 
-  // Load a sample expression
+  // Load a sample expression (switching templating to match the sample)
   const loadSample = useCallback((name: string) => {
     const sample = SAMPLE_EXPRESSIONS[name];
     if (sample) {
@@ -137,11 +142,12 @@ function App() {
       setData(sample.data);
       setDataText(JSON.stringify(sample.data, null, 2));
       setDataError(null);
+      setTemplating(sample.templating ?? false);
       setExamplesDropdownOpen(false);
     }
   }, []);
 
-  // Create a new empty project
+  // Create a new empty project (also resets templating and engine settings)
   const handleNew = useCallback(() => {
     setLogicText('');
     setExpression(null);
@@ -150,22 +156,27 @@ function App() {
     setData({});
     setDataError(null);
     setSelectedExample('');
+    setTemplating(false);
+    setEngineConfig({});
     // Clear URL params
     window.history.replaceState({}, '', window.location.pathname);
   }, []);
 
-  // Share current state via URL
+  // Share current state via URL (logic, data, templating, engine settings)
   const handleShare = useCallback(async () => {
     if (!expression) return;
     try {
-      const url = generateShareableUrl(expression, data, templating);
+      const url = generateShareableUrl(expression, data, {
+        templating,
+        config: normalizeEvaluationConfig(engineConfig),
+      });
       await navigator.clipboard.writeText(url);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('Failed to copy shareable URL:', err);
     }
-  }, [expression, data, templating]);
+  }, [expression, data, templating, engineConfig]);
 
   // Load from URL or first sample on mount
   useEffect(() => {
@@ -178,9 +189,10 @@ function App() {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- Initialization on mount is intentional
       setExpression(shared.logic as JsonLogicValue);
       setLogicText(JSON.stringify(shared.logic, null, 2));
-      setData(shared.data as object);
+      setData(shared.data);
       setDataText(JSON.stringify(shared.data, null, 2));
       if (shared.templating) setTemplating(true);
+      if (shared.config) setEngineConfig(shared.config);
       // Clear the URL parameter after loading
       window.history.replaceState({}, '', window.location.pathname);
     } else {
@@ -218,6 +230,21 @@ function App() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Close the engine settings popover when clicking outside (desktop anchor)
+  useEffect(() => {
+    if (!engineSettingsOpen || isMobile) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        engineSettingsRef.current &&
+        !engineSettingsRef.current.contains(event.target as Node)
+      ) {
+        setEngineSettingsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [engineSettingsOpen, isMobile]);
 
   // Evaluate the expression when inputs change
   /* eslint-disable react-hooks/set-state-in-effect -- Derived state computation from expression/data changes */
@@ -280,6 +307,13 @@ function App() {
     [],
   );
 
+  const openEngineSettings = useCallback(() => {
+    setOverflowMenuOpen(false);
+    setEngineSettingsOpen(true);
+  }, []);
+
+  const closeEngineSettings = useCallback(() => setEngineSettingsOpen(false), []);
+
   const debugPanelElement = (
     <DebugPanel
       logic={expression}
@@ -295,6 +329,8 @@ function App() {
       wasmReady={wasmReady}
       wasmLoading={wasmLoading}
       accordion={isMobile}
+      configSummary={configSummary}
+      onOpenEngineSettings={openEngineSettings}
     />
   );
 
@@ -306,11 +342,18 @@ function App() {
       theme={resolvedTheme}
       templating={templating}
       onTemplatingChange={setTemplating}
+      config={engineConfig}
       editable
       exampleSuggestions={exampleSuggestions}
       onSelectExample={loadSample}
     />
   );
+
+  const themeOptions = [
+    { value: 'light' as const, label: 'Light', Icon: Sun },
+    { value: 'system' as const, label: 'System', Icon: Monitor },
+    { value: 'dark' as const, label: 'Dark', Icon: Moon },
+  ];
 
   return (
     <div className="app">
@@ -357,6 +400,9 @@ function App() {
                     aria-selected={name === selectedExample}
                   >
                     {name}
+                    {SAMPLE_EXPRESSIONS[name].templating && (
+                      <span className="examples-dropdown-tag">templating</span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -390,7 +436,33 @@ function App() {
             </Tooltip>
           </div>
           <div className="header-divider" />
-          <Tooltip label="Copy shareable link">
+
+          {/* Engine settings (desktop anchor; on mobile the sheet is opened from the overflow menu) */}
+          <div className="engine-settings-anchor header-desktop-only" ref={engineSettingsRef}>
+            <Tooltip label={configSummary ? `Engine settings: ${configSummary}` : 'Engine settings (evaluation semantics)'}>
+              <button
+                type="button"
+                className={`engine-settings-trigger ${configSummary ? 'is-active' : ''}`}
+                onClick={() => setEngineSettingsOpen((open) => !open)}
+                aria-expanded={engineSettingsOpen}
+                aria-haspopup="dialog"
+              >
+                <Settings2 size={16} />
+                <span>Engine</span>
+                {configSummary && <span className="engine-settings-dot" aria-hidden="true" />}
+              </button>
+            </Tooltip>
+            {engineSettingsOpen && !isMobile && (
+              <EngineSettingsPanel
+                config={engineConfig}
+                onChange={setEngineConfig}
+                onClose={closeEngineSettings}
+                variant="popover"
+              />
+            )}
+          </div>
+
+          <Tooltip label="Copy shareable link (includes data, templating and engine settings)">
             <button
               className="share-button header-desktop-only"
               onClick={handleShare}
@@ -403,39 +475,19 @@ function App() {
 
           {/* Three-way theme switch (desktop) */}
           <div className="theme-switch header-desktop-only" role="radiogroup" aria-label="Theme">
-            <Tooltip label="Light">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={themePreference === 'light'}
-                className={`theme-switch-option ${themePreference === 'light' ? 'is-active' : ''}`}
-                onClick={() => setThemePreference('light')}
-              >
-                <Sun size={15} />
-              </button>
-            </Tooltip>
-            <Tooltip label="System">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={themePreference === 'system'}
-                className={`theme-switch-option ${themePreference === 'system' ? 'is-active' : ''}`}
-                onClick={() => setThemePreference('system')}
-              >
-                <Monitor size={15} />
-              </button>
-            </Tooltip>
-            <Tooltip label="Dark">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={themePreference === 'dark'}
-                className={`theme-switch-option ${themePreference === 'dark' ? 'is-active' : ''}`}
-                onClick={() => setThemePreference('dark')}
-              >
-                <Moon size={15} />
-              </button>
-            </Tooltip>
+            {themeOptions.map(({ value, label, Icon }) => (
+              <Tooltip key={value} label={label}>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={themePreference === value}
+                  className={`theme-switch-option ${themePreference === value ? 'is-active' : ''}`}
+                  onClick={() => setThemePreference(value)}
+                >
+                  <Icon size={15} />
+                </button>
+              </Tooltip>
+            ))}
           </div>
 
           {/* Mobile binary fallback (hidden on desktop via .header-desktop-only inversion) */}
@@ -446,7 +498,7 @@ function App() {
           >
             {resolvedTheme === "light" ? <Moon size={18} /> : <Sun size={18} />}
           </button>
-          {/* Mobile overflow menu — holds actions that don't fit in compact header */}
+          {/* Mobile overflow menu: holds actions that don't fit in the compact header */}
           <div className="overflow-menu" ref={overflowMenuRef}>
             <button
               className="overflow-menu-trigger"
@@ -472,6 +524,30 @@ function App() {
                   {copied ? <Check size={16} /> : <Link2 size={16} />}
                   <span>{copied ? 'Copied!' : 'Share Link'}</span>
                 </button>
+                <button
+                  className={`overflow-menu-item ${configSummary ? 'overflow-menu-item--active' : ''}`}
+                  onClick={openEngineSettings}
+                >
+                  <Settings2 size={16} />
+                  <span>Engine Settings{configSummary ? ' (custom)' : ''}</span>
+                </button>
+                <div className="overflow-menu-divider" />
+                <div className="overflow-menu-label">Theme</div>
+                <div className="overflow-menu-theme" role="radiogroup" aria-label="Theme">
+                  {themeOptions.map(({ value, label, Icon }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={themePreference === value}
+                      className={`overflow-menu-theme-option ${themePreference === value ? 'is-active' : ''}`}
+                      onClick={() => setThemePreference(value)}
+                    >
+                      <Icon size={15} />
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </div>
                 <div className="overflow-menu-divider" />
                 <div className="overflow-menu-label">Examples</div>
                 {Object.keys(SAMPLE_EXPRESSIONS).map((name) => (
@@ -509,6 +585,19 @@ function App() {
           </div>
         </div>
       </header>
+
+      {/* Mobile: engine settings as a centered sheet with a backdrop */}
+      {engineSettingsOpen && isMobile && (
+        <>
+          <div className="engine-settings-backdrop" onClick={closeEngineSettings} />
+          <EngineSettingsPanel
+            config={engineConfig}
+            onChange={setEngineConfig}
+            onClose={closeEngineSettings}
+            variant="sheet"
+          />
+        </>
+      )}
 
       {isMobile ? (
         <>

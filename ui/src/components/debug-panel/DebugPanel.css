@@ -524,3 +524,159 @@
     padding: 8px;
   }
 }
+
+/* ============================================================================
+   Structured error details (result pane)
+   ============================================================================ */
+
+.debug-result.error {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.error-display {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.error-display-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.error-display-head .error-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+  background: var(--error-text);
+  color: white;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.error-display-details {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--error-bg) 50%, transparent);
+  border: 1px solid var(--error-border);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.error-detail-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.error-detail-row.error-thrown {
+  align-items: flex-start;
+  flex-wrap: nowrap;
+}
+
+.error-detail-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.error-breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  font-family: var(--font-mono);
+}
+
+.error-breadcrumb-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.error-breadcrumb-sep {
+  color: var(--text-muted);
+  padding: 0 2px;
+}
+
+.error-breadcrumb-id {
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-primary);
+  font-size: 10.5px;
+}
+
+.error-detail-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-primary);
+}
+
+.error-detail-chip .error-detail-label {
+  font-size: 9.5px;
+}
+
+.error-thrown-json.json-result-display {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  font-size: 11.5px;
+  border-radius: var(--radius-sm);
+  background: var(--code-bg);
+  border: 1px solid var(--border-light);
+}
+
+.debug-result-config-note {
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  color: var(--warning-text);
+}
+
+/* Inline (compact) errors under the editors keep a single line */
+.debug-section-content .debug-error .error-display {
+  flex-direction: row;
+  align-items: center;
+}
+
+.engine-config-badge--button {
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+
+.engine-config-badge--button:hover {
+  filter: brightness(0.95);
+}
+
+.engine-config-badge--button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}

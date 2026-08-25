@@ -16,12 +16,14 @@ see the [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 ## Features
 
 - Visual representation of JSONLogic expressions as flow diagrams
-- Support for all standard JSONLogic operators (logical, comparison, arithmetic, string, array, control flow, datetime, error handling)
-- Tree-based automatic layout using @dagrejs/dagre
+- Every built-in operator the bundled engine accepts (64 canonical operators plus the `var`, `?:` and `match` aliases), across variables, comparison, logical, arithmetic, string, array, object, control flow, datetime, validation, error handling and the flagd feature-flag operators (`fractional`, `sem_ver`)
+- Per-operator help with engine-verified examples and a link to that operator's documentation page
+- Tree-based automatic layout using @dagrejs/dagre, in data-flow or JSON-hierarchy direction
 - Prop-based modes: read-only visualization, debugging with step-through trace, and full visual editing
-- Editing mode with node selection, properties panel, context menus, and undo/redo
+- Editing mode with node selection, properties panel, context menus, an Insert menu (Cmd/Ctrl+K) and undo/redo
 - Templating mode for JSON templates with embedded JSONLogic
-- Built-in WASM-based JSONLogic evaluation with execution tracing
+- Built-in WASM-based JSONLogic evaluation with execution tracing, a step timeline, and failed-node highlighting
+- Engine evaluation settings (`config`) and custom operators (`customOperators`) passed straight through to the engine
 - Light/dark theme support with system preference detection
 
 ## Installation
@@ -35,17 +37,19 @@ npm install @goplasmatic/datalogic-ui @xyflow/react
 ## Quick Start
 
 ```tsx
-import '@xyflow/react/dist/style.css';
 import '@goplasmatic/datalogic-ui/styles.css';
 
-import { DataLogicEditor } from '@goplasmatic/datalogic-ui';
+import { DataLogicEditor, type JsonLogicValue } from '@goplasmatic/datalogic-ui';
 
 function App() {
-  const expression = {
-    "and": [
-      { ">": [{ "var": "age" }, 18] },
-      { "==": [{ "var": "status" }, "active"] }
-    ]
+  // Annotate the expression: TypeScript widens a bare object literal whose
+  // array holds two different operator keys into a union that is not
+  // assignable to JsonLogicValue.
+  const expression: JsonLogicValue = {
+    and: [
+      { '>': [{ var: 'age' }, 18] },
+      { '==': [{ var: 'status' }, 'active'] },
+    ],
   };
 
   return <DataLogicEditor value={expression} />;
@@ -66,7 +70,11 @@ Simply render a JSONLogic expression as a flow diagram:
 
 ### With Debugger
 
-Provide `data` to enable debugger controls with step-through execution trace:
+Provide `data` to enable the debugger toolbar (play/pause, step, jump, and a
+step timeline). As you step, the current node shows its context and result in
+a bubble, executed and on-path nodes are highlighted, and a node on the
+engine's failure breadcrumb is marked with its error. Nodes do not show
+results at rest; step through the trace to see values:
 
 ```tsx
 <DataLogicEditor
@@ -110,8 +118,12 @@ Combine editing with live debugging:
 | `theme` | `'light' \| 'dark'` | system | Theme override. If not provided, uses system preference |
 | `className` | `string` | - | Additional CSS class |
 | `templating` | `boolean` | `false` | Enable templating mode: multi-key objects and arrays compile to output-shaping templates with embedded JSONLogic |
-| `onTemplatingChange` | `(value: boolean) => void` | - | Callback when templating mode changes (from toolbar checkbox) |
-| `editable` | `boolean` | `false` | Enable editing: node selection, properties panel, context menus, undo/redo |
+| `onTemplatingChange` | `(value: boolean) => void` | - | Callback when templating mode changes. The toolbar's Templating checkbox renders only when this is provided |
+| `config` | `DataLogicEvaluationConfig` | - | Engine evaluation settings (preset, NaN and division-by-zero handling, truthiness, numeric coercion, recursion cap). Applied to both the result and the trace |
+| `customOperators` | `Record<string, (args: unknown[]) => unknown>` | - | Custom operators registered on the engine. Rules using them evaluate and trace normally; their nodes render with the generic "utility" styling |
+| `editable` | `boolean` | `false` | Enable editing: node selection, properties panel, context menus, Insert menu, undo/redo |
+| `exampleSuggestions` | `string[]` | - | Example names shown as quick-action chips in the empty state. Chips render only when `onSelectExample` is also provided |
+| `onSelectExample` | `(name: string) => void` | - | Called with the example name when a user clicks an empty-state chip |
 
 ## Exports
 
@@ -126,16 +138,27 @@ import { DataLogicEditor } from '@goplasmatic/datalogic-ui';
 ```tsx
 import type {
   DataLogicEditorProps,
+  DataLogicEvaluationConfig,
+  DataLogicCustomOperator,
   JsonLogicValue,
+  JsonLogicToNodesOptions,
   LogicNode,
   LogicEdge,
   LogicNodeData,
   OperatorNodeData,
   VariableNodeData,
   LiteralNodeData,
+  StructureNodeData,
+  StructureElement,
+  CellData,
+  ConversionResult,
   NodeEvaluationResult,
   EvaluationResultsMap,
+  StructuredError,
+  TracedResult,
   OperatorCategory,
+  FlowDirection,
+  IconName,
 } from '@goplasmatic/datalogic-ui';
 ```
 
@@ -145,41 +168,147 @@ import type {
 import { OPERATORS, CATEGORY_COLORS } from '@goplasmatic/datalogic-ui';
 ```
 
-### Utilities (for advanced use)
+`OPERATORS` is the operator registry keyed by name: label, category, arity,
+panel configuration, and help (summary, return type, notes, and examples that
+are checked against the engine in this package's test suite). `CATEGORY_COLORS`
+is a per-category palette for consumer-side legends and custom renderers; the
+shipped nodes are coloured by the value type they produce, through the
+`--sig-*` tokens (see Styling).
+
+### Utilities and hooks (for advanced use)
 
 ```tsx
-import { jsonLogicToNodes, applyTreeLayout } from '@goplasmatic/datalogic-ui';
+import {
+  jsonLogicToNodes,
+  applyTreeLayout,
+  useWasmEvaluator,
+  DataLogicEvaluationError,
+  summarizeEvaluationConfig,
+  isDefaultEvaluationConfig,
+} from '@goplasmatic/datalogic-ui';
 ```
+
+- `jsonLogicToNodes(value, options?)` converts an expression into
+  `{ nodes, edges, rootId }`.
+- `applyTreeLayout(nodes, edges?, direction?)` positions them with dagre.
+  `direction` is `'flow'` (default: sources on the left, result on the right)
+  or `'hierarchy'` (root on the left, JSON nesting order).
+- `useWasmEvaluator({ templating, config, customOperators })` is the same
+  engine hook the component uses: it returns `{ ready, loading, error,
+  evaluate, evaluateWithTrace }`.
+- `DataLogicEvaluationError` carries the engine's structured error on
+  `.structured` (`type`, `message`, and, where the engine provides them,
+  `operator`, `node_ids`, `thrown`, `variable`, `index`, `length`, `stage`).
+
+### Engine settings and custom operators
+
+```tsx
+<DataLogicEditor
+  value={expression}
+  data={data}
+  config={{ preset: 'strict', division_by_zero: 'return_null' }}
+  customOperators={{ double: (args) => Number(args[0]) * 2 }}
+/>
+```
+
+`config` mirrors the engine's `EvaluationConfig`: `preset`
+(`'default' | 'safe_arithmetic' | 'strict'`), `arithmetic_nan_handling`,
+`division_by_zero`, `loose_equality_errors`, `truthy_evaluator`,
+`numeric_coercion` (`empty_string_to_zero`, `null_to_zero`, `bool_to_number`,
+`reject_non_numeric`) and `max_recursion_depth`. Every key is optional and
+omitted keys keep the engine default. Changing `config` or `customOperators`
+rebuilds the engine, so selection and undo history reset.
+
+A custom operator receives the already-evaluated arguments and returns any
+JSON-serializable value (`undefined` becomes `null`); a thrown exception
+becomes a runtime evaluation error.
 
 ## Styling
 
-The component requires two CSS imports:
+One CSS import is all you need. React Flow's base styles are bundled into
+`styles.css`, so there is no separate `@xyflow/react/dist/style.css` import
+and no import-order requirement:
 
 ```tsx
-// React Flow base styles
-import '@xyflow/react/dist/style.css';
-
-// DataLogicEditor styles
 import '@goplasmatic/datalogic-ui/styles.css';
 ```
 
-The component respects the `data-theme` attribute on parent elements for theming, or you can override with the `theme` prop.
+The component sets `data-theme` on its own `.logic-editor` root from the
+`theme` prop, falling back to the system preference. It does not read
+`data-theme` from ancestor elements: pass the `theme` prop to force a theme.
+
+Every design decision is a CSS custom property scoped to `.logic-editor`, so
+overrides never leak into the host app. The primary axis is the signal
+palette (`--sig-bool-true`, `--sig-bool-false`, `--sig-bool-rest`,
+`--sig-number`, `--sig-string`, `--sig-collection`, `--sig-data`,
+`--sig-temporal`, `--sig-null`, each with a `-bg` variant): a node is
+coloured by the type of value it produces. The neutral substrate is
+`--board`, `--surface`, `--chip`, `--hairline`, `--ink`, `--muted`, and
+`--accent` is reserved for selection, root and focus.
+
+```css
+.logic-editor {
+  --sig-number: #0ea5e9;
+  --font-ui: 'Inter', sans-serif;
+}
+.logic-editor[data-theme="dark"] {
+  --board: #0b0b0f;
+}
+```
+
+The default `--font-ui` / `--font-mono` stacks name Space Grotesk and
+JetBrains Mono but the package does not ship them; either install
+`@fontsource/space-grotesk` and `@fontsource/jetbrains-mono` yourself or
+override the two tokens. See
+[Customization](https://goplasmatic.github.io/datalogic-rs/react-ui/customization.html)
+for the full token list.
 
 ## Development
 
 This package lives at `ui/` in the
-[datalogic-rs monorepo](https://github.com/GoPlasmatic/datalogic-rs). It
-depends on a locally-built `@goplasmatic/datalogic-wasm` WASM bundle — see
-[DEVELOPMENT.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/DEVELOPMENT.md)
-for the full link/install dance. Day-to-day, from the repo root:
+[datalogic-rs monorepo](https://github.com/GoPlasmatic/datalogic-rs) and
+bundles the WASM engine into its own output. It builds against the WASM
+package vendored from the repo, not against a registry download: build the
+WASM once, and the `predev` / `prebuild*` hooks copy `bindings/wasm/pkg` into
+`ui/vendor/datalogic` on every run (`npm run sync-wasm`).
 
 ```bash
-cd ui
+cd bindings/wasm && ./build.sh   # once, and after any engine change
+cd ../../ui
 npm install       # install dependencies
-npm run dev       # start the dev playground
-npm run build:lib # build the publishable library bundle
+npm run dev       # start the dev playground (Studio)
+npm test          # vitest: round trips, operator help, trace, samples
 npm run lint      # run ESLint
+npm run build:lib # build the publishable library bundle
+npm run build:embed # build the docs-site embed bundle
 ```
+
+`@goplasmatic/datalogic-wasm` is a devDependency pinned to the last published
+release. Nothing in the build resolves it (Vite and the tsconfigs alias the
+package to `vendor/datalogic`); the release workflow rewrites the pin to the
+version being published. See
+[DEVELOPMENT.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/DEVELOPMENT.md)
+for the repo-wide pipeline.
+
+### Tests
+
+`npm test` runs vitest against the vendored engine, so the checks are real
+evaluations rather than fixtures:
+
+- **Operator registry and help** (`config/__tests__`): every registry entry
+  matches `builtinOperatorNames()` from the engine, and every help example is
+  evaluated and compared to its documented result.
+- **Round trips** (`utils/__tests__`): a corpus covering every operator plus
+  the shipped samples must survive `jsonLogicToNodes` to `nodesToJsonLogic`
+  unchanged and evaluate identically.
+- **Trace** (`utils/trace/__tests__`): real `evaluateWithTrace` envelopes must
+  map onto the diagram with no synthetic nodes.
+- **Samples, sharing, menus, evaluator** (`tests/`): each sample evaluates to
+  its stored expected result, share URLs round trip, and every operator is
+  reachable from the menus.
+
+When you add an operator config example or a sample, give it the result the
+engine actually produces; the suites will tell you if it drifts.
 
 ## Architecture
 
@@ -211,9 +340,11 @@ The main component is `DataLogicEditor` which:
 - React Flow (@xyflow/react)
 - @dagrejs/dagre (graph layout)
 - lucide-react (icons)
-- @msgpack/msgpack (data serialization)
-- fflate (compression)
-- @goplasmatic/datalogic-wasm (bundled, for WASM evaluation)
+- @goplasmatic/datalogic-wasm (bundled into the library output)
+
+The dev playground additionally uses @msgpack/msgpack and fflate for share
+links and @fontsource for its fonts; those are devDependencies and are not
+installed by consumers.
 
 ## Documentation
 

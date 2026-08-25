@@ -19,7 +19,8 @@ export function convertOperator(
   operator: string,
   operandArray: JsonLogicValue[],
   context: ConversionContext,
-  convertValue: ConverterFn
+  convertValue: ConverterFn,
+  rawOperand?: JsonLogicValue
 ): string {
   const nodeId = uuidv4();
   const op = getOperator(operator);
@@ -77,8 +78,10 @@ export function convertOperator(
     }
   });
 
-  // Generate full expression text for the node
-  const originalExpr = { [operator]: operandArray };
+  // Generate full expression text for the node. The stored expression keeps the
+  // operand exactly as written (single-value shorthand or array) so the
+  // serializer can emit the same form back.
+  const originalExpr = { [operator]: rawOperand !== undefined ? rawOperand : operandArray };
   const expressionText = generateExpressionText(originalExpr);
   const parentInfo = getParentInfo(context);
 

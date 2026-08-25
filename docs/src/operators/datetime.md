@@ -57,9 +57,9 @@ Parse or validate a datetime value.
 ```
 
 **Arguments:**
-- `value` - ISO 8601 datetime string
+- `value` - An RFC 3339 datetime string (`2024-01-01T00:00:00Z`, or with a `+HH:MM`/`-HH:MM` offset; fractional seconds and a space instead of `T` are accepted), or a naive `YYYY-MM-DDTHH:MM:SS` string, which is read as UTC. Date-only strings (`2024-01-01`) and colon-less offsets (`-0500`, `+05`) are rejected with `Invalid datetime format`; use `parse_date` for those and for custom formats
 
-**Returns:** A datetime value (rendered as an ISO 8601 string, preserving timezone information); its `type` is "datetime", not "string".
+**Returns:** A datetime value (rendered as an ISO 8601 string, preserving the parsed offset); its `type` is "datetime", not "string".
 
 **Examples:**
 
@@ -104,9 +104,9 @@ Create or parse a duration value. Durations represent time periods (not points i
 ```
 
 **Arguments:**
-- `duration_string` - Duration in format like "1d:2h:3m:4s" or partial like "1d", "2h", "30m", "45s"
+- `duration_string` - Duration in format like "1d:2h:3m:4s", partial like "1d", "2h", "30m", "45s", or compact like "1d2h3m4s"
 
-**Returns:** Normalized duration string in format "Xd:Xh:Xm:Xs".
+**Returns:** A duration value (its `type` is "duration", like `now`/`datetime` produce "datetime"), rendered as a normalized "Xd:Xh:Xm:Xs" string in JSON output.
 
 **Duration Format:**
 - `d` - Days
@@ -140,7 +140,20 @@ Create or parse a duration value. Durations represent time periods (not points i
 // Duration equality
 { "==": [{ "timestamp": "1d" }, { "timestamp": "24h" }] }
 // Result: true
+
+// Compact form
+{ "timestamp": "1d2h3m4s" }
+// Result: "1d:2h:3m:4s"
+
+// Units overflow into the next larger unit
+{ "timestamp": "36h" }
+// Result: "1d:12h:0m:0s"
 ```
+
+**Notes:**
+- Produces a duration value; `{ "type": { "timestamp": "1d" } }` is `"duration"`
+- Units overflow-normalise (`"1d:25h"` becomes `"2d:1h:0m:0s"`)
+- Negative (`"-1d"`), fractional (`"1.5h"`), week (`"1w"`), and numeric (`3600`) inputs are rejected with `Invalid duration format`
 
 **Try it:**
 
@@ -188,13 +201,26 @@ Durations can be used in arithmetic operations:
     { "datetime": "2024-01-01T00:00:00Z" }
 ]}
 // Result: "7d:0h:0m:0s"
+
+// The result of datetime +/- duration is a UTC instant: the parsed offset is not carried through
+{ "+": [
+    { "datetime": "2024-01-01T10:00:00+05:30" },
+    { "timestamp": "1d" }
+]}
+// Result: "2024-01-02T04:30:00Z"
 ```
+
+**Note:** duration arithmetic on a datetime that carries an offset drops that
+offset: the result renders as `...Z`, and `format_date` with the bare `"z"`
+format reports `+0000` for it. To render such a result in a local zone, pass
+the zone argument to `format_date` (for example `"Asia/Kolkata"`, which gives
+`"10:00"` for the example above with format `"HH:mm"`).
 
 ---
 
 ## parse_date
 
-Parse a date string with a custom format into an ISO datetime.
+Parse a date string with a custom format into a datetime value.
 
 **Syntax:**
 ```json
@@ -207,7 +233,7 @@ Parse a date string with a custom format into an ISO datetime.
 - `format` - Format string using simplified tokens
 - `timezone` - Optional IANA zone name (e.g. `"Asia/Kolkata"`). Without it, naive input is read as UTC; with it, the input is read as wall-clock time *in that zone* and resolved to the corresponding UTC instant.
 
-**Returns:** Parsed datetime as ISO 8601 string.
+**Returns:** A datetime value (rendered as an ISO 8601 string in JSON output); its `type` is "datetime", not "string".
 
 **Format Tokens:**
 | Token | Description | Example |
@@ -251,9 +277,9 @@ Raw [chrono `%` specifiers](https://docs.rs/chrono/latest/chrono/format/strftime
 ```
 
 **Timezone notes:**
-- Zone offsets (including DST) come from the compiled-in IANA table — no fixed-offset arithmetic, no tzdata I/O.
+- Zone offsets (including DST) come from the compiled-in IANA table: no fixed-offset arithmetic, no tzdata I/O.
 - An ambiguous local time (clocks rolled back, the wall-clock occurs twice) resolves to the **earlier** instant; a nonexistent one (spring-forward gap) is an error.
-- An unknown zone name that appears as a *literal* in the rule fails when the rule is compiled; a zone arriving through data fails at evaluation with `Unknown timezone: <name>`.
+- An unknown zone name that appears as a *literal* in the rule is rejected while the rule is compiled, but `Engine::compile` itself still succeeds: the call is replaced by a marker that raises `Invalid Arguments` (naming the operator, not the zone) when the rule is evaluated. A zone arriving through data fails at evaluation with `Unknown timezone: <name>`.
 
 **Try it:**
 
@@ -280,7 +306,9 @@ Format a datetime as a string with a custom format.
 **Returns:** Formatted date string.
 
 **Special Format:**
-- `z` - Returns timezone offset (e.g., "+0500"). Without a zone argument this is the *source* offset the datetime was parsed with; with a zone argument it is the target zone's offset at that instant.
+- `z` - Returns the timezone offset (e.g., "+0500"). Without a zone argument this is the *source* offset the datetime was parsed with; with a zone argument it is the target zone's offset at that instant.
+- `z` is honoured only when it is the entire format string. Inside a longer format it is emitted literally: `"yyyy-MM-dd HH:mm z"` on `2024-01-01T10:00:00+05:30` gives `"2024-01-01 04:30 z"`.
+- Without a zone argument every other token renders the UTC instant, so `"HH:mm"` on that same value gives `"04:30"` and the raw chrono `%z` gives `+0000`; the source offset is reachable only through the bare `"z"` format. To get wall-clock time plus offset in one string, pass the zone argument and use `%z` or `%Z`: `"HH:mm %z"` with `"Asia/Kolkata"` gives `"10:00 +0530"`, and `"HH:mm %Z"` gives `"10:00 IST"`.
 
 **Examples:**
 
@@ -293,9 +321,17 @@ Format a datetime as a string with a custom format.
 { "format_date": [{ "datetime": "2024-12-25T00:00:00Z" }, "MM/dd/yyyy"] }
 // Result: "12/25/2024"
 
-// Get timezone offset
+// Get timezone offset (the format must be exactly "z")
 { "format_date": [{ "datetime": "2024-01-01T10:00:00+05:00" }, "z"] }
 // Result: "+0500"
+
+// Without a zone argument the other tokens render the UTC instant
+{ "format_date": [{ "datetime": "2024-01-01T10:00:00+05:30" }, "HH:mm"] }
+// Result: "04:30"
+
+// Wall-clock time plus offset in one string needs the zone argument
+{ "format_date": [{ "datetime": "2024-01-01T10:00:00+05:30" }, "HH:mm %z", "Asia/Kolkata"] }
+// Result: "10:00 +0530"
 
 // Render an instant as a calendar date in a zone
 { "format_date": [{ "datetime": "2026-08-17T18:30:00Z" }, "dd MMM yyyy", "Asia/Kolkata"] }
@@ -334,9 +370,9 @@ Calculate the difference between two dates in a specified unit.
 **Arguments:**
 - `date1` - First datetime
 - `date2` - Second datetime
-- `unit` - Unit of measurement: "days", "hours", "minutes", "seconds"
+- `unit` - Unit of measurement: `"days"`, `"hours"`, `"minutes"`, `"seconds"`, or `"milliseconds"` (lowercase). Any other value is an Invalid Arguments error: `date_diff: unknown unit "weeks" (expected days, hours, minutes, seconds, or milliseconds)`
 
-**Returns:** Difference as an integer in the specified unit.
+**Returns:** Difference (`date1 - date2`) as an integer in the specified unit, truncated toward zero; negative when `date1` is earlier than `date2`.
 
 **Examples:**
 
@@ -356,6 +392,30 @@ Calculate the difference between two dates in a specified unit.
     "hours"
 ]}
 // Result: 12
+
+// Milliseconds
+{ "date_diff": [
+    { "datetime": "2024-01-01T00:00:01Z" },
+    { "datetime": "2024-01-01T00:00:00Z" },
+    "milliseconds"
+]}
+// Result: 1000
+
+// Negative when the first date is earlier
+{ "date_diff": [
+    { "datetime": "2024-01-01T00:00:00Z" },
+    { "datetime": "2024-01-02T00:00:00Z" },
+    "days"
+]}
+// Result: -1
+
+// Unknown units are an error (catchable with try)
+{ "date_diff": [
+    { "datetime": "2024-01-02T00:00:00Z" },
+    { "datetime": "2024-01-01T00:00:00Z" },
+    "weeks"
+]}
+// Result: error (Invalid Arguments)
 
 // With variables
 { "date_diff": [

@@ -46,7 +46,7 @@ jobs:
           npm version "$VERSION" --no-git-tag-version --allow-same-version
           # Pin @goplasmatic/datalogic-wasm to the same version we're publishing
           # so the released UI references the matching WASM (no skew).
-          npm pkg set "dependencies.@goplasmatic/datalogic-wasm=$VERSION"
+          npm pkg set "devDependencies.@goplasmatic/datalogic-wasm=$VERSION"
 
       # Wire the freshly-built local WASM artifact into ui/node_modules
       # BEFORE running npm install. With the symlink present and its

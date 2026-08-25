@@ -90,7 +90,8 @@ pub(crate) enum CompiledNode {
     /// A built-in operator optimized with OpCode dispatch.
     ///
     /// The OpCode enum enables direct dispatch without string lookups,
-    /// significantly improving performance for the 50+ built-in operators.
+    /// significantly improving performance for the built-in operators (64
+    /// canonical operators when every operator feature is enabled).
     ///
     /// `predicate_hint` caches the result of [`crate::operators::array::FastPredicate::try_detect_owned`]
     /// so quantifier/filter operators don't repeat the structural pattern

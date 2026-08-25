@@ -7,8 +7,11 @@ import {
 } from 'react';
 import type { ExecutionStep } from '../../types/trace';
 import type { LogicNode } from '../../types';
+import type { TraceFailure } from '../../utils/trace/trace-failure';
+import { formatValue } from '../../utils/formatting';
 import { DebuggerContext } from './context';
 import { debuggerReducer, initialState } from './reducer';
+import type { NodeSummary } from './types';
 
 // Provider props
 interface DebuggerProviderProps {
@@ -16,10 +19,38 @@ interface DebuggerProviderProps {
   steps: ExecutionStep[];
   traceNodeMap: Map<string, string>; // Maps trace node IDs to visual node IDs
   nodes: LogicNode[]; // For building parent map
+  /** Visual node ids on the engine's failure breadcrumb (innermost first), optional */
+  failedNodeIds?: Set<string>;
+  /** Trace-level failure (compile or runtime) to show on the failed node, optional */
+  traceError?: TraceFailure;
+}
+
+const EMPTY_FAILED: Set<string> = new Set();
+
+/** Label / expression summary of a visual node for step lists. */
+function summarizeNode(node: LogicNode): NodeSummary {
+  const data = node.data;
+  if (data.type === 'operator') {
+    return { label: data.label ?? data.operator, detail: data.expressionText ?? '' };
+  }
+  if (data.type === 'structure') {
+    return { label: data.isArray ? 'array' : 'object', detail: data.expressionText ?? '' };
+  }
+  if (data.type === 'literal') {
+    return { label: 'literal', detail: formatValue(data.value) };
+  }
+  return { label: node.type ?? 'node', detail: '' };
 }
 
 // Provider component
-export function DebuggerProvider({ children, steps, traceNodeMap, nodes }: DebuggerProviderProps) {
+export function DebuggerProvider({
+  children,
+  steps,
+  traceNodeMap,
+  nodes,
+  failedNodeIds = EMPTY_FAILED,
+  traceError,
+}: DebuggerProviderProps) {
   const [state, dispatch] = useReducer(debuggerReducer, initialState);
 
   // Initialize with steps when they change
@@ -90,6 +121,13 @@ export function DebuggerProvider({ children, steps, traceNodeMap, nodes }: Debug
     return map;
   }, [nodes]);
 
+  // Node summaries for the step list
+  const nodeSummaries = useMemo(() => {
+    const map = new Map<string, NodeSummary>();
+    for (const node of nodes) map.set(node.id, summarizeNode(node));
+    return map;
+  }, [nodes]);
+
   // Compute path from current node to root
   const pathNodeIds = useMemo(() => {
     const path = new Set<string>();
@@ -102,6 +140,11 @@ export function DebuggerProvider({ children, steps, traceNodeMap, nodes }: Debug
     }
     return path;
   }, [currentNodeId, parentMap]);
+
+  const primaryFailedNodeId = useMemo(() => {
+    const first = failedNodeIds.values().next();
+    return first.done ? null : first.value;
+  }, [failedNodeIds]);
 
   // Control callbacks
   const play = useCallback(() => dispatch({ type: 'PLAY' }), []);
@@ -121,6 +164,11 @@ export function DebuggerProvider({ children, steps, traceNodeMap, nodes }: Debug
       executedNodeIds,
       errorNodeIds,
       pathNodeIds,
+      traceNodeMap,
+      failedNodeIds,
+      primaryFailedNodeId,
+      traceError: traceError ?? null,
+      nodeSummaries,
       play,
       pause,
       stop,
@@ -137,6 +185,11 @@ export function DebuggerProvider({ children, steps, traceNodeMap, nodes }: Debug
       executedNodeIds,
       errorNodeIds,
       pathNodeIds,
+      traceNodeMap,
+      failedNodeIds,
+      primaryFailedNodeId,
+      traceError,
+      nodeSummaries,
       play,
       pause,
       stop,

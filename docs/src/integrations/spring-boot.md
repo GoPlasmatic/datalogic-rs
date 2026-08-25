@@ -3,7 +3,8 @@
 This guide wires [`io.github.goplasmatic:datalogic`](../jvm.md) into a
 Spring Boot service: **the engine as a singleton bean, rules compiled
 once and cached, evaluation per request**. The binding uses the Java 22+
-Foreign Function & Memory API (no JNI/JNA), and every native type is
+Foreign Function & Memory API (no JNI/JNA), and every native-handle
+type (`Engine`, `Rule`, `Session`, `TracedSession`, `DataHandle`) is
 `AutoCloseable`.
 
 The running example: eligibility rules stored as JSONLogic in a
@@ -15,7 +16,7 @@ database column, changeable by ops without a deployment.
 <dependency>
   <groupId>io.github.goplasmatic</groupId>
   <artifactId>datalogic</artifactId>
-  <version>5.1.0</version>
+  <version>5.3.0</version>
 </dependency>
 ```
 
@@ -135,9 +136,12 @@ tests) are where your review effort belongs.
 
 For a measured hot loop (scoring a stream, evaluating a rule set per
 message), open a `Session` per worker thread (it reuses one native
-arena across calls) and use the typed (`evaluateBoolean`-style) and
-batch entry points to skip JSON result parsing. Patterns and the full
-tier table are in the [JVM chapter](../jvm.md).
+arena across calls) and use the typed (`evaluateBool`, `evaluateLong`,
+`evaluateDouble`, `evaluateTruthy`) and batch (`evaluateBatch`,
+`evaluateMany`) entry points to skip JSON result parsing. Patterns and
+the full tier table are in the
+[JVM README](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/jvm#api-surface);
+the [JVM chapter](../jvm.md) covers the basics.
 
 ## One more thing polyglot teams get for free
 

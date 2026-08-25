@@ -1,6 +1,6 @@
 # Use Cases & Examples
 
-Real-world JSONLogic recipes for common scenarios. Every rule on this page is plain JSON: author it once, store it where you store data (a database row, a config file, an API payload), and evaluate it unchanged from any language datalogic-rs ships bindings for. Each recipe below is the rule, a sample data payload, and the result; standard-mode recipes also embed a live widget so you can run them right here. A few recipes use the engine's templating mode to build output objects; those are flagged inline.
+Real-world JSONLogic recipes for common scenarios. Every rule on this page is plain JSON: author it once, store it where you store data (a database row, a config file, an API payload), and evaluate it unchanged from any language datalogic-rs ships bindings for. Each recipe below is the rule, a sample data payload, and the result; standard-mode recipes also embed a live widget so you can run them right here. A few recipes use the engine's templating mode to build output objects; those are flagged inline. Their results are shown in authoring order for readability; the engine emits object keys in sorted order (for example `{"errors": [...], "valid": false}`), which is the same JSON value.
 
 ## Run any of these in your language
 

@@ -7,6 +7,7 @@
 
 import type { LogicNode, LiteralNodeData, JsonLogicValue, OperatorNodeData } from '../../types';
 import type { Operator } from '../../config/operators.types';
+import { inlineOperandForCell } from '../../services/inline-edit-service';
 
 /**
  * Represents an argument that may be inline (literal) or a linked node
@@ -28,6 +29,10 @@ export interface ArgumentInfo {
   fieldType?: string;
   /** Placeholder text from editable cell */
   placeholder?: string;
+  /** Inline operand that is not a plain literal (a collapsed var pill, an array): shown, not edited */
+  readOnly?: boolean;
+  /** Display text for read-only inline operands */
+  displayLabel?: string;
 }
 
 /**
@@ -35,6 +40,8 @@ export interface ArgumentInfo {
  */
 export function supportsVariableArgs(opConfig: Operator | undefined): boolean {
   if (!opConfig) return false;
+  // exists takes exactly one path: nothing to add or remove
+  if (opConfig.name === 'exists') return false;
   return (
     opConfig.arity.type === 'nary' ||
     opConfig.arity.type === 'variadic' ||
@@ -117,29 +124,31 @@ export function extractArguments(
 ): ArgumentInfo[] {
   return opData.cells.map((cell) => {
     if (cell.type === 'inline') {
-      // Parse the label to get the value
+      // Read the operand the serializer would emit for this cell
+      const operand = inlineOperandForCell(opData, cell);
       let value: JsonLogicValue;
       let valueType: LiteralNodeData['valueType'];
 
-      const label = cell.label || '';
-      if (label === 'null') {
-        value = null;
-        valueType = 'null';
-      } else if (label === 'true') {
-        value = true;
-        valueType = 'boolean';
-      } else if (label === 'false') {
-        value = false;
-        valueType = 'boolean';
-      } else if (label.startsWith('"') && label.endsWith('"')) {
-        value = label.slice(1, -1);
-        valueType = 'string';
-      } else if (!isNaN(Number(label))) {
-        value = Number(label);
-        valueType = 'number';
+      if (operand !== undefined) {
+        if (operand !== null && typeof operand === 'object') {
+          // A collapsed var/val pill or an array literal: not a plain literal
+          return {
+            index: cell.index,
+            isInline: true,
+            value: operand,
+            valueType: Array.isArray(operand) ? 'array' : 'string',
+            rowLabel: cell.rowLabel,
+            readOnly: true,
+            displayLabel: cell.label,
+          };
+        }
+        value = operand;
+        valueType = getLiteralType(operand);
       } else {
-        value = label;
-        valueType = 'string';
+        // No stored operand: parse the label to get the value
+        const parsed = parseInlineLabel(cell.label || '');
+        value = parsed.value;
+        valueType = parsed.valueType;
       }
 
       return {
@@ -161,6 +170,10 @@ export function extractArguments(
       } else if (typeof cellValue === 'number') {
         value = cellValue;
         valueType = 'number';
+      } else if (Array.isArray(cellValue)) {
+        // Path components are edited as dot notation
+        value = cellValue.map((c) => String(c)).join('.');
+        valueType = 'string';
       } else {
         value = String(cellValue);
         valueType = 'string';
@@ -190,4 +203,16 @@ export function extractArguments(
       };
     }
   });
+}
+
+/** Fallback for cells without a stored operand: recover the value from the display label. */
+function parseInlineLabel(label: string): { value: JsonLogicValue; valueType: LiteralNodeData['valueType'] } {
+  if (label === 'null') return { value: null, valueType: 'null' };
+  if (label === 'true') return { value: true, valueType: 'boolean' };
+  if (label === 'false') return { value: false, valueType: 'boolean' };
+  if (label.startsWith('"') && label.endsWith('"')) {
+    return { value: label.slice(1, -1), valueType: 'string' };
+  }
+  if (label !== '' && !isNaN(Number(label))) return { value: Number(label), valueType: 'number' };
+  return { value: label, valueType: 'string' };
 }

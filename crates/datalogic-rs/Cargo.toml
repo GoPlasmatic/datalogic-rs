@@ -40,9 +40,10 @@ rustdoc-args = ["--cfg", "docsrs"]
 # `flagd`. Keeping `default = []` means a minimal build pulls only the
 # JSONLogic baseline operators and no optional dependencies.
 default = []
-# `serde_json` enables `&serde_json::Value` interop and the typed
-# `&T: Serialize` / `T: DeserializeOwned` paths through `EvalInput` /
-# `IntoLogic` / `FromDataValue`. Replaces the v5-pre-release `compat`
+# `serde_json` enables `&serde_json::Value` interop through `EvalInput` /
+# `IntoLogic` and the typed `T: DeserializeOwned` result path through
+# `FromDataValue` (a `T: Serialize` input is converted first with
+# `serde_json::to_value`; there is no blanket `&T: Serialize` impl). Replaces the v5-pre-release `compat`
 # feature, which mixed interop with v4 deprecation shims; the shims are
 # gone and the feature is now named for what it enables.
 serde_json = ["dep:serde_json", "datavalue/serde_json"]

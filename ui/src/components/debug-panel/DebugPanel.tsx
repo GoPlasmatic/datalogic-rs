@@ -1,34 +1,13 @@
 import { useState, useCallback } from 'react';
-import { ChevronDown, Copy, Check } from 'lucide-react';
-import type { JsonLogicValue, StructuredError } from '../logic-editor/types';
+import { ChevronDown, Copy, Check, Settings2 } from 'lucide-react';
+import type { JsonLogicValue } from '../logic-editor/types';
 import { JsonEditor, JsonDisplay } from './JsonHighlighter';
+import { ErrorDisplay, type DebugError } from './ErrorDisplay';
+import { errorToJson } from './error-utils';
 import { Tooltip } from '../Tooltip';
 import './DebugPanel.css';
 
-/** Error shape accepted by the debug panel: a plain string for parse-level
- * problems, or a `StructuredError` for runtime errors out of the engine. */
-export type DebugError = StructuredError | string | null;
-
-function ErrorDisplay({ error }: { error: Exclude<DebugError, null> }) {
-  if (typeof error === 'string') {
-    return (
-      <>
-        <span className="error-icon">!</span>
-        {error}
-      </>
-    );
-  }
-  return (
-    <>
-      <span className="error-icon">!</span>
-      <span className="error-type-pill" data-kind={error.type}>{error.type}</span>
-      <span className="error-message">{error.message}</span>
-      {error.operator && (
-        <span className="error-operator-chip">op: {error.operator}</span>
-      )}
-    </>
-  );
-}
+export type { DebugError } from './ErrorDisplay';
 
 interface DebugPanelProps {
   logic: JsonLogicValue | null;
@@ -44,6 +23,14 @@ interface DebugPanelProps {
   wasmReady: boolean;
   wasmLoading: boolean;
   accordion?: boolean;
+  /**
+   * Summary of the active non-default engine settings (see
+   * `summarizeEvaluationConfig`). Shown as a badge in the Result header so
+   * a surprising result or error can be traced back to the configuration.
+   */
+  configSummary?: string | null;
+  /** Opens the engine settings editor (badge becomes a button when provided). */
+  onOpenEngineSettings?: () => void;
 }
 
 export function DebugPanel({
@@ -59,6 +46,8 @@ export function DebugPanel({
   wasmReady,
   wasmLoading,
   accordion = false,
+  configSummary,
+  onOpenEngineSettings,
 }: DebugPanelProps) {
   const [expandedSection, setExpandedSection] = useState<string>('logic');
   const [resultCopied, setResultCopied] = useState(false);
@@ -67,10 +56,22 @@ export function DebugPanel({
     setExpandedSection(prev => prev === section ? '' : section);
   }, []);
 
+  const hasResultError = resultError !== null;
+  const canCopy = hasResultError || result !== undefined;
+
+  // Copies the result JSON, or the full structured error JSON when the
+  // evaluation failed (type, message, operator, node_ids, thrown, ...).
   const handleCopyResult = useCallback(async () => {
-    if (resultError !== null || result === undefined) return;
+    let text: string;
+    if (resultError !== null) {
+      text = errorToJson(resultError);
+    } else if (result !== undefined) {
+      text = JSON.stringify(result, null, 2);
+    } else {
+      return;
+    }
     try {
-      await navigator.clipboard.writeText(JSON.stringify(result, null, 2));
+      await navigator.clipboard.writeText(text);
       setResultCopied(true);
       setTimeout(() => setResultCopied(false), 1500);
     } catch (err) {
@@ -98,6 +99,26 @@ export function DebugPanel({
       // Ignore format errors
     }
   }, [dataText, onDataChange]);
+
+  const configBadge = configSummary ? (
+    <Tooltip label={`Engine settings: ${configSummary}`} side="left">
+      {onOpenEngineSettings ? (
+        <button
+          type="button"
+          className="engine-config-badge engine-config-badge--button"
+          onClick={onOpenEngineSettings}
+        >
+          <Settings2 size={11} />
+          <span className="engine-config-badge-text">{configSummary}</span>
+        </button>
+      ) : (
+        <span className="engine-config-badge">
+          <Settings2 size={11} />
+          <span className="engine-config-badge-text">{configSummary}</span>
+        </span>
+      )}
+    </Tooltip>
+  ) : null;
 
   return (
     <div className="debug-panel">
@@ -144,7 +165,7 @@ export function DebugPanel({
             />
             {logicError && (
               <div className="debug-error">
-                <ErrorDisplay error={logicError} />
+                <ErrorDisplay error={logicError} compact />
               </div>
             )}
           </div>
@@ -189,12 +210,12 @@ export function DebugPanel({
             <JsonEditor
               value={dataText}
               onChange={onDataChange}
-              placeholder="Enter data object (JSON)..."
+              placeholder="Enter data (any JSON: object, array or scalar)..."
               hasError={!!dataError}
             />
             {dataError && (
               <div className="debug-error">
-                <ErrorDisplay error={dataError} />
+                <ErrorDisplay error={dataError} compact />
               </div>
             )}
           </div>
@@ -227,14 +248,19 @@ export function DebugPanel({
             </div>
           )}
           <div className="debug-section-header-right">
+            {configBadge}
             {wasmLoading && <span className="wasm-status loading">Loading</span>}
             {wasmReady && (
-              <Tooltip label={resultCopied ? 'Copied' : 'Copy result'} side="left">
+              <Tooltip
+                label={resultCopied ? 'Copied' : hasResultError ? 'Copy error JSON' : 'Copy result'}
+                side="left"
+              >
                 <button
                   type="button"
                   className={`debug-header-action ${resultCopied ? 'copied' : ''}`}
                   onClick={handleCopyResult}
-                  disabled={resultError !== null || result === undefined}
+                  disabled={!canCopy}
+                  aria-label={hasResultError ? 'Copy error JSON' : 'Copy result'}
                 >
                   {resultCopied ? <Check size={13} /> : <Copy size={13} />}
                 </button>
@@ -247,6 +273,11 @@ export function DebugPanel({
             {resultError ? (
               <div className="debug-result error">
                 <ErrorDisplay error={resultError} />
+                {configSummary && (
+                  <div className="debug-result-config-note">
+                    Evaluated with engine settings: {configSummary}
+                  </div>
+                )}
               </div>
             ) : (
               <JsonDisplay value={result} />
