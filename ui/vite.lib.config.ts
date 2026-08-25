@@ -16,17 +16,17 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src'),
-      '@logic-editor': resolve(__dirname, 'src/components/logic-editor'),
+      '@': resolve(import.meta.dirname, 'src'),
+      '@logic-editor': resolve(import.meta.dirname, 'src/components/logic-editor'),
       // Match `vite.config.ts`: resolve the WASM dep to the vendored
       // copy that `prebuild:lib` (→ sync-wasm) refreshes from
       // `../wasm/pkg/` before this build runs.
-      '@goplasmatic/datalogic-wasm': resolve(__dirname, 'vendor/datalogic'),
+      '@goplasmatic/datalogic-wasm': resolve(import.meta.dirname, 'vendor/datalogic'),
     },
   },
   build: {
     lib: {
-      entry: resolve(__dirname, 'src/lib.ts'),
+      entry: resolve(import.meta.dirname, 'src/lib.ts'),
       name: 'DataLogicUI',
       formats: ['es', 'cjs'],
       fileName: (format) => `index.${format === 'es' ? 'js' : 'cjs'}`,

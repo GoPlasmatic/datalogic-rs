@@ -8,10 +8,10 @@ import { resolve } from 'path';
 export default defineConfig({
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src'),
-      '@logic-editor': resolve(__dirname, 'src/components/logic-editor'),
-      '@goplasmatic/datalogic-wasm/nodejs': resolve(__dirname, 'vendor/datalogic/nodejs/datalogic_wasm.js'),
-      '@goplasmatic/datalogic-wasm': resolve(__dirname, 'vendor/datalogic/nodejs/datalogic_wasm.js'),
+      '@': resolve(import.meta.dirname, 'src'),
+      '@logic-editor': resolve(import.meta.dirname, 'src/components/logic-editor'),
+      '@goplasmatic/datalogic-wasm/nodejs': resolve(import.meta.dirname, 'vendor/datalogic/nodejs/datalogic_wasm.js'),
+      '@goplasmatic/datalogic-wasm': resolve(import.meta.dirname, 'vendor/datalogic/nodejs/datalogic_wasm.js'),
     },
   },
   test: {

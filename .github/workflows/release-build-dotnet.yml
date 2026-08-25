@@ -20,7 +20,10 @@ jobs:
 
       - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: '8.0.x'
+          # Build SDK only — the projects still target net8.0, so .NET 8
+          # consumers are unaffected. SDK 10 is required by the test
+          # toolchain (Microsoft.NET.Test.Sdk 18.x, SourceLink 10.x).
+          dotnet-version: '10.0.x'
 
       - name: Download all cdylib artifacts
         uses: actions/download-artifact@v8

@@ -36,7 +36,7 @@ jobs:
         with:
           # Pin maturin so a release months from now produces the same
           # wheels. Bump deliberately when needed.
-          maturin-version: "1.13.3"
+          maturin-version: "1.15.0"
           working-directory: bindings/python
           target: ${{ matrix.target.target }}
           args: --release --out dist
@@ -75,7 +75,7 @@ jobs:
       - name: Build sdist
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1
         with:
-          maturin-version: "1.13.3"
+          maturin-version: "1.15.0"
           working-directory: bindings/python
           command: sdist
           args: --out dist

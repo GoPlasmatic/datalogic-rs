@@ -2,7 +2,7 @@
 # Pin the maturin floor inside the build system, but the upper bound lives
 # in the release workflow's `maturin-version:` so wheel builds stay
 # reproducible across action upgrades. 1.8 is the floor for PEP 639
-# `license-files` support (the release workflow pins 1.13.3).
+# `license-files` support (the release workflow pins 1.15.0).
 requires = ["maturin>=1.8,<2.0"]
 build-backend = "maturin"
 

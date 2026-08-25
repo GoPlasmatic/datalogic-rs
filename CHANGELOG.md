@@ -33,6 +33,30 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   others.
 - **Conformance battery is now 58 suites / 1,658 cases**, after the
   regression suites below landed.
+- **Dependency refresh across every ecosystem.** `cargo update` over all
+  six Rust workspaces, `npm` over the three JS packages, plus `composer`,
+  Maven and NuGet. Requirement bumps worth calling out: the Python
+  binding's `self_cell` floor moves 1.2.2 → 1.3.0 (matching the core
+  crate), JVM `jackson-databind` → 2.22.2 and JUnit 5.14.4 → 6.1.3, .NET
+  `Microsoft.NET.Test.Sdk` → 18.9.0 / `xunit.runner.visualstudio` → 4.0.0
+  / `Microsoft.SourceLink.GitHub` → 10.0.400, and the release workflow's
+  maturin pin 1.13.3 → 1.15.0. `cargo audit`, `npm audit` and
+  `composer audit` are clean. The one surviving `cargo audit` warning
+  (RUSTSEC-2026-0097, `rand` 0.7.3 via `jsonlogic-rs` → `phf` 0.8) is
+  reachable only through the dev-only benchmark crate's opt-in
+  `subject-jsonlogic-rs` feature and ships in nothing; `jsonlogic-rs`
+  0.5.0 is its own latest release, so there is no upgrade path.
+- **.NET builds on the 10.0.x SDK.** `dotnet-version` moves from `8.0.x`
+  to `10.0.x` in CI and both release workflows, which the .NET 10-wave
+  test toolchain needs. `TargetFramework` stays `net8.0` — only the build
+  SDK moved, so consumers on .NET 8 are unaffected.
+- **TypeScript held at `~6.0.3`.** TypeScript 7.0.2 is npm `latest`, but
+  typescript-eslint 8.68.0 still declares `typescript >=4.8.4 <6.1.0`, so
+  taking 7.x would break `npm run lint`. 6.0.3 is the top of the 6.x
+  line; the hold lifts when typescript-eslint supports TypeScript 7.
+- **`wasip2` stays at 1.0.1** under the MSRV-aware resolver: 1.0.4
+  requires Rust 1.87 and the crate's floor is 1.85. Likewise `smallvec`
+  stays on the 1.x line, since 2.0 has only alpha releases.
 
 ### Fixed
 
@@ -100,6 +124,11 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   devDependency pin.
 - **Dead code removed**: the legacy `LogicEditor` component, `AddArgumentMenu`,
   and the unused per-node evaluation hook.
+- **Vite 8.2 deprecations cleared.** The four Vite/Vitest configs use
+  `import.meta.dirname` instead of `__dirname`, ahead of the native config
+  loader becoming the default, and the embed build declares
+  `codeSplitting: false` in place of the deprecated `inlineDynamicImports`.
+  The embed bundle is byte-identical across the change.
 
 ### Fixed (UI)
 

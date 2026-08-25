@@ -16,12 +16,12 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src'),
-      '@logic-editor': resolve(__dirname, 'src/components/logic-editor'),
+      '@': resolve(import.meta.dirname, 'src'),
+      '@logic-editor': resolve(import.meta.dirname, 'src/components/logic-editor'),
       // Match `vite.config.ts`: resolve the WASM dep to the vendored
       // copy that `prebuild:embed` (→ sync-wasm) refreshes from
       // `../wasm/pkg/` before this build runs.
-      '@goplasmatic/datalogic-wasm': resolve(__dirname, 'vendor/datalogic'),
+      '@goplasmatic/datalogic-wasm': resolve(import.meta.dirname, 'vendor/datalogic'),
     },
   },
   define: {
@@ -32,7 +32,7 @@ export default defineConfig({
     outDir: 'dist-embed',
     emptyOutDir: true,
     lib: {
-      entry: resolve(__dirname, 'src/embed.tsx'),
+      entry: resolve(import.meta.dirname, 'src/embed.tsx'),
       name: 'DataLogicEmbed',
       // ES module, NOT iife. wasm-bindgen's web-target init uses
       // `new URL('datalogic_wasm_bg.wasm', import.meta.url)`. Vite 8's Rolldown
@@ -55,8 +55,11 @@ export default defineConfig({
           }
           return assetInfo.name ?? '[name][extname]';
         },
-        // Inline dynamic imports for WASM
-        inlineDynamicImports: true,
+        // Inline dynamic imports for WASM: the embed must ship as a single
+        // .js file (docs/theme/datalogic-playground.js loads exactly one
+        // module). Was `inlineDynamicImports: true`, deprecated in Vite 8.2
+        // in favour of Rolldown's `codeSplitting` flag.
+        codeSplitting: false,
       },
     },
     // Vite 8's default minifier (oxc) is fine for the ES-module output above:
