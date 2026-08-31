@@ -40,6 +40,81 @@ enabled, unknown keys become literal output fields.
 // Result: { "user": "Alice" }
 ```
 
+## Emitting Keys That Are Operator Names
+
+A single-key object is always an operator invocation, so a key that happens
+to name an operator is swallowed:
+
+```json
+{ "type": { "var": "x" } }
+// Result: "number"  — the `type` operator ran; no key was emitted
+```
+
+That makes roughly 60 names unusable as output keys on their own: `type`,
+`map`, `filter`, `if`, `keys`, `values`, `entries`, `length`, `in`, `sort`,
+`now`, `try`, `cat`, `+`, `==`, and so on. Registered custom operators
+shadow keys the same way.
+
+Opt into an escape prefix to get them back:
+
+```rust
+use datalogic_rs::Engine;
+
+let engine = Engine::builder()
+    .with_templating(true)
+    .with_template_key_escape('$')
+    .build();
+```
+
+Exactly one leading prefix is stripped from every template key, and an
+escaped key is never resolved as an operator:
+
+| Template key | Output key |
+|--------------|------------|
+| `$type`      | `type`     |
+| `$$type`     | `$type`    |
+| `$$$type`    | `$$type`   |
+| `$foo`       | `foo`      |
+| `type`       | not a key: still the `type` operator |
+
+```json
+{ "$type": { "var": "x" }, "$map": 2, "plain": 3 }
+// Result: { "type": 1, "map": 2, "plain": 3 }
+```
+
+Stripping is uniform across arities, so a key means the same thing whether
+or not it has siblings. Three things worth knowing:
+
+- **The setting is off by default and opt-in.** Without it, `$`-prefixed
+  keys pass through verbatim exactly as before. Turning it on does change
+  templates that currently emit literal `$` keys: write those as `$$key`.
+- **Nested keys can collide after stripping.** `{"$a": 1, "a": 2}` emits the
+  key `a` twice. The engine keeps duplicate pairs (as `keys` / `values` /
+  `entries` already do); converting the result to JSON collapses them
+  last-wins.
+- **A bare sigil strips to the empty key.** `{"$": 1}` emits `{"": 1}`.
+
+### Choosing the prefix
+
+The prefix is a `char`, not a fixed `$`, because `$` already begins real
+keys in MongoDB documents and JSON Schema output (`$ref`, `$id`). If your
+payloads are `$`-heavy, pick something they never use and leave your `$`
+keys untouched:
+
+```rust
+let engine = Engine::builder()
+    .with_templating(true)
+    .with_template_key_escape('~')  // `~type` -> `type`; `$ref` untouched
+    .build();
+```
+
+A custom operator whose name starts with the prefix becomes unreachable
+while the escape is on (the escape wins). Rename it, or choose a different
+prefix.
+
+The setting is inert without templating mode: outside it every single-key
+object is an operator invocation, so there is nothing to escape into.
+
 ## Basic Templating
 
 ```rust

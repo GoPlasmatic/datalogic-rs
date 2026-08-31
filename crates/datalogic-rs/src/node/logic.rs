@@ -223,9 +223,15 @@ pub(crate) fn node_is_static(node: &CompiledNode) -> bool {
         CompiledNode::Exists(_) => false,
         #[cfg(feature = "error-handling")]
         CompiledNode::Throw(_) => false,
+        // An escaped template is deliberately *not* static. Folding it
+        // would evaluate the strip and bake the result in as an object
+        // literal, so `to_json` would then emit the stripped key — and a
+        // bare `type` re-parses as the `type` operator, breaking the
+        // round-trip this module's callers rely on. Output templates
+        // almost always contain a `var` anyway, so little folding is lost.
         #[cfg(feature = "templating")]
         CompiledNode::StructuredObject(data) => {
-            data.fields.iter().all(|(_, node)| node_is_static(node))
+            !data.has_escaped_keys && data.fields.iter().all(|(_, node)| node_is_static(node))
         }
         CompiledNode::Missing(_) | CompiledNode::MissingSome(_) => false,
         // InvalidArgs is dynamic — it raises an error at runtime.

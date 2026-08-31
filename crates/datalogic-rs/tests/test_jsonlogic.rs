@@ -14,28 +14,36 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
-/// The two engine flavours the suites exercise. Engines are stateless
-/// across evaluations, so both are built once and shared by every test
-/// case; each case picks one via its `templating` flag.
+/// The engine flavours the suites exercise, keyed by the knobs a test case
+/// can ask for: its `templating` flag and its optional
+/// `template_key_escape` char. Engines are stateless across evaluations, so
+/// each distinct flavour is built once on first use and shared by every
+/// case that asks for it.
+///
+/// Lazy construction rather than a fixed set of pre-built flavours: it lets
+/// a suite pick any escape char (and combine one with `templating: false`
+/// to pin the backward-compat behaviour) without the harness needing to
+/// know the list up front.
+#[derive(Default)]
 struct Engines {
-    plain: Engine,
-    templating: Engine,
+    by_flavour: std::collections::HashMap<(bool, Option<char>), Engine>,
 }
 
 impl Engines {
     fn new() -> Self {
-        Self {
-            plain: Engine::new(),
-            templating: Engine::builder().with_templating(true).build(),
-        }
+        Self::default()
     }
 
-    fn select(&self, templating: bool) -> &Engine {
-        if templating {
-            &self.templating
-        } else {
-            &self.plain
-        }
+    fn select(&mut self, templating: bool, key_escape: Option<char>) -> &Engine {
+        self.by_flavour
+            .entry((templating, key_escape))
+            .or_insert_with(|| {
+                let mut builder = Engine::builder().with_templating(templating);
+                if let Some(c) = key_escape {
+                    builder = builder.with_template_key_escape(c);
+                }
+                builder.build()
+            })
     }
 }
 
@@ -81,7 +89,7 @@ fn test_jsonlogic() {
     // Get test file from environment variable, or run all tests from index.json
     let test_file = env::var("JSONLOGIC_TEST_FILE");
 
-    let engines = Engines::new();
+    let mut engines = Engines::new();
 
     let mut total_passed = 0;
     let mut total_failed = 0;
@@ -90,7 +98,7 @@ fn test_jsonlogic() {
         Ok(file) => {
             // Run single test file
             println!("Running tests from: {}", file);
-            let (passed, failed) = run_test_file(&file, &engines);
+            let (passed, failed) = run_test_file(&file, &mut engines);
             total_passed += passed;
             total_failed += failed;
         }
@@ -127,7 +135,7 @@ fn test_jsonlogic() {
                 }
 
                 println!("\n=== Running tests from: {} ===", test_file);
-                let (passed, failed) = run_test_file(&test_path, &engines);
+                let (passed, failed) = run_test_file(&test_path, &mut engines);
                 total_passed += passed;
                 total_failed += failed;
 
@@ -210,7 +218,7 @@ fn record_error_case(
     }
 }
 
-fn run_test_file(test_file: &str, engines: &Engines) -> (usize, usize) {
+fn run_test_file(test_file: &str, engines: &mut Engines) -> (usize, usize) {
     // Read and parse test file
     let contents = fs::read_to_string(test_file)
         .unwrap_or_else(|e| panic!("Failed to read test file {test_file}: {e}"));
@@ -246,12 +254,25 @@ fn run_test_file(test_file: &str, engines: &Engines) -> (usize, usize) {
 
         let data = test_obj.get("data").cloned().unwrap_or(json!({}));
 
-        // Pick the engine matching the case's templating flag.
+        // Pick the engine matching the case's templating flag and its
+        // optional template-key escape char.
         let templating = test_obj
             .get("templating")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        let engine = engines.select(templating);
+        let key_escape = test_obj.get("template_key_escape").map(|v| {
+            let s = v.as_str().unwrap_or_else(|| {
+                panic!("Test case {index}: 'template_key_escape' must be a string")
+            });
+            let mut chars = s.chars();
+            match (chars.next(), chars.next()) {
+                (Some(c), None) => c,
+                _ => panic!(
+                    "Test case {index}: 'template_key_escape' must be exactly one character, got {s:?}"
+                ),
+            }
+        });
+        let engine = engines.select(templating, key_escape);
 
         // Each case asserts either a `result` or an `error` expectation.
         let expected_error = test_obj.get("error");

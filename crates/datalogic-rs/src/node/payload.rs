@@ -73,7 +73,17 @@ pub(crate) struct CseData {
 #[derive(Debug, Clone)]
 pub(crate) struct StructuredObjectData {
     pub id: NodeId,
+    /// Field keys as they appear **in the source rule**, escape prefix
+    /// included. `evaluate_structured_object` strips the prefix on the way
+    /// out; keeping the source form here is what lets `to_json` round-trip
+    /// (a stored bare `type` would re-parse as the `type` operator).
     pub fields: Box<[(String, CompiledNode)]>,
+    /// Whether any key in `fields` carries the engine's escape prefix.
+    /// Two jobs: it gates the per-key strip at evaluation time so
+    /// unescaped templates pay nothing, and it makes the node non-static
+    /// so constant folding can't collapse it into an object literal whose
+    /// keys have already lost their escape.
+    pub has_escaped_keys: bool,
 }
 
 /// Data for a pre-compiled exists check (boxed inside CompiledNode to reduce enum size).

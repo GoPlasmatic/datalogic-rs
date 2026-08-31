@@ -158,6 +158,12 @@ pub struct Engine {
     /// to output-shaping templates and unknown operator keys pass through.
     #[cfg(feature = "templating")]
     templating: bool,
+    /// Escape prefix that marks a template object key as a literal output
+    /// field rather than an operator invocation. `None` (the default)
+    /// leaves key resolution exactly as it was. See
+    /// [`crate::EngineBuilder::with_template_key_escape`].
+    #[cfg(feature = "templating")]
+    template_key_escape: Option<char>,
     /// Whether `Engine::compile` runs the constant-folding pass.
     /// Defaults to `true`; toggled via
     /// [`crate::EngineBuilder::with_constant_folding`]. The trace surface
@@ -262,6 +268,8 @@ impl std::fmt::Debug for Engine {
         s.field("custom_operators", &self.custom_operators.len());
         #[cfg(feature = "templating")]
         s.field("templating", &self.templating);
+        #[cfg(feature = "templating")]
+        s.field("template_key_escape", &self.template_key_escape);
         s.field("config", &self.config);
         s.finish_non_exhaustive()
     }
@@ -311,6 +319,7 @@ impl Engine {
     pub(crate) fn from_builder_parts(
         config: EvaluationConfig,
         _templating: bool,
+        _template_key_escape: Option<char>,
         constant_folding: bool,
         operators: HashMap<String, Box<dyn crate::CustomOperator>>,
     ) -> Self {
@@ -318,6 +327,8 @@ impl Engine {
             custom_operators: operators,
             #[cfg(feature = "templating")]
             templating: _templating,
+            #[cfg(feature = "templating")]
+            template_key_escape: _template_key_escape,
             constant_folding,
             config,
         }
@@ -340,7 +351,13 @@ impl Engine {
     /// let engine = Engine::new();
     /// ```
     pub fn new() -> Self {
-        Self::from_builder_parts(EvaluationConfig::default(), false, true, HashMap::new())
+        Self::from_builder_parts(
+            EvaluationConfig::default(),
+            false,
+            None,
+            true,
+            HashMap::new(),
+        )
     }
 
     /// Gets a reference to the current evaluation configuration.
@@ -370,6 +387,18 @@ impl Engine {
         {
             false
         }
+    }
+
+    /// Internal: the template-key escape prefix, or `None` when unset.
+    ///
+    /// Gated rather than folded like [`Self::is_templating_enabled`]:
+    /// every call site (the compile walker's escaped-key branch and
+    /// `evaluate_structured_object`) already sits behind the same feature,
+    /// so an off-feature stub would just be dead code.
+    #[cfg(feature = "templating")]
+    #[inline]
+    pub(crate) fn template_key_escape(&self) -> Option<char> {
+        self.template_key_escape
     }
 
     /// Checks if a custom operator with the given name is registered.

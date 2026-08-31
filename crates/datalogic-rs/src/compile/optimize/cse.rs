@@ -474,6 +474,7 @@ fn hash_node<H: Hasher>(node: &CompiledNode, h: &mut H) {
         CompiledNode::StructuredObject(data) => {
             h.write_u8(4);
             h.write_usize(data.fields.len());
+            data.has_escaped_keys.hash(h);
             for (key, n) in data.fields.iter() {
                 key.hash(h);
                 hash_node(n, h);
@@ -647,7 +648,8 @@ fn structural_eq(a: &CompiledNode, b: &CompiledNode) -> bool {
         }
         #[cfg(feature = "templating")]
         (CompiledNode::StructuredObject(da), CompiledNode::StructuredObject(db)) => {
-            da.fields.len() == db.fields.len()
+            da.has_escaped_keys == db.has_escaped_keys
+                && da.fields.len() == db.fields.len()
                 && da
                     .fields
                     .iter()

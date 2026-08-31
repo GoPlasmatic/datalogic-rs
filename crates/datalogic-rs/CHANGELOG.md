@@ -16,6 +16,16 @@ files cannot drift.
 
 ### Added
 
+- **Templating: opt-in `$`-prefix escape for object keys.**
+  `Engine::builder().with_template_key_escape('$')` makes exactly one
+  leading prefix strip from every template key, and stops an escaped key
+  from resolving as an operator — so `{"$type": ...}` emits the key `type`
+  instead of running the `type` operator, and `$$type` emits a literal
+  `$type`. Recovers the ~60 built-in names (plus any registered custom
+  operator) as output keys. The prefix is a `char` rather than a fixed `$`,
+  since `$` already begins real keys in MongoDB and JSON Schema payloads.
+  Off by default: without it, `$`-prefixed keys pass through verbatim as
+  before. Requires `feature = "templating"` and templating mode.
 - **WASM: `builtinOperatorNames()`, `Engine.evaluateWithTrace`,
   `Engine.customOperatorNames()`.** The module-level
   `builtinOperatorNames(): string[]` mirrors

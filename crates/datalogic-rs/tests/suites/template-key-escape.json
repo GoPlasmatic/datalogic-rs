@@ -1,0 +1,338 @@
+[
+  "# Strip-one semantics (templating on, escape '$')",
+  {
+    "description": "Escaped builtin name becomes a literal output key",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "$type": { "var": "x" } },
+    "data": { "x": 1 },
+    "result": { "type": 1 }
+  },
+  {
+    "description": "Doubling the sigil emits one literal sigil",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "$$type": 1 },
+    "data": null,
+    "result": { "$type": 1 }
+  },
+  {
+    "description": "Tripling the sigil emits two literal sigils",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "$$$type": 1 },
+    "data": null,
+    "result": { "$$type": 1 }
+  },
+  {
+    "description": "Stripping is uniform: a non-operator name is escaped too",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "$foo": 1 },
+    "data": null,
+    "result": { "foo": 1 }
+  },
+  {
+    "description": "Doubling on a non-operator name",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "$$foo": 1 },
+    "data": null,
+    "result": { "$foo": 1 }
+  },
+  {
+    "description": "Unescaped operator name still dispatches as an operator",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "type": { "var": "x" } },
+    "data": { "x": 1 },
+    "result": "number"
+  },
+  {
+    "description": "Unescaped non-operator name is unchanged",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "foo": 1 },
+    "data": null,
+    "result": { "foo": 1 }
+  },
+  {
+    "description": "Bare sigil strips to the empty key",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "$": 1 },
+    "data": null,
+    "result": { "": 1 }
+  },
+  {
+    "description": "Doubled bare sigil emits the sigil as the key",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "$$": 1 },
+    "data": null,
+    "result": { "$": 1 }
+  },
+  {
+    "description": "Empty key is untouched",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "": 1 },
+    "data": null,
+    "result": { "": 1 }
+  },
+  {
+    "description": "Sigil in the middle of a key is not an escape",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "a$b": 1 },
+    "data": null,
+    "result": { "a$b": 1 }
+  },
+  {
+    "description": "Trailing sigil is not an escape",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "a$": 1 },
+    "data": null,
+    "result": { "a$": 1 }
+  },
+
+  "# Arity independence: the same source key maps to the same output key",
+  {
+    "description": "Escaped key alongside a plain sibling",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "$type": { "var": "x" }, "a": 1 },
+    "data": { "x": 1 },
+    "result": { "type": 1, "a": 1 }
+  },
+  {
+    "description": "Every key escaped",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "$a": 1, "$b": 2 },
+    "data": null,
+    "result": { "a": 1, "b": 2 }
+  },
+  {
+    "description": "Mixed escaped and plain keys",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "$a": 1, "b": 2 },
+    "data": null,
+    "result": { "a": 1, "b": 2 }
+  },
+  {
+    "description": "Doubled sigil alongside a plain sibling",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "$$a": 1, "b": 2 },
+    "data": null,
+    "result": { "$a": 1, "b": 2 }
+  },
+  {
+    "description": "Post-strip collision keeps both pairs; JSON conversion is last-wins",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "$a": 1, "a": 2 },
+    "data": null,
+    "result": { "a": 2 }
+  },
+
+  "# Nesting and composition",
+  {
+    "description": "Escaped key as a structured-object value",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "a": { "$type": 1 } },
+    "data": null,
+    "result": { "a": { "type": 1 } }
+  },
+  {
+    "description": "Escaped key inside operator arguments",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "if": [true, { "$type": 1 }, 2] },
+    "data": null,
+    "result": { "type": 1 }
+  },
+  {
+    "description": "Escaped key in a map body",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "map": [{ "var": "xs" }, { "$type": { "var": "n" } }] },
+    "data": { "xs": [{ "n": 1 }, { "n": 2 }] },
+    "result": [{ "type": 1 }, { "type": 2 }]
+  },
+  {
+    "description": "Escaped keys inside an array literal",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "a": [{ "$type": 1 }, { "$map": 2 }] },
+    "data": null,
+    "result": { "a": [{ "type": 1 }, { "map": 2 }] }
+  },
+  {
+    "description": "Escaped key whose value is an operator call",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "$type": { "cat": ["a", "b"] } },
+    "data": null,
+    "result": { "type": "ab" }
+  },
+  {
+    "description": "Three levels of nested escaped keys",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "$a": { "$b": { "$c": 1 } } },
+    "data": null,
+    "result": { "a": { "b": { "c": 1 } } }
+  },
+  {
+    "description": "Escaped key wrapping a filter",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": {
+      "$filter": { "filter": [{ "var": "xs" }, { ">": [{ "var": "n" }, 1] }] }
+    },
+    "data": { "xs": [{ "n": 1 }, { "n": 2 }] },
+    "result": { "filter": [{ "n": 2 }] }
+  },
+  {
+    "description": "Escaped key wrapping a reduce",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": {
+      "$reduce": {
+        "reduce": [
+          { "var": "xs" },
+          { "+": [{ "var": "accumulator" }, { "var": "current.n" }] },
+          0
+        ]
+      }
+    },
+    "data": { "xs": [{ "n": 1 }, { "n": 2 }] },
+    "result": { "reduce": 3 }
+  },
+  {
+    "description": "Escaped key wrapping a try that recovers",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "$try": { "try": [{ "throw": "boom" }, "fallback"] } },
+    "data": null,
+    "result": { "try": "fallback" }
+  },
+
+  "# Backward compatibility: no escape configured (today's behaviour)",
+  {
+    "description": "Without an escape, a $-prefixed key passes through verbatim",
+    "templating": true,
+    "rule": { "$type": 1 },
+    "data": null,
+    "result": { "$type": 1 }
+  },
+  {
+    "description": "Without an escape, $$ passes through verbatim",
+    "templating": true,
+    "rule": { "$$type": 1 },
+    "data": null,
+    "result": { "$$type": 1 }
+  },
+  {
+    "description": "Without an escape, an operator name is still an operator",
+    "templating": true,
+    "rule": { "type": { "var": "x" } },
+    "data": { "x": 1 },
+    "result": "number"
+  },
+  {
+    "description": "Without an escape, a $-prefixed key works alongside siblings",
+    "templating": true,
+    "rule": { "$a": 1, "b": 2 },
+    "data": null,
+    "result": { "$a": 1, "b": 2 }
+  },
+
+  "# The escape is inert without templating mode",
+  {
+    "description": "Escape set but templating off: single key is an unknown operator",
+    "template_key_escape": "$",
+    "rule": { "$type": 1 },
+    "data": null,
+    "error": { "type": "Unknown Operator" }
+  },
+  {
+    "description": "Escape set but templating off: multi-key object is still rejected",
+    "template_key_escape": "$",
+    "rule": { "$a": 1, "b": 2 },
+    "data": null,
+    "error": { "type": "Unknown Operator" }
+  },
+  {
+    "description": "Escape set but templating off: operator dispatch is unaffected",
+    "template_key_escape": "$",
+    "rule": { "type": { "var": "x" } },
+    "data": { "x": 1 },
+    "result": "number"
+  },
+
+  "# The escape char is configurable",
+  {
+    "description": "A '~' escape strips '~'",
+    "templating": true,
+    "template_key_escape": "~",
+    "rule": { "~type": 1 },
+    "data": null,
+    "result": { "type": 1 }
+  },
+  {
+    "description": "A '~' escape doubles as '~~'",
+    "templating": true,
+    "template_key_escape": "~",
+    "rule": { "~~type": 1 },
+    "data": null,
+    "result": { "~type": 1 }
+  },
+  {
+    "description": "A '~' escape leaves $-prefixed keys alone",
+    "templating": true,
+    "template_key_escape": "~",
+    "rule": { "$type": 1 },
+    "data": null,
+    "result": { "$type": 1 }
+  },
+  {
+    "description": "A '#' escape strips '#'",
+    "templating": true,
+    "template_key_escape": "#",
+    "rule": { "#type": 1 },
+    "data": null,
+    "result": { "type": 1 }
+  },
+
+  "# Errors inside an escaped field still propagate",
+  {
+    "description": "Thrown error inside an escaped field is not swallowed",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "$type": { "throw": "boom" } },
+    "data": null,
+    "error": { "type": "boom" }
+  },
+  {
+    "description": "NaN error inside an escaped field is not swallowed",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "$type": { "+": ["text", 1] } },
+    "data": null,
+    "error": { "type": "NaN" }
+  },
+  {
+    "description": "Error inside one field of a multi-key escaped template",
+    "templating": true,
+    "template_key_escape": "$",
+    "rule": { "$type": 1, "bad": { "throw": "boom" } },
+    "data": null,
+    "error": { "type": "boom" }
+  }
+]

@@ -56,5 +56,6 @@
     "flagd/fractional.json",
     "flagd/sem_ver.json",
     "type.json",
-    "cse.json"
+    "cse.json",
+    "template-key-escape.json"
 ]

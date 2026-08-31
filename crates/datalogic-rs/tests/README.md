@@ -64,6 +64,12 @@ Test case fields:
 | `result`             | one of   | Expected output value. Mutually exclusive with `error`.              |
 | `error`              | one of   | Expected error object, e.g. `{"type": "NaN"}`.                       |
 | `templating`         | no       | When `true`, evaluate in templating mode (unknown keys preserved).   |
+| `template_key_escape`| no       | One character. Evaluate with that template-key escape prefix (see `with_template_key_escape`). Combines with `templating`. |
+
+The runner builds one engine per distinct `(templating, template_key_escape)`
+pair on first use, so a suite can mix flavours freely — including setting
+`template_key_escape` with `templating` absent, to pin that the escape is
+inert outside templating mode.
 
 `suites/index.json` lists every file the harness should run; new
 suites must be added there.
