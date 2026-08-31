@@ -101,19 +101,44 @@ pub(crate) fn frames_pushed_for_child(opcode: OpCode, index: usize, len: usize) 
 /// `IterArgKind::classify`, `FastPredicate::try_detect_owned` and
 /// `FusedMapBody::detect` all pattern-match. Wrapping a `Var` here would
 /// silently disable those fast paths without a compile error.
-pub(crate) fn resolve(root: &mut CompiledNode) {
-    resolve_at(root, 0);
+/// Returns whether the tree can ever read an *ancestor* frame — i.e. a frame
+/// below the innermost one. That is the only thing `ContextStack::parents`
+/// exists to serve: `get_at_level` reaches it solely when `levels_up >= 2`,
+/// which is exactly [`ScopeBinding::Ancestor`]. When this is `false` the
+/// evaluator can skip maintaining the ancestor list entirely.
+///
+/// Deliberately conservative. A dynamic `val` — `{"val": [<expr>, …]}`, which
+/// stays a `BuiltinOperator` because its level is not a literal — resolves its
+/// level from *data* at runtime and can therefore reach any depth, so its mere
+/// presence forces the list on.
+pub(crate) fn resolve(root: &mut CompiledNode) -> bool {
+    let mut needs_ancestors = false;
+    resolve_at(root, 0, &mut needs_ancestors);
+    needs_ancestors
 }
 
-fn resolve_at(node: &mut CompiledNode, depth: u32) {
+fn resolve_at(node: &mut CompiledNode, depth: u32, needs_ancestors: &mut bool) {
     match node {
         CompiledNode::Var {
             scope_level,
             binding,
             ..
-        } => *binding = ScopeBinding::resolve(depth, *scope_level),
+        } => {
+            *binding = ScopeBinding::resolve(depth, *scope_level);
+            *needs_ancestors |= *binding == ScopeBinding::Ancestor;
+        }
         #[cfg(feature = "ext-control")]
-        CompiledNode::Exists(data) => data.binding = ScopeBinding::resolve(depth, data.scope_level),
+        CompiledNode::Exists(data) => {
+            data.binding = ScopeBinding::resolve(depth, data.scope_level);
+            *needs_ancestors |= data.binding == ScopeBinding::Ancestor;
+        }
+        // A `val` that survived as a generic operator has a non-literal level
+        // argument, so the frame it reads is only known at runtime and could
+        // be any ancestor.
+        CompiledNode::BuiltinOperator {
+            opcode: OpCode::Val,
+            ..
+        } => *needs_ancestors = true,
         _ => {}
     }
 
@@ -126,12 +151,16 @@ fn resolve_at(node: &mut CompiledNode, depth: u32) {
         let opcode = *opcode;
         let len = args.len();
         for (index, child) in args.iter_mut().enumerate() {
-            resolve_at(child, depth + frames_pushed_for_child(opcode, index, len));
+            resolve_at(
+                child,
+                depth + frames_pushed_for_child(opcode, index, len),
+                needs_ancestors,
+            );
         }
         return;
     }
 
-    node.visit_children_mut(&mut |child| resolve_at(child, depth));
+    node.visit_children_mut(&mut |child| resolve_at(child, depth, needs_ancestors));
 }
 
 #[cfg(test)]

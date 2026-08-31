@@ -28,6 +28,20 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   debug-only oracle cross-checks every resolution against the runtime walk
   and fires on the first test that exercises an omission.
 
+### Changed
+
+- **The evaluation context no longer carries ancestor-frame storage rules
+  never use.** `ContextStack` is rebuilt on every evaluation, and more than
+  half of it was a four-slot inline buffer for ancestor frames. A census of
+  the conformance corpus found 86.3% of rules never push a context frame at
+  all and 99.1% never populate that buffer — an ancestor frame is not even
+  addressable until three levels of iterator nesting. The compiler now
+  reports whether a rule can read one, frames are restored from a token
+  handed back by the pusher rather than from the ancestor list, and the list
+  itself is maintained only when it can actually be read. `compatible`
+  improves 15.2% (10.09 to 8.56 ns per evaluation) and
+  `comparison/lessThan` 6.9%, with no cost to deeply nested rules.
+
 ### Fixed
 
 - **Filter fast path hoisted operands it could not safely hoist.** The

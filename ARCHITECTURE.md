@@ -209,6 +209,7 @@ directory and registering it from `optimize/mod.rs`.
 | `strength`       | Strength reduction (`{"+": [x]}` → `x`, `{"*": [x]}` → `x`)           | `optimize/strength.rs`      |
 | `cse`            | Memoizes structurally identical pure subtrees into per-evaluation slots (`Logic::cse_slot_count()`); never memoizes custom operators, `try` / `throw`, `now`, `fractional`, `sem_ver`, or the per-item bodies of iterating operators. Runs once after the fixpoint loop. | `optimize/cse.rs`           |
 | `scope`          | Resolves every `var` / `val` / `exists` reference to a compile-time `ScopeBinding` (`Root` / `Current` / `Ancestor`), so the runtime reads a precomputed frame target instead of probing `ctx.depth()`. Runs once after CSE; unconditional, so no-fold and traced compiles get the same resolution. | `compile/scope.rs`          |
+| `scope` (cont.)  | The same pass reports `Logic::needs_ancestor_frames` — whether any reference can reach past the innermost frame. When false (the overwhelming majority: an ancestor is not addressable until three levels of iterator nesting) evaluation skips maintaining the ancestor-frame list entirely. | `compile/scope.rs`          |
 
 `compile/scope.rs` also owns `frames_pushed_for_child`, the single source
 of truth for which argument positions execute under a pushed context frame

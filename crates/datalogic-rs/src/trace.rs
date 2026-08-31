@@ -437,7 +437,7 @@ impl<'e> TracedSession<'e> {
             Ok(av) => av,
             Err(e) => return Self::failed(expression_tree, e),
         };
-        let mut ctx = crate::arena::ContextStack::new(data_ref);
+        let mut ctx = crate::arena::ContextStack::new(data_ref, compiled.needs_ancestor_frames);
         ctx.attach_tracer(TraceCollector::new());
 
         let outcome = self.engine.dispatch_node(&compiled.root, &mut ctx, arena);

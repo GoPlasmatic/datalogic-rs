@@ -191,7 +191,9 @@ fn try_fold_concat(outer_id: crate::node::NodeId, args: &[CompiledNode]) -> Opti
 pub(crate) fn fold_static_node(node: &CompiledNode, engine: &Engine) -> Option<OwnedDataValue> {
     let arena = bumpalo::Bump::new();
     let null_root: &crate::arena::DataValue<'_> = arena.alloc(crate::arena::DataValue::Null);
-    let mut ctx = crate::arena::ContextStack::new(null_root);
+    // Only `node_is_static` subtrees reach here, and that predicate rejects
+    // every `Var` / `Exists` / `Missing`, so no frame is ever pushed.
+    let mut ctx = crate::arena::ContextStack::new(null_root, false);
     let av = engine.dispatch_node(node, &mut ctx, &arena).ok()?;
     Some(av.to_owned())
 }

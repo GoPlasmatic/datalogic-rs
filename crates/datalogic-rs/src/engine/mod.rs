@@ -571,7 +571,7 @@ impl Engine {
     ) -> Result<&'a crate::arena::DataValue<'a>> {
         let _depth_guard = self.enter_dispatch_boundary()?;
         let data_ref = data.into_arena_value(arena)?;
-        let mut ctx = crate::arena::ContextStack::new(data_ref);
+        let mut ctx = crate::arena::ContextStack::new(data_ref, compiled.needs_ancestor_frames);
         match self.dispatch_node(&compiled.root, &mut ctx, arena) {
             Ok(av) => Ok(av),
             Err(e) => Err(e.decorated(ctx.take_error_path(), compiled, true)),

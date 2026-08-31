@@ -7,9 +7,9 @@
 //! Per-iteration cost: pushing a frame writes two pointers (no
 //! `Value::clone`, no `BTreeMap::clone`). The current frame lives inline in
 //! the struct (`top`), so the per-iteration replace/lookup accessors touch
-//! struct-local memory only; parent frames spill into a `SmallVec` with
-//! [`INLINE_FRAMES`] inline slots, so typical nesting depths never
-//! heap-allocate.
+//! struct-local memory only. Ancestor frames go into `parents`, which is
+//! maintained only for the rare rule that can actually read one — see the
+//! field's documentation.
 //!
 //! Submodules split the file by concern:
 //! - [`frame`] — `ContextFrame`, the per-iteration payload.
@@ -29,17 +29,6 @@ use super::value::DataValue;
 use bumpalo::Bump;
 use smallvec::SmallVec;
 
-/// Inline capacity of the *parent*-frame stack (the current frame has its
-/// own dedicated slot, so `INLINE_FRAMES + 1` nesting levels stay
-/// heap-free). Depth equals iterator-operator *nesting* (each
-/// map/filter/reduce pushes one frame and replaces it per iteration), not
-/// element count, so real rules stay very shallow: an instrumented run of
-/// the full conformance suite peaked at depth 2, with 98% of pushes at
-/// depth 1. Four parent slots cover that with headroom while keeping
-/// `ContextStack` itself small; deeper nesting spills to the heap with
-/// unchanged semantics.
-const INLINE_FRAMES: usize = 4;
-
 /// Arena-mode context stack. The lifetime `'a` is the arena lifetime; the
 /// root is `&'a DataValue<'a>` (deep-converted from `&Value` for the public
 /// API, or supplied directly by arena-native callers).
@@ -54,7 +43,19 @@ const INLINE_FRAMES: usize = 4;
 pub(crate) struct ContextStack<'a> {
     root: &'a DataValue<'a>,
     top: Option<ContextFrame<'a>>,
-    parents: SmallVec<[ContextFrame<'a>; INLINE_FRAMES]>,
+    /// Ancestor frames, oldest first — everything below `top`.
+    ///
+    /// Maintained **only** when the compiled rule can read an ancestor frame
+    /// (`Logic::needs_ancestor_frames`). `get_at_level` reaches this list
+    /// solely for `levels_up >= 2`, and restoring the enclosing frame now
+    /// goes through [`FrameToken`], so for the overwhelming majority of rules
+    /// nothing ever touches it — an ancestor is not even addressable until
+    /// three levels of iterator nesting. A plain `Vec` rather than a
+    /// `SmallVec`: an inline buffer would be paid for on every evaluation to
+    /// serve well under 1% of them, whereas an unused `Vec` never allocates.
+    parents: Vec<ContextFrame<'a>>,
+    /// Whether to record ancestors at all — see `parents`.
+    track_ancestors: bool,
     /// Live frame count, maintained explicitly rather than derived from
     /// `parents.len() + top.is_some()`. Keeping it independent is what lets
     /// `parents` stop being populated for rules that never read an ancestor
@@ -115,11 +116,12 @@ pub(crate) struct FrameToken<'a>(Option<ContextFrame<'a>>);
 
 impl<'a> ContextStack<'a> {
     #[inline]
-    pub(crate) fn new(root: &'a DataValue<'a>) -> Self {
+    pub(crate) fn new(root: &'a DataValue<'a>, track_ancestors: bool) -> Self {
         Self {
             root,
             top: None,
-            parents: SmallVec::new(),
+            parents: Vec::new(),
+            track_ancestors,
             depth: 0,
             error_path: Vec::new(),
             cse_slots: SmallVec::new(),
@@ -140,7 +142,7 @@ impl<'a> ContextStack<'a> {
     #[inline]
     pub(crate) fn from_value(root: &'a serde_json::Value, arena: &'a Bump) -> Self {
         let av = crate::arena::value::value_to_data(root, arena);
-        Self::new(arena.alloc(av))
+        Self::new(arena.alloc(av), true)
     }
 
     /// Move a tracer into this stack. The trace driver pulls it back out
@@ -244,9 +246,9 @@ impl<'a> ContextStack<'a> {
     /// Current depth (number of pushed iteration frames).
     #[inline]
     pub(crate) fn depth(&self) -> usize {
-        debug_assert_eq!(
-            self.depth as usize,
-            self.parents.len() + usize::from(self.top.is_some()),
+        debug_assert!(
+            !self.track_ancestors
+                || self.depth as usize == self.parents.len() + usize::from(self.top.is_some()),
             "explicit depth counter drifted from the frame storage"
         );
         self.depth as usize
@@ -300,11 +302,17 @@ impl<'a> ContextStack<'a> {
             return Some(ContextRef::Root(self.root));
         }
         let target_index = frame_count - levels_up;
-        if target_index == self.parents.len() {
-            self.top.as_ref().map(ContextRef::Frame)
-        } else {
-            self.parents.get(target_index).map(ContextRef::Frame)
+        // `levels_up == 1` names the top frame itself; anything deeper is an
+        // ancestor, which is the one case that needs the list.
+        if levels_up == 1 {
+            return self.top.as_ref().map(ContextRef::Frame);
         }
+        debug_assert!(
+            self.track_ancestors,
+            "ancestor lookup on a stack built without ancestor tracking - \
+             `Logic::needs_ancestor_frames` under-approximated"
+        );
+        self.parents.get(target_index).map(ContextRef::Frame)
     }
 
     // ----- frame mutation ---------------------------------------------------
@@ -313,18 +321,18 @@ impl<'a> ContextStack<'a> {
     /// caller to restore. `ContextFrame` is `Copy`, so the token is a cheap
     /// duplicate of what also went into `parents`.
     #[inline]
-    #[must_use]
     fn push_frame(&mut self, frame: ContextFrame<'a>) -> FrameToken<'a> {
         let prev = self.top.replace(frame);
-        if let Some(p) = prev {
-            self.parents.push(p);
+        if self.track_ancestors {
+            if let Some(p) = prev {
+                self.parents.push(p);
+            }
         }
         self.depth += 1;
         FrameToken(prev)
     }
 
     #[inline]
-    #[must_use]
     pub(crate) fn push(&mut self, data: &'a DataValue<'a>) -> FrameToken<'a> {
         self.push_frame(ContextFrame::Data(data))
     }
@@ -332,13 +340,11 @@ impl<'a> ContextStack<'a> {
     /// Push an indexed frame. Used by `IterGuard` and by `map`'s scalar
     /// bridge path, which pushes a single `index: 0` frame directly.
     #[inline]
-    #[must_use]
     pub(crate) fn push_indexed(&mut self, data: &'a DataValue<'a>, index: usize) -> FrameToken<'a> {
         self.push_frame(ContextFrame::Indexed { data, index })
     }
 
     #[inline]
-    #[must_use]
     fn push_with_key_index(
         &mut self,
         data: &'a DataValue<'a>,
@@ -349,7 +355,6 @@ impl<'a> ContextStack<'a> {
     }
 
     #[inline]
-    #[must_use]
     fn push_reduce(
         &mut self,
         current: &'a DataValue<'a>,
@@ -392,7 +397,7 @@ impl<'a> ContextStack<'a> {
     #[inline]
     pub(crate) fn restore_frame(&mut self, token: FrameToken<'a>) {
         self.top = token.0;
-        if token.0.is_some() {
+        if self.track_ancestors && token.0.is_some() {
             self.parents.pop();
         }
         self.depth -= 1;
@@ -667,13 +672,13 @@ mod tests {
 
     #[test]
     fn deep_nesting_spills_and_unwinds() {
-        // Push past `INLINE_FRAMES + 1` so `parents` spills to the heap,
-        // then verify level walking and pop-unwinding across the boundary.
+        // Nest well past any plausible real rule, then verify level walking
+        // and unwinding all the way back down.
         let arena = Bump::new();
         let root_val = Value::Null;
         let mut ctx = ContextStack::from_value(&root_val, &arena);
 
-        let depth = INLINE_FRAMES + 4;
+        let depth = 8;
         let mut tokens = Vec::new();
         for i in 0..depth {
             let v: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(
@@ -815,5 +820,22 @@ mod tests {
         ctx.set_thrown_slot(payload);
         ctx.clear_thrown_slot();
         assert!(ctx.take_thrown_slot().is_none(), "clear drops");
+    }
+    /// `ContextStack` is built fresh on every `Engine::evaluate`, so its size
+    /// is per-evaluation stack traffic, not a one-off. It was 400 bytes when
+    /// `parents` carried a four-slot inline buffer — storage that a census of
+    /// the conformance corpus showed 99.1% of rules never write, because an
+    /// ancestor frame is not addressable until three levels of iterator
+    /// nesting. Dropping the buffer was worth 7-15% on shallow rules.
+    ///
+    /// Shrink the payload rather than raising this bound.
+    #[test]
+    #[cfg(target_pointer_width = "64")]
+    fn context_stack_stays_small() {
+        let size = std::mem::size_of::<ContextStack<'_>>();
+        assert!(
+            size <= 256,
+            "ContextStack grew to {size} bytes; it is constructed per evaluation"
+        );
     }
 }

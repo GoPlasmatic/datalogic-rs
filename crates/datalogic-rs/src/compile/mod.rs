@@ -75,7 +75,7 @@ impl Logic {
         // and get walked transparently) and before `Logic::new`'s populate
         // pass. Unconditional, unlike folding and CSE: the runtime reads the
         // annotation, so the traced / no-fold path needs it too.
-        scope::resolve(&mut root);
-        Ok(Self::new(root, cse_slot_count))
+        let needs_ancestor_frames = scope::resolve(&mut root);
+        Ok(Self::new(root, cse_slot_count, needs_ancestor_frames))
     }
 }
