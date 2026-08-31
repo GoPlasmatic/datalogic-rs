@@ -132,3 +132,13 @@ Custom operators follow the same syntax in rules:
 > templating mode (`Engine::builder().with_templating(true).build()`,
 > requires `feature = "templating"`) if you need to emit a JSON object
 > verbatim from a rule. Literal scalars and arrays already work inline.
+
+> **Emitting a key that is an operator name.** Because a single-key
+> object is an operator invocation, `{"type": {"var": "x"}}` runs the
+> `type` operator rather than emitting a `type` field, and the same
+> applies to every name on this page plus any custom operator you
+> register. In templating mode you can opt into an escape prefix,
+> `Engine::builder().with_template_key_escape('$')`, and write
+> `{"$type": ...}` to emit `type` (`{"$$type": ...}` emits a literal
+> `$type`). See
+> [Structured Objects](../advanced/structured-objects.md#emitting-keys-that-are-operator-names).

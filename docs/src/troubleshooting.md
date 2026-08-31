@@ -29,6 +29,50 @@ let engine = datalogic_rs::Engine::builder()
 let engine = datalogic_rs::Engine::builder().with_templating(true).build();
 ```
 
+### A template key runs as an operator instead of being emitted
+
+**Cause:** This is the inverse of the error above, and it is quieter: you
+get no error at all, just the wrong result. In templating mode a
+single-key object is always an operator invocation, so a key that happens
+to name a built-in runs the operator instead of becoming an output field.
+
+```json
+{ "type": { "var": "x" } }
+// against {"x": 1}  ->  "number"   (the `type` operator ran)
+// expected           ->  {"type": 1}
+```
+
+Around 60 names are affected: `type`, `map`, `filter`, `if`, `keys`,
+`values`, `entries`, `length`, `in`, `sort`, `now`, `try`, `cat`, `+`,
+`==` and the rest of the operator table, plus any custom operator you
+registered. Note that the same key behaves differently with siblings:
+`{"type": X, "other": 1}` emits both keys, because multi-key object keys
+are always literal.
+
+**Solution:** enable the key escape and prefix the key with it. Exactly
+one leading prefix is stripped, and an escaped key is never resolved as
+an operator.
+
+```rust
+# #[cfg(feature = "templating")]
+let engine = datalogic_rs::Engine::builder()
+    .with_templating(true)
+    .with_template_key_escape('$')
+    .build();
+```
+
+```json
+{ "$type": { "var": "x" } }   // -> {"type": 1}
+{ "$$type": 1 }               // -> {"$type": 1}  (doubling escapes the sigil)
+```
+
+The prefix is a `char`, not a fixed `$`, so payloads that already use `$`
+keys (MongoDB documents, JSON Schema output) can pick `~` or `#` instead.
+The setting is off by default, requires `feature = "templating"`, and is
+inert outside templating mode. See
+[Structured Objects](./advanced/structured-objects.md#emitting-keys-that-are-operator-names)
+for the full rules.
+
 ### "Variable not found"
 
 **Cause:** Accessing a path that doesn't exist in the data.

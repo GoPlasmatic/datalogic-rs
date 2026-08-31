@@ -106,7 +106,7 @@ Data:     {"name": "Jane", "age": 25}
 Output:   {"greeting": "Hello Jane", "isAdult": true}
 ```
 
-Templating is an engine option in every binding (in Rust: `Engine::builder().with_templating(true)`, behind the `templating` feature).
+Templating is an engine option in every binding (in Rust: `Engine::builder().with_templating(true)`, behind the `templating` feature). In Rust you can also opt into an escape prefix, `.with_template_key_escape('$')`, so a key that names an operator can still be emitted: `{"$type": ...}` outputs `type` rather than running the `type` operator.
 
 ### 3. Safe user expressions
 

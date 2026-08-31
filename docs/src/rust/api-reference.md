@@ -60,6 +60,7 @@ let engine = Engine::new();
 let engine = Engine::builder()
     .with_config(EvaluationConfig::strict())
     .with_templating(true)           // requires feature = "templating"
+    .with_template_key_escape('$')   // optional: `{"$type": ...}` emits the key `type`
     .add_operator("my_op", MyOperator)
     .with_constant_folding(true)     // default; pass false to keep every operator visible in the compiled tree
     .build();
@@ -213,11 +214,21 @@ Fluent constructor for `Engine`. Returned by `Engine::builder()`.
 EngineBuilder::new()
     .with_config(EvaluationConfig::default())
     .with_templating(true)                  // feature = "templating"
+    .with_template_key_escape('$')          // optional escape for operator-named template keys
     .with_constant_folding(true)            // default; disable to keep every operator visible
     .add_operator("name", MyOp)             // typed operator
     .add_operator("dyn", boxed_op)          // also accepts Box<dyn CustomOperator>
     .build();
 ```
+
+`with_template_key_escape(prefix)` is unset by default. With it, exactly
+one leading `prefix` is stripped from every template key and an escaped
+key is never resolved as an operator, so `{"$type": ...}` emits the key
+`type` instead of running the `type` operator, and `{"$$type": ...}`
+emits a literal `$type`. It recovers the ~60 built-in names (and any
+registered custom operator) as output keys. Only meaningful in templating
+mode. See
+[Structured Objects](../advanced/structured-objects.md#emitting-keys-that-are-operator-names).
 
 `with_constant_folding(false)` is useful for tooling that walks the
 compiled tree and would be surprised by `{"+": [1, 2]}` collapsing to a

@@ -145,7 +145,7 @@ opt in via their dependency line.
 | Feature           | Effect                                                            | Used by                        |
 |-------------------|-------------------------------------------------------------------|--------------------------------|
 | `serde_json`      | `&serde_json::Value` interop + `eval_into::<T>` typed output      | Node, Python, C, `benchmark`, integration tests |
-| `templating`      | Structure-preservation (templating) mode                          | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit), examples |
+| `templating`      | Structure-preservation (templating) mode, plus the optional `with_template_key_escape(char)` prefix that lets an operator-named key be emitted as an output field | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit), examples |
 | `datetime`        | Date/time operators (pulls in `chrono` + `chrono-tz` for the IANA-zone arguments on `format_date`/`parse_date`) | WASM, Node, Python, C, `datetime_ops` example |
 | `trace`           | Execution-step recording for the debugger (implies `serde_json`)  | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit), `tracing` example |
 | `error-handling`  | `try` / `throw` operators                                         | WASM, Node, Python, C, `error_handling` example |

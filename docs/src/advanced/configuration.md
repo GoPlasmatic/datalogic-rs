@@ -259,6 +259,29 @@ let engine = Engine::builder()
     .build();
 ```
 
+Templating mode carries one option of its own,
+`with_template_key_escape(prefix)`, unset by default. Without it a
+single-key object is always an operator invocation, so a key that names a
+built-in (`type`, `map`, `if`, `length`, …) or a registered custom
+operator can never be emitted as an output field. With it, exactly one
+leading `prefix` is stripped from every template key and an escaped key
+is never resolved as an operator:
+
+```rust
+let engine = Engine::builder()
+    .with_templating(true)
+    .with_template_key_escape('$')
+    .build();
+
+// {"$type": {"var": "x"}}  ->  {"type": 1}
+// {"$$type": 1}            ->  {"$type": 1}
+```
+
+The prefix is a `char` rather than a fixed `$`, so payloads that already
+use `$` keys can choose `~` or `#` instead. Full rules, including the
+duplicate-key and bare-sigil cases, are in
+[Structured Objects](./structured-objects.md#emitting-keys-that-are-operator-names).
+
 ## Configuration Examples
 
 ### Lenient Data Processing

@@ -251,6 +251,22 @@ In standard mode, unrecognized keys are treated as errors. Either:
 2. Register a custom operator on the builder
 3. Enable templating mode (`feature = "templating"`) — `Engine::builder().with_templating(true).build()`
 
+### My template key runs as an operator instead of being emitted
+
+The inverse problem, and quieter: no error, just the wrong result. In
+templating mode a single-key object is always an operator invocation, so
+`{"type": {"var": "x"}}` runs the `type` operator rather than emitting a
+`type` field. Around 60 built-in names are affected, plus any custom
+operator you registered.
+
+Turn on the key escape and prefix the key:
+`Engine::builder().with_templating(true).with_template_key_escape('$')`,
+then write `{"$type": ...}` to emit `type` and `{"$$type": ...}` to emit
+a literal `$type`. It is off by default, so existing templates are
+unaffected. Details in
+[Structured Objects](./advanced/structured-objects.md#emitting-keys-that-are-operator-names)
+and [Troubleshooting](./troubleshooting.md#a-template-key-runs-as-an-operator-instead-of-being-emitted).
+
 ### Performance issues with large expressions
 
 1. Use `Session` for repeated calls (arena reuse)

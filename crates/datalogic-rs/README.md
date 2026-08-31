@@ -111,6 +111,7 @@ use datalogic_rs::{Engine, EvaluationConfig};
 let engine = Engine::builder()
     .with_config(EvaluationConfig::safe_arithmetic())
     .with_templating(true)              // requires `templating` feature
+    .with_template_key_escape('$')      // optional: emit operator-named keys
     .build();
 ```
 
@@ -378,6 +379,25 @@ let result = engine.eval_str(
 ).unwrap();
 // {"greeting":"Hello Jane","isAdult":true}
 ```
+
+A single-key object is an operator invocation, so a key that names a
+built-in (`type`, `map`, `if`, `length`, …) or a registered custom
+operator is normally unreachable as an output field. Opt into an escape
+prefix to recover it:
+
+```rust
+let engine = Engine::builder()
+    .with_templating(true)
+    .with_template_key_escape('$')
+    .build();
+
+// {"$type": {"var": "x"}}  ->  {"type": 1}
+// {"$$type": 1}            ->  {"$type": 1}   (doubling escapes the sigil)
+```
+
+It is unset by default, so `$`-prefixed keys otherwise pass through
+verbatim. The prefix is a `char`, so payloads that already use `$` keys
+can pick `~` or `#`.
 
 The 4.x JSONLogic `preserve` *operator* was removed in v5: literal
 scalars / arrays work inline already; templated objects belong in
