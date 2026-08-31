@@ -150,6 +150,51 @@ jobs:
       - name: Build with only `${{ matrix.feature }}` enabled
         run: cargo build -p datalogic-rs --no-default-features --features ${{ matrix.feature }}
 
+  feature-combos:
+    name: Conformance (${{ matrix.combo }})
+    runs-on: ubuntu-latest
+    # `feature-matrix` above can only *build* its legs: the conformance runner
+    # is gated on `serde_json` + `templating`, so a single-feature leg compiles
+    # it to nothing and reports success without evaluating a single rule.
+    #
+    # These legs pair that baseline with one operator family at a time, so the
+    # battery actually runs. It used to fail here — the index lists every suite
+    # and a build without `ext-control` cannot evaluate `switch` — which is now
+    # handled by the runner skipping cases whose operators are not compiled in
+    # (see crates/datalogic-rs/tests/README.md). What this guards is the code
+    # *between* the two endpoints `check` covers: anything that assumes an
+    # operator family is present, or that mis-`cfg`s a compile-time table.
+    strategy:
+      fail-fast: false
+      matrix:
+        combo:
+          - serde_json,templating,trace
+          - serde_json,templating,trace,error-handling
+          - serde_json,templating,trace,ext-array
+          - serde_json,templating,trace,ext-control
+          - serde_json,templating,trace,datetime
+          - serde_json,templating,trace,ext-string,ext-object,ext-math
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-combos-${{ hashFiles('Cargo.toml', 'crates/datalogic-rs/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-combos-
+
+      - name: Test with `${{ matrix.combo }}`
+        run: cargo test -p datalogic-rs --no-default-features --features ${{ matrix.combo }}
+
   msrv:
     name: MSRV (Rust 1.85)
     runs-on: ubuntu-latest

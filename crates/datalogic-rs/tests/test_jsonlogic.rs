@@ -54,6 +54,7 @@ impl Engines {
 struct Recorder {
     passed: usize,
     failed: usize,
+    skipped: usize,
 }
 
 impl Recorder {
@@ -77,10 +78,128 @@ impl Recorder {
         self.failed += 1;
     }
 
+    /// `⊘ Test {index}: {description} (needs `{op}`)` — the build lacks the
+    /// feature this case's operator lives behind.
+    fn skip(&mut self, index: usize, description: &str, op: &str) {
+        println!("⊘ Test {index}: {description} (operator `{op}` not compiled in)");
+        self.skipped += 1;
+    }
+
     /// Single-line failure: `✗ Test {index}: {description} - {reason}`.
     fn fail_inline(&mut self, index: usize, description: &str, reason: &str) {
         println!("✗ Test {index}: {description} - {reason}");
         self.failed += 1;
+    }
+}
+
+/// Operators that exist only behind a cargo feature, paired with whether this
+/// build compiled them in.
+///
+/// The suite index is deliberately feature-agnostic: it lists every suite, and
+/// a reduced-feature build simply cannot evaluate some of them. Without this,
+/// `cargo test --no-default-features --features serde_json,templating,trace`
+/// fails on `throw` and `switch` with "Unknown Operator" — which is why CI's
+/// `feature-matrix` job only *builds* its legs instead of testing them.
+///
+/// Kept as an explicit table rather than derived from
+/// `Engine::builtin_operator_names`, because that reports what *this* build
+/// has and so cannot distinguish "gated off" from "misspelled". A genuine typo
+/// in a suite stays absent from this table, so it still fails loudly instead of
+/// being skipped. `gated_operator_table_matches_engine` guards the table
+/// against drift.
+const GATED_OPERATORS: &[(&str, bool)] = &[
+    ("datetime", cfg!(feature = "datetime")),
+    ("timestamp", cfg!(feature = "datetime")),
+    ("parse_date", cfg!(feature = "datetime")),
+    ("format_date", cfg!(feature = "datetime")),
+    ("date_diff", cfg!(feature = "datetime")),
+    ("now", cfg!(feature = "datetime")),
+    ("try", cfg!(feature = "error-handling")),
+    ("throw", cfg!(feature = "error-handling")),
+    ("sort", cfg!(feature = "ext-array")),
+    ("slice", cfg!(feature = "ext-array")),
+    ("group_by", cfg!(feature = "ext-array")),
+    ("distinct", cfg!(feature = "ext-array")),
+    ("exists", cfg!(feature = "ext-control")),
+    ("??", cfg!(feature = "ext-control")),
+    ("switch", cfg!(feature = "ext-control")),
+    ("match", cfg!(feature = "ext-control")),
+    ("type", cfg!(feature = "ext-control")),
+    ("abs", cfg!(feature = "ext-math")),
+    ("ceil", cfg!(feature = "ext-math")),
+    ("floor", cfg!(feature = "ext-math")),
+    ("keys", cfg!(feature = "ext-object")),
+    ("values", cfg!(feature = "ext-object")),
+    ("entries", cfg!(feature = "ext-object")),
+    ("length", cfg!(feature = "ext-string")),
+    ("starts_with", cfg!(feature = "ext-string")),
+    ("ends_with", cfg!(feature = "ext-string")),
+    ("upper", cfg!(feature = "ext-string")),
+    ("lower", cfg!(feature = "ext-string")),
+    ("trim", cfg!(feature = "ext-string")),
+    ("split", cfg!(feature = "ext-string")),
+    ("fractional", cfg!(feature = "flagd")),
+    ("sem_ver", cfg!(feature = "flagd")),
+];
+
+/// Whether this build has the named cargo feature. Backs a case's optional
+/// `requires` field, for cases that need a feature for reasons the operator
+/// walk cannot see — a duration string only coerces to a duration under
+/// `datetime`, for instance, even though the rule is a plain `*`.
+fn feature_enabled(name: &str) -> bool {
+    match name {
+        "datetime" => cfg!(feature = "datetime"),
+        "error-handling" => cfg!(feature = "error-handling"),
+        "ext-array" => cfg!(feature = "ext-array"),
+        "ext-control" => cfg!(feature = "ext-control"),
+        "ext-math" => cfg!(feature = "ext-math"),
+        "ext-object" => cfg!(feature = "ext-object"),
+        "ext-string" => cfg!(feature = "ext-string"),
+        "flagd" => cfg!(feature = "flagd"),
+        "templating" => cfg!(feature = "templating"),
+        other => panic!("unknown feature {other:?} in a case's `requires` list"),
+    }
+}
+
+/// The first operator in `rule` that this build cannot evaluate, if any.
+///
+/// Walks single-key objects, which is how an operator invocation is spelled.
+/// A multi-key object is a templating literal and never a call, and a key that
+/// is not a known gated operator is left alone so unknown-operator cases still
+/// assert.
+fn absent_operator(rule: &Value) -> Option<&'static str> {
+    match rule {
+        Value::Object(map) => {
+            if map.len() == 1 {
+                let key = map.keys().next().expect("len checked");
+                if let Some((name, _)) = GATED_OPERATORS
+                    .iter()
+                    .find(|(name, available)| !available && *name == key)
+                {
+                    return Some(name);
+                }
+            }
+            map.values().find_map(absent_operator)
+        }
+        Value::Array(items) => items.iter().find_map(absent_operator),
+        _ => None,
+    }
+}
+
+/// The table must name real operators. Under `--all-features` every entry has
+/// to be live, which catches a rename or a typo in the table itself; a *new*
+/// gated operator nobody added here still surfaces the old way, as a loud
+/// "Unknown Operator" failure under a reduced-feature build.
+#[test]
+fn gated_operator_table_matches_engine() {
+    let engine = Engine::new();
+    let live: std::collections::HashSet<&str> = engine.builtin_operator_names().collect();
+    for (name, available) in GATED_OPERATORS {
+        assert_eq!(
+            live.contains(name),
+            *available,
+            "GATED_OPERATORS disagrees with the engine about `{name}`"
+        );
     }
 }
 
@@ -93,14 +212,16 @@ fn test_jsonlogic() {
 
     let mut total_passed = 0;
     let mut total_failed = 0;
+    let mut total_skipped = 0;
 
     match test_file {
         Ok(file) => {
             // Run single test file
             println!("Running tests from: {}", file);
-            let (passed, failed) = run_test_file(&file, &mut engines);
+            let (passed, failed, skipped) = run_test_file(&file, &mut engines);
             total_passed += passed;
             total_failed += failed;
+            total_skipped += skipped;
         }
         Err(_) => {
             // Run all tests from index.json
@@ -113,19 +234,6 @@ fn test_jsonlogic() {
                 serde_json::from_str(&index_contents).expect("Failed to parse index.json");
 
             for test_file in index {
-                // Suites under `flagd/` exercise operators registered
-                // only under `--features flagd`. Without the feature
-                // the operator names parse as `InvalidOperator` and the
-                // suite would spuriously fail; skip explicitly so the
-                // index can stay feature-agnostic.
-                if test_file.starts_with("flagd/") && !cfg!(feature = "flagd") {
-                    println!(
-                        "WARNING: Skipping {} (requires `flagd` feature)\n",
-                        test_file
-                    );
-                    continue;
-                }
-
                 let test_path = format!("tests/suites/{}", test_file);
 
                 // Check if file exists
@@ -135,20 +243,34 @@ fn test_jsonlogic() {
                 }
 
                 println!("\n=== Running tests from: {} ===", test_file);
-                let (passed, failed) = run_test_file(&test_path, &mut engines);
+                let (passed, failed, skipped) = run_test_file(&test_path, &mut engines);
                 total_passed += passed;
                 total_failed += failed;
+                total_skipped += skipped;
 
-                println!("  Results: {} passed, {} failed", passed, failed);
+                if skipped > 0 {
+                    println!(
+                        "  Results: {} passed, {} failed, {} skipped",
+                        passed, failed, skipped
+                    );
+                } else {
+                    println!("  Results: {} passed, {} failed", passed, failed);
+                }
             }
         }
     }
 
     println!("\n========================================");
     println!(
-        "TOTAL RESULTS: {} passed, {} failed",
-        total_passed, total_failed
+        "TOTAL RESULTS: {} passed, {} failed, {} skipped",
+        total_passed, total_failed, total_skipped
     );
+    if total_skipped > 0 {
+        println!(
+            "({} cases need operators this build did not compile in)",
+            total_skipped
+        );
+    }
     println!("========================================");
 
     if total_failed > 0 {
@@ -218,7 +340,7 @@ fn record_error_case(
     }
 }
 
-fn run_test_file(test_file: &str, engines: &mut Engines) -> (usize, usize) {
+fn run_test_file(test_file: &str, engines: &mut Engines) -> (usize, usize, usize) {
     // Read and parse test file
     let contents = fs::read_to_string(test_file)
         .unwrap_or_else(|e| panic!("Failed to read test file {test_file}: {e}"));
@@ -251,6 +373,33 @@ fn run_test_file(test_file: &str, engines: &mut Engines) -> (usize, usize) {
         let rule = test_obj
             .get("rule")
             .unwrap_or_else(|| panic!("Test case {index} missing 'rule'"));
+
+        // A reduced-feature build cannot evaluate every suite. Skip rather
+        // than fail, and account for it so the run stays honest about what it
+        // actually covered.
+        if let Some(op) = absent_operator(rule) {
+            rec.skip(index, description, op);
+            continue;
+        }
+        // A case may also declare a feature it needs for value semantics
+        // rather than for an operator name.
+        if let Some(requires) = test_obj.get("requires") {
+            let features = requires
+                .as_array()
+                .unwrap_or_else(|| panic!("Test case {index}: 'requires' must be an array"));
+            if let Some(missing) = features
+                .iter()
+                .map(|f| {
+                    f.as_str().unwrap_or_else(|| {
+                        panic!("Test case {index}: 'requires' entries must be strings")
+                    })
+                })
+                .find(|f| !feature_enabled(f))
+            {
+                rec.skip(index, description, missing);
+                continue;
+            }
+        }
 
         let data = test_obj.get("data").cloned().unwrap_or(json!({}));
 
@@ -321,5 +470,5 @@ fn run_test_file(test_file: &str, engines: &mut Engines) -> (usize, usize) {
         }
     }
 
-    (rec.passed, rec.failed)
+    (rec.passed, rec.failed, rec.skipped)
 }

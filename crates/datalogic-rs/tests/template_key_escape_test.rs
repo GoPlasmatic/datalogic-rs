@@ -56,11 +56,27 @@ fn eval(engine: &Engine, rule: &Value, data: &Value) -> Value {
 fn every_builtin_operator_name_is_escapable() {
     let engine = escaped_engine();
     let names: Vec<&'static str> = engine.builtin_operator_names().collect();
-    assert!(
-        names.len() > 50,
-        "expected the full builtin table, got {} names",
-        names.len()
-    );
+    // The loop below is meaningful at any feature set — it covers whatever
+    // this build compiled in. The size guard only pins that a *full* build
+    // really does surface the whole table, so it cannot silently shrink.
+    if cfg!(all(
+        feature = "datetime",
+        feature = "error-handling",
+        feature = "ext-array",
+        feature = "ext-control",
+        feature = "ext-math",
+        feature = "ext-object",
+        feature = "ext-string",
+        feature = "flagd",
+    )) {
+        assert!(
+            names.len() > 50,
+            "expected the full builtin table, got {} names",
+            names.len()
+        );
+    } else {
+        assert!(!names.is_empty(), "the baseline table is never empty");
+    }
 
     for name in names {
         let rule = single_key_rule(&format!("${name}"), json!(1));
@@ -415,10 +431,11 @@ fn escape_is_inert_without_templating() {
     };
     assert!(is_err);
 
-    // Operator dispatch is untouched.
+    // Operator dispatch is untouched. Uses a baseline operator rather than a
+    // feature-gated one so the check runs in every build.
     assert_eq!(
-        eval(&engine, &json!({"type": {"var": "x"}}), &json!({"x": 1})),
-        json!("number")
+        eval(&engine, &json!({"+": [{"var": "x"}, 1]}), &json!({"x": 1})),
+        json!(2)
     );
 }
 

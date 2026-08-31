@@ -44,6 +44,21 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ### Fixed
 
+- **The conformance harness can now run under partial feature sets.** The
+  suite index lists every suite, but a build without `ext-control` cannot
+  evaluate `switch` — so the battery failed with "Unknown Operator" on any
+  configuration between `--all-features` and `--no-default-features`. That is
+  why CI's feature matrix only *built* its legs. The runner now skips a case
+  whose operators this build did not compile in, reporting the count, and a
+  case may declare `"requires": ["datetime"]` for the residual class where a
+  feature changes value semantics rather than adding an operator. Six
+  under-gated integration tests were fixed alongside — two now use a baseline
+  operator so they run everywhere, four gained the `#[cfg]` they were missing.
+  Under `--all-features` nothing is skipped, so existing coverage is
+  unchanged. A new `feature-combos` CI job runs the battery across six
+  configurations.
+
+
 - **Filter fast path hoisted operands it could not safely hoist.** The
   strict-equality filter fast path evaluates a "loop-invariant" predicate
   operand once, against a synthetic null frame standing in for the

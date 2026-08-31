@@ -177,7 +177,9 @@ fn structured_error_flattens_variant_extras() {
     );
 }
 
-#[cfg(feature = "error-handling")]
+// `throw` needs `error-handling`; the `{"type": ...}` payload resolves through
+// the `type` operator, which needs `ext-control`.
+#[cfg(all(feature = "error-handling", feature = "ext-control"))]
 #[test]
 fn evaluate_json_structured_reports_outer_operator() {
     let engine = Engine::new();
@@ -244,7 +246,8 @@ fn evaluate_json_structured_captures_type_coercion_op() {
     assert_eq!(v["operator"], json!("+"));
 }
 
-#[cfg(feature = "trace")]
+// As above, plus `trace` for the traced session.
+#[cfg(all(feature = "trace", feature = "error-handling", feature = "ext-control"))]
 #[test]
 fn evaluate_json_with_trace_structured_populates_error_fields() {
     let engine = Engine::new();
