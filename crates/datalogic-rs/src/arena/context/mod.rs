@@ -101,6 +101,18 @@ pub(crate) struct ContextStack<'a> {
     tracer: Option<crate::trace::TraceCollector>,
 }
 
+/// Receipt for a pushed context frame: it carries the frame that was
+/// displaced, so the pusher can put it back without the stack having to keep
+/// an indexable ancestor list for the purpose.
+///
+/// `#[must_use]` is the point. Frame push/pop pairs used to be balanced by
+/// hand, and an unbalanced one is a silent context corruption rather than a
+/// crash — see `tests/error_context_test.rs`, which regression-tests exactly
+/// that bug on the `map` bridge path. Now dropping the receipt without
+/// restoring is a compile-time warning.
+#[must_use = "hand the FrameToken back to `restore_frame`, or the displaced frame is lost"]
+pub(crate) struct FrameToken<'a>(Option<ContextFrame<'a>>);
+
 impl<'a> ContextStack<'a> {
     #[inline]
     pub(crate) fn new(root: &'a DataValue<'a>) -> Self {
@@ -297,36 +309,56 @@ impl<'a> ContextStack<'a> {
 
     // ----- frame mutation ---------------------------------------------------
 
-    /// Push a frame: the previous top (if any) moves down into `parents`.
+    /// Push a frame, returning the displaced one as a [`FrameToken`] for the
+    /// caller to restore. `ContextFrame` is `Copy`, so the token is a cheap
+    /// duplicate of what also went into `parents`.
     #[inline]
-    fn push_frame(&mut self, frame: ContextFrame<'a>) {
-        if let Some(prev) = self.top.replace(frame) {
-            self.parents.push(prev);
+    #[must_use]
+    fn push_frame(&mut self, frame: ContextFrame<'a>) -> FrameToken<'a> {
+        let prev = self.top.replace(frame);
+        if let Some(p) = prev {
+            self.parents.push(p);
         }
         self.depth += 1;
+        FrameToken(prev)
     }
 
     #[inline]
-    pub(crate) fn push(&mut self, data: &'a DataValue<'a>) {
-        self.push_frame(ContextFrame::Data(data));
+    #[must_use]
+    pub(crate) fn push(&mut self, data: &'a DataValue<'a>) -> FrameToken<'a> {
+        self.push_frame(ContextFrame::Data(data))
+    }
+
+    /// Push an indexed frame. Used by `IterGuard` and by `map`'s scalar
+    /// bridge path, which pushes a single `index: 0` frame directly.
+    #[inline]
+    #[must_use]
+    pub(crate) fn push_indexed(&mut self, data: &'a DataValue<'a>, index: usize) -> FrameToken<'a> {
+        self.push_frame(ContextFrame::Indexed { data, index })
     }
 
     #[inline]
-    pub(crate) fn push_with_index(&mut self, data: &'a DataValue<'a>, index: usize) {
-        self.push_frame(ContextFrame::Indexed { data, index });
+    #[must_use]
+    fn push_with_key_index(
+        &mut self,
+        data: &'a DataValue<'a>,
+        index: usize,
+        key: &'a str,
+    ) -> FrameToken<'a> {
+        self.push_frame(ContextFrame::Keyed { data, index, key })
     }
 
     #[inline]
-    fn push_with_key_index(&mut self, data: &'a DataValue<'a>, index: usize, key: &'a str) {
-        self.push_frame(ContextFrame::Keyed { data, index, key });
-    }
-
-    #[inline]
-    fn push_reduce(&mut self, current: &'a DataValue<'a>, accumulator: &'a DataValue<'a>) {
+    #[must_use]
+    fn push_reduce(
+        &mut self,
+        current: &'a DataValue<'a>,
+        accumulator: &'a DataValue<'a>,
+    ) -> FrameToken<'a> {
         self.push_frame(ContextFrame::Reduce {
             current,
             accumulator,
-        });
+        })
     }
 
     #[inline]
@@ -353,16 +385,17 @@ impl<'a> ContextStack<'a> {
         }
     }
 
-    /// Pop the current frame, restoring the nearest parent (if any) as the
-    /// new top. Returns `None` on an empty stack, like `Vec::pop`.
+    /// Undo a [`push_frame`](Self::push_frame), restoring the frame the token
+    /// carries. The restored value comes from the token rather than from
+    /// `parents`, which is what frees `parents` to be maintained only when a
+    /// rule actually reads an ancestor frame.
     #[inline]
-    pub(crate) fn pop(&mut self) -> Option<ContextFrame<'a>> {
-        let out = self.top.take();
-        if out.is_some() {
-            self.top = self.parents.pop();
-            self.depth -= 1;
+    pub(crate) fn restore_frame(&mut self, token: FrameToken<'a>) {
+        self.top = token.0;
+        if token.0.is_some() {
+            self.parents.pop();
         }
-        out
+        self.depth -= 1;
     }
 
     // ----- error breadcrumb (mirrors ContextStack) --------------------------
@@ -463,32 +496,31 @@ impl<'a> ContextStack<'a> {
 /// and reduce (current/accumulator).
 pub(crate) struct IterGuard<'g, 'a> {
     ctx: &'g mut ContextStack<'a>,
-    pushed: bool,
+    /// `Some` once a frame has been pushed; carries what to restore on drop.
+    saved: Option<FrameToken<'a>>,
 }
 
 impl<'g, 'a> IterGuard<'g, 'a> {
     #[inline]
     pub(crate) fn new(ctx: &'g mut ContextStack<'a>) -> Self {
-        Self { ctx, pushed: false }
+        Self { ctx, saved: None }
     }
 
     #[inline]
     pub(crate) fn step_indexed(&mut self, data: &'a DataValue<'a>, index: usize) {
-        if self.pushed {
+        if self.saved.is_some() {
             self.ctx.replace_top_data(data, index);
         } else {
-            self.ctx.push_with_index(data, index);
-            self.pushed = true;
+            self.saved = Some(self.ctx.push_indexed(data, index));
         }
     }
 
     #[inline]
     pub(crate) fn step_keyed(&mut self, data: &'a DataValue<'a>, index: usize, key: &'a str) {
-        if self.pushed {
+        if self.saved.is_some() {
             self.ctx.replace_top_key_data(data, index, key);
         } else {
-            self.ctx.push_with_key_index(data, index, key);
-            self.pushed = true;
+            self.saved = Some(self.ctx.push_with_key_index(data, index, key));
         }
     }
 
@@ -498,11 +530,10 @@ impl<'g, 'a> IterGuard<'g, 'a> {
         current: &'a DataValue<'a>,
         accumulator: &'a DataValue<'a>,
     ) {
-        if self.pushed {
+        if self.saved.is_some() {
             self.ctx.replace_reduce_data(current, accumulator);
         } else {
-            self.ctx.push_reduce(current, accumulator);
-            self.pushed = true;
+            self.saved = Some(self.ctx.push_reduce(current, accumulator));
         }
     }
 
@@ -517,8 +548,8 @@ impl<'g, 'a> IterGuard<'g, 'a> {
 impl Drop for IterGuard<'_, '_> {
     #[inline]
     fn drop(&mut self) {
-        if self.pushed {
-            self.ctx.pop();
+        if let Some(token) = self.saved.take() {
+            self.ctx.restore_frame(token);
         }
     }
 }
@@ -538,7 +569,7 @@ mod tests {
         assert!(ctx.current().root_data().is_some(), "root at depth 0");
 
         let a: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(1)));
-        ctx.push_with_index(a, 0);
+        let token = ctx.push_indexed(a, 0);
         assert_eq!(ctx.depth(), 1);
         assert_eq!(ctx.current().get_index(), Some(0));
 
@@ -546,7 +577,7 @@ mod tests {
         ctx.replace_top_data(b, 1);
         assert_eq!(ctx.current().get_index(), Some(1));
 
-        ctx.pop();
+        ctx.restore_frame(token);
         assert_eq!(ctx.depth(), 0);
     }
 
@@ -557,7 +588,7 @@ mod tests {
         let mut ctx = ContextStack::from_value(&root_val, &arena);
 
         let a: &DataValue = arena.alloc(DataValue::Bool(true));
-        ctx.push_with_key_index(a, 0, "k1");
+        let _token = ctx.push_with_key_index(a, 0, "k1");
         assert_eq!(ctx.current().get_key(), Some("k1"));
 
         let b: &DataValue = arena.alloc(DataValue::Bool(false));
@@ -574,7 +605,7 @@ mod tests {
 
         let cur: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(1)));
         let acc: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(0)));
-        ctx.push_reduce(cur, acc);
+        let _token = ctx.push_reduce(cur, acc);
         assert_eq!(ctx.depth(), 1);
 
         if let ContextRef::Frame(f) = ctx.current() {
@@ -593,8 +624,8 @@ mod tests {
 
         let a: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(10)));
         let b: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(20)));
-        ctx.push_with_index(a, 0);
-        ctx.push_with_index(b, 0);
+        let _ta = ctx.push_indexed(a, 0);
+        let _tb = ctx.push_indexed(b, 0);
         assert_eq!(ctx.depth(), 2);
 
         // Level 0 = current (b)
@@ -616,23 +647,22 @@ mod tests {
         let a: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(1)));
         let b: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(2)));
         let c: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(3)));
-        ctx.push_with_index(a, 10);
-        ctx.push_with_index(b, 20);
-        ctx.push_with_index(c, 30);
+        let ta = ctx.push_indexed(a, 10);
+        let tb = ctx.push_indexed(b, 20);
+        let tc = ctx.push_indexed(c, 30);
         assert_eq!(ctx.depth(), 3);
         assert_eq!(ctx.current().get_index(), Some(30));
 
-        assert!(ctx.pop().is_some());
+        ctx.restore_frame(tc);
         assert_eq!(ctx.depth(), 2);
         assert_eq!(ctx.current().get_index(), Some(20), "parent restored");
 
-        assert!(ctx.pop().is_some());
+        ctx.restore_frame(tb);
         assert_eq!(ctx.current().get_index(), Some(10));
 
-        assert!(ctx.pop().is_some());
+        ctx.restore_frame(ta);
         assert_eq!(ctx.depth(), 0);
         assert!(ctx.current().root_data().is_some(), "back to root");
-        assert!(ctx.pop().is_none(), "empty pop is a no-op");
     }
 
     #[test]
@@ -644,11 +674,12 @@ mod tests {
         let mut ctx = ContextStack::from_value(&root_val, &arena);
 
         let depth = INLINE_FRAMES + 4;
+        let mut tokens = Vec::new();
         for i in 0..depth {
             let v: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(
                 i as i64,
             )));
-            ctx.push_with_index(v, i);
+            tokens.push(ctx.push_indexed(v, i));
         }
         assert_eq!(ctx.depth(), depth);
         assert_eq!(ctx.current().get_index(), Some(depth - 1));
@@ -667,10 +698,10 @@ mod tests {
 
         for i in (0..depth).rev() {
             assert_eq!(ctx.current().get_index(), Some(i));
-            assert!(ctx.pop().is_some());
+            ctx.restore_frame(tokens.pop().expect("one token per push"));
         }
         assert_eq!(ctx.depth(), 0);
-        assert!(ctx.pop().is_none());
+        assert!(tokens.is_empty());
     }
 
     #[test]

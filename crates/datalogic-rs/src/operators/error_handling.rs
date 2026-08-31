@@ -227,9 +227,9 @@ fn try_last_with_error_context<'a>(
         Some(err) => engine_error_object(&err, arena),
         None => return engine.dispatch_node(arg, ctx, arena),
     };
-    ctx.push(av);
+    let token = ctx.push(av);
     let result = engine.dispatch_node(arg, ctx, arena);
-    ctx.pop();
+    ctx.restore_frame(token);
     result
 }
 
