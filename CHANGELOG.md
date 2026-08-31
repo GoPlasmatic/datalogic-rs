@@ -28,13 +28,31 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   debug-only oracle cross-checks every resolution against the runtime walk
   and fires on the first test that exercises an omission.
 
+### Fixed
+
+- **Filter fast path hoisted operands it could not safely hoist.** The
+  strict-equality filter fast path evaluates a "loop-invariant" predicate
+  operand once, against a synthetic null frame standing in for the
+  per-item one — but it classified *any* `{"val": [[N], …]}` as invariant.
+  Two shapes therefore disagreed with the general path: a predicate reading
+  `index` or `key`, which resolve against the current frame whatever the
+  level, and a `[[1]]` reference inside a filter that is itself nested one
+  or more frames deep, where `[[1]]` names the current item. Both silently
+  returned wrong rows — e.g. `{"filter": [{"var":"xs"}, {"===": [{"var":"a"},
+  {"val":[[1],"index"]}]}]}` over `[{"a":0},{"a":1},{"a":2}]` matched
+  nothing instead of everything. Hoisting is now gated on the compile-time
+  scope binding, which distinguishes a reference to the substituted frame
+  from one to the root or a strict ancestor; the latter two stay on the
+  fast path.
+
 ### Added
 
-- **10 conformance cases for interior-frame addressing** (`scopes.json`,
-  now 1,708 cases across 59 suites). The battery previously had no rule
-  nested deeply enough to distinguish a correct interior-frame resolver
-  from a broken one — every existing leveled `val` resolved either to the
-  current frame or, via the clamp, to the root.
+- **16 conformance cases for scope resolution and filter hoisting** (`scopes.json` and
+  `iterators.extra.json`, now 1,714 cases across 59 suites). The battery
+  previously had no rule nested deeply enough to distinguish a correct
+  interior-frame resolver from a broken one — every existing leveled `val`
+  resolved either to the current frame or, via the clamp, to the root — and
+  nothing exercised the filter hoisting rule at all.
 
 ## [5.4.0] - 2026-08-31
 

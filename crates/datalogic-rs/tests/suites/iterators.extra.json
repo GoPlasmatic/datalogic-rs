@@ -1,173 +1,486 @@
 [
-    "Any of the operators listed when called with a non-array argument, will throw",
-    {
-        "description": "if with static non-array argument throws",
-        "rule": {
-            "if": 5
-        },
-        "data": null,
-        "error": {
-            "type": "Invalid Arguments"
-        }
+  "Any of the operators listed when called with a non-array argument, will throw",
+  {
+    "description": "if with static non-array argument throws",
+    "rule": {
+      "if": 5
     },
-    {
-        "description": "or with static non-array argument throws",
-        "rule": {
-            "or": 5
-        },
-        "data": null,
-        "error": {
-            "type": "Invalid Arguments"
-        }
-    },
-    {
-        "description": "and with static non-array argument throws",
-        "rule": {
-            "and": 5
-        },
-        "data": null,
-        "error": {
-            "type": "Invalid Arguments"
-        }
-    },
-    {
-        "description": "map with static non-array argument throws",
-        "rule": {
-            "map": 5
-        },
-        "data": null,
-        "error": {
-            "type": "Invalid Arguments"
-        }
-    },
-    {
-        "description": "filter with static non-array argument throws",
-        "rule": {
-            "filter": 5
-        },
-        "data": null,
-        "error": {
-            "type": "Invalid Arguments"
-        }
-    },
-    {
-        "description": "reduce with static non-array argument throws",
-        "rule": {
-            "reduce": 5
-        },
-        "data": null,
-        "error": {
-            "type": "Invalid Arguments"
-        }
-    },
-    {
-        "description": "some with static non-array argument throws",
-        "rule": {
-            "some": 5
-        },
-        "data": null,
-        "error": {
-            "type": "Invalid Arguments"
-        }
-    },
-    {
-        "description": "all with static non-array argument throws",
-        "rule": {
-            "all": 5
-        },
-        "data": null,
-        "error": {
-            "type": "Invalid Arguments"
-        }
-    },
-    {
-        "description": "none with static non-array argument throws",
-        "rule": {
-            "none": 5
-        },
-        "data": null,
-        "error": {
-            "type": "Invalid Arguments"
-        }
-    },
-    {
-        "description": "< with static non-array argument throws",
-        "rule": {
-            "<": 5
-        },
-        "data": null,
-        "error": {
-            "type": "Invalid Arguments"
-        }
-    },
-    {
-        "description": "<= with static non-array argument throws",
-        "rule": {
-            "<=": 5
-        },
-        "data": null,
-        "error": {
-            "type": "Invalid Arguments"
-        }
-    },
-    {
-        "description": "> with static non-array argument throws",
-        "rule": {
-            ">": 5
-        },
-        "data": null,
-        "error": {
-            "type": "Invalid Arguments"
-        }
-    },
-    {
-        "description": ">= with static non-array argument throws",
-        "rule": {
-            ">=": 5
-        },
-        "data": null,
-        "error": {
-            "type": "Invalid Arguments"
-        }
-    },
-    {
-        "description": "== with static non-array argument throws",
-        "rule": {
-            "==": 5
-        },
-        "data": null,
-        "error": {
-            "type": "Invalid Arguments"
-        }
-    },
-    {
-        "description": "!= with static non-array argument throws",
-        "rule": {
-            "!=": 5
-        },
-        "data": null,
-        "error": {
-            "type": "Invalid Arguments"
-        }
-    },
-    {
-        "description": "=== with static non-array argument throws",
-        "rule": {
-            "===": 5
-        },
-        "data": null,
-        "error": {
-            "type": "Invalid Arguments"
-        }
-    },
-    {
-        "description": "!== with static non-array argument throws",
-        "rule": {
-            "!==": 5
-        },
-        "data": null,
-        "error": {
-            "type": "Invalid Arguments"
-        }
+    "data": null,
+    "error": {
+      "type": "Invalid Arguments"
     }
+  },
+  {
+    "description": "or with static non-array argument throws",
+    "rule": {
+      "or": 5
+    },
+    "data": null,
+    "error": {
+      "type": "Invalid Arguments"
+    }
+  },
+  {
+    "description": "and with static non-array argument throws",
+    "rule": {
+      "and": 5
+    },
+    "data": null,
+    "error": {
+      "type": "Invalid Arguments"
+    }
+  },
+  {
+    "description": "map with static non-array argument throws",
+    "rule": {
+      "map": 5
+    },
+    "data": null,
+    "error": {
+      "type": "Invalid Arguments"
+    }
+  },
+  {
+    "description": "filter with static non-array argument throws",
+    "rule": {
+      "filter": 5
+    },
+    "data": null,
+    "error": {
+      "type": "Invalid Arguments"
+    }
+  },
+  {
+    "description": "reduce with static non-array argument throws",
+    "rule": {
+      "reduce": 5
+    },
+    "data": null,
+    "error": {
+      "type": "Invalid Arguments"
+    }
+  },
+  {
+    "description": "some with static non-array argument throws",
+    "rule": {
+      "some": 5
+    },
+    "data": null,
+    "error": {
+      "type": "Invalid Arguments"
+    }
+  },
+  {
+    "description": "all with static non-array argument throws",
+    "rule": {
+      "all": 5
+    },
+    "data": null,
+    "error": {
+      "type": "Invalid Arguments"
+    }
+  },
+  {
+    "description": "none with static non-array argument throws",
+    "rule": {
+      "none": 5
+    },
+    "data": null,
+    "error": {
+      "type": "Invalid Arguments"
+    }
+  },
+  {
+    "description": "< with static non-array argument throws",
+    "rule": {
+      "<": 5
+    },
+    "data": null,
+    "error": {
+      "type": "Invalid Arguments"
+    }
+  },
+  {
+    "description": "<= with static non-array argument throws",
+    "rule": {
+      "<=": 5
+    },
+    "data": null,
+    "error": {
+      "type": "Invalid Arguments"
+    }
+  },
+  {
+    "description": "> with static non-array argument throws",
+    "rule": {
+      ">": 5
+    },
+    "data": null,
+    "error": {
+      "type": "Invalid Arguments"
+    }
+  },
+  {
+    "description": ">= with static non-array argument throws",
+    "rule": {
+      ">=": 5
+    },
+    "data": null,
+    "error": {
+      "type": "Invalid Arguments"
+    }
+  },
+  {
+    "description": "== with static non-array argument throws",
+    "rule": {
+      "==": 5
+    },
+    "data": null,
+    "error": {
+      "type": "Invalid Arguments"
+    }
+  },
+  {
+    "description": "!= with static non-array argument throws",
+    "rule": {
+      "!=": 5
+    },
+    "data": null,
+    "error": {
+      "type": "Invalid Arguments"
+    }
+  },
+  {
+    "description": "=== with static non-array argument throws",
+    "rule": {
+      "===": 5
+    },
+    "data": null,
+    "error": {
+      "type": "Invalid Arguments"
+    }
+  },
+  {
+    "description": "!== with static non-array argument throws",
+    "rule": {
+      "!==": 5
+    },
+    "data": null,
+    "error": {
+      "type": "Invalid Arguments"
+    }
+  },
+  "Filter invariant-hoisting regressions. The strict-eq filter fast path substitutes a synthetic null frame for the per-item one, so a predicate operand may only be hoisted when it cannot observe the innermost frame. Each case below diverged from the general path before that rule was enforced through the compile-time scope binding.",
+  {
+    "description": "Filter predicate reading the iteration index must not be hoisted",
+    "rule": {
+      "filter": [
+        {
+          "var": "xs"
+        },
+        {
+          "===": [
+            {
+              "var": "a"
+            },
+            {
+              "val": [
+                [
+                  1
+                ],
+                "index"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "data": {
+      "xs": [
+        {
+          "a": 0
+        },
+        {
+          "a": 1
+        },
+        {
+          "a": 2
+        }
+      ]
+    },
+    "result": [
+      {
+        "a": 0
+      },
+      {
+        "a": 1
+      },
+      {
+        "a": 2
+      }
+    ]
+  },
+  {
+    "description": "Filter predicate reading the iteration key must not be hoisted",
+    "rule": {
+      "filter": [
+        {
+          "var": "xs"
+        },
+        {
+          "===": [
+            {
+              "var": "a"
+            },
+            {
+              "val": [
+                [
+                  1
+                ],
+                "key"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "data": {
+      "xs": [
+        {
+          "a": 0
+        },
+        {
+          "a": 1
+        }
+      ]
+    },
+    "result": []
+  },
+  {
+    "description": "A [[1]] var inside a nested filter names the current item, not an outer frame",
+    "rule": {
+      "map": [
+        {
+          "val": "groups"
+        },
+        {
+          "filter": [
+            {
+              "val": "items"
+            },
+            {
+              "===": [
+                {
+                  "var": "a"
+                },
+                {
+                  "val": [
+                    [
+                      1
+                    ],
+                    "a"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "data": {
+      "groups": [
+        {
+          "a": 7,
+          "items": [
+            {
+              "a": 7
+            },
+            {
+              "a": 8
+            }
+          ]
+        }
+      ]
+    },
+    "result": [
+      [
+        {
+          "a": 7
+        },
+        {
+          "a": 8
+        }
+      ]
+    ]
+  },
+  {
+    "description": "A level that clamps to root stays hoistable and still filters correctly",
+    "rule": {
+      "filter": [
+        {
+          "val": "people"
+        },
+        {
+          "===": [
+            {
+              "val": "d"
+            },
+            {
+              "val": [
+                [
+                  2
+                ],
+                "d"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "data": {
+      "d": "eng",
+      "people": [
+        {
+          "d": "eng"
+        },
+        {
+          "d": "sales"
+        },
+        {
+          "d": "eng"
+        }
+      ]
+    },
+    "result": [
+      {
+        "d": "eng"
+      },
+      {
+        "d": "eng"
+      }
+    ]
+  },
+  {
+    "description": "Inside a nested filter, [[2]] clamps past both frames to root",
+    "rule": {
+      "map": [
+        {
+          "val": "groups"
+        },
+        {
+          "filter": [
+            {
+              "val": "items"
+            },
+            {
+              "===": [
+                {
+                  "var": "a"
+                },
+                {
+                  "val": [
+                    [
+                      2
+                    ],
+                    "a"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "data": {
+      "a": 8,
+      "groups": [
+        {
+          "a": 7,
+          "items": [
+            {
+              "a": 7
+            },
+            {
+              "a": 8
+            }
+          ]
+        }
+      ]
+    },
+    "result": [
+      [
+        {
+          "a": 8
+        }
+      ]
+    ]
+  },
+  {
+    "description": "A strict-ancestor level in a filter predicate is still hoistable",
+    "rule": {
+      "map": [
+        {
+          "val": "outer"
+        },
+        {
+          "map": [
+            {
+              "val": "mid"
+            },
+            {
+              "filter": [
+                {
+                  "val": "items"
+                },
+                {
+                  "===": [
+                    {
+                      "var": "a"
+                    },
+                    {
+                      "val": [
+                        [
+                          2
+                        ],
+                        "a"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "data": {
+      "a": 99,
+      "outer": [
+        {
+          "mid": [
+            {
+              "a": 7,
+              "items": [
+                {
+                  "a": 7
+                },
+                {
+                  "a": 8
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "result": [
+      [
+        [
+          {
+            "a": 7
+          }
+        ]
+      ]
+    ]
+  }
 ]

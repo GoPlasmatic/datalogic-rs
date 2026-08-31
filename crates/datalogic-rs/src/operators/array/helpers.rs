@@ -8,13 +8,50 @@ use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 use std::ops::ControlFlow;
 
-/// Check if a compiled node is loop-invariant (doesn't depend on the current iteration context).
-/// Used by filter/quantifier fast paths to detect values that can be evaluated once before the loop.
+/// Check if a compiled node is loop-invariant — i.e. whether hoisting it out
+/// of the iteration and evaluating it once yields what the per-item path
+/// would have produced. Used by the filter/quantifier fast paths.
+///
+/// The subtlety is what "invariant" has to mean here. The fast path does not
+/// simply skip the per-item frame: [`evaluate_invariant_no_push`] substitutes
+/// a synthetic `ContextFrame::Data(null)` for it, so the frame *count* is
+/// unchanged and only the innermost frame's *contents* differ from the
+/// general path. So a reference is invariant exactly when it cannot observe
+/// that innermost frame:
+///
+/// - [`ScopeBinding::Root`] reads the rule input — same either way.
+/// - [`ScopeBinding::Ancestor`] indexes strictly below the top of the stack
+///   (`2 <= level <= depth - 1`), so it lands in `parents`, never on the
+///   substituted frame.
+/// - [`ScopeBinding::Current`] *is* the substituted frame: the item on the
+///   general path, `null` here. Not invariant.
+/// - [`ScopeBinding::Unresolved`] means the scope pass never reached this
+///   node, so nothing is proven. Treated as not invariant.
+///
+/// A bare `scope_level > 0` test is **not** a substitute for the binding:
+/// `{"val": [[1], …]}` resolves to the current frame whenever the filter
+/// itself sits one or more frames deep, which is the shape that made this
+/// predicate wrong before. Metadata and reduce hints read `ctx.current()`
+/// regardless of level, so they are never invariant; and a `default_value`
+/// would be dispatched against the substituted context too.
 #[inline]
 pub(super) fn is_filter_invariant(node: &CompiledNode) -> bool {
     match node {
         CompiledNode::Value { .. } => true,
-        CompiledNode::Var { scope_level, .. } => *scope_level > 0,
+        CompiledNode::Var {
+            binding,
+            reduce_hint,
+            metadata_hint,
+            default_value,
+            ..
+        } => {
+            matches!(
+                binding,
+                crate::node::ScopeBinding::Root | crate::node::ScopeBinding::Ancestor
+            ) && *reduce_hint == ReduceHint::None
+                && *metadata_hint == MetadataHint::None
+                && default_value.is_none()
+        }
         _ => false,
     }
 }
@@ -854,5 +891,94 @@ impl FusedMapBody<'_> {
                 })
             }
         }
+    }
+}
+
+#[cfg(all(test, feature = "serde_json"))]
+mod invariant_tests {
+    use super::is_filter_invariant;
+    use crate::node::CompiledNode;
+    use crate::{Engine, Logic};
+
+    /// Pull the right-hand operand out of `{"filter": [src, {"===": [a, b]}]}`.
+    fn filter_rhs(logic: &Logic) -> &CompiledNode {
+        let CompiledNode::BuiltinOperator { args, .. } = &logic.root else {
+            panic!("expected filter at the root");
+        };
+        let CompiledNode::BuiltinOperator { args: pred, .. } = &args[1] else {
+            panic!("expected a comparison predicate");
+        };
+        &pred[1]
+    }
+
+    /// Nested form: reach into `{"map": [src, {"filter": …}]}`.
+    fn nested_filter_rhs(logic: &Logic) -> &CompiledNode {
+        let CompiledNode::BuiltinOperator { args, .. } = &logic.root else {
+            panic!("expected map at the root");
+        };
+        let CompiledNode::BuiltinOperator { args: inner, .. } = &args[1] else {
+            panic!("expected a nested filter");
+        };
+        let CompiledNode::BuiltinOperator { args: pred, .. } = &inner[1] else {
+            panic!("expected a comparison predicate");
+        };
+        &pred[1]
+    }
+
+    /// The strict-eq filter fast path evaluates a "loop-invariant" operand
+    /// once, against a synthetic null frame standing in for the per-item one.
+    /// Anything that can observe that innermost frame must therefore be
+    /// rejected, or the fast path and the general path disagree.
+    ///
+    /// Pins both directions: the shapes that must stay hoistable (or the fast
+    /// path is silently lost) and the shapes that must not be (or results are
+    /// wrong). The rejected cases below each produced a different answer from
+    /// the general path before the binding check replaced a bare
+    /// `scope_level > 0` test.
+    #[test]
+    fn only_frame_independent_operands_are_hoistable() {
+        let engine = Engine::new();
+
+        // Hoistable: a literal, and levels that resolve to the root.
+        for rule in [
+            r#"{"filter": [{"val": "xs"}, {"===": [{"var": "a"}, 1]}]}"#,
+            r#"{"filter": [{"val": "xs"}, {"===": [{"var": "a"}, {"val": [[2], "d"]}]}]}"#,
+            r#"{"filter": [{"val": "xs"}, {"===": [{"var": "a"}, {"val": [[1], "d"]}]}]}"#,
+        ] {
+            let logic = engine.compile(rule).unwrap();
+            assert!(
+                is_filter_invariant(filter_rhs(&logic)),
+                "should be hoistable, losing this loses the fast path: {rule}"
+            );
+        }
+
+        // Not hoistable: metadata hints read `ctx.current()` whatever the
+        // level, so they see the synthetic null instead of the item.
+        for rule in [
+            r#"{"filter": [{"val": "xs"}, {"===": [{"var": "a"}, {"val": [[1], "index"]}]}]}"#,
+            r#"{"filter": [{"val": "xs"}, {"===": [{"var": "a"}, {"val": [[1], "key"]}]}]}"#,
+        ] {
+            let logic = engine.compile(rule).unwrap();
+            assert!(
+                !is_filter_invariant(filter_rhs(&logic)),
+                "metadata hint must not be hoisted: {rule}"
+            );
+        }
+
+        // Not hoistable: one frame deeper, `[[1]]` names the current item.
+        let nested = r#"{"map": [{"val": "g"}, {"filter": [{"val": "i"}, {"===": [{"var": "a"}, {"val": [[1], "a"]}]}]}]}"#;
+        let logic = engine.compile(nested).unwrap();
+        assert!(
+            !is_filter_invariant(nested_filter_rhs(&logic)),
+            "[[1]] inside a nested filter is the current item, not an outer frame"
+        );
+
+        // Hoistable again at the same nesting once the level clamps to root.
+        let nested_root = r#"{"map": [{"val": "g"}, {"filter": [{"val": "i"}, {"===": [{"var": "a"}, {"val": [[2], "a"]}]}]}]}"#;
+        let logic = engine.compile(nested_root).unwrap();
+        assert!(
+            is_filter_invariant(nested_filter_rhs(&logic)),
+            "a level that clamps to root stays hoistable"
+        );
     }
 }
