@@ -142,6 +142,7 @@ pub(super) fn dispatch_node_inner<'a>(
                 reduce_hint,
                 metadata_hint,
                 default_value,
+                binding,
                 ..
             } => crate::operators::variable::evaluate_val_compiled(
                 crate::operators::variable::CompiledVarSpec {
@@ -150,6 +151,7 @@ pub(super) fn dispatch_node_inner<'a>(
                     reduce_hint: *reduce_hint,
                     metadata_hint: *metadata_hint,
                     default_value: default_value.as_deref(),
+                    binding: *binding,
                 },
                 ctx,
                 engine,
@@ -163,6 +165,7 @@ pub(super) fn dispatch_node_inner<'a>(
             CompiledNode::Exists(data) => crate::operators::variable::evaluate_exists_compiled(
                 data.scope_level,
                 &data.segments,
+                data.binding,
                 ctx,
             ),
 
@@ -388,7 +391,19 @@ fn dispatch_cse<'a>(
     ctx: &mut ContextStack<'a>,
     arena: &'a bumpalo::Bump,
 ) -> Result<&'a crate::arena::DataValue<'a>> {
-    if ctx.depth() == 0 && !ctx.is_tracing() {
+    // The depth half of the old gate is a compile-time tautology: the CSE pass
+    // never descends into a child position for which
+    // `compile::scope::frames_pushed_for_child` is non-zero, so every `Cse`
+    // node in a compiled tree sits at static frame depth 0. Only the tracer
+    // half is genuinely dynamic. The assertion below pins the invariant from
+    // the runtime side; `cse::tests::no_cse_node_sits_under_a_pushed_frame`
+    // pins it from the compile side.
+    debug_assert_eq!(
+        ctx.depth(),
+        0,
+        "Cse node dispatched under a pushed frame — the memo would leak across frames"
+    );
+    if !ctx.is_tracing() {
         if let Some(hit) = ctx.cse_slot(data.slot) {
             return Ok(hit);
         }

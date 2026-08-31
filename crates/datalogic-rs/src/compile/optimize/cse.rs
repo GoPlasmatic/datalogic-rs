@@ -290,38 +290,17 @@ fn wrap_children(node: &mut CompiledNode, table: &ClassTable) {
 /// Compile-time prediction of argument positions whose subtrees evaluate
 /// at `depth() > 0` and could therefore never hit the runtime memo — a
 /// wrapper there is pure dispatch overhead. Skipped by both phases (no
-/// wrapping, and no occurrence counting toward the ≥ 2 threshold):
+/// wrapping, and no occurrence counting toward the ≥ 2 threshold).
 ///
-/// - iterator *bodies*: `args[1]` of filter/map/all/some/none/reduce and
-///   `args[2]` of sort (whose `args[1]` is the scalar direction flag) run
-///   under a per-item frame. `reduce`'s `args[2]` (initial accumulator)
-///   evaluates once outside the iteration frames and stays eligible;
-/// - the *catch arm* (last arg) of a multi-arg `try`: it runs under the
-///   caught-error context frame when the error was thrown, and only ever
-///   runs on the error path, so a memo wrapper there almost never pays.
+/// Delegates to [`crate::compile::scope::frames_pushed_for_child`], the
+/// single source of truth for which child positions run under a pushed
+/// context frame; see that function for the per-operator table and the
+/// reasoning behind each entry.
 ///
 /// The runtime `depth() == 0` gate remains authoritative — this predicate
 /// is an overhead optimization, not a correctness gate.
 fn child_never_cacheable(opcode: OpCode, index: usize, len: usize) -> bool {
-    #[cfg(feature = "ext-array")]
-    if matches!(opcode, OpCode::Sort) {
-        return index == 2;
-    }
-    // `group_by`'s and keyed `distinct`'s key expressions (`args[1]`) run
-    // under per-item frames, same as the iterator bodies below.
-    #[cfg(feature = "ext-array")]
-    if matches!(opcode, OpCode::GroupBy | OpCode::Distinct) {
-        return index == 1;
-    }
-    #[cfg(feature = "error-handling")]
-    if matches!(opcode, OpCode::Try) {
-        return len >= 2 && index == len - 1;
-    }
-    let _ = len;
-    matches!(
-        opcode,
-        OpCode::Filter | OpCode::Map | OpCode::All | OpCode::Some | OpCode::None | OpCode::Reduce
-    ) && index == 1
+    crate::compile::scope::frames_pushed_for_child(opcode, index, len) > 0
 }
 
 // ---------------------------------------------------------------------------
@@ -993,5 +972,43 @@ mod tests {
         let int_one = V::Number(NumberValue::Integer(1));
         let float_one = V::Number(NumberValue::Float(1.0));
         assert!(!super::owned_eq(&int_one, &float_one));
+    }
+
+    /// Every `Cse` wrapper must sit at static frame depth 0. `dispatch_cse`
+    /// relies on this to skip the runtime depth probe: a memo consulted under
+    /// an iteration frame would serve a value resolved against a different
+    /// context. `collect` and `wrap_children` both skip frame-pushing
+    /// positions, so this holds by construction — pinned here so a future
+    /// relaxation has to confront it.
+    #[test]
+    fn no_cse_node_sits_under_a_pushed_frame() {
+        use crate::compile::scope::frames_pushed_for_child;
+        use crate::node::CompiledNode;
+
+        fn walk(node: &CompiledNode, depth: u32) {
+            if let CompiledNode::Cse(data) = node {
+                assert_eq!(depth, 0, "Cse wrapper found at static frame depth {depth}");
+                walk(&data.inner, depth);
+                return;
+            }
+            if let CompiledNode::BuiltinOperator { opcode, args, .. } = node {
+                let len = args.len();
+                for (i, child) in args.iter().enumerate() {
+                    walk(child, depth + frames_pushed_for_child(*opcode, i, len));
+                }
+                return;
+            }
+            node.visit_indexed_children(&mut |_, child| walk(child, depth));
+        }
+
+        let engine = Engine::new();
+        for rule in [
+            AGG,
+            r#"{"map": [{"val": "xs"}, {"reduce": [{"val": "ys"}, {"+": [{"val": "current"}, {"val": "accumulator"}]}, 0]}]}"#,
+            r#"{"if": [{"val": "c"}, {"reduce": [{"val": "xs"}, {"+": [{"val": "current"}, {"val": "accumulator"}]}, 0]}, {"reduce": [{"val": "xs"}, {"+": [{"val": "current"}, {"val": "accumulator"}]}, 0]}]}"#,
+        ] {
+            let logic = engine.compile(rule).unwrap();
+            walk(&logic.root, 0);
+        }
     }
 }

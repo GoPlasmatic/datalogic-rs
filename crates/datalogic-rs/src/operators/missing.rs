@@ -13,11 +13,11 @@ use bumpalo::Bump;
 /// context's data view as `&'a DataValue<'a>`.
 #[inline(always)]
 fn lookup_data<'a>(ctx: &ContextStack<'a>) -> &'a DataValue<'a> {
-    if ctx.depth() > 0 {
-        ctx.current().data()
-    } else {
-        ctx.root_input()
-    }
+    // No depth probe needed: with nothing pushed, `current()` is
+    // `ContextRef::Root(root)` and its `data()` yields the very pointer
+    // `root_input()` returns, so the old `depth() > 0` branch could never
+    // select a different value.
+    ctx.current().data()
 }
 
 /// Native arena-mode `missing`. Accumulates missing-path strings directly

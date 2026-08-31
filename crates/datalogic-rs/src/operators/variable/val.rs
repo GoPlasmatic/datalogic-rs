@@ -13,7 +13,7 @@ use super::{
     level_marker_from_array, metadata_hint_lookup, path_str_from_data,
 };
 use crate::arena::{ContextStack, DataValue};
-use crate::node::{MetadataHint, PathSegment, ReduceHint};
+use crate::node::{MetadataHint, PathSegment, ReduceHint, ScopeBinding};
 use crate::{CompiledNode, Error, Result};
 
 /// Arena variant of `evaluate_val_compiled`. Dispatches through four
@@ -43,16 +43,26 @@ pub(crate) fn evaluate_val_compiled<'a>(
         reduce_hint,
         metadata_hint,
         default_value,
+        binding,
     } = spec;
+
+    // Cross-validate the compile-time resolution against the runtime walk.
+    // Debug builds only; see `debug_check_binding`.
+    super::debug_check_binding(binding, scope_level, ctx);
 
     // Dominant-case fast path: plain root-scope `var` with no metadata/reduce
     // hints, evaluated outside any iteration frame. Probed first as a single
     // combined branch so the common case never pays for the metadata-hint
     // pattern match or the reduce-hint frame inspection below.
-    if metadata_hint == MetadataHint::None
+    // `binding == Root` is the compile-time form of the old
+    // `scope_level == 0 && ctx.depth() == 0` pair, and additionally admits an
+    // up-level `val` whose clamp the compiler proved (`[[2]]` inside a single
+    // `map`, say). That widening is behaviour-preserving: such a node has no
+    // reduce hint and reached `ContextRef::Root` through `get_at_level` before,
+    // landing on this same `traverse_segments` / `default_or_null` pair.
+    if binding == ScopeBinding::Root
+        && metadata_hint == MetadataHint::None
         && reduce_hint == ReduceHint::None
-        && scope_level == 0
-        && ctx.depth() == 0
     {
         let root_av = ctx.root_input();
         let resolved = if segments.is_empty() {
@@ -70,8 +80,15 @@ pub(crate) fn evaluate_val_compiled<'a>(
         return Ok(av);
     }
 
-    if let Some(res) = resolve_reduce_hint(reduce_hint, segments, ctx, engine, arena, default_value)
-    {
+    if let Some(res) = resolve_reduce_hint(
+        reduce_hint,
+        binding,
+        segments,
+        ctx,
+        engine,
+        arena,
+        default_value,
+    ) {
         return res;
     }
 
@@ -114,13 +131,16 @@ fn resolve_metadata_hint<'a>(
 #[inline]
 fn resolve_reduce_hint<'a>(
     reduce_hint: ReduceHint,
+    binding: ScopeBinding,
     segments: &[PathSegment],
     ctx: &mut ContextStack<'a>,
     engine: &crate::Engine,
     arena: &'a Bump,
     default_value: Option<&'a CompiledNode>,
 ) -> Option<Result<&'a DataValue<'a>>> {
-    if reduce_hint == ReduceHint::None || ctx.depth() == 0 {
+    // A reduce hint is only ever compiled with `scope_level == 0`, so a `Root`
+    // binding here means static depth 0 — no reduce frame can exist.
+    if reduce_hint == ReduceHint::None || binding == ScopeBinding::Root {
         return None;
     }
     use crate::arena::context::ContextRef;

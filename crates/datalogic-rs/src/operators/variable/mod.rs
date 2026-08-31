@@ -15,7 +15,7 @@
 use bumpalo::Bump;
 
 use crate::arena::{ContextStack, DataValue};
-use crate::node::{MetadataHint, PathSegment, ReduceHint};
+use crate::node::{MetadataHint, PathSegment, ReduceHint, ScopeBinding};
 use crate::{CompiledNode, Result};
 
 #[cfg(feature = "ext-control")]
@@ -119,15 +119,17 @@ fn path_str_from_data<'a>(av: &'a DataValue<'a>, arena: &'a Bump) -> &'a str {
     ""
 }
 
-/// Pre-compiled `var`/`val` lookup spec — the five fields stored on
+/// Pre-compiled `var`/`val` lookup spec — the fields stored on
 /// [`CompiledNode::Var`], bundled so the arena evaluator takes one
-/// borrow instead of five loose params.
+/// borrow instead of several loose params.
 pub(crate) struct CompiledVarSpec<'n> {
     pub scope_level: u32,
     pub segments: &'n [PathSegment],
     pub reduce_hint: ReduceHint,
     pub metadata_hint: MetadataHint,
     pub default_value: Option<&'n CompiledNode>,
+    /// Compile-time frame resolution from [`crate::compile::scope::resolve`].
+    pub binding: ScopeBinding,
 }
 
 /// Read a `[level]` marker — the value-mode multi-arg `val` shape where
@@ -177,3 +179,53 @@ fn default_or_null<'a>(
         None => Ok(crate::arena::singletons::singleton_null()),
     }
 }
+
+/// Debug-only oracle for [`crate::compile::scope::resolve`].
+///
+/// Recomputes the frame the *runtime* walk would land on, then asserts the
+/// compile-time [`ScopeBinding`] predicts the same one — by pointer identity,
+/// not value equality, since two distinct frames can hold equal data and that
+/// would still be a resolution bug.
+///
+/// Compiled out entirely in release. In debug it turns every test in the
+/// corpus — 1,698 conformance cases, the property generators, the fuzz target
+/// — into a differential check of the analysis against the walk it replaces.
+/// [`ScopeBinding::Unresolved`] is skipped: those nodes deliberately keep the
+/// runtime path.
+#[cfg(debug_assertions)]
+#[inline]
+pub(super) fn debug_check_binding<'a>(
+    binding: ScopeBinding,
+    scope_level: u32,
+    ctx: &ContextStack<'a>,
+) {
+    let predicted: *const DataValue<'a> = match binding {
+        ScopeBinding::Unresolved => return,
+        ScopeBinding::Root => ctx.root_input(),
+        ScopeBinding::Current => ctx.current().data(),
+        ScopeBinding::Ancestor => match ctx.get_at_level(scope_level as isize) {
+            Some(r) => r.data(),
+            None => return,
+        },
+    };
+    // The walk exactly as it stood before the pass existed.
+    let actual: *const DataValue<'a> = if scope_level == 0 {
+        ctx.current().data()
+    } else {
+        match ctx.get_at_level(scope_level as isize) {
+            Some(r) => r.data(),
+            None => return,
+        }
+    };
+    debug_assert!(
+        std::ptr::eq(predicted, actual),
+        "static scope binding {binding:?} (level {scope_level}) diverged from \
+         the runtime walk at depth {}",
+        ctx.depth()
+    );
+}
+
+/// Release-build no-op counterpart of [`debug_check_binding`].
+#[cfg(not(debug_assertions))]
+#[inline(always)]
+pub(super) fn debug_check_binding(_: ScopeBinding, _: u32, _: &ContextStack<'_>) {}

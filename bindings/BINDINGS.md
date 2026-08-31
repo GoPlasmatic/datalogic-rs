@@ -229,7 +229,7 @@ New bindings follow this section order:
 2. Badge row (registry version, CI, license) plus the line
    `Part of [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs) — one engine, every runtime.`
 3. Three-sentence pitch ending with the conformance stat: every binding
-   runs the same core and passes the same 1,698-case conformance
+   runs the same core and passes the same 1,708-case conformance
    battery (59 suites)
 4. At most one version blockquote (v4 rename / "new in v5" steering)
 5. Install

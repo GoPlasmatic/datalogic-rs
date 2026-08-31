@@ -8,6 +8,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
+## [Unreleased]
+
+### Changed
+
+- **Compile-time scope resolution.** Variable references now carry the
+  frame they resolve against, computed once at compile time by a new
+  `compile/scope.rs` pass, instead of the engine probing `ctx.depth()` on
+  every evaluation. Purely internal — every rule evaluates to exactly what
+  it did before, clamp and level semantics untouched. Rules that read an
+  outer scope from inside an iterator benefit most: the `scopes` suite
+  drops 21.7% (73.4 ns to 57.5 ns per evaluation) and `val.extra` 13.4%,
+  with the non-folded geomean down 1.4%.
+- **One source of truth for the frame model.** `compile/scope.rs` now owns
+  `frames_pushed_for_child`, which says whether an argument position runs
+  under a pushed context frame. The CSE pass reads the same function
+  instead of its own copy, so the two can no longer disagree. An operator
+  that pushes a frame must register its argument position there; a
+  debug-only oracle cross-checks every resolution against the runtime walk
+  and fires on the first test that exercises an omission.
+
+### Added
+
+- **10 conformance cases for interior-frame addressing** (`scopes.json`,
+  now 1,708 cases across 59 suites). The battery previously had no rule
+  nested deeply enough to distinguish a correct interior-frame resolver
+  from a broken one — every existing leveled `val` resolved either to the
+  current frame or, via the clamp, to the root.
+
 ## [5.4.0] - 2026-08-31
 
 ### Added

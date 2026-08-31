@@ -6,7 +6,7 @@
 //! - `exists` → `CompiledExists`.
 
 use crate::node::PathSegment;
-use crate::node::{CompileCtx, CompiledNode, MetadataHint, ReduceHint};
+use crate::node::{CompileCtx, CompiledNode, MetadataHint, ReduceHint, ScopeBinding};
 
 use super::path_segments::{parse_path_segments, parse_var_path, str_to_segment};
 
@@ -19,6 +19,7 @@ fn empty_var(ctx: &mut CompileCtx) -> CompiledNode {
         reduce_hint: ReduceHint::None,
         metadata_hint: MetadataHint::None,
         default_value: None,
+        binding: ScopeBinding::Unresolved,
     }
 }
 
@@ -60,6 +61,7 @@ pub(super) fn try_compile_var(args: &[CompiledNode], ctx: &mut CompileCtx) -> Op
         reduce_hint,
         metadata_hint: MetadataHint::None,
         default_value,
+        binding: ScopeBinding::Unresolved,
     })
 }
 
@@ -149,6 +151,7 @@ fn try_compile_val_single_arg(arg: &CompiledNode, ctx: &mut CompileCtx) -> Optio
         reduce_hint,
         metadata_hint: MetadataHint::None,
         default_value: None,
+        binding: ScopeBinding::Unresolved,
     })
 }
 
@@ -209,6 +212,7 @@ fn finish_val(
         reduce_hint,
         metadata_hint,
         default_value: None,
+        binding: ScopeBinding::Unresolved,
     })
 }
 
@@ -224,6 +228,7 @@ pub(super) fn try_compile_exists(
                 id: Some(ctx.next_id()),
                 scope_level: 0,
                 segments: Box::new([]),
+                binding: ScopeBinding::Unresolved,
             },
         )));
     }
@@ -239,6 +244,7 @@ pub(super) fn try_compile_exists(
                     id: Some(ctx.next_id()),
                     scope_level: 0,
                     segments: vec![PathSegment::Field(s.as_str().into())].into_boxed_slice(),
+                    binding: ScopeBinding::Unresolved,
                 },
             )));
         }
@@ -263,6 +269,7 @@ pub(super) fn try_compile_exists(
             id: Some(ctx.next_id()),
             scope_level: 0,
             segments: segments.into_boxed_slice(),
+            binding: ScopeBinding::Unresolved,
         },
     )))
 }

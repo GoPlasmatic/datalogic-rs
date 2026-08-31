@@ -208,6 +208,17 @@ directory and registering it from `optimize/mod.rs`.
 | `dead_code`      | Elides unreachable arms (`if` with constant condition, etc.)          | `optimize/dead_code.rs`     |
 | `strength`       | Strength reduction (`{"+": [x]}` → `x`, `{"*": [x]}` → `x`)           | `optimize/strength.rs`      |
 | `cse`            | Memoizes structurally identical pure subtrees into per-evaluation slots (`Logic::cse_slot_count()`); never memoizes custom operators, `try` / `throw`, `now`, `fractional`, `sem_ver`, or the per-item bodies of iterating operators. Runs once after the fixpoint loop. | `optimize/cse.rs`           |
+| `scope`          | Resolves every `var` / `val` / `exists` reference to a compile-time `ScopeBinding` (`Root` / `Current` / `Ancestor`), so the runtime reads a precomputed frame target instead of probing `ctx.depth()`. Runs once after CSE; unconditional, so no-fold and traced compiles get the same resolution. | `compile/scope.rs`          |
+
+`compile/scope.rs` also owns `frames_pushed_for_child`, the single source
+of truth for which argument positions execute under a pushed context frame
+(iterator bodies, sort/group_by/distinct key expressions, a multi-arg `try`'s
+catch arm). Both the scope pass and `optimize/cse.rs` read it, so the two can
+never drift. **An operator that pushes a frame must register its argument
+position there**, or variable references beneath it resolve against the wrong
+frame; a debug-only oracle in `operators::variable` cross-checks every
+resolution against the runtime walk and fires on the first test that
+exercises an omission.
 
 The runtime side has its own fast paths that don't need a compile-time
 pass to fire — notably:
