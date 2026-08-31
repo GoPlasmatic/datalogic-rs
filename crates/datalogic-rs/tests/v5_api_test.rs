@@ -310,3 +310,65 @@ fn builtin_shadows_custom_operator_with_same_name() {
     // Built-in `+` ran (3), not the imposter (-1).
     assert_eq!(result, "3");
 }
+
+/// An `and` / `or` / `if` given a non-array argument compiles to the
+/// deferred `InvalidArgs` marker. Its serialised form has to be JSONLogic
+/// the engine can read back, or `to_json` stops being a round-trip: the
+/// old `{"<invalid args>": null}` placeholder re-parsed as an unknown
+/// operator here, and as an ordinary output field in templating mode
+/// (where it silently turned an erroring rule into a successful one).
+#[test]
+fn logic_to_json_round_trips_invalid_args_nodes() {
+    let engine = Engine::new();
+
+    for (rule, op) in [
+        (r#"{"if": null}"#, "if"),
+        (r#"{"if": 5}"#, "if"),
+        (r#"{"and": "x"}"#, "and"),
+        (r#"{"or": {"a": 1}}"#, "or"),
+    ] {
+        let compiled = engine.compile(rule).unwrap();
+        let serialised = compiled.to_json();
+        assert_eq!(
+            serialised,
+            format!("{{\"{op}\": null}}"),
+            "invalid-args form should name the misused operator"
+        );
+
+        // Both the original and its serialisation must fail the same way.
+        let first = engine.eval_str(rule, "null").unwrap_err();
+        let second = engine.eval_str(serialised.as_str(), "null").unwrap_err();
+        assert_eq!(first.operator(), Some(op));
+        assert_eq!(second.operator(), Some(op));
+        assert!(matches!(
+            second.kind,
+            datalogic_rs::ErrorKind::InvalidArguments(_)
+        ));
+    }
+}
+
+/// The templating-mode half of the same bug: an unknown key becomes a
+/// literal output field there, so a placeholder that parses as a key
+/// converted `Err` into `Ok` on the round-trip.
+#[cfg(feature = "templating")]
+#[test]
+fn invalid_args_round_trip_still_errors_under_templating() {
+    let engine = Engine::builder().with_templating(true).build();
+
+    for rule in [r#"{"if": null}"#, r#"{"a": {"if": null}}"#] {
+        let compiled = engine.compile(rule).unwrap();
+        let serialised = compiled.to_json();
+        assert!(
+            serialised.contains("\"if\""),
+            "serialised form should name `if`: {serialised}"
+        );
+        assert!(
+            engine.eval_str(rule, "null").is_err(),
+            "{rule} should error"
+        );
+        assert!(
+            engine.eval_str(serialised.as_str(), "null").is_err(),
+            "round-tripped {serialised} must still error, not become output data"
+        );
+    }
+}

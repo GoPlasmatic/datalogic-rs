@@ -70,6 +70,17 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ### Fixed
 
+- **`to_json` round-trips a misused `and`/`or`/`if` again.** An operator
+  in that family given a non-array argument compiles to a deferred
+  `InvalidArgs` marker, which serialised to the placeholder
+  `{"<invalid args>": null}`. That is not JSONLogic the engine reads
+  back: in templating mode it re-parsed as an ordinary output field, so
+  an erroring rule round-tripped into a *successful* one returning
+  `{"<invalid args>": null}` as data; outside templating it re-parsed as
+  an unknown operator, losing which op actually failed. The marker now
+  serialises as `{"<op>": null}`, which recompiles to the same node and
+  raises the same error. Traces also name the operator instead of the
+  placeholder, so the debugger's expression tree agrees with its steps.
 - **`and` / `or` constant folding dropped dynamic arguments.** With a
   literal in trailing position, folding could discard the dynamic
   arguments before it or strip a trailing identity literal.

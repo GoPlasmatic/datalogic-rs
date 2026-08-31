@@ -72,7 +72,18 @@ pub(crate) fn node_to_json_string(node: &CompiledNode) -> String {
             };
             format!("{{\"missing_some\": [{}, {}]}}", min_str, paths_str)
         }
-        CompiledNode::InvalidArgs { .. } => "{\"<invalid args>\": null}".to_string(),
+        // Re-emit the operator that was misused, not a placeholder. The
+        // node records `op_name` precisely so the runtime error can name
+        // it, and `and` / `or` / `if` reach this variant for *any*
+        // non-array argument — so `null` is a faithful canonical stand-in
+        // and `{"if": null}` recompiles to this very node.
+        //
+        // The previous `{"<invalid args>": null}` was not JSONLogic the
+        // engine could read back: in templating mode it re-parsed as an
+        // ordinary output field, turning an erroring rule into a
+        // successful one, and outside it as an unknown operator, losing
+        // which op actually failed.
+        CompiledNode::InvalidArgs { op_name, .. } => format!("{{\"{}\": null}}", op_name),
     }
 }
 
