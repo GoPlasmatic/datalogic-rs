@@ -317,6 +317,10 @@ fn builtin_shadows_custom_operator_with_same_name() {
 /// old `{"<invalid args>": null}` placeholder re-parsed as an unknown
 /// operator here, and as an ordinary output field in templating mode
 /// (where it silently turned an erroring rule into a successful one).
+///
+/// The marker keeps its raw arguments, so the serialised form is the
+/// offending rule verbatim rather than an approximation.
+#[cfg(feature = "serde_json")]
 #[test]
 fn logic_to_json_round_trips_invalid_args_nodes() {
     let engine = Engine::new();
@@ -326,14 +330,17 @@ fn logic_to_json_round_trips_invalid_args_nodes() {
         (r#"{"if": 5}"#, "if"),
         (r#"{"and": "x"}"#, "and"),
         (r#"{"or": {"a": 1}}"#, "or"),
+        (r#"{"if": {"nested": [1, 2]}}"#, "if"),
     ] {
         let compiled = engine.compile(rule).unwrap();
         let serialised = compiled.to_json();
-        assert_eq!(
-            serialised,
-            format!("{{\"{op}\": null}}"),
-            "invalid-args form should name the misused operator"
-        );
+
+        // Verbatim reproduction of the offending rule (compared as JSON so
+        // formatting differences don't matter).
+        let original: serde_json::Value = serde_json::from_str(rule).unwrap();
+        let reparsed: serde_json::Value = serde_json::from_str(&serialised)
+            .unwrap_or_else(|e| panic!("{serialised} is not valid JSON: {e}"));
+        assert_eq!(reparsed, original, "invalid-args form should be verbatim");
 
         // Both the original and its serialisation must fail the same way.
         let first = engine.eval_str(rule, "null").unwrap_err();
@@ -345,6 +352,30 @@ fn logic_to_json_round_trips_invalid_args_nodes() {
             datalogic_rs::ErrorKind::InvalidArguments(_)
         ));
     }
+}
+
+/// The datetime arm of the same marker: `format_date` / `parse_date` with
+/// a bad *literal* timezone is rejected at compile time via the same
+/// `InvalidArgs` node, but there the arguments are a well-formed array. It
+/// only round-trips because the marker retains them.
+#[cfg(all(feature = "serde_json", feature = "datetime"))]
+#[test]
+fn logic_to_json_round_trips_invalid_timezone_nodes() {
+    let engine = Engine::new();
+    let rule = r#"{"format_date": [{"datetime": "2026-08-17T18:30:00Z"}, "yyyy", "Not/AZone"]}"#;
+
+    let compiled = engine.compile(rule).unwrap();
+    let serialised = compiled.to_json();
+
+    let original: serde_json::Value = serde_json::from_str(rule).unwrap();
+    let reparsed: serde_json::Value = serde_json::from_str(&serialised).unwrap();
+    assert_eq!(reparsed, original);
+
+    let first = engine.eval_str(rule, "null").unwrap_err();
+    let second = engine.eval_str(serialised.as_str(), "null").unwrap_err();
+    assert_eq!(first.operator(), Some("format_date"));
+    assert_eq!(second.operator(), Some("format_date"));
+    assert_eq!(first.to_string(), second.to_string());
 }
 
 /// The templating-mode half of the same bug: an unknown key becomes a

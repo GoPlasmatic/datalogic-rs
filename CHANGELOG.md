@@ -78,9 +78,14 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   an erroring rule round-tripped into a *successful* one returning
   `{"<invalid args>": null}` as data; outside templating it re-parsed as
   an unknown operator, losing which op actually failed. The marker now
-  serialises as `{"<op>": null}`, which recompiles to the same node and
-  raises the same error. Traces also name the operator instead of the
-  placeholder, so the debugger's expression tree agrees with its steps.
+  serialises as the offending rule verbatim, `{"<op>":
+  <args>}`, which recompiles to the same node and raises the same error.
+  The marker retains its raw arguments to make that possible, which also
+  covers `format_date` / `parse_date` rejected for a bad literal
+  timezone, where the arguments are a well-formed array. `trace.rs` no
+  longer carries its own copy of the rendering, so the debugger's
+  expression tree shows the real sub-expression and agrees with its
+  steps. `CompiledNode` stays at 48 bytes.
 - **`and` / `or` constant folding dropped dynamic arguments.** With a
   literal in trailing position, folding could discard the dynamic
   arguments before it or strip a trailing identity literal.

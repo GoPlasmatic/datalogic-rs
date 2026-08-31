@@ -428,21 +428,23 @@ proptest! {
             rule
         );
 
-        // Only compare successful evaluations. A rule that *errors* can
-        // already fail to round-trip on stock v5 behaviour, independent of
-        // any escape: an `InvalidArgs` node serialises to the literal
-        // `{"<invalid args>": null}`, which re-parses in templating mode as
-        // an ordinary output field rather than an error. Asserting Err/Err
-        // here would flag that unrelated gap instead of this feature.
         let first = engine.eval_into::<Value, _, _>(&rule, &data);
         let second = engine.session().eval_into::<Value, _>(&recompiled, &data);
-        if let (Ok(first), Ok(second)) = (first, second) {
-            prop_assert_eq!(
+        match (first, second) {
+            (Ok(first), Ok(second)) => prop_assert_eq!(
                 first,
                 second,
                 "round-trip changed the result of {}",
                 rule
-            );
+            ),
+            (Err(_), Err(_)) => {}
+            (first, second) => prop_assert!(
+                false,
+                "round-trip changed Ok/Err for {}: first={:?} second={:?}",
+                rule,
+                first,
+                second
+            ),
         }
     }
 }

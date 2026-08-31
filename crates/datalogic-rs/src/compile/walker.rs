@@ -156,12 +156,12 @@ fn compile_builtin(
 ) -> Result<CompiledNode> {
     let requires_array = matches!(opcode, OpCode::And | OpCode::Or | OpCode::If);
     if requires_array && !matches!(args_value, OwnedDataValue::Array(_)) {
-        return Ok(invalid_args_marker(opcode, ctx));
+        return Ok(invalid_args_marker(opcode, args_value, ctx));
     }
 
     let args = compile_args(args_value, engine, templating, ctx)?;
 
-    if let Some(node) = try_specialised(op_name, opcode, &args, ctx) {
+    if let Some(node) = try_specialised(op_name, opcode, &args, args_value, ctx) {
         return Ok(node);
     }
 
@@ -218,6 +218,9 @@ fn try_specialised(
     op_name: &str,
     opcode: OpCode,
     args: &[CompiledNode],
+    // Raw pre-compile arguments. Only the datetime timezone check wants
+    // them, to hand `invalid_args_marker` a serialisable copy of the rule.
+    #[cfg_attr(not(feature = "datetime"), allow(unused_variables))] args_value: &OwnedDataValue,
     ctx: &mut CompileCtx,
 ) -> Option<CompiledNode> {
     match opcode {
@@ -232,7 +235,9 @@ fn try_specialised(
         #[cfg(feature = "ext-control")]
         OpCode::Exists => operator::try_compile_exists(args, ctx),
         #[cfg(feature = "datetime")]
-        OpCode::FormatDate | OpCode::ParseDate => try_validate_timezone_literal(opcode, args, ctx),
+        OpCode::FormatDate | OpCode::ParseDate => {
+            try_validate_timezone_literal(opcode, args, args_value, ctx)
+        }
         _ => None,
     }
 }
@@ -247,6 +252,7 @@ fn try_specialised(
 fn try_validate_timezone_literal(
     opcode: OpCode,
     args: &[CompiledNode],
+    args_value: &OwnedDataValue,
     ctx: &mut CompileCtx,
 ) -> Option<CompiledNode> {
     let CompiledNode::Value {
@@ -259,17 +265,24 @@ fn try_validate_timezone_literal(
     if s.parse::<chrono_tz::Tz>().is_ok() {
         return None;
     }
-    Some(invalid_args_marker(opcode, ctx))
+    Some(invalid_args_marker(opcode, args_value, ctx))
 }
 
 /// Build the [`CompiledNode::InvalidArgs`] placeholder for `and` / `or` /
 /// `if` invoked with a non-array argument. Carries the op name forward so
 /// the dispatcher can produce an error that names the failing op rather
-/// than a generic "Invalid Arguments".
-fn invalid_args_marker(opcode: OpCode, ctx: &mut CompileCtx) -> CompiledNode {
+/// than a generic "Invalid Arguments", and the raw `args_value` so
+/// `to_json` can reproduce the offending rule verbatim instead of a
+/// placeholder that re-parses as something else.
+fn invalid_args_marker(
+    opcode: OpCode,
+    args_value: &OwnedDataValue,
+    ctx: &mut CompileCtx,
+) -> CompiledNode {
     CompiledNode::InvalidArgs {
         id: Some(ctx.next_id()),
         op_name: opcode.as_str(),
+        args: Box::new(args_value.clone()),
     }
 }
 
