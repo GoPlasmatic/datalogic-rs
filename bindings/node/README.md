@@ -250,13 +250,36 @@ try {
 Constructor options:
 
 ```ts
-new Engine({ templating: true, config: { preset: 'strict' } })
+new Engine({ templating: true, templateKeyEscape: '$', config: { preset: 'strict' } })
 ```
 
 `templating: true` enables the engine's output-shaping templating mode —
 multi-key objects in a rule compile to templates with embedded JSONLogic.
+`templateKeyEscape` is an optional single-character prefix (see below).
 `config` sets the engine's evaluation configuration; see
 [Engine configuration](#engine-configuration).
+
+### Emitting keys that are operator names
+
+A single-key object is an operator invocation, so in templating mode a key
+naming a built-in (`type`, `map`, `if`, `length`, …) or a registered custom
+operator runs the operator instead of becoming an output field. There is no
+error, just the wrong result. Set `templateKeyEscape` to a single-character
+prefix to recover those keys: exactly one leading prefix is stripped from
+every template key, and an escaped key is never resolved as an operator.
+
+```javascript
+const engine = new Engine({ templating: true, templateKeyEscape: '$' });
+
+engine.compile({ $type: { var: 'x' } }).evaluate({ x: 1 });   // { type: 1 }
+engine.compile({ $$type: 1 }).evaluate({});                   // { $type: 1 }
+engine.compile({ type: { var: 'x' } }).evaluate({ x: 1 });    // 'number' (operator)
+```
+
+Unset by default, so `$`-prefixed keys otherwise pass through verbatim. The
+prefix is one character of your choosing, so payloads that already use `$`
+keys (MongoDB documents, JSON Schema output) can pick `~` or `#` instead.
+Anything other than a one-character string throws at construction.
 
 ## Engine configuration
 

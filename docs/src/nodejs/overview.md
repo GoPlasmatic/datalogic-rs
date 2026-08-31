@@ -65,7 +65,9 @@ const custom = new Engine({}, {
 custom.compile({ double: [21] }).evaluate({}); // 42
 ```
 
-Note the nesting: `preset` and the other evaluation options go under `config`, not at the top level. The options bag only reads `templating` and `config`; other top-level keys are ignored, so `new Engine({ preset: 'strict' })` silently builds a default engine. Unknown keys *inside* `config` throw `errorType: 'ConfigurationError'`. [Configuration](../advanced/configuration.md) covers what each option means.
+Note the nesting: `preset` and the other evaluation options go under `config`, not at the top level. The options bag only reads `templating`, `templateKeyEscape` and `config`; other top-level keys are ignored, so `new Engine({ preset: 'strict' })` silently builds a default engine.
+
+`templateKeyEscape` is a single-character prefix, unset by default, that lets a template emit a key which would otherwise be swallowed as an operator: with `new Engine({ templating: true, templateKeyEscape: '$' })`, `{ $type: { var: 'x' } }` yields `{ type: 1 }` rather than running the `type` operator, and `{ $$type: 1 }` yields `{ $type: 1 }`. Anything other than a one-character string throws `errorType: 'InvalidArguments'`. See [Structured Objects](../advanced/structured-objects.md#emitting-keys-that-are-operator-names). Unknown keys *inside* `config` throw `errorType: 'ConfigurationError'`. [Configuration](../advanced/configuration.md) covers what each option means.
 
 ## Sessions: hot-loop arena reuse
 
@@ -184,7 +186,7 @@ try {
 |---|---|
 | `apply(rule, data)` | One-shot compile + evaluate |
 | `builtinOperatorNames()` | Every built-in operator name this build accepts (includes aliases) |
-| `new Engine({ templating?, config? }, customOperators?)` | Engine with optional templating, evaluation config, and custom operators |
+| `new Engine({ templating?, templateKeyEscape?, config? }, customOperators?)` | Engine with optional templating, template-key escape, evaluation config, and custom operators |
 | `engine.compile(rule)` | Compile to a reusable `Rule` |
 | `engine.eval(rule, data)` / `engine.evalStr(rule, data)` | One-shot, JS value / JSON string out |
 | `engine.evaluateWithTrace(logic, data)` | One-shot with execution trace (JSON strings in and out) |

@@ -58,7 +58,8 @@ fn test_evaluate_conditional() {
 
 #[wasm_bindgen_test]
 fn test_compiled_rule() {
-    let rule = CompiledRule::new(r#"{"+": [{"var": "a"}, {"var": "b"}]}"#, false, None).unwrap();
+    let rule =
+        CompiledRule::new(r#"{"+": [{"var": "a"}, {"var": "b"}]}"#, false, None, None).unwrap();
 
     let result1 = rule.evaluate(r#"{"a": 1, "b": 2}"#).unwrap();
     assert_eq!(result1, "3");
@@ -143,7 +144,7 @@ fn test_runtime_error_carries_structured_fields() {
 
 #[wasm_bindgen_test]
 fn test_input_error_has_stage_property() {
-    let rule = CompiledRule::new(r#"{"var": "x"}"#, false, None).unwrap();
+    let rule = CompiledRule::new(r#"{"var": "x"}"#, false, None, None).unwrap();
     let err = rule.evaluate("not valid json").unwrap_err();
     let error: &js_sys::Error = err.dyn_ref().expect("must be an Error object");
     assert_eq!(String::from(error.name()), "ParseError");
@@ -304,7 +305,8 @@ fn test_data_handle_bad_json_is_parse_error() {
 
 #[wasm_bindgen_test]
 fn test_compiled_rule_evaluate_data() {
-    let rule = CompiledRule::new(r#"{"+": [{"var": "a"}, {"var": "b"}]}"#, false, None).unwrap();
+    let rule =
+        CompiledRule::new(r#"{"+": [{"var": "a"}, {"var": "b"}]}"#, false, None, None).unwrap();
     let handle = DataHandle::new(r#"{"a": 1, "b": 2}"#).unwrap();
 
     // Handles are never consumed by evaluation: same handle, many calls.
@@ -645,11 +647,12 @@ fn test_compiled_rule_accepts_config_string() {
         r#"{"+": [null, 1]}"#,
         false,
         Some(JsValue::from_str(r#"{"preset": "strict"}"#)),
+        None,
     )
     .unwrap();
     assert!(strict.evaluate("{}").is_err());
 
-    let default_rule = CompiledRule::new(r#"{"+": [null, 1]}"#, false, None).unwrap();
+    let default_rule = CompiledRule::new(r#"{"+": [null, 1]}"#, false, None, None).unwrap();
     assert_eq!(default_rule.evaluate("{}").unwrap(), "1");
 }
 
@@ -659,6 +662,7 @@ fn test_invalid_config_rejects_with_configuration_error() {
         r#"{"+": [1, 2]}"#,
         false,
         Some(JsValue::from_str(r#"{"preset": "bogus"}"#)),
+        None,
     ) {
         Ok(_) => panic!("bogus preset must be rejected"),
         Err(e) => e,
@@ -732,4 +736,106 @@ fn test_engine_custom_operator_names() {
             .custom_operator_names()
             .is_empty()
     );
+}
+
+// =============== templateKeyEscape tests ===============
+
+/// Build `{ templating: true, templateKeyEscape: <escape> }`, omitting the
+/// escape key entirely when `escape` is `None` so the "unset" path is
+/// exercised as JS callers actually hit it.
+fn templating_options(escape: Option<&str>) -> JsValue {
+    let obj = Object::new();
+    Reflect::set(
+        &obj,
+        &JsValue::from_str("templating"),
+        &JsValue::from_bool(true),
+    )
+    .unwrap();
+    if let Some(prefix) = escape {
+        Reflect::set(
+            &obj,
+            &JsValue::from_str("templateKeyEscape"),
+            &JsValue::from_str(prefix),
+        )
+        .unwrap();
+    }
+    obj.into()
+}
+
+#[wasm_bindgen_test]
+fn test_template_key_escape_emits_operator_named_keys() {
+    let engine = Engine::new(templating_options(Some("$"))).unwrap();
+
+    // A key naming a builtin is emitted instead of dispatching the operator.
+    let rule = engine.compile(r#"{"$type": {"var": "x"}}"#).unwrap();
+    assert_eq!(rule.evaluate(r#"{"x": 1}"#).unwrap(), r#"{"type":1}"#);
+
+    // Doubling the sigil emits a literal one.
+    let rule = engine.compile(r#"{"$$type": 1}"#).unwrap();
+    assert_eq!(rule.evaluate("{}").unwrap(), r#"{"$type":1}"#);
+
+    // Unescaped, the operator still wins.
+    let rule = engine.compile(r#"{"type": {"var": "x"}}"#).unwrap();
+    assert_eq!(rule.evaluate(r#"{"x": 1}"#).unwrap(), r#""number""#);
+}
+
+#[wasm_bindgen_test]
+fn test_template_key_escape_is_opt_in() {
+    // Option absent: $-prefixed keys pass through verbatim, as before.
+    let engine = Engine::new(templating_options(None)).unwrap();
+    let rule = engine.compile(r#"{"$type": 1}"#).unwrap();
+    assert_eq!(rule.evaluate("{}").unwrap(), r#"{"$type":1}"#);
+}
+
+#[wasm_bindgen_test]
+fn test_template_key_escape_is_configurable() {
+    let engine = Engine::new(templating_options(Some("~"))).unwrap();
+
+    let rule = engine.compile(r#"{"~type": 1}"#).unwrap();
+    assert_eq!(rule.evaluate("{}").unwrap(), r#"{"type":1}"#);
+
+    // A different sigil is left alone.
+    let rule = engine.compile(r#"{"$type": 1}"#).unwrap();
+    assert_eq!(rule.evaluate("{}").unwrap(), r#"{"$type":1}"#);
+}
+
+#[wasm_bindgen_test]
+fn test_template_key_escape_rejects_bad_prefix() {
+    for bad in ["", "$$", "esc"] {
+        let err = match Engine::new(templating_options(Some(bad))) {
+            Ok(_) => panic!("expected {bad:?} to be rejected"),
+            Err(e) => e,
+        };
+        let message = Reflect::get(&err, &JsValue::from_str("message"))
+            .unwrap()
+            .as_string()
+            .unwrap_or_default();
+        assert!(
+            message.contains("exactly one character"),
+            "expected {bad:?} to be rejected, got: {message}"
+        );
+    }
+
+    // A multi-byte character is still a single char and must be accepted.
+    let engine = Engine::new(templating_options(Some("🔑"))).unwrap();
+    let rule = engine.compile(r#"{"🔑type": 1}"#).unwrap();
+    assert_eq!(rule.evaluate("{}").unwrap(), r#"{"type":1}"#);
+}
+
+#[wasm_bindgen_test]
+fn test_compiled_rule_template_key_escape() {
+    // The positional constructor takes the escape as its 4th argument,
+    // alongside `config` — both are engine-shaping options.
+    let rule = CompiledRule::new(
+        r#"{"$type": {"var": "x"}}"#,
+        true,
+        None,
+        Some(JsValue::from_str("$")),
+    )
+    .unwrap();
+    assert_eq!(rule.evaluate(r#"{"x": 1}"#).unwrap(), r#"{"type":1}"#);
+
+    // Omitting it keeps the old behaviour.
+    let rule = CompiledRule::new(r#"{"$type": 1}"#, true, None, None).unwrap();
+    assert_eq!(rule.evaluate("{}").unwrap(), r#"{"$type":1}"#);
 }

@@ -126,7 +126,7 @@ The WASM binding mirrors the Rust engine's
 | Tier        | Entry point                            | Use when                                                     |
 |-------------|----------------------------------------|--------------------------------------------------------------|
 | One-shot    | `evaluate(logic, data, templating)`    | Ad-hoc evaluation, one rule + one data shape                 |
-| Compile once | `new CompiledRule(logic, templating, config?)` | Same rule evaluated against many data inputs          |
+| Compile once | `new CompiledRule(logic, templating, config?, templateKeyEscape?)` | Same rule evaluated against many data inputs |
 | Hot loop    | `engine.session()`                     | Tight loops; one arena reused across evaluations             |
 | Parse once  | `new DataHandle(json)`                 | Same payload evaluated repeatedly (rule sets, bulk scoring); typed + batch results |
 | Traced       | `evaluateWithTrace(logic, data, …)` / `engine.evaluateWithTrace(logic, data)` | Debugging, inspector UIs, anything that visualises execution |
@@ -172,7 +172,7 @@ rule.evaluate('{"age": 21}'); // "true"
 rule.evaluate('{"age": 16}'); // "false"
 ```
 
-**Constructor:** `new CompiledRule(logic, templating, config?)`
+**Constructor:** `new CompiledRule(logic, templating, config?, templateKeyEscape?)`
 
 - `logic` *(string)* — JSON string containing the JSONLogic expression.
 - `templating` *(boolean)* — Enable templating mode.
@@ -264,8 +264,32 @@ engine's config and operators, and `customOperatorNames()` (below).
 the Worker that created it (see Threading below).
 
 The full options bag is
-`{ templating?: boolean, customOperators?: Record<string, fn>, config?: string | object }`.
+`{ templating?: boolean, templateKeyEscape?: string, customOperators?: Record<string, fn>, config?: string | object }`.
 See [Engine configuration](#engine-configuration) for `config`.
+
+### Emitting keys that are operator names
+
+A single-key object is an operator invocation, so in templating mode a key
+naming a built-in (`type`, `map`, `if`, `length`, ...) or a registered
+custom operator runs the operator instead of becoming an output field.
+There is no error, just the wrong result. Set `templateKeyEscape` to a
+single-character prefix to recover those keys: exactly one leading prefix
+is stripped from every template key, and an escaped key is never resolved
+as an operator.
+
+```javascript
+const engine = new Engine({ templating: true, templateKeyEscape: '$' });
+
+engine.evalStr('{"$type": {"var": "x"}}', '{"x": 1}'); // {"type":1}
+engine.evalStr('{"$$type": 1}', '{}');                 // {"$type":1}
+engine.evalStr('{"type": {"var": "x"}}', '{"x": 1}');  // "number" (operator)
+```
+
+Unset by default, so `$`-prefixed keys otherwise pass through verbatim.
+The prefix is one character of your choosing, so payloads that already use
+`$` keys (MongoDB documents, JSON Schema output) can pick `~` or `#`
+instead. Anything other than a one-character string throws at
+construction. `CompiledRule` takes the same value as its fourth argument.
 
 ### Operator names
 

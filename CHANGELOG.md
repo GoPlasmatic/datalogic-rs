@@ -12,6 +12,16 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ### Added
 
+- **WASM and Node: `templateKeyEscape` engine option.** Exposes the core
+  crate's `with_template_key_escape` through both JS bindings, so a
+  template can emit a key that would otherwise be swallowed as an
+  operator: with `new Engine({ templating: true, templateKeyEscape: '$' })`,
+  `{"$type": ...}` emits the key `type` instead of running the `type`
+  operator and `{"$$type": ...}` emits a literal `$type`. Unset by
+  default. WASM also accepts it as `CompiledRule`'s fourth argument,
+  alongside `config`. Anything other than a one-character string is
+  rejected at construction (`InvalidArguments`) rather than silently
+  ignored.
 - **Templating: opt-in `$`-prefix escape for object keys.**
   `Engine::builder().with_template_key_escape('$')` makes exactly one
   leading prefix strip from every template key, and stops an escaped key

@@ -12,17 +12,49 @@ use js_sys::{Array, Function, Object, Reflect};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
-/// Build an [`RsEngine`] honoring the `templating` flag and an optional
-/// [`EvaluationConfig`] override.
-fn make_engine(templating: bool, config: Option<EvaluationConfig>) -> RsEngine {
+/// Build an [`RsEngine`] honoring the `templating` flag, an optional
+/// template-key escape prefix, and an optional [`EvaluationConfig`]
+/// override.
+fn make_engine(
+    templating: bool,
+    key_escape: Option<char>,
+    config: Option<EvaluationConfig>,
+) -> RsEngine {
     let mut builder = RsEngine::builder();
     if templating {
         builder = builder.with_templating(true);
+    }
+    if let Some(prefix) = key_escape {
+        builder = builder.with_template_key_escape(prefix);
     }
     if let Some(config) = config {
         builder = builder.with_config(config);
     }
     builder.build()
+}
+
+/// Decode a `templateKeyEscape` input: `undefined` / `null` means unset,
+/// otherwise a string of exactly one character. Rejecting the empty and
+/// multi-character cases here keeps the failure at construction time with
+/// a clear message, rather than silently ignoring a typo'd option.
+fn parse_key_escape(value: &JsValue) -> Result<Option<char>, JsValue> {
+    if value.is_undefined() || value.is_null() {
+        return Ok(None);
+    }
+    let s = value.as_string().ok_or_else(|| {
+        input_err_to_js(
+            "parse-options",
+            "options.templateKeyEscape must be a single-character string",
+        )
+    })?;
+    let mut chars = s.chars();
+    match (chars.next(), chars.next()) {
+        (Some(c), None) => Ok(Some(c)),
+        _ => Err(input_err_to_js(
+            "parse-options",
+            "options.templateKeyEscape must be exactly one character",
+        )),
+    }
 }
 
 /// Serialize an `Error` (the merged structured form) for the JS boundary.
@@ -219,7 +251,7 @@ pub fn builtin_operator_names() -> Vec<String> {
 /// `detailJson`) ride along as own properties.
 #[wasm_bindgen]
 pub fn evaluate(logic: &str, data: &str, templating: bool) -> Result<String, JsValue> {
-    make_engine(templating, None)
+    make_engine(templating, None, None)
         .eval_str(logic, data)
         .map_err(|e| engine_err_to_js(&e))
 }
@@ -249,7 +281,7 @@ pub fn evaluate(logic: &str, data: &str, templating: bool) -> Result<String, JsV
 /// [`Engine::evaluate_with_trace`].
 #[wasm_bindgen(js_name = evaluateWithTrace)]
 pub fn evaluate_with_trace(logic: &str, data: &str, templating: bool) -> Result<String, JsValue> {
-    let engine = make_engine(templating, None);
+    let engine = make_engine(templating, None, None);
     let run = engine.trace().eval_str(logic, data);
     Ok(traced_run_to_json(&run))
 }
@@ -321,21 +353,32 @@ impl CompiledRule {
     ///   | `"strict"`), `division_by_zero`, `truthy_evaluator`,
     ///   `numeric_coercion`, `max_recursion_depth`. Omit (or pass
     ///   `undefined` / `null`) for default semantics.
+    /// * `templateKeyEscape` - Optional single-character prefix that marks a
+    ///   template key as a literal output field instead of an operator
+    ///   invocation. Unset by default. With `"$"`, `{"$type": ...}` emits the
+    ///   key `type` rather than running the `type` operator, and `{"$$type":
+    ///   ...}` emits a literal `$type`. Only meaningful with `templating`.
     ///
     /// # Throws
-    /// An `Error` named `ParseError` for malformed logic, or
-    /// `ConfigurationError` for an invalid config.
+    /// An `Error` named `ParseError` for malformed logic,
+    /// `ConfigurationError` for an invalid config, or `InvalidArguments`
+    /// for a `templateKeyEscape` that is not exactly one character.
     #[wasm_bindgen(constructor)]
     pub fn new(
         logic: &str,
         templating: bool,
         config: Option<JsValue>,
+        template_key_escape: Option<JsValue>,
     ) -> Result<CompiledRule, JsValue> {
         let config = match &config {
             Some(value) => parse_config_value(value)?,
             None => None,
         };
-        let engine = make_engine(templating, config);
+        let key_escape = match &template_key_escape {
+            Some(value) => parse_key_escape(value)?,
+            None => None,
+        };
+        let engine = make_engine(templating, key_escape, config);
         let compiled = engine
             .compile_arc(logic)
             .map_err(|e| engine_err_to_js(&e))?;
@@ -464,10 +507,21 @@ impl CustomOperator for JsOperator {
 /// ```ts
 /// {
 ///   templating?: boolean,
+///   templateKeyEscape?: string,
 ///   customOperators?: Record<string, (argsJson: string) => string>,
 ///   config?: string | object
 /// }
 /// ```
+///
+/// `templateKeyEscape` is a single-character prefix, unset by default. In
+/// templating mode a single-key object is always an operator invocation, so
+/// a key naming a built-in (`type`, `map`, `if`, `length`, …) or a
+/// registered custom operator can never be emitted as an output field. With
+/// the escape set, exactly one leading prefix is stripped from every
+/// template key and an escaped key is never resolved as an operator: with
+/// `"$"`, `{"$type": ...}` emits the key `type` and `{"$$type": ...}` emits
+/// a literal `$type`. Anything other than a one-character string rejects
+/// with `InvalidArguments`.
 ///
 /// `config` tunes evaluation semantics. Pass either a JSON string or a
 /// plain object; accepted keys (all optional): `preset` (`"default"` |
@@ -494,10 +548,13 @@ pub struct Engine {
 impl Engine {
     #[wasm_bindgen(constructor)]
     pub fn new(options: JsValue) -> Result<Engine, JsValue> {
-        let (templating, custom_ops, config) = parse_engine_options(&options)?;
+        let (templating, key_escape, custom_ops, config) = parse_engine_options(&options)?;
         let mut builder = RsEngine::builder();
         if templating {
             builder = builder.with_templating(true);
+        }
+        if let Some(prefix) = key_escape {
+            builder = builder.with_template_key_escape(prefix);
         }
         if let Some(config) = config {
             builder = builder.with_config(config);
@@ -1056,9 +1113,17 @@ fn outcomes_to_js(outcomes: &[BatchOutcome]) -> Result<Array, JsValue> {
 #[allow(clippy::type_complexity)]
 fn parse_engine_options(
     options: &JsValue,
-) -> Result<(bool, Vec<(String, Function)>, Option<EvaluationConfig>), JsValue> {
+) -> Result<
+    (
+        bool,
+        Option<char>,
+        Vec<(String, Function)>,
+        Option<EvaluationConfig>,
+    ),
+    JsValue,
+> {
     if options.is_null() || options.is_undefined() {
-        return Ok((false, Vec::new(), None));
+        return Ok((false, None, Vec::new(), None));
     }
     let obj: &Object = options
         .dyn_ref::<Object>()
@@ -1072,6 +1137,11 @@ fn parse_engine_options(
         Err(_) => false,
     };
 
+    let key_escape = match Reflect::get(obj, &JsValue::from_str("templateKeyEscape")) {
+        Ok(v) => parse_key_escape(&v)?,
+        Err(_) => None,
+    };
+
     let custom_ops = match Reflect::get(obj, &JsValue::from_str("customOperators")) {
         Ok(v) if v.is_undefined() || v.is_null() => Vec::new(),
         Ok(v) => parse_custom_operators(&v)?,
@@ -1083,7 +1153,7 @@ fn parse_engine_options(
         Err(_) => None,
     };
 
-    Ok((templating, custom_ops, config))
+    Ok((templating, key_escape, custom_ops, config))
 }
 
 fn parse_custom_operators(v: &JsValue) -> Result<Vec<(String, Function)>, JsValue> {

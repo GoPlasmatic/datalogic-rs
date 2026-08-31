@@ -40,6 +40,21 @@ pub struct EngineOptions {
     /// values throw at construction with
     /// `errorType: "ConfigurationError"`.
     pub config: Option<Value>,
+    /// Single-character prefix that marks a template key as a literal
+    /// output field instead of an operator invocation. Unset by default.
+    ///
+    /// In templating mode a single-key object is always an operator
+    /// invocation, so a key naming a built-in (`type`, `map`, `if`,
+    /// `length`, …) or a registered custom operator can never be emitted
+    /// as an output field. With this set, exactly one leading prefix is
+    /// stripped from every template key and an escaped key is never
+    /// resolved as an operator: with `"$"`, `{"$type": ...}` emits the key
+    /// `type` and `{"$$type": ...}` emits a literal `$type`.
+    ///
+    /// Only meaningful together with `templating`. Anything other than a
+    /// one-character string throws at construction with
+    /// `errorType: "InvalidArguments"`.
+    pub template_key_escape: Option<String>,
 }
 
 /// JSONLogic compile/evaluate engine.
@@ -85,15 +100,37 @@ impl Engine {
         options: Option<EngineOptions>,
         custom_operators: Option<HashMap<String, FunctionRef<String, String>>>,
     ) -> Result<Self> {
-        let (templating, config) = match options {
-            Some(o) => (o.templating.unwrap_or(false), o.config),
-            None => (false, None),
+        let (templating, config, key_escape) = match options {
+            Some(o) => (
+                o.templating.unwrap_or(false),
+                o.config,
+                o.template_key_escape,
+            ),
+            None => (false, None, None),
         };
         let mut builder = if templating {
             RsEngine::builder().with_templating(true)
         } else {
             RsEngine::builder()
         };
+        // Reject a mis-typed escape at construction rather than silently
+        // ignoring it: an option that looks accepted but does nothing is
+        // worse than a loud failure.
+        if let Some(prefix) = key_escape {
+            let mut chars = prefix.chars();
+            match (chars.next(), chars.next()) {
+                (Some(c), None) => builder = builder.with_template_key_escape(c),
+                _ => {
+                    return Err(engine_error(
+                        &env,
+                        &DlError::invalid_arguments(
+                            "templateKeyEscape must be exactly one character",
+                        ),
+                        None,
+                    ));
+                }
+            }
+        }
         // JS `null` arrives as `Value::Null` rather than `None` through
         // the serde bridge; treat both as "not provided", matching the
         // other optional fields.

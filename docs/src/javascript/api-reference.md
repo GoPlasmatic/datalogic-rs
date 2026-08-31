@@ -200,7 +200,7 @@ Pre-compiled rule for efficient repeated evaluation. `CompiledRule` builds its o
 #### Constructor
 
 ```typescript
-new CompiledRule(logic: string, templating: boolean, config?: string | object)
+new CompiledRule(logic: string, templating: boolean, config?: string | object, templateKeyEscape?: string)
 ```
 
 **Parameters:**
@@ -264,6 +264,7 @@ A configurable engine: templating mode, an evaluation config, and custom operato
 ```typescript
 new Engine(options?: {
   templating?: boolean;
+  templateKeyEscape?: string;
   customOperators?: Record<string, (argsJson: string) => string>;
   config?: string | object;
 })
@@ -271,6 +272,7 @@ new Engine(options?: {
 
 **Parameters:**
 - `templating` - Enable templating mode for every rule this engine compiles
+- `templateKeyEscape` - Single-character prefix that marks a template key as a literal output field rather than an operator invocation. Unset by default. With `'$'`, `{"$type": ...}` emits the key `type` instead of running the `type` operator, and `{"$$type": ...}` emits a literal `$type`. Only meaningful with `templating`; anything other than a one-character string throws. See [Structured Objects](../advanced/structured-objects.md#emitting-keys-that-are-operator-names)
 - `customOperators` - Map of operator name to callback. Each callback receives the pre-evaluated arguments as a JSON-array string and must return a JSON-value string (`null`/`undefined` count as JSON `null`). A thrown exception or a non-string return becomes a runtime evaluation error. **Built-ins win:** registering a built-in name (`+`, `if`, `var`, ...) has no effect.
 - `config` - Evaluation config; see [Engine configuration](#engine-configuration)
 

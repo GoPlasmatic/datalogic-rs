@@ -90,3 +90,46 @@ test('rule string-data path matches object-data path', () => {
   const data = { x: 10, y: 32 };
   assert.equal(rule.evaluate(data), rule.evaluate(JSON.stringify(data)));
 });
+
+test('templateKeyEscape emits operator-named keys', () => {
+  const engine = new Engine({ templating: true, templateKeyEscape: '$' });
+
+  // A key naming a builtin is emitted instead of dispatching the operator.
+  assert.deepEqual(
+    engine.compile({ $type: { var: 'x' } }).evaluate({ x: 1 }),
+    { type: 1 }
+  );
+  // Doubling the sigil emits a literal one.
+  assert.deepEqual(engine.compile({ $$type: 1 }).evaluate({}), { $type: 1 });
+  // Unescaped, the operator still wins.
+  assert.equal(engine.compile({ type: { var: 'x' } }).evaluate({ x: 1 }), 'number');
+  // Stripping is uniform across arities.
+  assert.deepEqual(
+    engine.compile({ $type: 1, plain: 2 }).evaluate({}),
+    { type: 1, plain: 2 }
+  );
+});
+
+test('templateKeyEscape is opt-in and configurable', () => {
+  // Not set: $-prefixed keys pass through verbatim (5.3.0 behaviour).
+  const plain = new Engine({ templating: true });
+  assert.deepEqual(plain.compile({ $type: 1 }).evaluate({}), { $type: 1 });
+
+  // A different prefix leaves $ alone.
+  const tilde = new Engine({ templating: true, templateKeyEscape: '~' });
+  assert.deepEqual(tilde.compile({ '~type': 1 }).evaluate({}), { type: 1 });
+  assert.deepEqual(tilde.compile({ $type: 1 }).evaluate({}), { $type: 1 });
+});
+
+test('templateKeyEscape rejects a non-single-character prefix', () => {
+  for (const bad of ['', '$$', 'esc']) {
+    assert.throws(
+      () => new Engine({ templating: true, templateKeyEscape: bad }),
+      /exactly one character/,
+      `expected ${JSON.stringify(bad)} to be rejected`
+    );
+  }
+  // A multi-byte character is a single char and must be accepted.
+  const emoji = new Engine({ templating: true, templateKeyEscape: '🔑' });
+  assert.deepEqual(emoji.compile({ '🔑type': 1 }).evaluate({}), { type: 1 });
+});
