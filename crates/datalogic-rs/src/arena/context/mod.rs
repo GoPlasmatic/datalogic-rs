@@ -55,6 +55,12 @@ pub(crate) struct ContextStack<'a> {
     root: &'a DataValue<'a>,
     top: Option<ContextFrame<'a>>,
     parents: SmallVec<[ContextFrame<'a>; INLINE_FRAMES]>,
+    /// Live frame count, maintained explicitly rather than derived from
+    /// `parents.len() + top.is_some()`. Keeping it independent is what lets
+    /// `parents` stop being populated for rules that never read an ancestor
+    /// frame — the count still has to be exact, because `get_at_level`'s
+    /// clamp and the public `EvalContext::depth()` both read it.
+    depth: u32,
     /// Breadcrumb of `CompiledNode::id`s accumulated as errors unwind.
     error_path: Vec<u32>,
     /// Per-evaluation CSE memo slots, indexed by `CseData::slot`. Fully
@@ -102,6 +108,7 @@ impl<'a> ContextStack<'a> {
             root,
             top: None,
             parents: SmallVec::new(),
+            depth: 0,
             error_path: Vec::new(),
             cse_slots: SmallVec::new(),
             #[cfg(feature = "error-handling")]
@@ -225,7 +232,12 @@ impl<'a> ContextStack<'a> {
     /// Current depth (number of pushed iteration frames).
     #[inline]
     pub(crate) fn depth(&self) -> usize {
-        self.parents.len() + usize::from(self.top.is_some())
+        debug_assert_eq!(
+            self.depth as usize,
+            self.parents.len() + usize::from(self.top.is_some()),
+            "explicit depth counter drifted from the frame storage"
+        );
+        self.depth as usize
     }
 
     // ----- CSE memo slots ---------------------------------------------------
@@ -291,6 +303,7 @@ impl<'a> ContextStack<'a> {
         if let Some(prev) = self.top.replace(frame) {
             self.parents.push(prev);
         }
+        self.depth += 1;
     }
 
     #[inline]
@@ -347,6 +360,7 @@ impl<'a> ContextStack<'a> {
         let out = self.top.take();
         if out.is_some() {
             self.top = self.parents.pop();
+            self.depth -= 1;
         }
         out
     }
