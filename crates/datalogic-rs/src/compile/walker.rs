@@ -74,10 +74,16 @@ fn compile_multi_key_object(
                     .map(|compiled_val| (key.clone(), compiled_val))
             })
             .collect::<Result<Vec<_>>>()?;
+        // Multi-key object keys are already literal, so the escape changes
+        // nothing about *routing* here — it only has to be recorded so the
+        // evaluator strips the prefix and folding leaves the node alone.
+        let escape = engine.and_then(|e| e.template_key_escape());
+        let has_escaped_keys = key_escape_present(&fields, escape);
         return Ok(CompiledNode::StructuredObject(Box::new(
             crate::node::StructuredObjectData {
                 id: Some(ctx.next_id()),
                 fields: fields.into_boxed_slice(),
+                has_escaped_keys,
             },
         )));
     }
@@ -95,6 +101,20 @@ fn compile_operator_invocation(
     templating: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
+    // The escape check runs *before* operator resolution — that ordering is
+    // the whole feature. It's what lets an escaped key name a built-in
+    // (`$type`) or a registered custom operator (`$my_op`) and still come
+    // out as a literal output field.
+    #[cfg(feature = "templating")]
+    if templating {
+        // No let-chain here: the crate's MSRV is 1.85 and they only
+        // stabilised in 1.88.
+        let escape = engine.and_then(|e| e.template_key_escape());
+        if escape.is_some_and(|c| op_name.starts_with(c)) {
+            return single_field_object(op_name, args_value, engine, templating, true, ctx);
+        }
+    }
+
     if let Ok(opcode) = op_name.parse::<OpCode>() {
         return compile_builtin(op_name, opcode, args_value, engine, templating, ctx);
     }
@@ -136,12 +156,12 @@ fn compile_builtin(
 ) -> Result<CompiledNode> {
     let requires_array = matches!(opcode, OpCode::And | OpCode::Or | OpCode::If);
     if requires_array && !matches!(args_value, OwnedDataValue::Array(_)) {
-        return Ok(invalid_args_marker(opcode, ctx));
+        return Ok(invalid_args_marker(opcode, args_value, ctx));
     }
 
     let args = compile_args(args_value, engine, templating, ctx)?;
 
-    if let Some(node) = try_specialised(op_name, opcode, &args, ctx) {
+    if let Some(node) = try_specialised(op_name, opcode, &args, args_value, ctx) {
         return Ok(node);
     }
 
@@ -198,6 +218,9 @@ fn try_specialised(
     op_name: &str,
     opcode: OpCode,
     args: &[CompiledNode],
+    // Raw pre-compile arguments. Only the datetime timezone check wants
+    // them, to hand `invalid_args_marker` a serialisable copy of the rule.
+    #[cfg_attr(not(feature = "datetime"), allow(unused_variables))] args_value: &OwnedDataValue,
     ctx: &mut CompileCtx,
 ) -> Option<CompiledNode> {
     match opcode {
@@ -212,7 +235,9 @@ fn try_specialised(
         #[cfg(feature = "ext-control")]
         OpCode::Exists => operator::try_compile_exists(args, ctx),
         #[cfg(feature = "datetime")]
-        OpCode::FormatDate | OpCode::ParseDate => try_validate_timezone_literal(opcode, args, ctx),
+        OpCode::FormatDate | OpCode::ParseDate => {
+            try_validate_timezone_literal(opcode, args, args_value, ctx)
+        }
         _ => None,
     }
 }
@@ -227,6 +252,7 @@ fn try_specialised(
 fn try_validate_timezone_literal(
     opcode: OpCode,
     args: &[CompiledNode],
+    args_value: &OwnedDataValue,
     ctx: &mut CompileCtx,
 ) -> Option<CompiledNode> {
     let CompiledNode::Value {
@@ -239,17 +265,24 @@ fn try_validate_timezone_literal(
     if s.parse::<chrono_tz::Tz>().is_ok() {
         return None;
     }
-    Some(invalid_args_marker(opcode, ctx))
+    Some(invalid_args_marker(opcode, args_value, ctx))
 }
 
 /// Build the [`CompiledNode::InvalidArgs`] placeholder for `and` / `or` /
 /// `if` invoked with a non-array argument. Carries the op name forward so
 /// the dispatcher can produce an error that names the failing op rather
-/// than a generic "Invalid Arguments".
-fn invalid_args_marker(opcode: OpCode, ctx: &mut CompileCtx) -> CompiledNode {
+/// than a generic "Invalid Arguments", and the raw `args_value` so
+/// `to_json` can reproduce the offending rule verbatim instead of a
+/// placeholder that re-parses as something else.
+fn invalid_args_marker(
+    opcode: OpCode,
+    args_value: &OwnedDataValue,
+    ctx: &mut CompileCtx,
+) -> CompiledNode {
     CompiledNode::InvalidArgs {
         id: Some(ctx.next_id()),
         op_name: opcode.as_str(),
+        args: Box::new(args_value.clone()),
     }
 }
 
@@ -300,14 +333,43 @@ fn compile_templating_unknown(
             return Ok(custom_operator_node(op_name, args, ctx));
         }
     }
-    let compiled_val = compile_node(args_value, engine, templating, ctx)?;
-    let fields = vec![(op_name.to_string(), compiled_val)].into_boxed_slice();
+    single_field_object(op_name, args_value, engine, templating, false, ctx)
+}
+
+/// Compile `{key: value}` into a one-field structured-object template.
+///
+/// Shared by the two templating routes that produce one: an unknown
+/// operator key (which is just a literal field), and an escaped key (which
+/// bypassed operator resolution entirely). `escaped` records which route
+/// arrived here — see [`crate::node::StructuredObjectData::has_escaped_keys`].
+#[cfg(feature = "templating")]
+fn single_field_object(
+    key: &str,
+    value: &OwnedDataValue,
+    engine: Option<&Engine>,
+    templating: bool,
+    escaped: bool,
+    ctx: &mut CompileCtx,
+) -> Result<CompiledNode> {
+    let compiled_val = compile_node(value, engine, templating, ctx)?;
+    let fields = vec![(key.to_string(), compiled_val)].into_boxed_slice();
     Ok(CompiledNode::StructuredObject(Box::new(
         crate::node::StructuredObjectData {
             id: Some(ctx.next_id()),
             fields,
+            has_escaped_keys: escaped,
         },
     )))
+}
+
+/// Whether any field key carries `escape`. `None` (no escape configured)
+/// short-circuits to `false` so unescaped templates skip the scan.
+#[cfg(feature = "templating")]
+fn key_escape_present(fields: &[(String, CompiledNode)], escape: Option<char>) -> bool {
+    let Some(escape) = escape else {
+        return false;
+    };
+    fields.iter().any(|(key, _)| key.starts_with(escape))
 }
 
 /// Compile a literal array. When all elements are static and an engine is

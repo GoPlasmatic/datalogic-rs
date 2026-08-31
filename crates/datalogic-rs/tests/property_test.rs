@@ -79,6 +79,15 @@ fn arb_json() -> impl Strategy<Value = Value> {
     })
 }
 
+/// A template key carrying 1–3 leading `$` sigils, paired with the number
+/// of sigils and the un-prefixed name. Used to check the strip-one law
+/// across the whole key pool (which is mostly operator names, so most
+/// generated keys are exactly the collisions the escape exists for).
+#[cfg(feature = "templating")]
+fn arb_escaped_key() -> impl Strategy<Value = (usize, String)> {
+    (1usize..=3, arb_key())
+}
+
 /// A small pure aggregate over a generated var path — the shape the CSE
 /// pass targets. Operator and initial accumulator vary so near-twin
 /// classes (e.g. `0` vs `0.0` initials) get generated too.
@@ -306,6 +315,135 @@ proptest! {
                 data_str,
                 optimized,
                 traced
+            ),
+        }
+    }
+
+    /// Property E: the strip-one law. For any key `k` and any sigil count
+    /// `n >= 1`, a template `{"$"*n + k: v}` evaluated with the `$` escape
+    /// must produce an object whose sole key is `"$"*(n-1) + k` — whatever
+    /// `k` is, including every operator name in the pool. Cases where the
+    /// *value* fails to evaluate surface as `Err` and are skipped; the law
+    /// is about the key.
+    #[cfg(feature = "templating")]
+    #[test]
+    fn escaped_key_strips_exactly_one_sigil(
+        (sigils, name) in arb_escaped_key(),
+        value in arb_json(),
+        data in arb_json(),
+    ) {
+        let engine = Engine::builder()
+            .with_templating(true)
+            .with_template_key_escape('$')
+            .build();
+
+        let source_key = format!("{}{}", "$".repeat(sigils), name);
+        let expected_key = format!("{}{}", "$".repeat(sigils - 1), name);
+        let rule = json!({ source_key.clone(): value });
+
+        if let Ok(result) = engine.eval_into::<Value, _, _>(&rule, &data) {
+            let obj = result.as_object().expect("an escaped key yields an object");
+            let keys: Vec<&String> = obj.keys().collect();
+            prop_assert_eq!(
+                keys,
+                vec![&expected_key],
+                "`{}` should emit the single key `{}`",
+                source_key,
+                expected_key
+            );
+        }
+    }
+
+    /// Property F: backward compatibility. `arb_json` never generates a
+    /// key starting with `$`, so configuring the escape must not change
+    /// any result: templating-with-escape and templating-alone have to
+    /// agree on every generated rule, `Ok` values and `Err` alike.
+    #[cfg(feature = "templating")]
+    #[test]
+    fn escape_does_not_disturb_unescaped_rules(rule in arb_json(), data in arb_json()) {
+        let plain = Engine::builder().with_templating(true).build();
+        let escaped = Engine::builder()
+            .with_templating(true)
+            .with_template_key_escape('$')
+            .build();
+
+        let plain_result = plain.eval_into::<Value, _, _>(&rule, &data);
+        let escaped_result = escaped.eval_into::<Value, _, _>(&rule, &data);
+
+        match (plain_result, escaped_result) {
+            (Ok(plain_result), Ok(escaped_result)) => prop_assert_eq!(
+                plain_result,
+                escaped_result,
+                "escape changed the result of an unescaped rule: {}",
+                rule
+            ),
+            (Err(_), Err(_)) => {}
+            (plain_result, escaped_result) => prop_assert!(
+                false,
+                "escape changed Ok/Err for an unescaped rule {}: plain={:?} escaped={:?}",
+                rule,
+                plain_result,
+                escaped_result
+            ),
+        }
+    }
+
+    /// Property G: `to_json` is a fixed point for escaped templates, and
+    /// re-compiling it evaluates identically. This is the invariant that
+    /// forces the escape to be applied at evaluation time: a compile-time
+    /// strip would serialise a bare operator name and change meaning on
+    /// the next parse.
+    #[cfg(feature = "templating")]
+    #[test]
+    fn escaped_template_round_trips_through_to_json(
+        (sigils, name) in arb_escaped_key(),
+        value in arb_json(),
+        data in arb_json(),
+    ) {
+        let engine = Engine::builder()
+            .with_templating(true)
+            .with_template_key_escape('$')
+            .build();
+
+        let source_key = format!("{}{}", "$".repeat(sigils), name);
+        let rule = json!({ source_key: value });
+
+        let Ok(compiled) = engine.compile(&rule) else { return Ok(()) };
+        let serialized = compiled.to_json();
+        let Ok(recompiled) = engine.compile(&serialized) else { return Ok(()) };
+
+        // Compare parsed JSON, not raw bytes: the serializer legitimately
+        // emits different spacing depending on which path produced a node
+        // (a folded literal goes through datavalue's compact form, the
+        // walker joins with ", "). Structure is what has to be stable —
+        // and it is what would show an escape being stripped.
+        let serialized_json: Value =
+            serde_json::from_str(&serialized).expect("engine emits valid JSON");
+        let reserialized_json: Value =
+            serde_json::from_str(&recompiled.to_json()).expect("engine emits valid JSON");
+        prop_assert_eq!(
+            serialized_json,
+            reserialized_json,
+            "to_json is not a fixed point for {}",
+            rule
+        );
+
+        let first = engine.eval_into::<Value, _, _>(&rule, &data);
+        let second = engine.session().eval_into::<Value, _>(&recompiled, &data);
+        match (first, second) {
+            (Ok(first), Ok(second)) => prop_assert_eq!(
+                first,
+                second,
+                "round-trip changed the result of {}",
+                rule
+            ),
+            (Err(_), Err(_)) => {}
+            (first, second) => prop_assert!(
+                false,
+                "round-trip changed Ok/Err for {}: first={:?} second={:?}",
+                rule,
+                first,
+                second
             ),
         }
     }

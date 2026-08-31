@@ -252,9 +252,14 @@ fn is_candidate(node: &CompiledNode) -> bool {
 
 fn wrap(node: &mut CompiledNode, table: &ClassTable) {
     if let Some(slot) = table.match_slot(node) {
-        let placeholder = CompiledNode::InvalidArgs {
+        // Any node works as the `mem::replace` swap-out; it is dropped
+        // immediately. A Null `Value` allocates nothing, unlike the
+        // `InvalidArgs` that used to sit here (which now owns a boxed
+        // argument value).
+        let placeholder = CompiledNode::Value {
             id: SYNTHETIC_ID,
-            op_name: "",
+            value: OwnedDataValue::Null,
+            lit: None,
         };
         let inner = std::mem::replace(node, placeholder);
         *node = CompiledNode::Cse(Box::new(CseData { slot, inner }));
@@ -474,6 +479,7 @@ fn hash_node<H: Hasher>(node: &CompiledNode, h: &mut H) {
         CompiledNode::StructuredObject(data) => {
             h.write_u8(4);
             h.write_usize(data.fields.len());
+            data.has_escaped_keys.hash(h);
             for (key, n) in data.fields.iter() {
                 key.hash(h);
                 hash_node(n, h);
@@ -553,9 +559,10 @@ fn hash_node<H: Hasher>(node: &CompiledNode, h: &mut H) {
                 }
             }
         }
-        CompiledNode::InvalidArgs { op_name, .. } => {
+        CompiledNode::InvalidArgs { op_name, args, .. } => {
             h.write_u8(10);
             op_name.hash(h);
+            hash_owned(args, h);
         }
     }
 }
@@ -647,7 +654,8 @@ fn structural_eq(a: &CompiledNode, b: &CompiledNode) -> bool {
         }
         #[cfg(feature = "templating")]
         (CompiledNode::StructuredObject(da), CompiledNode::StructuredObject(db)) => {
-            da.fields.len() == db.fields.len()
+            da.has_escaped_keys == db.has_escaped_keys
+                && da.fields.len() == db.fields.len()
                 && da
                     .fields
                     .iter()
@@ -714,9 +722,17 @@ fn structural_eq(a: &CompiledNode, b: &CompiledNode) -> bool {
             min_eq && paths_eq
         }
         (
-            CompiledNode::InvalidArgs { op_name: na, .. },
-            CompiledNode::InvalidArgs { op_name: nb, .. },
-        ) => na == nb,
+            CompiledNode::InvalidArgs {
+                op_name: na,
+                args: aa,
+                ..
+            },
+            CompiledNode::InvalidArgs {
+                op_name: nb,
+                args: ab,
+                ..
+            },
+        ) => na == nb && aa == ab,
         _ => false,
     }
 }

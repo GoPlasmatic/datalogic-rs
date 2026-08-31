@@ -86,8 +86,12 @@ impl ExpressionNode {
             CompiledNode::Missing(_) | CompiledNode::MissingSome(_) => {
                 Self::leaf(id, node_serialize::node_to_json_string(node))
             }
+            // Delegate like every arm above rather than carrying a second
+            // copy of the rendering. The duplicated literal here is what
+            // kept the flow diagram showing `{"<invalid args>": null}`
+            // while the step beside it named the real operator.
             CompiledNode::InvalidArgs { .. } => {
-                Self::leaf(id, "{\"<invalid args>\": null}".to_string())
+                Self::leaf(id, node_serialize::node_to_json_string(node))
             }
         }
     }

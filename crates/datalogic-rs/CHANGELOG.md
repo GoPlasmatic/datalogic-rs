@@ -16,6 +16,16 @@ files cannot drift.
 
 ### Added
 
+- **Templating: opt-in `$`-prefix escape for object keys.**
+  `Engine::builder().with_template_key_escape('$')` makes exactly one
+  leading prefix strip from every template key, and stops an escaped key
+  from resolving as an operator — so `{"$type": ...}` emits the key `type`
+  instead of running the `type` operator, and `$$type` emits a literal
+  `$type`. Recovers the ~60 built-in names (plus any registered custom
+  operator) as output keys. The prefix is a `char` rather than a fixed `$`,
+  since `$` already begins real keys in MongoDB and JSON Schema payloads.
+  Off by default: without it, `$`-prefixed keys pass through verbatim as
+  before. Requires `feature = "templating"` and templating mode.
 - **WASM: `builtinOperatorNames()`, `Engine.evaluateWithTrace`,
   `Engine.customOperatorNames()`.** The module-level
   `builtinOperatorNames(): string[]` mirrors
@@ -40,6 +50,22 @@ files cannot drift.
 
 ### Fixed
 
+- **`to_json` round-trips a misused `and`/`or`/`if` again.** An operator
+  in that family given a non-array argument compiles to a deferred
+  `InvalidArgs` marker, which serialised to the placeholder
+  `{"<invalid args>": null}`. That is not JSONLogic the engine reads
+  back: in templating mode it re-parsed as an ordinary output field, so
+  an erroring rule round-tripped into a *successful* one returning
+  `{"<invalid args>": null}` as data; outside templating it re-parsed as
+  an unknown operator, losing which op actually failed. The marker now
+  serialises as the offending rule verbatim, `{"<op>":
+  <args>}`, which recompiles to the same node and raises the same error.
+  The marker retains its raw arguments to make that possible, which also
+  covers `format_date` / `parse_date` rejected for a bad literal
+  timezone, where the arguments are a well-formed array. `trace.rs` no
+  longer carries its own copy of the rendering, so the debugger's
+  expression tree shows the real sub-expression and agrees with its
+  steps. `CompiledNode` stays at 48 bytes.
 - **`and` / `or` constant folding dropped dynamic arguments.** With a
   literal in trailing position, folding could discard the dynamic
   arguments before it or strip a trailing identity literal.

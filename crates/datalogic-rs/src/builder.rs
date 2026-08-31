@@ -35,6 +35,9 @@ use crate::engine::Engine;
 /// - **`templating`** — `false` (templating mode off). Set with
 ///   [`Self::with_templating`]; only effective when the crate is
 ///   built with `feature = "templating"`.
+/// - **`template_key_escape`** — `None` (no escape prefix; a single-key
+///   object whose key names an operator is always an operator
+///   invocation). Set with [`Self::with_template_key_escape`].
 /// - **`operators`** — empty. Add custom operators with
 ///   [`Self::add_operator`] before [`Self::build`] freezes the set.
 /// - **`constant_folding`** — `true`. The compile pipeline pre-computes
@@ -46,6 +49,7 @@ use crate::engine::Engine;
 pub struct EngineBuilder {
     config: EvaluationConfig,
     templating: bool,
+    template_key_escape: Option<char>,
     constant_folding: bool,
     operators: HashMap<String, Box<dyn CustomOperator>>,
 }
@@ -63,6 +67,7 @@ impl EngineBuilder {
         Self {
             config: EvaluationConfig::default(),
             templating: false,
+            template_key_escape: None,
             constant_folding: true,
             operators: HashMap::new(),
         }
@@ -83,6 +88,54 @@ impl EngineBuilder {
     #[must_use = "builder methods return a new builder; chain into `.build()`"]
     pub fn with_templating(mut self, on: bool) -> Self {
         self.templating = on;
+        self
+    }
+
+    /// Set the escape prefix that marks a template object key as a literal
+    /// output field instead of an operator invocation. Unset by default.
+    ///
+    /// Without it, a single-key object is *always* an operator call, so the
+    /// ~60 built-in names (`type`, `map`, `if`, `keys`, `length`, `+`, …)
+    /// and every registered custom operator are unreachable as output keys.
+    /// With it, exactly one leading `prefix` is stripped from every template
+    /// key, and an escaped key is never resolved as an operator:
+    ///
+    /// | Template key | Output key |
+    /// |--------------|------------|
+    /// | `$type`      | `type`     |
+    /// | `$$type`     | `$type`    |
+    /// | `$$$type`    | `$$type`   |
+    /// | `$foo`       | `foo`      |
+    /// | `type`       | not a key: still the `type` operator |
+    ///
+    /// Stripping is uniform across arities, so a key's source text always
+    /// maps to the same output name whether or not it has siblings. Two
+    /// consequences worth knowing: `{"$a": 1, "a": 2}` emits the key `a`
+    /// twice (the engine keeps duplicate pairs, as `keys`/`values`/`entries`
+    /// already do), and a bare `{"$": 1}` emits the empty key.
+    ///
+    /// `prefix` is a `char` rather than a fixed `$` because `$` already
+    /// begins real keys in MongoDB documents and JSON Schema output; those
+    /// callers can pick `~` or `#` and leave their `$` keys untouched.
+    ///
+    /// Only effective in templating mode ([`Self::with_templating`]) and
+    /// when the crate is built with `feature = "templating"`. Without
+    /// templating every single-key object is an operator invocation, so
+    /// there is nothing to escape *into* and this setting is inert.
+    ///
+    /// ```
+    /// use datalogic_rs::Engine;
+    ///
+    /// let engine = Engine::builder()
+    ///     .with_templating(true)
+    ///     .with_template_key_escape('$')
+    ///     .build();
+    /// # let _ = engine;
+    /// ```
+    #[inline]
+    #[must_use = "builder methods return a new builder; chain into `.build()`"]
+    pub fn with_template_key_escape(mut self, prefix: char) -> Self {
+        self.template_key_escape = Some(prefix);
         self
     }
 
@@ -150,6 +203,7 @@ impl EngineBuilder {
         Engine::from_builder_parts(
             self.config,
             self.templating,
+            self.template_key_escape,
             self.constant_folding,
             self.operators,
         )

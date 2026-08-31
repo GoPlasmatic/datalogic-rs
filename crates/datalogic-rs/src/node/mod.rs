@@ -162,7 +162,19 @@ pub(crate) enum CompiledNode {
     /// `op_name` is captured from the source-text op so the runtime error
     /// names *which* op was misused (e.g. "Invalid arguments: if") even
     /// when the failure is nested inside an outer op.
-    InvalidArgs { id: NodeId, op_name: &'static str },
+    ///
+    /// `args` keeps the operator's **raw, uncompiled** argument value so
+    /// the node can be serialised back to the rule it came from. Raw
+    /// rather than compiled: these arguments are never evaluated (the node
+    /// raises before reaching them), compiling them would introduce
+    /// failure modes an already-invalid rule shouldn't acquire, and it
+    /// keeps the node childless for the path walker and populate pass.
+    /// Boxed to stay inside the 48-byte layout budget.
+    InvalidArgs {
+        id: NodeId,
+        op_name: &'static str,
+        args: Box<OwnedDataValue>,
+    },
 
     /// A common-subexpression memo wrapper produced by the compile-time
     /// CSE pass (`crate::compile::optimize::cse`). Transparent everywhere
