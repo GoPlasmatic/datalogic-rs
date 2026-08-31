@@ -51,7 +51,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   returning `0`. Accepted units are `days`, `hours`, `minutes`, `seconds`,
   and `milliseconds`; `milliseconds` is now documented alongside the
   others.
-- **Conformance battery is now 58 suites / 1,658 cases**, after the
+- **Conformance battery is now 59 suites / 1,698 cases**, after the
   regression suites below landed.
 - **Dependency refresh across every ecosystem.** `cargo update` over all
   six Rust workspaces, `npm` over the three JS packages, plus `composer`,

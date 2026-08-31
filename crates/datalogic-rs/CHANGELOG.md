@@ -55,7 +55,7 @@ files cannot drift.
   returning `0`. Accepted units are `days`, `hours`, `minutes`, `seconds`,
   and `milliseconds`; `milliseconds` is now documented alongside the
   others.
-- **Conformance battery is now 58 suites / 1,658 cases**, after the
+- **Conformance battery is now 59 suites / 1,698 cases**, after the
   regression suites below landed.
 
 ### Fixed
