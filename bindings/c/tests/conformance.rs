@@ -254,6 +254,16 @@ fn run_suite(
             .get("rule")
             .unwrap_or_else(|| panic!("{suite_file}[{index}] missing 'rule'"));
         let data = obj.get("data").cloned().unwrap_or(json!({}));
+        // Cases that ask for a template-key escape need an engine option the
+        // C ABI does not expose (`with_template_key_escape`), so there is no
+        // engine here that could satisfy them. Skip rather than fail: the
+        // escape is core-engine semantics, covered by the core suite, the
+        // core integration tests and the WASM/Node binding tests. Delete
+        // this skip once the C ABI grows a setter -- Go, JVM, .NET and PHP
+        // inherit it and would then be covered too.
+        if obj.contains_key("template_key_escape") {
+            continue;
+        }
         let use_templating = obj
             .get("templating")
             .and_then(Value::as_bool)

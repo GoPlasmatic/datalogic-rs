@@ -127,6 +127,12 @@ def _core_error_object(exc):
 def test_conformance(case):
     if "rule" not in case:
         pytest.fail("test case missing 'rule'")
+    # Cases requesting a template-key escape need an engine option the
+    # Python binding does not expose, so no engine here can satisfy them.
+    # Skip rather than fail: the escape is core-engine semantics, covered
+    # by the core suite and the WASM/Node binding tests.
+    if "template_key_escape" in case:
+        pytest.skip("template_key_escape is not exposed by the Python binding")
     data = case["data"] if "data" in case else {}
     engine = _ENGINES[bool(case.get("templating", False))]
 
