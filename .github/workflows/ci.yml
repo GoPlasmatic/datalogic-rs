@@ -169,25 +169,39 @@ jobs:
     # operator family is present, or that mis-`cfg`s a compile-time table.
     strategy:
       fail-fast: false
+      # `include` entries rather than a bare list of feature strings: the
+      # cache key below is per leg, and `actions/cache` rejects a key
+      # containing a comma. Expressions have no `replace()`, so each leg
+      # carries a comma-free `slug` for the key to interpolate instead.
       matrix:
-        combo:
-          - serde_json,templating,trace
-          - serde_json,templating,trace,error-handling
-          - serde_json,templating,trace,ext-array
-          - serde_json,templating,trace,ext-control
-          - serde_json,templating,trace,datetime
-          - serde_json,templating,trace,ext-string,ext-object,ext-math
+        include:
+          - combo: serde_json,templating,trace
+            slug: baseline
+          - combo: serde_json,templating,trace,error-handling
+            slug: error-handling
+          - combo: serde_json,templating,trace,ext-array
+            slug: ext-array
+          - combo: serde_json,templating,trace,ext-control
+            slug: ext-control
+          - combo: serde_json,templating,trace,datetime
+            slug: datetime
+          - combo: serde_json,templating,trace,ext-string,ext-object,ext-math
+            slug: ext-string-object-math
           # `tensor` needs `ext-control` + `ext-array` in the mix: the
           # suites reach for `type` and `sort` to assert how a tensor
           # behaves as a value.
-          - serde_json,templating,trace,tensor,ext-control,ext-array
-          - serde_json,templating,trace,tensor,tensor-half,ext-control,ext-array
+          - combo: serde_json,templating,trace,tensor,ext-control,ext-array
+            slug: tensor
+          - combo: serde_json,templating,trace,tensor,tensor-half,ext-control,ext-array
+            slug: tensor-half
           # `budget` charges from inside every iterator operator and the
           # tensor family, and `try` has to refuse to catch its error, so
           # the leg that matters pairs it with `error-handling` and the
           # array operators rather than running it alone.
-          - serde_json,templating,trace,budget,error-handling,ext-array,ext-control
-          - serde_json,templating,trace,budget,tensor,ext-control,ext-array
+          - combo: serde_json,templating,trace,budget,error-handling,ext-array,ext-control
+            slug: budget-error-handling
+          - combo: serde_json,templating,trace,budget,tensor,ext-control,ext-array
+            slug: budget-tensor
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -206,9 +220,9 @@ jobs:
           # Keyed per combo like `feature-matrix`: the legs build different
           # feature sets, so one shared `target/` would be rebuilt by every
           # leg but the one that saved it.
-          key: ${{ runner.os }}-cargo-combos-${{ matrix.combo }}-${{ hashFiles('Cargo.toml', 'crates/datalogic-rs/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-combos-${{ matrix.slug }}-${{ hashFiles('Cargo.toml', 'crates/datalogic-rs/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-combos-${{ matrix.combo }}-
+            ${{ runner.os }}-cargo-combos-${{ matrix.slug }}-
             ${{ runner.os }}-cargo-combos-
 
       - name: Test with `${{ matrix.combo }}`
