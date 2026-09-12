@@ -352,6 +352,176 @@ fn tensor_operators_charge_for_the_data_they_move() {
     assert!(ops(rule, "null") >= 1_000);
 }
 
+/// Every tensor operator's charge, against the table it was specified
+/// with. This is the test that keeps the family honest: the whole reason
+/// it is arithmetic-free is that each operator's cost is proportional to
+/// the data it moves, and that claim is only worth anything if the
+/// numbers are pinned.
+///
+/// Each case subtracts the cost of building its operands and the 1 the
+/// dispatcher charges per node, leaving the operator's own charge. The
+/// node count is spelled out per case because a bracketed operand list
+/// (`stack`, `concat`) is itself a dispatched `Array` node.
+#[cfg(feature = "tensor")]
+#[test]
+fn every_tensor_operator_charges_what_the_table_says() {
+    /// `{"tensor": [[1,2,3,4], "u8"]}` — 1 node + numel 4.
+    const T4: &str = r#"{"tensor": [[1,2,3,4], "u8"]}"#;
+    /// The same four elements as 2x2 — T4 plus a `reshape` (1 node + 1).
+    const T2X2: &str = r#"{"reshape": [{"tensor": [[1,2,3,4], "u8"]}, [2,2]]}"#;
+
+    let b4 = ops(T4, "null");
+    let b2x2 = ops(T2X2, "null");
+    assert_eq!((b4, b2x2), (5, 7), "operand baselines moved");
+
+    // (name, rule, operand cost to subtract, nodes this rule adds, expected charge)
+    let cases: Vec<(&str, String, u64, u64, u64)> = vec![
+        // Constructors: numel, except where the table says otherwise.
+        ("tensor", T4.to_string(), 0, 1, 4),
+        ("zeros", r#"{"zeros": [[4], "u8"]}"#.to_string(), 0, 1, 4),
+        ("full", r#"{"full": [[4], "u8", 7]}"#.to_string(), 0, 1, 4),
+        // max(points, numel) = max(2, 4).
+        (
+            "scatter",
+            r#"{"scatter": [[[0],[2]], [4], "u8"]}"#.to_string(),
+            0,
+            1,
+            4,
+        ),
+        // max(runs, numel) = max(2, 4).
+        (
+            "rle_expand",
+            r#"{"rle_expand": [[1,2,3,2], [4], "u8"]}"#.to_string(),
+            0,
+            1,
+            4,
+        ),
+        // len x depth = 3 x 4.
+        (
+            "one_hot",
+            r#"{"one_hot": [[0,1,2], 4, "u8"]}"#.to_string(),
+            0,
+            1,
+            12,
+        ),
+        // Shape moves. The operand list is an `Array` node, hence 2 nodes.
+        (
+            "stack",
+            format!(r#"{{"stack": [[{T4}, {T4}], 0]}}"#),
+            2 * b4,
+            2,
+            8,
+        ),
+        (
+            "concat",
+            format!(r#"{{"concat": [[{T4}, {T4}], 0]}}"#),
+            2 * b4,
+            2,
+            8,
+        ),
+        (
+            "unstack",
+            format!(r#"{{"unstack": [{T2X2}, 0]}}"#),
+            b2x2,
+            1,
+            4,
+        ),
+        // A new header over the same bytes: constant.
+        (
+            "reshape",
+            format!(r#"{{"reshape": [{T4}, [2,2]]}}"#),
+            b4,
+            1,
+            1,
+        ),
+        (
+            "transpose",
+            format!(r#"{{"transpose": [{T2X2}]}}"#),
+            b2x2,
+            1,
+            4,
+        ),
+        // max(in, out): 4 -> 6 grows, 4 -> 2 shrinks.
+        ("pad", format!(r#"{{"pad": [{T4}, [1], [1]]}}"#), b4, 1, 6),
+        ("crop", format!(r#"{{"crop": [{T4}, [1], [2]]}}"#), b4, 1, 4),
+        (
+            "gather",
+            format!(r#"{{"gather": [{T4}, [0,1]]}}"#),
+            b4,
+            1,
+            4,
+        ),
+        // Readers.
+        ("cast", format!(r#"{{"cast": [{T4}, "f32"]}}"#), b4, 1, 4),
+        (
+            "normalize",
+            format!(r#"{{"normalize": [{T4}, 0]}}"#),
+            b4,
+            1,
+            4,
+        ),
+        (
+            "argmax",
+            format!(r#"{{"argmax": [{T2X2}, 1]}}"#),
+            b2x2,
+            1,
+            4,
+        ),
+        ("to_list", format!(r#"{{"to_list": [{T4}]}}"#), b4, 1, 4),
+        // Header reads: constant.
+        ("shape", format!(r#"{{"shape": [{T4}]}}"#), b4, 1, 1),
+        ("dtype", format!(r#"{{"dtype": [{T4}]}}"#), b4, 1, 1),
+    ];
+
+    assert_eq!(cases.len(), 20, "the family is 20 operators");
+    for (name, rule, operands, nodes, expected) in cases {
+        let charged = ops(&rule, "null") - operands - nodes;
+        assert_eq!(
+            charged, expected,
+            "{name} charged {charged}, table says {expected}"
+        );
+    }
+}
+
+/// A tensor must never escape as `null`. The engine's own half of that:
+/// it renders as the tagged form from `eval_str`, nested inside an array
+/// and an iterator result, and in a trace step — which goes through a
+/// different serializer than the result does.
+#[cfg(all(feature = "tensor", feature = "trace"))]
+#[test]
+fn a_tensor_renders_as_the_tagged_form_everywhere_it_can_escape() {
+    const TAGGED: &str = r#"{"tensor":{"dtype":"u8","shape":[3],"data":"AQID"}}"#;
+    let engine = Engine::new();
+
+    assert_eq!(
+        engine
+            .eval_str(r#"{"tensor": [[1,2,3], "u8"]}"#, "null")
+            .unwrap(),
+        TAGGED
+    );
+    assert_eq!(
+        engine
+            .eval_str(r#"[{"tensor": [[1,2,3], "u8"]}]"#, "null")
+            .unwrap(),
+        format!("[{TAGGED}]")
+    );
+
+    // Trace renders steps through the serde bridge rather than the result
+    // serializer; a missing arm there would surface as `null` per step.
+    let run = engine
+        .trace()
+        .eval_str(r#"{"tensor": [[1,2,3], "u8"]}"#, "null");
+    let result = run.result.expect("traced eval");
+    assert!(result.contains("\"tensor\""), "traced result: {result}");
+    let last = run.steps.last().expect("at least one step");
+    let step = serde_json::to_string(&last.result).expect("step json");
+    assert!(step.contains("\"tensor\""), "traced step: {step}");
+    assert!(
+        step.contains("AQID"),
+        "traced step lost its payload: {step}"
+    );
+}
+
 #[cfg(feature = "tensor")]
 #[test]
 fn a_tensor_too_big_for_the_budget_is_refused_before_it_is_allocated() {

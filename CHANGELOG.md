@@ -95,8 +95,10 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   since 5.5.0 with nothing in the examples menu to find them from.
 
 - **Budget and tensor test coverage in every binding.** A budget suite for
-  the core (26 cases: what the count means, one per fast path, the abort,
-  the entry points, custom-operator charges) plus per-binding suites for
+  the core (28 cases: what the count means, one per fast path, the abort,
+  the entry points, custom-operator charges, every tensor operator's charge
+  against the table it was specified with, and a tensor rendering as the
+  tagged form through `eval_str`, nesting and trace) plus per-binding suites for
   WASM, Node, Python, the C ABI, Go, JVM, .NET and PHP. The C-family
   suites also pin that a tensor round-trips through those bindings as the
   tagged JSON form, which is the property that let the family ship without
