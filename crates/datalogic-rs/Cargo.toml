@@ -15,10 +15,12 @@ rust-version = "1.98"
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-homepage = "https://github.com/GoPlasmatic/datalogic-rs"
+# No `homepage`: it duplicated `repository` verbatim, which crates.io
+# renders as two identical links (cargo::redundant_homepage). No
+# `readme`: cargo infers README.md from the package root
+# (cargo::manual_readme).
 documentation = "https://docs.rs/datalogic-rs"
 description = "High-performance JSONLogic (json-logic) rules engine and sandboxed expression evaluator in Rust — one core, official bindings for Node.js, WASM, Python, Go, Java, .NET, and PHP. Compile once, evaluate in nanoseconds."
-readme = "README.md"
 keywords = ["jsonlogic", "json-logic", "rules-engine", "business-rules", "feature-flags"]
 categories = ["parser-implementations", "wasm", "development-tools"]
 exclude = [".DS_Store"]

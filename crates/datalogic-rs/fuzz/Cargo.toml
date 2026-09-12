@@ -11,6 +11,15 @@ edition = "2024"
 [package.metadata]
 cargo-fuzz = true
 
+# A fuzz target's name is the argument users type
+# (`cargo +nightly fuzz run eval_str`, as DEVELOPMENT.md documents) and
+# the directory cargo-fuzz stores its corpus and crash artifacts under.
+# cargo-fuzz's own scaffolding generates snake_case names, so renaming to
+# satisfy the kebab-case lint would break the documented command and
+# orphan the corpus for nothing.
+[lints.cargo]
+non_kebab_case_bins = "allow"
+
 [dependencies]
 libfuzzer-sys = "0.4"
 
