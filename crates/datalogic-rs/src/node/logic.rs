@@ -61,6 +61,12 @@ pub struct Logic {
     /// compile). Plain `Copy` data — `Logic` stays `Send + Sync` with no
     /// interior mutability.
     pub(crate) cse_slot_count: u16,
+    /// Whether evaluation must maintain the ancestor-frame list. `false` for
+    /// the overwhelming majority of rules — an ancestor frame is only
+    /// reachable from three levels of iterator nesting — which lets
+    /// `ContextStack` skip the list entirely. See
+    /// [`crate::compile::scope::resolve`].
+    pub(crate) needs_ancestor_frames: bool,
 }
 
 impl std::fmt::Debug for Logic {
@@ -88,13 +94,18 @@ impl Logic {
     /// * `root` - The root node of the compiled logic tree
     /// * `cse_slot_count` - Memo slots assigned by the CSE pass (0 when
     ///   the pass didn't run or found nothing to share)
-    pub(crate) fn new(mut root: CompiledNode, cse_slot_count: u16) -> Self {
+    pub(crate) fn new(
+        mut root: CompiledNode,
+        cse_slot_count: u16,
+        needs_ancestor_frames: bool,
+    ) -> Self {
         populate_lits(&mut root);
         let root_op_name = root.operator_name();
         Self {
             root,
             root_op_name,
             cse_slot_count,
+            needs_ancestor_frames,
         }
     }
 
@@ -287,6 +298,11 @@ fn opcode_is_static(opcode: &OpCode, args: &[CompiledNode]) -> bool {
         // Time-dependent: Returns current UTC time, inherently non-static.
         #[cfg(feature = "datetime")]
         Now => false,
+
+        // Tensor: pure, but never folded — see `OpCode::is_tensor` for
+        // why the whole family opts out of both optimizer gates.
+        #[cfg(feature = "tensor")]
+        op if op.is_tensor() => false,
 
         // Context-dependent in implicit form: when the bucketing
         // expression is omitted, `fractional` reads `$flagd.flagKey` and

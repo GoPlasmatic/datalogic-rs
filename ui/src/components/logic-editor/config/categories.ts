@@ -117,6 +117,14 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     icon: 'toggle-right',
     docsPage: 'flagd',
   },
+  tensor: {
+    name: 'tensor',
+    label: 'Tensor',
+    description: 'Marshalling JSON to and from typed n-dimensional buffers',
+    color: '#db2777', // pink-600
+    icon: 'layers',
+    docsPage: 'tensor',
+  },
 };
 
 /**

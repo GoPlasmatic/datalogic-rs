@@ -63,12 +63,23 @@ public final class EngineBuilder {
      * point and the remaining keys ({@code arithmetic_nan_handling},
      * {@code division_by_zero}, {@code loose_equality_errors},
      * {@code truthy_evaluator}, {@code numeric_coercion} as an object of
-     * bools, {@code max_recursion_depth}) override individual fields on
-     * top of it. Unknown keys and values are rejected (error type
-     * {@code "ConfigurationError"}) so typos fail loudly instead of
-     * being silently ignored. Each call replaces the builder's entire
-     * evaluation config; templating and registered operators are
-     * unaffected.
+     * bools, {@code max_recursion_depth}, {@code ops_budget}) override
+     * individual fields on top of it. Unknown keys and values are
+     * rejected (error type {@code "ConfigurationError"}) so typos fail
+     * loudly instead of being silently ignored. Each call replaces the
+     * builder's entire evaluation config; templating and registered
+     * operators are unaffected.
+     *
+     * <p>{@code ops_budget} bounds the work a rule may do: an integer
+     * ceiling on the operations one evaluation may charge — one per node
+     * the engine dispatches, one per item an iterator walks, plus what
+     * operators charge for the data they move — or {@code null} for
+     * unbounded (the default). Crossing it throws an
+     * {@link EvaluateException} with error type
+     * {@code "BudgetExceeded"} before the work is done, and a
+     * {@code try} in the rule cannot recover from it. Unlike a
+     * wall-clock timeout the count is deterministic, so the same rule
+     * and data are refused on every machine.
      *
      * @throws EvaluateException if the config JSON is malformed or
      *         contains unknown keys or values

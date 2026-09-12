@@ -25,6 +25,8 @@ const STRUCTURED_FIELDS = [
   'index',
   'length',
   'stage',
+  'budget',
+  'spent',
   'node_ids',
 ] as const;
 
@@ -93,6 +95,13 @@ export function parseStructuredError(err: unknown, fallbackMessage: string): Str
 // the WASM .d.ts being regenerated.
 export interface WasmEngineInstance {
   evalStr: (logic: string, data: string) => string;
+  /**
+   * Metered one-shot: returns `{"result": <value>, "ops": <number>}`.
+   * Optional so a host pinned to a WASM build from before 5.6 still
+   * typechecks — `evaluateMetered` falls back to `evalStr` there and
+   * reports no count.
+   */
+  evalMetered?: (logic: string, data: string, budget?: number) => string;
   evaluateWithTrace: (logic: string, data: string) => string;
   customOperatorNames?: () => string[];
   free?: () => void;
@@ -121,11 +130,29 @@ export interface UseWasmEvaluatorOptions {
   customOperators?: Record<string, DataLogicCustomOperator>;
 }
 
+/** An evaluation's result paired with what the engine charged for it. */
+export interface MeteredResult {
+  value: unknown;
+  /**
+   * Operations charged: one per node the engine dispatched, one per item
+   * an iterator walked, plus what operators charge for the data they
+   * move. `null` when the loaded WASM build predates metering.
+   */
+  ops: number | null;
+}
+
 export interface UseWasmEvaluatorResult {
   ready: boolean;
   loading: boolean;
   error: string | null;
   evaluate: (logic: unknown, data: unknown) => unknown;
+  /**
+   * Like `evaluate`, but also reports what the evaluation cost. The
+   * budget comes from `config.ops_budget`; exceeding it throws a
+   * `DataLogicEvaluationError` of type `BudgetExceeded` rather than
+   * returning a partial result.
+   */
+  evaluateMetered: (logic: unknown, data: unknown) => MeteredResult;
   evaluateWithTrace: (logic: unknown, data: unknown) => TracedResult;
 }
 
@@ -209,6 +236,7 @@ const SUMMARY_LABELS: Record<string, string> = {
   loose_equality_errors: 'loose ==',
   truthy_evaluator: 'truthy',
   max_recursion_depth: 'depth',
+  ops_budget: 'budget',
 };
 
 const COERCION_LABELS: Record<string, string> = {
@@ -363,17 +391,33 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
     return engine;
   }, [engineKey, templating, config, customOperators, latestCustomOperators]);
 
-  const evaluate = useCallback((logic: unknown, data: unknown): unknown => {
+  const evaluateMetered = useCallback((logic: unknown, data: unknown): MeteredResult => {
     const engine = getEngine();
     const logicStr = JSON.stringify(logic);
     const dataStr = JSON.stringify(data);
     try {
-      const resultStr = engine.evalStr(logicStr, dataStr);
-      return JSON.parse(resultStr);
+      // No budget argument: the engine falls back to its configured
+      // `ops_budget`, so the Studio's setting is the single source of
+      // truth for both the cap and the reported cost.
+      if (!engine.evalMetered) {
+        return { value: JSON.parse(engine.evalStr(logicStr, dataStr)), ops: null };
+      }
+      const envelope = JSON.parse(engine.evalMetered(logicStr, dataStr)) as {
+        result: unknown;
+        ops: number;
+      };
+      return { value: envelope.result, ops: envelope.ops };
     } catch (err) {
       throw new DataLogicEvaluationError(parseStructuredError(err, 'Evaluation failed'));
     }
   }, [getEngine]);
+
+  // Same call with the count dropped: the metered path already carries
+  // the non-metered engine as its fallback.
+  const evaluate = useCallback(
+    (logic: unknown, data: unknown): unknown => evaluateMetered(logic, data).value,
+    [evaluateMetered],
+  );
 
   const evaluateWithTrace = useCallback((logic: unknown, data: unknown): TracedResult => {
     const engine = getEngine();
@@ -392,6 +436,7 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
     loading,
     error,
     evaluate,
+    evaluateMetered,
     evaluateWithTrace,
   };
 }

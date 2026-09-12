@@ -19,6 +19,7 @@ import { validationOperators } from './validation';
 import { errorOperators } from './error';
 import { utilityOperators } from './utility';
 import { flagdOperators } from './flagd';
+import { tensorOperators } from './tensor';
 
 // Re-export individual category modules
 export {
@@ -35,6 +36,7 @@ export {
   errorOperators,
   utilityOperators,
   flagdOperators,
+  tensorOperators,
 };
 
 /**
@@ -54,6 +56,7 @@ export const operators: Record<string, Operator> = {
   ...errorOperators,
   ...utilityOperators,
   ...flagdOperators,
+  ...tensorOperators,
 };
 
 /**

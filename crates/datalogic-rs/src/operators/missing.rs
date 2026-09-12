@@ -13,11 +13,11 @@ use bumpalo::Bump;
 /// context's data view as `&'a DataValue<'a>`.
 #[inline(always)]
 fn lookup_data<'a>(ctx: &ContextStack<'a>) -> &'a DataValue<'a> {
-    if ctx.depth() > 0 {
-        ctx.current().data()
-    } else {
-        ctx.root_input()
-    }
+    // No depth probe needed: with nothing pushed, `current()` is
+    // `ContextRef::Root(root)` and its `data()` yields the very pointer
+    // `root_input()` returns, so the old `depth() > 0` branch could never
+    // select a different value.
+    ctx.current().data()
 }
 
 /// Native arena-mode `missing`. Accumulates missing-path strings directly
@@ -240,10 +240,10 @@ fn accumulate_dynamic_missing<'a>(
     match av {
         DataValue::Array(items) => {
             for it in *items {
-                if let Some(path) = it.as_str() {
-                    if !crate::arena::value::path_exists_str(lookup, path) {
-                        missing.push(DataValue::String(arena.alloc_str(path)));
-                    }
+                if let Some(path) = it.as_str()
+                    && !crate::arena::value::path_exists_str(lookup, path)
+                {
+                    missing.push(DataValue::String(arena.alloc_str(path)));
                 }
             }
         }

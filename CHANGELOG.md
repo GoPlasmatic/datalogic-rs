@@ -8,6 +8,246 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
+## [Unreleased]
+
+### Added
+
+- **Operation budget (`budget` feature, off by default).** A per-evaluation
+  operation counter with a hard abort, so the work an untrusted rule may do
+  can be bounded without a wall-clock timeout. `max_recursion_depth` only
+  ever bounded boundary re-entry; a `map` over a large input nested inside
+  another `map` is one boundary call doing N x M items of work, and until
+  now nothing capped it.
+
+  A count is the right shape for this where a timeout is not: it is
+  deterministic (the same rule over the same data charges the same number
+  on every machine, so a rule accepted in staging is accepted in
+  production), it is charged *before* the work rather than measured after
+  it, and the failure is attributable — `BudgetExceeded` carries the node
+  breadcrumb like every other engine error.
+
+  One operation is one dispatched node, one item an iterator examines, or
+  whatever an operator charges for the data it moves. Literals and
+  constant-folded subtrees cost nothing, and a CSE-memoised subtree is
+  charged once. The per-item charge is taken when an iterator's source
+  resolves, *before* the operator picks between its compile-time fast paths
+  and the general path: several predicate and body shapes are recognised at
+  compile time and evaluated inline without dispatching the body, and
+  charging per dispatch would have made "does this rule fit its budget"
+  depend on which shape the populate pass happened to recognise.
+
+  Surface: `EvaluationConfig::ops_budget` (engine-wide, and reaching every
+  binding through the existing `from_json_str` wire format as the
+  `ops_budget` key), `Engine::evaluate_metered` / `Session::eval_metered`
+  (per call, returning `Metered { value, ops }`),
+  `Engine::resolve_ops_budget` (the "explicit, else configured, else
+  unbounded" precedence every binding's optional-budget form goes
+  through), `EvalContext::charge` for custom operators, and
+  `ErrorKind::BudgetExceeded { budget, spent }`.
+  `charge` is always present — a no-op when the feature is off — so a
+  custom operator can call it without a `cfg` of its own.
+
+  `try` observes `BudgetExceeded` but cannot recover from it: the counter
+  stays past its ceiling, and `try` propagates rather than moving to its
+  next arm. Without that carve-out a literal catch arm would return without
+  dispatching, and a rule could catch its own budget failure and spend the
+  budget in a loop.
+
+  A Cargo feature rather than an always-on `Option<u64>` because the cost
+  is measurable, not free: self benchmark `--all`, paired runs on one
+  machine, 22.75 ns/op with the feature off and 23.56 ns/op with it
+  compiled in and no budget set (+3.6%). The feature-off number is
+  unchanged from before the feature existed; builds that do not want a
+  counter compile out the counter, the compare and the error variant
+  entirely.
+
+- **The tensor family now charges through that counter.** `charge()` in
+  `operators/tensor/` stopped being a no-op; every operator prices itself
+  at `max(elements read, elements produced)` before it allocates, so a rule
+  that would build a billion-element tensor is refused rather than run and
+  then reported. This is what the family's arithmetic-free line was for.
+
+- **Per-call metering in the JS and Python bindings.** `Engine.evalMetered`
+  / `Rule.evaluateMetered` / `Session.evaluateMetered` (WASM),
+  `Engine.evalMetered` / `Rule.evaluateMetered` (Node), and
+  `Engine.eval_metered` / `Rule.evaluate_metered` (Python) evaluate under a
+  budget and report what was spent. The C ABI — and the Go, JVM, .NET and
+  PHP bindings built on it — carry the engine-wide `ops_budget` config key
+  only; a per-call entry point there can follow.
+
+- **`budget` and `spent` on binding errors.** The Node and Python error
+  bridges now attach the two figures to a `BudgetExceeded` error. They are
+  the one kind-specific pair carried as structured fields, because they are
+  the only variant extras a caller has to act on: recovering means choosing
+  a larger number, and these are what that choice is made from.
+
+- **Operation budget in the UI and Studio.** `DataLogicEvaluationConfig`
+  gains `ops_budget`, the Engine settings panel gains an "Operation budget"
+  field (blank means unlimited), and the `useWasmEvaluator` hook gains
+  `evaluateMetered(logic, data)` returning `{ value, ops }`. The Studio
+  reports what every evaluation spent as an *N ops* badge on the Result
+  panel — visible on success, not only when a rule trips a ceiling — and
+  renders `BudgetExceeded` with its `budget` / `spent` chips and the usual
+  node highlight. The budget rides along in share links like every other
+  engine setting.
+
+- **Three tensor examples in the Studio's Examples menu** — "Model Input
+  Batch" (normalize and stack a request batch), "Model Output Labels"
+  (`argmax` a logits tensor and label the winners), and "One-Hot Encode".
+  The tensor operators had been in the UI's registry and insert palette
+  since 5.5.0 with nothing in the examples menu to find them from.
+
+- **Budget and tensor test coverage in every binding.** A budget suite for
+  the core (28 cases: what the count means, one per fast path, the abort,
+  the entry points, custom-operator charges, every tensor operator's charge
+  against the table it was specified with, and a tensor rendering as the
+  tagged form through `eval_str`, nesting and trace) plus per-binding suites for
+  WASM, Node, Python, the C ABI, Go, JVM, .NET and PHP. The C-family
+  suites also pin that a tensor round-trips through those bindings as the
+  tagged JSON form, which is the property that let the family ship without
+  an FFI change.
+
+### Changed
+
+- **The trace collector is boxed inside `ContextStack`.** 56 bytes of
+  per-evaluation stack traffic that every evaluation in a trace-enabled
+  build paid whether or not it traced; the one allocation now lands only on
+  the traced path. This is what paid for the budget counters — the stack
+  stays under its 256-byte bound, at 224 bytes.
+
+### Fixed
+
+- **`tests/tensor_test.rs` failed under `--features tensor,serde_json`.**
+  One case used templating without the file being gated on it. Split into
+  its own `#[cfg(feature = "templating")]` test.
+
+## [5.5.0] - 2026-09-12
+
+### Added
+
+- **Tensor operators (`tensor` feature, off by default).** A marshalling
+  family over datavalue 0.3's `Tensor` variant — a dtype, a shape, and one
+  row-major contiguous byte buffer that travels through a rule without
+  expanding into `Array` nodes. JSON has no tensor, and anything that
+  marshals JSON into a model's inputs and its outputs back into JSON needs
+  one value that is neither a scalar nor a JSON array. Twenty operators:
+  constructors (`tensor`, `zeros`, `full`, `scatter`, `rle_expand`,
+  `one_hot`), shape moves (`stack`, `concat`, `unstack`, `reshape`,
+  `transpose`, `pad`, `crop`, `gather`), and readers (`cast`, `normalize`,
+  `argmax`, `to_list`, `shape`, `dtype`). No new dependency.
+
+  Deliberately no arithmetic. Every operator's cost is proportional to the
+  data it moves, which is what will make it honest to price through the
+  planned per-evaluation operation budget; a matmul reads 2n² elements and
+  does n³ multiplies, so pricing it by data moved under-counts by an
+  unbounded ratio. That line is also what keeps the family small.
+
+  A tensor crosses the JSON boundary as datavalue's tagged
+  `{"tensor": {"dtype", "shape", "data"}}` form, with `data` little-endian
+  base64. That is simultaneously the operator call, the form the engine
+  emits, and the form the decoder accepts, so serialized output pasted back
+  into a rule evaluates to the tensor it came from. The text-returning
+  bindings carry it with no FFI change; the Python binding returns the same
+  tagged dict.
+
+  As a value: truthy iff its element count is non-zero (so a zero-size
+  tensor is falsy like an empty array, and a 0-d tensor is truthy), `type`
+  is `"tensor"`, no numeric coercion, `sort` ranks it after `object` and
+  orders by dtype then shape then payload, and `==` / `===` are structural
+  between two tensors while a tensor against any other type follows
+  `loose_equality_errors` exactly as an object does. The family is never
+  constant-folded and never memoized by the CSE pass: folding
+  `{"zeros": [[128, 128], "f32"]}` would bake a 64 KB literal into the
+  compiled rule.
+
+  The byte-moving operators move `size_of()`-byte cells and never interpret
+  one, so they cover every dtype including `f16` / `bf16` with no `half`
+  dependency; `zeros` joins them, since an all-zero buffer is valid for
+  every dtype. The element-wise operators need the new `tensor-half`
+  feature before they will touch `f16` / `bf16`.
+
+- **90 conformance cases across four tensor suites** (`tensor/construct`,
+  `tensor/shape`, `tensor/read`, `tensor/value`), now 1,804 cases across 63
+  suites. Expected base64 is computed independently of datavalue's encoder,
+  so the wire format is genuinely checked rather than asserted against
+  itself.
+
+- **16 conformance cases for scope resolution and filter hoisting**
+  (`scopes.json` and `iterators.extra.json`). The battery
+  previously had no rule nested deeply enough to distinguish a correct
+  interior-frame resolver from a broken one — every existing leveled `val`
+  resolved either to the current frame or, via the clamp, to the root — and
+  nothing exercised the filter hoisting rule at all.
+
+### Changed
+
+- **`datavalue-rs` 0.2.3 → 0.3, which raises this crate's MSRV to 1.98.**
+  The floor is inherited rather than chosen: the dependency is not
+  optional, so every build needs 1.98 whether or not `tensor` is enabled.
+  Nothing in this crate uses a 1.98 language feature — its own floor is
+  still 1.85. Downstream consumers pinning an older toolchain must either
+  stay on 5.4.x or move to 1.98.
+- **Nested `if` statements collapsed into let-chains.** Mechanical, no
+  behaviour change; 47 sites that predated the (now lifted) 1.85 floor.
+
+- **Compile-time scope resolution.** Variable references now carry the
+  frame they resolve against, computed once at compile time by a new
+  `compile/scope.rs` pass, instead of the engine probing `ctx.depth()` on
+  every evaluation. Purely internal — every rule evaluates to exactly what
+  it did before, clamp and level semantics untouched. Rules that read an
+  outer scope from inside an iterator benefit most: the `scopes` suite
+  drops 21.7% (73.4 ns to 57.5 ns per evaluation) and `val.extra` 13.4%,
+  with the non-folded geomean down 1.4%.
+- **One source of truth for the frame model.** `compile/scope.rs` now owns
+  `frames_pushed_for_child`, which says whether an argument position runs
+  under a pushed context frame. The CSE pass reads the same function
+  instead of its own copy, so the two can no longer disagree. An operator
+  that pushes a frame must register its argument position there; a
+  debug-only oracle cross-checks every resolution against the runtime walk
+  and fires on the first test that exercises an omission.
+
+- **The evaluation context no longer carries ancestor-frame storage rules
+  never use.** `ContextStack` is rebuilt on every evaluation, and more than
+  half of it was a four-slot inline buffer for ancestor frames. A census of
+  the conformance corpus found 86.3% of rules never push a context frame at
+  all and 99.1% never populate that buffer — an ancestor frame is not even
+  addressable until three levels of iterator nesting. The compiler now
+  reports whether a rule can read one, frames are restored from a token
+  handed back by the pusher rather than from the ancestor list, and the list
+  itself is maintained only when it can actually be read. `compatible`
+  improves 15.2% (10.09 to 8.56 ns per evaluation) and
+  `comparison/lessThan` 6.9%, with no cost to deeply nested rules.
+
+### Fixed
+
+- **The conformance harness can now run under partial feature sets.** The
+  suite index lists every suite, but a build without `ext-control` cannot
+  evaluate `switch` — so the battery failed with "Unknown Operator" on any
+  configuration between `--all-features` and `--no-default-features`. That is
+  why CI's feature matrix only *built* its legs. The runner now skips a case
+  whose operators this build did not compile in, reporting the count, and a
+  case may declare `"requires": ["datetime"]` for the residual class where a
+  feature changes value semantics rather than adding an operator. Six
+  under-gated integration tests were fixed alongside — two now use a baseline
+  operator so they run everywhere, four gained the `#[cfg]` they were missing.
+  Under `--all-features` nothing is skipped, so existing coverage is
+  unchanged. A new `feature-combos` CI job runs the battery across six
+  configurations.
+
+- **Filter fast path hoisted operands it could not safely hoist.** The
+  strict-equality filter fast path evaluates a "loop-invariant" predicate
+  operand once, without the per-item frame — but it classified *any*
+  `{"val": [[N], …]}` as invariant. Two shapes therefore disagreed with
+  the general path: a predicate reading `index` or `key`, which resolve
+  against the current frame whatever the level, and a `[[1]]` reference
+  inside a filter that is itself nested one or more frames deep, where
+  `[[1]]` names the current item. Both silently returned wrong rows — e.g.
+  `{"filter": [{"var":"xs"}, {"===": [{"var":"a"}, {"val":[[1],"index"]}]}]}`
+  over `[{"a":0},{"a":1},{"a":2}]` matched nothing instead of everything.
+  Hoisting is now gated on the compile-time scope binding: only a literal
+  or a reference that provably resolves to the root input is hoisted, since
+  neither reads the frame stack; everything else takes the general path.
+
 ## [5.4.0] - 2026-08-31
 
 ### Added

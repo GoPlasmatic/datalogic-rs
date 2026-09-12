@@ -64,10 +64,10 @@ pub(crate) fn evaluate_reduce<'a>(
     // operand order for + / - / *. Skipped when a tracer is attached so
     // per-iteration trace markers still get recorded via `run_iter_body` in
     // the general path.
-    if !ctx.is_tracing() {
-        if let Some(result) = try_reduce_fast_path(&src, initial, body, arena) {
-            return Ok(result);
-        }
+    if !ctx.is_tracing()
+        && let Some(result) = try_reduce_fast_path(&src, initial, body, arena)
+    {
+        return Ok(result);
     }
 
     reduce_general(&src, body, initial, ctx, engine, arena)
@@ -271,10 +271,10 @@ fn run_fused_fold<'a>(
 /// singletons the way both fast paths did before.
 #[inline(always)]
 fn alloc_number<'a>(arena: &'a Bump, n: NumberValue) -> &'a DataValue<'a> {
-    if let NumberValue::Integer(i) = n {
-        if let Some(singleton) = crate::arena::singletons::singleton_small_int(i) {
-            return singleton;
-        }
+    if let NumberValue::Integer(i) = n
+        && let Some(singleton) = crate::arena::singletons::singleton_small_int(i)
+    {
+        return singleton;
     }
     arena.alloc(DataValue::Number(n))
 }

@@ -55,12 +55,22 @@ final class EngineBuilder
      * `"strict"`) selects the starting point and the remaining keys
      * (`arithmetic_nan_handling`, `division_by_zero`,
      * `loose_equality_errors`, `truthy_evaluator`, `numeric_coercion`
-     * as an object of bools, `max_recursion_depth`) override individual
-     * fields on top of it. Unknown keys and values are rejected (error
-     * type `"ConfigurationError"`) so typos fail loudly instead of
-     * being silently ignored. Each call replaces the builder's entire
-     * evaluation config; templating and registered operators are
-     * unaffected.
+     * as an object of bools, `max_recursion_depth`, `ops_budget`)
+     * override individual fields on top of it. Unknown keys and values
+     * are rejected (error type `"ConfigurationError"`) so typos fail
+     * loudly instead of being silently ignored. Each call replaces the
+     * builder's entire evaluation config; templating and registered
+     * operators are unaffected.
+     *
+     * `ops_budget` bounds the work a rule may do: an integer ceiling on
+     * the operations one evaluation may charge — one per node the engine
+     * dispatches, one per item an iterator walks, plus what operators
+     * charge for the data they move — or `null` for unbounded (the
+     * default). Crossing it throws an `EvaluateException` with
+     * `errorType` `"BudgetExceeded"` before the work is done, and a
+     * `try` in the rule cannot recover from it. Unlike a wall-clock
+     * timeout the count is deterministic, so the same rule and data are
+     * refused on every machine.
      *
      * @throws DatalogicException if the config JSON is malformed or
      *         contains unknown keys or values

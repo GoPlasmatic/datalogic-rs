@@ -10,7 +10,7 @@ Java bindings for [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs),
 the JSONLogic rules engine with one Rust core and official bindings for
 Rust, Node.js, the browser (WASM), Python, Go, Java, .NET, and PHP. Same
 rules, same semantics: every binding runs the same core and passes the
-same 1,698-case conformance battery (59 suites). Compile once, evaluate
+same 1,804-case conformance battery (63 suites). Compile once, evaluate
 many, natively in Java.
 
 For the cross-runtime overview and the API-tier model every binding
@@ -261,6 +261,7 @@ try (Engine strict = Engine.builder()
 | `truthy_evaluator` | `"javascript"`, `"python"`, `"strict_boolean"` |
 | `numeric_coercion` | object of bools: `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
 | `max_recursion_depth` | integer >= 1 |
+| `ops_budget` | integer >= 1, or `null` for unbounded — caps the work one evaluation may do; crossing it raises `BudgetExceeded` |
 
 The `preset` applies first; the remaining keys override individual
 fields on top of it. Every binding shares this JSON schema and parses it

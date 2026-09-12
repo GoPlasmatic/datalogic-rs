@@ -188,6 +188,16 @@ pub(crate) fn datavalue_to_pyobject(py: Python<'_>, value: &DataValue<'_>) -> Py
         // these through serde as the same strings.
         DataValue::DateTime(d) => PyString::new(py, &d.to_iso_string()).into_any().unbind(),
         DataValue::Duration(d) => PyString::new(py, &d.to_string()).into_any().unbind(),
+        // A tensor arrives as the same tagged dict the text-returning
+        // bindings emit, so a Python caller sees one shape regardless of
+        // which entry point produced it. Routed through the crate's own
+        // serializer rather than re-implementing base64 here; a zero-copy
+        // `memoryview` / numpy view is the stage-2 upgrade.
+        DataValue::Tensor(t) => {
+            let tagged = serde_json::to_value(t)
+                .map_err(|e| parse_error(py, format!("tensor is not serializable: {e}")))?;
+            value_to_pyobject(py, &tagged)?
+        }
     })
 }
 

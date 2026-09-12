@@ -9,8 +9,8 @@ Rust implementation of [JSONLogic](http://jsonlogic.com). Same rules,
 same semantics as the Rust crate, with the **compile-once /
 evaluate-many** pattern exposed natively — compile a rule once and
 evaluate it against thousands of data inputs without re-parsing. Every
-binding runs the same core and passes the same 1,698-case conformance
-battery (59 suites).
+binding runs the same core and passes the same 1,804-case conformance
+battery (63 suites).
 
 For the cross-runtime overview and the API-tier model every binding
 implements, see the
@@ -298,6 +298,7 @@ All keys are optional:
 | `truthy_evaluator` | `'javascript'`, `'python'`, `'strict_boolean'` |
 | `numeric_coercion` | object of booleans: `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
 | `max_recursion_depth` | integer >= 1 |
+| `ops_budget` | integer >= 1, or `null` for unbounded — caps the work one evaluation may do; crossing it raises `BudgetExceeded` |
 
 `preset` selects the starting point and the remaining keys override
 individual fields on top of it:
@@ -312,6 +313,32 @@ engine.evalStr('{"+": [1, true]}', 'null'); // throws EvaluateError
 Unknown keys or values throw at construction with
 `errorType: 'ConfigurationError'`, so typos fail loudly instead of being
 silently ignored.
+
+
+### Metering: what a rule costs
+
+`evalMetered` returns `{ result, ops }` — the result as a JSON string and
+the operations the evaluation charged — so you can see what a rule costs
+whether or not a budget is set. `Rule.evaluateMetered(data, budget?)` is
+the same thing on an already-compiled rule.
+
+```js
+const engine = new Engine();
+engine.evalMetered({ map: [{ var: 'xs' }, { '*': [{ var: '' }, 2] }] }, { xs: [1, 2, 3] });
+// { result: '[2,4,6]', ops: 4 }
+
+// An optional third argument caps the operations for that one call,
+// overriding the engine's `config.ops_budget`.
+engine.evalMetered(rule, data, 100_000);
+```
+
+One operation is one node the engine dispatches, one item an iterator
+walks, or whatever an operator charges for the data it moves (the tensor
+family prices itself in elements). Literals and constant-folded subtrees
+cost nothing. Exceeding the budget throws an `EvaluateError` with
+`errorType: 'BudgetExceeded'`, carrying `budget` and `spent` — the
+evaluation is refused before the work, and a `try` in the rule cannot
+recover from it.
 
 ## Custom operators
 
@@ -351,7 +378,7 @@ hand-maintained list:
 import { builtinOperatorNames, Engine } from '@goplasmatic/datalogic-node';
 
 const names = builtinOperatorNames();
-names.length;               // 67: the 64 built-in operators plus the aliases var, ?:, match
+names.length;               // 87: the 84 built-in operators plus the aliases var, ?:, match
 names.includes('group_by'); // true
 names.includes('preserve'); // false (removed in v5)
 

@@ -14,8 +14,10 @@ import { cloneNodesWithIdMapping, getDescendants, updateParentChildReference } f
 import { panelValuesToNodeData, havePanelValuesChanged } from '../../utils/node-updaters';
 import { buildEdgesFromNodes } from '../../utils/edge-builder';
 import { applyTreeLayout } from '../../utils/layout';
-import { operatorRenderKind } from '../../utils/nodeShape';
+import { operatorRenderKind, shapeForOperator, drawnShape } from '../../utils/nodeShape';
 import { getInitialValuesFromNode } from '../../properties-panel/utils';
+import { traceToNodes } from '../../utils/trace/trace-to-nodes';
+import { runTrace } from '../../utils/trace/__tests__/helpers';
 import { extractArguments } from '../../properties-panel/utils/argument-parser';
 import { rebuildVariableExpression } from '../../properties-panel/utils/expression-rebuilder';
 import { addArgument, removeArgument, canEditArguments } from '../argument-service';
@@ -356,6 +358,43 @@ describe('panel values (node-updaters)', () => {
     }
   });
 
+  it('leaves a var / val / exists with a computed path untouched when the panel auto-applies', () => {
+    // Selecting a node seeds the properties panel from its cells and the
+    // panel auto-applies those values. A computed path (an expression where
+    // a path segment is expected) is a generic operator node with no path
+    // cells, so the seed must be empty and an apply a no-op; it used to
+    // collapse {"val": [[2], "labels", {"val": []}]} into {"val": [[0]]}.
+    const rules: JsonLogicValue[] = [
+      { val: [[2], 'labels', { val: [] }] },
+      { val: ['labels', { var: 'i' }] },
+      { val: [{ var: 'key' }] },
+      { var: [{ cat: ['a', 'b'] }] },
+      { var: { cat: ['a', 'b'] } },
+      { exists: [{ var: 'k' }] },
+      { exists: { var: 'k' } },
+    ];
+    const data = { labels: ['cat'], i: 0, key: 'k', a: 1, b: 2, k: 'a' };
+    // Explicit variable-panel values (every field the three panels know) must
+    // not rewrite a computed path either.
+    const forced = { accessType: 'path', scopeLevel: 0, path: [], hasDefault: false, pathType: 'dot', dotPath: '' };
+    for (const rule of rules) {
+      const label = JSON.stringify(rule);
+      const traced = traceToNodes(runTrace(rule, data), { originalValue: rule }).nodes;
+      expect(traced.length, `${label} (trace)`).toBeGreaterThan(0);
+      for (const nodes of [build(rule), traced]) {
+        const node = root(nodes);
+        const seeded = getInitialValuesFromNode(node.data);
+        expect(seeded, label).toEqual({});
+        expect(havePanelValuesChanged(node.data, seeded), label).toBe(false);
+        expect(havePanelValuesChanged(node.data, forced), label).toBe(false);
+        const updated = panelValuesToNodeData(node.data, forced);
+        const applied = nodes.map((n) => (n.id === node.id ? { ...n, data: updated } : n));
+        expect(nodesToJsonLogic(applied), label).toEqual(rule);
+        checkInvariants(applied);
+      }
+    }
+  });
+
   it('keeps the var default when only the path changes', () => {
     const node = root(build({ var: ['x', 0] }));
     const values = { ...getInitialValuesFromNode(node.data), path: 'y' };
@@ -472,6 +511,35 @@ describe('edges and layout', () => {
     const structX = laid.find((n) => n.data.type === 'structure')!.position.x;
     const childX = laid.find((n) => n.data.type === 'operator')!.position.x;
     expect(childX).not.toBe(structX);
+  });
+
+  it('draws a var / val / exists with a computed path as a value card, never with the tap silhouette', () => {
+    // The tap CSS makes the node box transparent and paints selection / debug
+    // rings as solid clip-path fills behind the plug; on a card those fills sit
+    // on top of the rows (the node turned into a solid block when selected).
+    const computed: JsonLogicValue[] = [
+      { val: [[2], 'labels', { val: [] }] },
+      { val: ['labels', { var: 'i' }] },
+      { var: [{ cat: ['a', 'b'] }] },
+      { exists: [{ var: 'k' }] },
+    ];
+    for (const rule of computed) {
+      const data = opData(root(build(rule)));
+      const kind = operatorRenderKind(data);
+      expect(kind, JSON.stringify(rule)).toBe('card');
+      expect(drawnShape(shapeForOperator(data.operator, data.category), kind), JSON.stringify(rule)).toBe('value');
+    }
+    const plain: JsonLogicValue[] = [{ var: 'x' }, { val: [[1], 'index'] }, { exists: ['a', 'b'] }, { var: ['x', 0] }];
+    for (const rule of plain) {
+      const data = opData(root(build(rule)));
+      const kind = operatorRenderKind(data);
+      expect(kind, JSON.stringify(rule)).toBe('tap');
+      expect(drawnShape(shapeForOperator(data.operator, data.category), kind), JSON.stringify(rule)).toBe('tap');
+    }
+    // Every other role keeps its silhouette whatever the render kind.
+    expect(drawnShape('gate', 'card')).toBe('gate');
+    expect(drawnShape('iterator', 'card')).toBe('iterator');
+    expect(drawnShape('branch', 'decision')).toBe('branch');
   });
 
   it('renders a generic if (single operand or shorthand) as a card, not a portless diamond', () => {

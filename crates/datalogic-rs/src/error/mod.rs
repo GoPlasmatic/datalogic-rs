@@ -136,6 +136,8 @@ impl Error {
             ErrorKind::FormatError(_) => "FormatError",
             ErrorKind::IndexOutOfBounds { .. } => "IndexOutOfBounds",
             ErrorKind::ConfigurationError(_) => "ConfigurationError",
+            #[cfg(feature = "budget")]
+            ErrorKind::BudgetExceeded { .. } => "BudgetExceeded",
         }
     }
 
@@ -293,6 +295,18 @@ impl Error {
         ErrorKind::ConfigurationError(msg.into()).into()
     }
 
+    /// The evaluation's operation budget was exhausted.
+    ///
+    /// `#[cold]`: this is raised once per aborted evaluation and never on
+    /// a path that completes, so it stays out of the charge site's
+    /// inlined body.
+    #[cfg(feature = "budget")]
+    #[cold]
+    #[inline(never)]
+    pub(crate) fn budget_exceeded(budget: u64, spent: u64) -> Self {
+        ErrorKind::BudgetExceeded { budget, spent }.into()
+    }
+
     /// Canonical "Invalid Arguments" error. Used wherever an operator
     /// rejects malformed args before evaluating.
     #[inline]
@@ -332,10 +346,10 @@ impl Error {
         prefer_existing_op: bool,
     ) -> Self {
         self.node_ids = node_ids.into();
-        if !prefer_existing_op || self.operator.is_none() {
-            if let Some(name) = compiled.root_op_name.clone() {
-                self.operator = Some(name);
-            }
+        if (!prefer_existing_op || self.operator.is_none())
+            && let Some(name) = compiled.root_op_name.clone()
+        {
+            self.operator = Some(name);
         }
         self
     }

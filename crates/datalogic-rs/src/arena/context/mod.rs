@@ -7,9 +7,9 @@
 //! Per-iteration cost: pushing a frame writes two pointers (no
 //! `Value::clone`, no `BTreeMap::clone`). The current frame lives inline in
 //! the struct (`top`), so the per-iteration replace/lookup accessors touch
-//! struct-local memory only; parent frames spill into a `SmallVec` with
-//! [`INLINE_FRAMES`] inline slots, so typical nesting depths never
-//! heap-allocate.
+//! struct-local memory only. Ancestor frames go into `parents`, which is
+//! maintained only for the rare rule that can actually read one — see the
+//! field's documentation.
 //!
 //! Submodules split the file by concern:
 //! - [`frame`] — `ContextFrame`, the per-iteration payload.
@@ -29,17 +29,6 @@ use super::value::DataValue;
 use bumpalo::Bump;
 use smallvec::SmallVec;
 
-/// Inline capacity of the *parent*-frame stack (the current frame has its
-/// own dedicated slot, so `INLINE_FRAMES + 1` nesting levels stay
-/// heap-free). Depth equals iterator-operator *nesting* (each
-/// map/filter/reduce pushes one frame and replaces it per iteration), not
-/// element count, so real rules stay very shallow: an instrumented run of
-/// the full conformance suite peaked at depth 2, with 98% of pushes at
-/// depth 1. Four parent slots cover that with headroom while keeping
-/// `ContextStack` itself small; deeper nesting spills to the heap with
-/// unchanged semantics.
-const INLINE_FRAMES: usize = 4;
-
 /// Arena-mode context stack. The lifetime `'a` is the arena lifetime; the
 /// root is `&'a DataValue<'a>` (deep-converted from `&Value` for the public
 /// API, or supplied directly by arena-native callers).
@@ -54,7 +43,25 @@ const INLINE_FRAMES: usize = 4;
 pub(crate) struct ContextStack<'a> {
     root: &'a DataValue<'a>,
     top: Option<ContextFrame<'a>>,
-    parents: SmallVec<[ContextFrame<'a>; INLINE_FRAMES]>,
+    /// Ancestor frames, oldest first — everything below `top`.
+    ///
+    /// Maintained **only** when the compiled rule can read an ancestor frame
+    /// (`Logic::needs_ancestor_frames`). `get_at_level` reaches this list
+    /// solely for `levels_up >= 2`, and restoring the enclosing frame now
+    /// goes through [`FrameToken`], so for the overwhelming majority of rules
+    /// nothing ever touches it — an ancestor is not even addressable until
+    /// three levels of iterator nesting. A plain `Vec` rather than a
+    /// `SmallVec`: an inline buffer would be paid for on every evaluation to
+    /// serve well under 1% of them, whereas an unused `Vec` never allocates.
+    parents: Vec<ContextFrame<'a>>,
+    /// Whether to record ancestors at all — see `parents`.
+    track_ancestors: bool,
+    /// Live frame count, maintained explicitly rather than derived from
+    /// `parents.len() + top.is_some()`. Keeping it independent is what lets
+    /// `parents` stop being populated for rules that never read an ancestor
+    /// frame — the count still has to be exact, because `get_at_level`'s
+    /// clamp and the public `EvalContext::depth()` both read it.
+    depth: u32,
     /// Breadcrumb of `CompiledNode::id`s accumulated as errors unwind.
     error_path: Vec<u32>,
     /// Per-evaluation CSE memo slots, indexed by `CseData::slot`. Fully
@@ -83,6 +90,16 @@ pub(crate) struct ContextStack<'a> {
     /// unrelated `Thrown` error from a non-deferring producer.
     #[cfg(feature = "error-handling")]
     thrown_slot: Option<&'a DataValue<'a>>,
+    /// Operations charged so far this evaluation — see [`Self::charge`].
+    /// Saturating, so a runaway rule pins the counter at `u64::MAX`
+    /// instead of wrapping back under `budget`.
+    #[cfg(feature = "budget")]
+    ops: u64,
+    /// Ceiling `ops` may not cross. `u64::MAX` when no budget is set,
+    /// which makes the per-charge compare a never-taken branch rather
+    /// than a second condition to test.
+    #[cfg(feature = "budget")]
+    budget: u64,
     /// Optional trace collector, owned by this stack while a traced
     /// evaluation is in flight. The trace driver moves a fresh collector
     /// in via [`Self::attach_tracer`] before dispatch and pulls it back out
@@ -91,23 +108,92 @@ pub(crate) struct ContextStack<'a> {
     /// the arena reference and so can't accommodate a function-local
     /// collector. Tracing is a dev-time debugging feature, so the move
     /// cost is irrelevant.
+    ///
+    /// Boxed: the collector is 56 bytes and every evaluation in a
+    /// trace-enabled build pays that as stack traffic whether or not it
+    /// traces, while the one allocation lands only on the traced path
+    /// where it is lost in the noise of rendering steps.
     #[cfg(feature = "trace")]
-    tracer: Option<crate::trace::TraceCollector>,
+    tracer: Option<Box<crate::trace::TraceCollector>>,
+}
+
+/// Receipt for a pushed context frame: it carries the frame that was
+/// displaced, so the pusher can put it back without the stack having to keep
+/// an indexable ancestor list for the purpose.
+///
+/// `#[must_use]` is the point. Frame push/pop pairs used to be balanced by
+/// hand, and an unbalanced one is a silent context corruption rather than a
+/// crash — see `tests/error_context_test.rs`, which regression-tests exactly
+/// that bug on the `map` bridge path. Now dropping the receipt without
+/// restoring is a compile-time warning.
+#[must_use = "hand the FrameToken back to `restore_frame`, or the displaced frame is lost"]
+struct FrameToken<'a>(Option<ContextFrame<'a>>);
+
+/// Where a `levels_up` walk lands when `frame_count` frames are pushed.
+///
+/// The conceptual frame list is `parents ++ [top]`, so the top frame's
+/// index is `frame_count - 1` and walking `levels_up` targets index
+/// `frame_count - levels_up`. Three consequences, all deliberate and all
+/// pinned by the conformance suite:
+///
+/// - `levels_up == 0` is the current frame — the root when nothing is
+///   pushed.
+/// - `levels_up >= frame_count` clamps to the root rather than erroring.
+/// - `levels_up == 1` names the top frame itself, so `[[1]]` aliases
+///   `[[0]]` whenever two or more frames are pushed; only `levels_up >= 2`
+///   reaches a strict ancestor.
+///
+/// This is the one place the arithmetic lives. [`ContextStack::get_at_level`]
+/// applies it at runtime and [`crate::node::ScopeBinding::resolve`] at
+/// compile time, so the two cannot drift.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FrameTarget {
+    /// The rule's root input.
+    Root,
+    /// The innermost pushed frame.
+    Top,
+    /// A strict ancestor, by index into the conceptual frame list.
+    Ancestor(usize),
+}
+
+#[inline]
+pub(crate) const fn frame_target(frame_count: usize, levels_up: usize) -> FrameTarget {
+    if levels_up == 0 {
+        return if frame_count == 0 {
+            FrameTarget::Root
+        } else {
+            FrameTarget::Top
+        };
+    }
+    if levels_up >= frame_count {
+        return FrameTarget::Root;
+    }
+    if levels_up == 1 {
+        FrameTarget::Top
+    } else {
+        FrameTarget::Ancestor(frame_count - levels_up)
+    }
 }
 
 impl<'a> ContextStack<'a> {
     #[inline]
-    pub(crate) fn new(root: &'a DataValue<'a>) -> Self {
+    pub(crate) fn new(root: &'a DataValue<'a>, track_ancestors: bool) -> Self {
         Self {
             root,
             top: None,
-            parents: SmallVec::new(),
+            parents: Vec::new(),
+            track_ancestors,
+            depth: 0,
             error_path: Vec::new(),
             cse_slots: SmallVec::new(),
             #[cfg(feature = "error-handling")]
             catch_depth: 0,
             #[cfg(feature = "error-handling")]
             thrown_slot: None,
+            #[cfg(feature = "budget")]
+            ops: 0,
+            #[cfg(feature = "budget")]
+            budget: u64::MAX,
             #[cfg(feature = "trace")]
             tracer: None,
         }
@@ -121,7 +207,7 @@ impl<'a> ContextStack<'a> {
     #[inline]
     pub(crate) fn from_value(root: &'a serde_json::Value, arena: &'a Bump) -> Self {
         let av = crate::arena::value::value_to_data(root, arena);
-        Self::new(arena.alloc(av))
+        Self::new(arena.alloc(av), true)
     }
 
     /// Move a tracer into this stack. The trace driver pulls it back out
@@ -129,7 +215,7 @@ impl<'a> ContextStack<'a> {
     #[cfg(feature = "trace")]
     #[inline]
     pub(crate) fn attach_tracer(&mut self, tracer: crate::trace::TraceCollector) {
-        self.tracer = Some(tracer);
+        self.tracer = Some(Box::new(tracer));
     }
 
     /// Pull the tracer back out (e.g., after a traced evaluation completes)
@@ -137,7 +223,7 @@ impl<'a> ContextStack<'a> {
     #[cfg(feature = "trace")]
     #[inline]
     pub(crate) fn detach_tracer(&mut self) -> Option<crate::trace::TraceCollector> {
-        self.tracer.take()
+        self.tracer.take().map(|boxed| *boxed)
     }
 
     /// True iff a tracer has been attached.
@@ -225,7 +311,12 @@ impl<'a> ContextStack<'a> {
     /// Current depth (number of pushed iteration frames).
     #[inline]
     pub(crate) fn depth(&self) -> usize {
-        self.parents.len() + usize::from(self.top.is_some())
+        debug_assert!(
+            !self.track_ancestors
+                || self.depth as usize == self.parents.len() + usize::from(self.top.is_some()),
+            "explicit depth counter drifted from the frame storage"
+        );
+        self.depth as usize
     }
 
     // ----- CSE memo slots ---------------------------------------------------
@@ -262,93 +353,112 @@ impl<'a> ContextStack<'a> {
     }
 
     /// Walk `level` frames up from the current context. Negative/positive
-    /// magnitudes treated as absolute (matches `ContextStack::get_at_level`).
-    /// Index arithmetic is unchanged from the single-`Vec` layout: the
-    /// conceptual frame list is `parents ++ [top]`, so `parents.len()` is
-    /// the top frame's index.
+    /// magnitudes are treated as absolute. The arithmetic is
+    /// [`frame_target`]'s; only the `Ancestor` case touches `parents`.
     pub(crate) fn get_at_level(&self, level: isize) -> Option<ContextRef<'a, '_>> {
-        let levels_up = level.unsigned_abs();
-        if levels_up == 0 {
-            return Some(self.current());
-        }
-        let frame_count = self.depth();
-        if levels_up >= frame_count {
-            return Some(ContextRef::Root(self.root));
-        }
-        let target_index = frame_count - levels_up;
-        if target_index == self.parents.len() {
-            self.top.as_ref().map(ContextRef::Frame)
-        } else {
-            self.parents.get(target_index).map(ContextRef::Frame)
+        match frame_target(self.depth(), level.unsigned_abs()) {
+            FrameTarget::Root => Some(ContextRef::Root(self.root)),
+            FrameTarget::Top => self.top.as_ref().map(ContextRef::Frame),
+            FrameTarget::Ancestor(index) => {
+                debug_assert!(
+                    self.track_ancestors,
+                    "ancestor lookup on a stack built without ancestor tracking - \
+                     `Logic::needs_ancestor_frames` under-approximated"
+                );
+                self.parents.get(index).map(ContextRef::Frame)
+            }
         }
     }
 
     // ----- frame mutation ---------------------------------------------------
 
-    /// Push a frame: the previous top (if any) moves down into `parents`.
+    /// Push a frame, returning the displaced one as a [`FrameToken`] for the
+    /// caller to restore. `ContextFrame` is `Copy`, so the token is a cheap
+    /// duplicate of what also went into `parents`.
     #[inline]
-    fn push_frame(&mut self, frame: ContextFrame<'a>) {
-        if let Some(prev) = self.top.replace(frame) {
-            self.parents.push(prev);
+    fn push_frame(&mut self, frame: ContextFrame<'a>) -> FrameToken<'a> {
+        let prev = self.top.replace(frame);
+        if self.track_ancestors
+            && let Some(p) = prev
+        {
+            self.parents.push(p);
+        }
+        self.depth += 1;
+        FrameToken(prev)
+    }
+
+    #[cfg(feature = "error-handling")]
+    #[inline]
+    fn push(&mut self, data: &'a DataValue<'a>) -> FrameToken<'a> {
+        self.push_frame(ContextFrame::Data(data))
+    }
+
+    #[inline]
+    fn push_indexed(&mut self, data: &'a DataValue<'a>, index: usize) -> FrameToken<'a> {
+        self.push_frame(ContextFrame::Indexed { data, index })
+    }
+
+    #[inline]
+    fn push_with_key_index(
+        &mut self,
+        data: &'a DataValue<'a>,
+        index: usize,
+        key: &'a str,
+    ) -> FrameToken<'a> {
+        self.push_frame(ContextFrame::Keyed { data, index, key })
+    }
+
+    #[inline]
+    fn push_reduce(
+        &mut self,
+        current: &'a DataValue<'a>,
+        accumulator: &'a DataValue<'a>,
+    ) -> FrameToken<'a> {
+        self.push_frame(ContextFrame::Reduce {
+            current,
+            accumulator,
+        })
+    }
+
+    /// Overwrite the top frame in place. `IterGuard` uses this for every
+    /// iteration after the first, so a loop pays one push and one restore
+    /// however many items it visits.
+    #[inline]
+    fn replace_top(&mut self, frame: ContextFrame<'a>) {
+        if let Some(top) = self.top.as_mut() {
+            *top = frame;
         }
     }
 
     #[inline]
-    pub(crate) fn push(&mut self, data: &'a DataValue<'a>) {
-        self.push_frame(ContextFrame::Data(data));
+    fn replace_top_data(&mut self, data: &'a DataValue<'a>, index: usize) {
+        self.replace_top(ContextFrame::Indexed { data, index });
     }
 
     #[inline]
-    pub(crate) fn push_with_index(&mut self, data: &'a DataValue<'a>, index: usize) {
-        self.push_frame(ContextFrame::Indexed { data, index });
+    fn replace_top_key_data(&mut self, data: &'a DataValue<'a>, index: usize, key: &'a str) {
+        self.replace_top(ContextFrame::Keyed { data, index, key });
     }
 
     #[inline]
-    fn push_with_key_index(&mut self, data: &'a DataValue<'a>, index: usize, key: &'a str) {
-        self.push_frame(ContextFrame::Keyed { data, index, key });
-    }
-
-    #[inline]
-    fn push_reduce(&mut self, current: &'a DataValue<'a>, accumulator: &'a DataValue<'a>) {
-        self.push_frame(ContextFrame::Reduce {
+    fn replace_reduce_data(&mut self, current: &'a DataValue<'a>, accumulator: &'a DataValue<'a>) {
+        self.replace_top(ContextFrame::Reduce {
             current,
             accumulator,
         });
     }
 
+    /// Undo a [`push_frame`](Self::push_frame), restoring the frame the token
+    /// carries. The restored value comes from the token rather than from
+    /// `parents`, which is what frees `parents` to be maintained only when a
+    /// rule actually reads an ancestor frame.
     #[inline]
-    fn replace_top_data(&mut self, data: &'a DataValue<'a>, index: usize) {
-        if let Some(frame) = self.top.as_mut() {
-            *frame = ContextFrame::Indexed { data, index };
+    fn restore_frame(&mut self, token: FrameToken<'a>) {
+        self.top = token.0;
+        if self.track_ancestors && token.0.is_some() {
+            self.parents.pop();
         }
-    }
-
-    #[inline]
-    fn replace_top_key_data(&mut self, data: &'a DataValue<'a>, index: usize, key: &'a str) {
-        if let Some(frame) = self.top.as_mut() {
-            *frame = ContextFrame::Keyed { data, index, key };
-        }
-    }
-
-    #[inline]
-    fn replace_reduce_data(&mut self, current: &'a DataValue<'a>, accumulator: &'a DataValue<'a>) {
-        if let Some(frame) = self.top.as_mut() {
-            *frame = ContextFrame::Reduce {
-                current,
-                accumulator,
-            };
-        }
-    }
-
-    /// Pop the current frame, restoring the nearest parent (if any) as the
-    /// new top. Returns `None` on an empty stack, like `Vec::pop`.
-    #[inline]
-    pub(crate) fn pop(&mut self) -> Option<ContextFrame<'a>> {
-        let out = self.top.take();
-        if out.is_some() {
-            self.top = self.parents.pop();
-        }
-        out
+        self.depth -= 1;
     }
 
     // ----- error breadcrumb (mirrors ContextStack) --------------------------
@@ -377,6 +487,57 @@ impl<'a> ContextStack<'a> {
     #[inline]
     pub(crate) fn take_error_path(&mut self) -> Vec<u32> {
         std::mem::take(&mut self.error_path)
+    }
+
+    // ----- operation budget --------------------------------------------------
+
+    /// Charge `n` operations against this evaluation's budget.
+    ///
+    /// Every charge happens **before** the work it pays for, so a rule
+    /// that would build a billion-element result is refused rather than
+    /// run and then reported. The dispatcher charges 1 per node,
+    /// iterator operators charge 1 per item they are about to examine,
+    /// and operators that move an amount of data the node count does not
+    /// reflect (the tensor family) charge their own element count.
+    ///
+    /// Compiles to `Ok(())` — no counter, no compare — when the `budget`
+    /// feature is off.
+    ///
+    /// # Errors
+    ///
+    /// [`crate::ErrorKind::BudgetExceeded`] once the running total
+    /// crosses the ceiling. The counter is left past the ceiling, so
+    /// every later charge fails too: that is what makes the abort final
+    /// rather than something a `try` arm can step over.
+    #[cfg(feature = "budget")]
+    #[inline]
+    pub(crate) fn charge(&mut self, n: u64) -> crate::Result<()> {
+        self.ops = self.ops.saturating_add(n);
+        if self.ops > self.budget {
+            return Err(crate::Error::budget_exceeded(self.budget, self.ops));
+        }
+        Ok(())
+    }
+
+    /// Cross-feature no-op form of [`Self::charge`].
+    #[cfg(not(feature = "budget"))]
+    #[inline(always)]
+    pub(crate) fn charge(&mut self, _n: u64) -> crate::Result<()> {
+        Ok(())
+    }
+
+    /// Set the ceiling for this evaluation. `u64::MAX` means unbounded.
+    #[cfg(feature = "budget")]
+    #[inline]
+    pub(crate) fn set_budget(&mut self, budget: u64) {
+        self.budget = budget;
+    }
+
+    /// Operations charged so far.
+    #[cfg(feature = "budget")]
+    #[inline]
+    pub(crate) fn ops_spent(&self) -> u64 {
+        self.ops
     }
 
     // ----- deferred thrown-payload channel (see field docs) ------------------
@@ -437,44 +598,59 @@ impl<'a> ContextStack<'a> {
 // IterGuard
 // ---------------------------------------------------------------------------
 
-/// RAII guard for the per-iteration push/replace/pop pattern used by array
-/// operators (filter / map / reduce / quantifiers / sort).
+/// RAII guard around a pushed context frame — the only way code outside
+/// this module pushes one.
 ///
 /// On the first `step_*` call the guard pushes a frame; subsequent `step_*`
 /// calls *replace* the top frame in place (avoiding repeated push/pop). The
-/// frame is popped automatically on drop, including on the early-return paths
-/// that previously needed a manual `if pushed { ctx.pop() }` epilogue.
+/// frame is popped automatically on drop, including on `?` and every other
+/// early return. That drop is the whole point: a push/pop pair balanced by
+/// hand is a silent context corruption when it goes wrong, not a crash
+/// (`tests/error_context_test.rs` pins the one that shipped), and a guard
+/// is the one shape the borrow checker cannot let a caller forget.
 ///
-/// All three iteration shapes are covered: indexed (array), keyed (object),
-/// and reduce (current/accumulator).
+/// Four frame shapes are covered: indexed (array iteration), keyed (object
+/// iteration), reduce (current/accumulator), and, under `error-handling`,
+/// plain data (`try`'s caught error object).
 pub(crate) struct IterGuard<'g, 'a> {
     ctx: &'g mut ContextStack<'a>,
-    pushed: bool,
+    /// `Some` once a frame has been pushed; carries what to restore on drop.
+    saved: Option<FrameToken<'a>>,
 }
 
 impl<'g, 'a> IterGuard<'g, 'a> {
     #[inline]
     pub(crate) fn new(ctx: &'g mut ContextStack<'a>) -> Self {
-        Self { ctx, pushed: false }
+        Self { ctx, saved: None }
+    }
+
+    /// Push (or replace with) a plain data frame carrying no iteration
+    /// metadata — what a `var` inside `try`'s catch arm reads.
+    #[cfg(feature = "error-handling")]
+    #[inline]
+    pub(crate) fn step_data(&mut self, data: &'a DataValue<'a>) {
+        if self.saved.is_some() {
+            self.ctx.replace_top(ContextFrame::Data(data));
+        } else {
+            self.saved = Some(self.ctx.push(data));
+        }
     }
 
     #[inline]
     pub(crate) fn step_indexed(&mut self, data: &'a DataValue<'a>, index: usize) {
-        if self.pushed {
+        if self.saved.is_some() {
             self.ctx.replace_top_data(data, index);
         } else {
-            self.ctx.push_with_index(data, index);
-            self.pushed = true;
+            self.saved = Some(self.ctx.push_indexed(data, index));
         }
     }
 
     #[inline]
     pub(crate) fn step_keyed(&mut self, data: &'a DataValue<'a>, index: usize, key: &'a str) {
-        if self.pushed {
+        if self.saved.is_some() {
             self.ctx.replace_top_key_data(data, index, key);
         } else {
-            self.ctx.push_with_key_index(data, index, key);
-            self.pushed = true;
+            self.saved = Some(self.ctx.push_with_key_index(data, index, key));
         }
     }
 
@@ -484,11 +660,10 @@ impl<'g, 'a> IterGuard<'g, 'a> {
         current: &'a DataValue<'a>,
         accumulator: &'a DataValue<'a>,
     ) {
-        if self.pushed {
+        if self.saved.is_some() {
             self.ctx.replace_reduce_data(current, accumulator);
         } else {
-            self.ctx.push_reduce(current, accumulator);
-            self.pushed = true;
+            self.saved = Some(self.ctx.push_reduce(current, accumulator));
         }
     }
 
@@ -503,8 +678,8 @@ impl<'g, 'a> IterGuard<'g, 'a> {
 impl Drop for IterGuard<'_, '_> {
     #[inline]
     fn drop(&mut self) {
-        if self.pushed {
-            self.ctx.pop();
+        if let Some(token) = self.saved.take() {
+            self.ctx.restore_frame(token);
         }
     }
 }
@@ -524,7 +699,7 @@ mod tests {
         assert!(ctx.current().root_data().is_some(), "root at depth 0");
 
         let a: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(1)));
-        ctx.push_with_index(a, 0);
+        let token = ctx.push_indexed(a, 0);
         assert_eq!(ctx.depth(), 1);
         assert_eq!(ctx.current().get_index(), Some(0));
 
@@ -532,7 +707,7 @@ mod tests {
         ctx.replace_top_data(b, 1);
         assert_eq!(ctx.current().get_index(), Some(1));
 
-        ctx.pop();
+        ctx.restore_frame(token);
         assert_eq!(ctx.depth(), 0);
     }
 
@@ -543,7 +718,7 @@ mod tests {
         let mut ctx = ContextStack::from_value(&root_val, &arena);
 
         let a: &DataValue = arena.alloc(DataValue::Bool(true));
-        ctx.push_with_key_index(a, 0, "k1");
+        let _token = ctx.push_with_key_index(a, 0, "k1");
         assert_eq!(ctx.current().get_key(), Some("k1"));
 
         let b: &DataValue = arena.alloc(DataValue::Bool(false));
@@ -560,7 +735,7 @@ mod tests {
 
         let cur: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(1)));
         let acc: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(0)));
-        ctx.push_reduce(cur, acc);
+        let _token = ctx.push_reduce(cur, acc);
         assert_eq!(ctx.depth(), 1);
 
         if let ContextRef::Frame(f) = ctx.current() {
@@ -579,8 +754,8 @@ mod tests {
 
         let a: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(10)));
         let b: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(20)));
-        ctx.push_with_index(a, 0);
-        ctx.push_with_index(b, 0);
+        let _ta = ctx.push_indexed(a, 0);
+        let _tb = ctx.push_indexed(b, 0);
         assert_eq!(ctx.depth(), 2);
 
         // Level 0 = current (b)
@@ -602,39 +777,39 @@ mod tests {
         let a: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(1)));
         let b: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(2)));
         let c: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(3)));
-        ctx.push_with_index(a, 10);
-        ctx.push_with_index(b, 20);
-        ctx.push_with_index(c, 30);
+        let ta = ctx.push_indexed(a, 10);
+        let tb = ctx.push_indexed(b, 20);
+        let tc = ctx.push_indexed(c, 30);
         assert_eq!(ctx.depth(), 3);
         assert_eq!(ctx.current().get_index(), Some(30));
 
-        assert!(ctx.pop().is_some());
+        ctx.restore_frame(tc);
         assert_eq!(ctx.depth(), 2);
         assert_eq!(ctx.current().get_index(), Some(20), "parent restored");
 
-        assert!(ctx.pop().is_some());
+        ctx.restore_frame(tb);
         assert_eq!(ctx.current().get_index(), Some(10));
 
-        assert!(ctx.pop().is_some());
+        ctx.restore_frame(ta);
         assert_eq!(ctx.depth(), 0);
         assert!(ctx.current().root_data().is_some(), "back to root");
-        assert!(ctx.pop().is_none(), "empty pop is a no-op");
     }
 
     #[test]
     fn deep_nesting_spills_and_unwinds() {
-        // Push past `INLINE_FRAMES + 1` so `parents` spills to the heap,
-        // then verify level walking and pop-unwinding across the boundary.
+        // Nest well past any plausible real rule, then verify level walking
+        // and unwinding all the way back down.
         let arena = Bump::new();
         let root_val = Value::Null;
         let mut ctx = ContextStack::from_value(&root_val, &arena);
 
-        let depth = INLINE_FRAMES + 4;
+        let depth = 8;
+        let mut tokens = Vec::new();
         for i in 0..depth {
             let v: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(
                 i as i64,
             )));
-            ctx.push_with_index(v, i);
+            tokens.push(ctx.push_indexed(v, i));
         }
         assert_eq!(ctx.depth(), depth);
         assert_eq!(ctx.current().get_index(), Some(depth - 1));
@@ -653,10 +828,10 @@ mod tests {
 
         for i in (0..depth).rev() {
             assert_eq!(ctx.current().get_index(), Some(i));
-            assert!(ctx.pop().is_some());
+            ctx.restore_frame(tokens.pop().expect("one token per push"));
         }
         assert_eq!(ctx.depth(), 0);
-        assert!(ctx.pop().is_none());
+        assert!(tokens.is_empty());
     }
 
     #[test]
@@ -770,5 +945,24 @@ mod tests {
         ctx.set_thrown_slot(payload);
         ctx.clear_thrown_slot();
         assert!(ctx.take_thrown_slot().is_none(), "clear drops");
+    }
+    /// `ContextStack` is built fresh on every `Engine::evaluate`, so its size
+    /// is per-evaluation stack traffic, not a one-off. It was 400 bytes when
+    /// `parents` carried a four-slot inline buffer — storage that a census of
+    /// the conformance corpus showed 99.1% of rules never write, because an
+    /// ancestor frame is not addressable until three levels of iterator
+    /// nesting. Dropping the buffer was worth 7-15% on shallow rules.
+    ///
+    /// Shrink the payload rather than raising this bound. The `budget`
+    /// feature's two counters were paid for by boxing the trace
+    /// collector, which no evaluation reads unless it is being traced.
+    #[test]
+    #[cfg(target_pointer_width = "64")]
+    fn context_stack_stays_small() {
+        let size = std::mem::size_of::<ContextStack<'_>>();
+        assert!(
+            size <= 256,
+            "ContextStack grew to {size} bytes; it is constructed per evaluation"
+        );
     }
 }

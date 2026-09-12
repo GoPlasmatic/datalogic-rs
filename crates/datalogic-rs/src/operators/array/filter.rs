@@ -7,8 +7,8 @@ use bumpalo::Bump;
 use std::ops::ControlFlow;
 
 use super::helpers::{
-    FastPredicate, FieldCursor, IterArgKind, IterSrc, ResolvedInput, evaluate_invariant_no_push,
-    for_each_iter_array, for_each_iter_object, resolve_iter_input, try_extract_filter_field_cmp,
+    FastPredicate, FieldCursor, IterArgKind, IterSrc, ResolvedInput, for_each_iter_array,
+    for_each_iter_object, resolve_iter_input, try_extract_filter_field_cmp,
 };
 
 /// `filter`. Fast path: input collection resolves at root scope (the dominant
@@ -48,10 +48,10 @@ pub(crate) fn evaluate_filter<'a>(
             return Ok(result);
         }
 
-        if let Some(fast_pred) = FastPredicate::from_node(predicate) {
-            if let Some(result) = filter_with_fast_predicate(&src, fast_pred, engine, arena) {
-                return Ok(result);
-            }
+        if let Some(fast_pred) = FastPredicate::from_node(predicate)
+            && let Some(result) = filter_with_fast_predicate(&src, fast_pred, engine, arena)
+        {
+            return Ok(result);
         }
     }
 
@@ -87,7 +87,10 @@ fn filter_strict_eq_field_fast_path<'a>(
         return Ok(None);
     };
 
-    let invariant_val = evaluate_invariant_no_push(invariant_node, ctx, engine, arena)?;
+    // Evaluated once, with no per-item frame pushed: `is_filter_invariant`
+    // admits only literals and root-bound references, neither of which
+    // reads the frame stack.
+    let invariant_val = engine.dispatch_node(invariant_node, ctx, arena)?;
     let is_eq = matches!(opcode, OpCode::StrictEquals);
     let len = src.len();
     // Local hinted cursor — homogeneous rows resolve the field in one key

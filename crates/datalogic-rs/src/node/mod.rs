@@ -35,6 +35,7 @@ pub(crate) use payload::StructuredObjectData;
 pub(crate) use payload::{
     CompiledMissingArg, CompiledMissingData, CompiledMissingMin, CompiledMissingPaths,
     CompiledMissingSomeData, CseData, CustomOperatorData, MetadataHint, PathSegment, ReduceHint,
+    ScopeBinding,
 };
 pub(crate) use populate::populate_lits;
 pub(crate) use prelit::PreLit;
@@ -128,6 +129,11 @@ pub(crate) enum CompiledNode {
     ///
     /// scope_level 0 = current context (var-style), N = go up N levels (val with [[N], ...]).
     /// Segments are pre-parsed at compile time to avoid runtime string splitting.
+    ///
+    /// `binding` is the compile-time frame resolution filled in by the
+    /// post-compile [`crate::compile::scope::resolve`] pass. It defaults to
+    /// [`ScopeBinding::Unresolved`], which keeps the runtime on the
+    /// `scope_level` walk — see [`crate::compile::scope`].
     Var {
         id: NodeId,
         scope_level: u32,
@@ -135,6 +141,7 @@ pub(crate) enum CompiledNode {
         reduce_hint: ReduceHint,
         metadata_hint: MetadataHint,
         default_value: Option<Box<CompiledNode>>,
+        binding: ScopeBinding,
     },
 
     /// A pre-compiled exists check.
@@ -383,10 +390,10 @@ impl CompiledNode {
     /// literal); runtime wrappers go through [`Self::synthetic_value`].
     pub(crate) fn compile_time_value(id: NodeId, value: OwnedDataValue) -> Self {
         let mut node = Self::value_with_id(id, value);
-        if let CompiledNode::Value { value, lit, .. } = &mut node {
-            if lit.is_none() {
-                *lit = PreLit::composite(value);
-            }
+        if let CompiledNode::Value { value, lit, .. } = &mut node
+            && lit.is_none()
+        {
+            *lit = PreLit::composite(value);
         }
         node
     }

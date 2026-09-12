@@ -873,6 +873,67 @@ fn builder_set_config_json_strict_preset_takes_effect() {
     unsafe { datalogic_engine_free(engine) };
 }
 
+/// The operation budget reaches this ABI through the config wire format
+/// alone — there is no per-call budget entry point here — so this pins
+/// that the key is accepted, that it actually bounds evaluation, and that
+/// the failure arrives with its own tag rather than as a generic eval
+/// error a caller cannot distinguish.
+#[test]
+fn builder_set_config_json_ops_budget_bounds_evaluation() {
+    fn engine_with_budget(config: &str) -> *mut Engine {
+        let b = datalogic_engine_builder_new();
+        let status = unsafe {
+            datalogic_engine_builder_set_config_json(
+                b,
+                config.as_ptr(),
+                config.len(),
+                std::ptr::null_mut(),
+            )
+        };
+        assert_eq!(status, Status::Ok, "config rejected: {config}");
+        let engine = unsafe { datalogic_engine_builder_build(b) };
+        unsafe { datalogic_engine_builder_free(b) };
+        engine
+    }
+
+    const RULE: &str = r#"{"map":[{"var":"xs"},{"*":[{"var":""},2]}]}"#;
+    let small = r#"{"xs":[1,2,3]}"#;
+    let large = format!(
+        r#"{{"xs":[{}]}}"#,
+        (0..200)
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+
+    // A budget that fits leaves the result untouched. 100 is comfortably
+    // above the three-item run and comfortably below the 200-item one.
+    let engine = engine_with_budget(r#"{"ops_budget":100}"#);
+    assert_eq!(
+        unsafe { apply_str(engine, RULE, small) }.unwrap(),
+        "[2,4,6]"
+    );
+
+    // The same engine refuses the larger payload, with its own tag.
+    let (status, message, tag) = unsafe { apply_str(engine, RULE, &large) }.unwrap_err();
+    assert_eq!(status, Status::Eval);
+    assert_eq!(tag, "BudgetExceeded");
+    assert!(message.contains("budget"), "got: {message}");
+    unsafe { datalogic_engine_free(engine) };
+
+    // `try` cannot step over it.
+    let engine = engine_with_budget(r#"{"ops_budget":10}"#);
+    let rule = format!(r#"{{"try":[{RULE},"fallback"]}}"#);
+    let (_, _, tag) = unsafe { apply_str(engine, &rule, &large) }.unwrap_err();
+    assert_eq!(tag, "BudgetExceeded");
+    unsafe { datalogic_engine_free(engine) };
+
+    // `null` is the explicit spelling of unbounded.
+    let engine = engine_with_budget(r#"{"ops_budget":null}"#);
+    assert!(unsafe { apply_str(engine, RULE, &large) }.is_ok());
+    unsafe { datalogic_engine_free(engine) };
+}
+
 #[test]
 fn builder_set_config_json_rejects_bad_input() {
     let b = datalogic_engine_builder_new();

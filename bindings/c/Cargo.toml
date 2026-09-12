@@ -7,7 +7,7 @@
 
 [package]
 name = "datalogic-c"
-version = "5.4.0"
+version = "5.5.0"
 edition = "2024"
 description = "C ABI for the datalogic-rs JSONLogic engine — shared FFI surface for Go, PHP, JVM, and other C-FFI consumers"
 license = "Apache-2.0"
@@ -42,6 +42,8 @@ datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features =
     "ext-control",
     "ext-math",
     "flagd",
+    "tensor",
+    "budget",
 ] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

@@ -7,7 +7,7 @@
 
 [package]
 name = "datalogic-node"
-version = "5.4.0"
+version = "5.5.0"
 edition = "2024"
 description = "Node.js native bindings for datalogic-rs JSONLogic engine"
 license = "Apache-2.0"
@@ -40,6 +40,8 @@ datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features =
     "ext-control",
     "ext-math",
     "flagd",
+    "tensor",
+    "budget",
 ] }
 # napi 3.x is the current major and the floor for `napi-derive` 3.x's
 # improved async / class ergonomics. `napi9` enables Node 18+ ABI. The

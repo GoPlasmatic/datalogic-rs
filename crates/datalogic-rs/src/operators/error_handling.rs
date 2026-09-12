@@ -22,7 +22,7 @@
 
 use datavalue::OwnedDataValue;
 
-use crate::arena::{ContextStack, DataValue};
+use crate::arena::{ContextStack, DataValue, IterGuard};
 use crate::{CompiledNode, Engine, Error, Result};
 use bumpalo::Bump;
 
@@ -115,6 +115,8 @@ fn arena_type_name(v: &DataValue<'_>) -> &'static str {
         DataValue::DateTime(_) => "datetime",
         #[cfg(feature = "datetime")]
         DataValue::Duration(_) => "duration",
+        #[cfg(feature = "tensor")]
+        DataValue::Tensor(_) => "tensor",
     }
 }
 
@@ -133,6 +135,8 @@ fn value_type_name(v: &OwnedDataValue) -> &'static str {
         OwnedDataValue::DateTime(_) => "datetime",
         #[cfg(feature = "datetime")]
         OwnedDataValue::Duration(_) => "duration",
+        #[cfg(feature = "tensor")]
+        OwnedDataValue::Tensor(_) => "tensor",
     }
 }
 
@@ -174,6 +178,16 @@ pub(crate) fn evaluate_try<'a>(
         match result {
             Ok(v) => return Ok(v),
             Err(e) => {
+                // An exhausted operation budget is not a recoverable
+                // failure: the counter stays past its ceiling, so every
+                // later charge fails too. Propagating here rather than
+                // falling into the next arm makes that final even when
+                // the catch arm is a literal, which would otherwise
+                // return without dispatching (and so without charging).
+                #[cfg(feature = "budget")]
+                if matches!(e.kind, crate::ErrorKind::BudgetExceeded { .. }) {
+                    return Err(e);
+                }
                 ctx.truncate_error_path(saved_len);
                 last_err = Some(e);
             }
@@ -227,10 +241,9 @@ fn try_last_with_error_context<'a>(
         Some(err) => engine_error_object(&err, arena),
         None => return engine.dispatch_node(arg, ctx, arena),
     };
-    ctx.push(av);
-    let result = engine.dispatch_node(arg, ctx, arena);
-    ctx.pop();
-    result
+    let mut guard = IterGuard::new(ctx);
+    guard.step_data(av);
+    engine.dispatch_node(arg, guard.stack(), arena)
 }
 
 /// Build the `{"type": <message>}` context object for a non-`Thrown`

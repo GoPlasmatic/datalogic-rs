@@ -4,52 +4,683 @@
         "description": "Map can add each number to index",
         "rule": {
             "map": [
-                { "val": "numbers" },
-                { "+": [{ "val": [[1], "index"] }, { "val": [] }]}
+                {
+                    "val": "numbers"
+                },
+                {
+                    "+": [
+                        {
+                            "val": [
+                                [
+                                    1
+                                ],
+                                "index"
+                            ]
+                        },
+                        {
+                            "val": []
+                        }
+                    ]
+                }
             ]
         },
-        "data": { "numbers": [1,2,3] },
-        "result": [1,3,5]
+        "data": {
+            "numbers": [
+                1,
+                2,
+                3
+            ]
+        },
+        "result": [
+            1,
+            3,
+            5
+        ]
     },
     {
         "description": "Map can add each number to value from context",
         "rule": {
             "map": [
-                { "val": "numbers" },
-                { "+": [{ "val": [[2], "value"] }, { "val": [] }]}
+                {
+                    "val": "numbers"
+                },
+                {
+                    "+": [
+                        {
+                            "val": [
+                                [
+                                    2
+                                ],
+                                "value"
+                            ]
+                        },
+                        {
+                            "val": []
+                        }
+                    ]
+                }
             ]
         },
-        "data": { "numbers": [1,2,3], "value": 10 },
-        "result": [11,12,13]
+        "data": {
+            "numbers": [
+                1,
+                2,
+                3
+            ],
+            "value": 10
+        },
+        "result": [
+            11,
+            12,
+            13
+        ]
     },
     {
         "description": "Filter can use parent context to filter",
         "rule": {
             "filter": [
-                { "val": "people" },
-                { "===": [{ "val": "department" }, { "val": [[2], "department"] }] }
+                {
+                    "val": "people"
+                },
+                {
+                    "===": [
+                        {
+                            "val": "department"
+                        },
+                        {
+                            "val": [
+                                [
+                                    2
+                                ],
+                                "department"
+                            ]
+                        }
+                    ]
+                }
             ]
         },
         "data": {
             "department": "Engineering",
             "people": [
-                { "name": "Jay Ortiz", "department": "Engineering" },
-                { "name": "Louisa Hall", "department": "Sales" },
-                { "name": "Kyle Carlson", "department": "Sales" },
-                { "name": "Grace Ortiz", "department": "Engineering" },
-                { "name": "Isabelle Harrington", "department": "Marketing" },
-                { "name": "Harold Moore", "department": "Sales" },
-                { "name": "Clarence Schultz", "department": "Sales" },
-                { "name": "Jesse Keller", "department": "Engineering" },
-                { "name": "Phillip Holland", "department": "Marketing" },
-                { "name": "Mason Sullivan", "department": "Engineering" }
+                {
+                    "name": "Jay Ortiz",
+                    "department": "Engineering"
+                },
+                {
+                    "name": "Louisa Hall",
+                    "department": "Sales"
+                },
+                {
+                    "name": "Kyle Carlson",
+                    "department": "Sales"
+                },
+                {
+                    "name": "Grace Ortiz",
+                    "department": "Engineering"
+                },
+                {
+                    "name": "Isabelle Harrington",
+                    "department": "Marketing"
+                },
+                {
+                    "name": "Harold Moore",
+                    "department": "Sales"
+                },
+                {
+                    "name": "Clarence Schultz",
+                    "department": "Sales"
+                },
+                {
+                    "name": "Jesse Keller",
+                    "department": "Engineering"
+                },
+                {
+                    "name": "Phillip Holland",
+                    "department": "Marketing"
+                },
+                {
+                    "name": "Mason Sullivan",
+                    "department": "Engineering"
+                }
             ]
         },
         "result": [
-            { "name": "Jay Ortiz", "department": "Engineering" },
-            { "name": "Grace Ortiz", "department": "Engineering" },
-            { "name": "Jesse Keller", "department": "Engineering" },
-            { "name": "Mason Sullivan", "department": "Engineering" }
+            {
+                "name": "Jay Ortiz",
+                "department": "Engineering"
+            },
+            {
+                "name": "Grace Ortiz",
+                "department": "Engineering"
+            },
+            {
+                "name": "Jesse Keller",
+                "department": "Engineering"
+            },
+            {
+                "name": "Mason Sullivan",
+                "department": "Engineering"
+            }
+        ]
+    },
+    "Interior-frame addressing at three levels of nesting. Frames are [A, B, C] with C current; only these cases reach the ScopeBinding::Ancestor branch, which no other suite exercises.",
+    {
+        "description": "Depth 3: [[0]] reads the current frame",
+        "rule": {
+            "map": [
+                {
+                    "val": "a"
+                },
+                {
+                    "map": [
+                        {
+                            "val": "b"
+                        },
+                        {
+                            "map": [
+                                {
+                                    "val": "c"
+                                },
+                                {
+                                    "val": [
+                                        [
+                                            0
+                                        ],
+                                        "tag"
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "data": {
+            "tag": "ROOT",
+            "a": [
+                {
+                    "tag": "A",
+                    "b": [
+                        {
+                            "tag": "B",
+                            "c": [
+                                {
+                                    "tag": "C"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "result": [
+            [
+                [
+                    "C"
+                ]
+            ]
+        ]
+    },
+    {
+        "description": "Depth 3: [[1]] aliases [[0]] and also reads the current frame",
+        "rule": {
+            "map": [
+                {
+                    "val": "a"
+                },
+                {
+                    "map": [
+                        {
+                            "val": "b"
+                        },
+                        {
+                            "map": [
+                                {
+                                    "val": "c"
+                                },
+                                {
+                                    "val": [
+                                        [
+                                            1
+                                        ],
+                                        "tag"
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "data": {
+            "tag": "ROOT",
+            "a": [
+                {
+                    "tag": "A",
+                    "b": [
+                        {
+                            "tag": "B",
+                            "c": [
+                                {
+                                    "tag": "C"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "result": [
+            [
+                [
+                    "C"
+                ]
+            ]
+        ]
+    },
+    {
+        "description": "Depth 3: [[2]] reads the enclosing frame",
+        "rule": {
+            "map": [
+                {
+                    "val": "a"
+                },
+                {
+                    "map": [
+                        {
+                            "val": "b"
+                        },
+                        {
+                            "map": [
+                                {
+                                    "val": "c"
+                                },
+                                {
+                                    "val": [
+                                        [
+                                            2
+                                        ],
+                                        "tag"
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "data": {
+            "tag": "ROOT",
+            "a": [
+                {
+                    "tag": "A",
+                    "b": [
+                        {
+                            "tag": "B",
+                            "c": [
+                                {
+                                    "tag": "C"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "result": [
+            [
+                [
+                    "B"
+                ]
+            ]
+        ]
+    },
+    {
+        "description": "Depth 3: [[3]] clamps to root",
+        "rule": {
+            "map": [
+                {
+                    "val": "a"
+                },
+                {
+                    "map": [
+                        {
+                            "val": "b"
+                        },
+                        {
+                            "map": [
+                                {
+                                    "val": "c"
+                                },
+                                {
+                                    "val": [
+                                        [
+                                            3
+                                        ],
+                                        "tag"
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "data": {
+            "tag": "ROOT",
+            "a": [
+                {
+                    "tag": "A",
+                    "b": [
+                        {
+                            "tag": "B",
+                            "c": [
+                                {
+                                    "tag": "C"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "result": [
+            [
+                [
+                    "ROOT"
+                ]
+            ]
+        ]
+    },
+    {
+        "description": "Depth 3: levels past the frame count stay clamped to root",
+        "rule": {
+            "map": [
+                {
+                    "val": "a"
+                },
+                {
+                    "map": [
+                        {
+                            "val": "b"
+                        },
+                        {
+                            "map": [
+                                {
+                                    "val": "c"
+                                },
+                                {
+                                    "val": [
+                                        [
+                                            9
+                                        ],
+                                        "tag"
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "data": {
+            "tag": "ROOT",
+            "a": [
+                {
+                    "tag": "A",
+                    "b": [
+                        {
+                            "tag": "B",
+                            "c": [
+                                {
+                                    "tag": "C"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "result": [
+            [
+                [
+                    "ROOT"
+                ]
+            ]
+        ]
+    },
+    {
+        "description": "Depth 2: [[1]] reads the current frame, not its parent",
+        "rule": {
+            "map": [
+                {
+                    "val": "a"
+                },
+                {
+                    "map": [
+                        {
+                            "val": "b"
+                        },
+                        {
+                            "val": [
+                                [
+                                    1
+                                ],
+                                "tag"
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "data": {
+            "tag": "ROOT",
+            "a": [
+                {
+                    "tag": "A",
+                    "b": [
+                        {
+                            "tag": "B",
+                            "c": [
+                                {
+                                    "tag": "C"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "result": [
+            [
+                "B"
+            ]
+        ]
+    },
+    {
+        "description": "Depth 2: [[2]] clamps to root",
+        "rule": {
+            "map": [
+                {
+                    "val": "a"
+                },
+                {
+                    "map": [
+                        {
+                            "val": "b"
+                        },
+                        {
+                            "val": [
+                                [
+                                    2
+                                ],
+                                "tag"
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "data": {
+            "tag": "ROOT",
+            "a": [
+                {
+                    "tag": "A",
+                    "b": [
+                        {
+                            "tag": "B",
+                            "c": [
+                                {
+                                    "tag": "C"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "result": [
+            [
+                "ROOT"
+            ]
+        ]
+    },
+    {
+        "description": "A try catch arm pushes a frame, so inside it [[0]] is the caught error object",
+        "rule": {
+            "map": [
+                {
+                    "val": "a"
+                },
+                {
+                    "try": [
+                        {
+                            "throw": "boom"
+                        },
+                        {
+                            "val": [
+                                [
+                                    0
+                                ],
+                                "type"
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "data": {
+            "tag": "ROOT",
+            "a": [
+                {
+                    "tag": "A",
+                    "b": [
+                        {
+                            "tag": "B",
+                            "c": [
+                                {
+                                    "tag": "C"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "result": [
+            "boom"
+        ]
+    },
+    {
+        "description": "Inside a catch arm at depth 2, [[1]] aliases [[0]] and is still the error object",
+        "rule": {
+            "map": [
+                {
+                    "val": "a"
+                },
+                {
+                    "try": [
+                        {
+                            "throw": "boom"
+                        },
+                        {
+                            "val": [
+                                [
+                                    1
+                                ],
+                                "type"
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "data": {
+            "tag": "ROOT",
+            "a": [
+                {
+                    "tag": "A",
+                    "b": [
+                        {
+                            "tag": "B",
+                            "c": [
+                                {
+                                    "tag": "C"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "result": [
+            "boom"
+        ]
+    },
+    {
+        "description": "Inside a catch arm at depth 2, [[2]] clamps past the map frame to root",
+        "rule": {
+            "map": [
+                {
+                    "val": "a"
+                },
+                {
+                    "try": [
+                        {
+                            "throw": "boom"
+                        },
+                        {
+                            "val": [
+                                [
+                                    2
+                                ],
+                                "tag"
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "data": {
+            "tag": "ROOT",
+            "a": [
+                {
+                    "tag": "A",
+                    "b": [
+                        {
+                            "tag": "B",
+                            "c": [
+                                {
+                                    "tag": "C"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        "result": [
+            "ROOT"
         ]
     }
 ]

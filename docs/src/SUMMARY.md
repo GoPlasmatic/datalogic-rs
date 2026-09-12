@@ -24,6 +24,7 @@
     - [DateTime](operators/datetime.md)
     - [Missing Values](operators/missing.md)
     - [Error Handling](operators/error-handling.md)
+    - [Tensor](operators/tensor.md)
     - [flagd-Compat (`fractional`, `sem_ver`)](operators/flagd.md)
 
 # Languages
@@ -57,6 +58,7 @@
 
 - [Custom Operators](advanced/custom-operators.md)
 - [Configuration](advanced/configuration.md)
+- [Operation Budget](advanced/operation-budget.md)
 - [Structured Objects](advanced/structured-objects.md)
 - [Thread Safety](advanced/threading.md)
 - [Security & Sandboxing](advanced/security.md)

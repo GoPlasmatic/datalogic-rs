@@ -7,6 +7,8 @@
 //! - [`operator`] — `var` / `val` / `exists` specialisations.
 //! - [`missing`] — `missing` / `missing_some` static path pre-parsing.
 //! - [`path_segments`] — shared dot-path parsing.
+//! - [`scope`] — the static frame model (which child positions run under a
+//!   pushed context frame), shared by scope resolution and the CSE pass.
 //! - [`optimize`] — DCE, strength reduction, constant folding.
 
 mod optimize;
@@ -14,6 +16,7 @@ mod optimize;
 mod missing;
 mod operator;
 mod path_segments;
+pub(crate) mod scope;
 mod walker;
 
 use datavalue::OwnedDataValue;
@@ -68,6 +71,11 @@ impl Logic {
         } else {
             optimize::cse::apply(&mut root)
         };
-        Ok(Self::new(root, cse_slot_count))
+        // Static scope annotation. Runs after CSE (so wrappers are in place
+        // and get walked transparently) and before `Logic::new`'s populate
+        // pass. Unconditional, unlike folding and CSE: the runtime reads the
+        // annotation, so the traced / no-fold path needs it too.
+        let needs_ancestor_frames = scope::resolve(&mut root);
+        Ok(Self::new(root, cse_slot_count, needs_ancestor_frames))
     }
 }

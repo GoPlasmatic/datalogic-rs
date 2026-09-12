@@ -86,6 +86,54 @@ pub(crate) struct StructuredObjectData {
     pub has_escaped_keys: bool,
 }
 
+/// Compile-time resolution of *which context frame* a variable reference
+/// reads, computed by [`crate::compile::scope::resolve`] from the node's
+/// static frame depth `D` and its `scope_level` `L`.
+///
+/// This is a predicate *over* [`crate::arena::ContextStack::get_at_level`],
+/// never a second implementation of it: both call
+/// [`crate::arena::frame_target`] for the arithmetic, so the pass decides
+/// whether the walk can be skipped, and [`Self::Ancestor`] hands the job
+/// back untouched. The mapping therefore matches the runtime exactly,
+/// **off-by-one included** — `L == 1` at `D >= 2` reads the *current*
+/// frame, not its parent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub(crate) enum ScopeBinding {
+    /// The pass has not run on this node — it was built outside the compile
+    /// pipeline (optimizer test fixtures, runtime wrappers). The runtime
+    /// falls back to the `scope_level` walk.
+    ///
+    /// This is the safety net that makes the whole change non-breaking: a
+    /// node the pass fails to reach degrades to today's behaviour, never to
+    /// a wrong frame. That is why the default is not `Root` — an unvisited
+    /// node must not silently claim to read the rule input.
+    #[default]
+    Unresolved,
+    /// Provably the rule's root input: `L == 0 && D == 0`, or `L >= D >= 1`
+    /// (the clamp). Reads `ctx.root_input()` with no stack access.
+    Root,
+    /// Provably the innermost pushed frame, which is guaranteed to exist:
+    /// `L == 0 && D > 0`, or `L == 1 && D >= 2` (the off-by-one).
+    /// Reads `ctx.current()` with no depth probe and no clamp test.
+    Current,
+    /// A strict ancestor frame (`2 <= L <= D - 1`, so `D >= 3`). The pass
+    /// proves only that the clamp cannot fire; the runtime still walks.
+    Ancestor,
+}
+
+impl ScopeBinding {
+    /// Resolve a `(static_depth, scope_level)` pair with the same
+    /// arithmetic the runtime walk uses.
+    pub(crate) fn resolve(static_depth: u32, scope_level: u32) -> Self {
+        use crate::arena::{FrameTarget, frame_target};
+        match frame_target(static_depth as usize, scope_level as usize) {
+            FrameTarget::Root => ScopeBinding::Root,
+            FrameTarget::Top => ScopeBinding::Current,
+            FrameTarget::Ancestor(_) => ScopeBinding::Ancestor,
+        }
+    }
+}
+
 /// Data for a pre-compiled exists check (boxed inside CompiledNode to reduce enum size).
 #[cfg(feature = "ext-control")]
 #[derive(Debug, Clone)]
@@ -93,6 +141,8 @@ pub(crate) struct CompiledExistsData {
     pub id: NodeId,
     pub scope_level: u32,
     pub segments: Box<[PathSegment]>,
+    /// Compile-time frame resolution — see [`ScopeBinding`].
+    pub binding: ScopeBinding,
 }
 
 /// Two-stage value: either resolved at compile time (`Now(S)`) or carried

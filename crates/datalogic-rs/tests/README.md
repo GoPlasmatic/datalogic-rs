@@ -65,6 +65,7 @@ Test case fields:
 | `error`              | one of   | Expected error object, e.g. `{"type": "NaN"}`.                       |
 | `templating`         | no       | When `true`, evaluate in templating mode (unknown keys preserved).   |
 | `template_key_escape`| no       | One character. Evaluate with that template-key escape prefix (see `with_template_key_escape`). Combines with `templating`. |
+| `requires`           | no       | Array of cargo feature names the case needs beyond its operators, e.g. `["datetime"]` for a rule whose *data* only carries meaning under a feature. Skipped when absent. |
 
 The runner builds one engine per distinct `(templating, template_key_escape)`
 pair on first use, so a suite can mix flavours freely — including setting
@@ -73,3 +74,25 @@ inert outside templating mode.
 
 `suites/index.json` lists every file the harness should run; new
 suites must be added there.
+
+## Reduced-feature builds
+
+The index is feature-agnostic — it lists every suite — but a build without,
+say, `ext-control` cannot evaluate `switch`. The runner therefore skips a case
+when it invokes an operator this build did not compile in, reporting the count
+so a run stays honest about its coverage:
+
+```
+TOTAL RESULTS: 1142 passed, 0 failed, 572 skipped
+```
+
+Detection walks the rule for single-key objects — how an operator call is
+spelled — and matches them against `GATED_OPERATORS` in the runner. That table
+is checked against `Engine::builtin_operator_names()` by
+`gated_operator_table_matches_engine`, so it cannot silently drift. A
+misspelled operator is deliberately *not* in the table, so unknown-operator
+cases still assert rather than being skipped.
+
+`requires` covers the residual case where a feature changes value semantics
+rather than adding an operator. Under `--all-features` nothing is skipped, so
+CI's coverage is unchanged.

@@ -17,22 +17,27 @@ use crate::node::PathSegment;
 pub(crate) fn evaluate_exists_compiled<'a>(
     scope_level: u32,
     segments: &[PathSegment],
+    binding: crate::node::ScopeBinding,
     ctx: &mut ContextStack<'a>,
 ) -> Result<&'a DataValue<'a>> {
-    // Root scope at depth 0: walk input directly (no clone, no frame access).
-    if scope_level == 0 && ctx.depth() == 0 {
+    // Cross-validate the compile-time resolution against the runtime walk.
+    super::debug_check_binding(binding, scope_level, ctx);
+    // Root binding: walk the input directly (no clone, no frame access).
+    if binding == crate::node::ScopeBinding::Root {
         let found = segments.is_empty()
             || crate::arena::value::traverse_segments(ctx.root_input(), segments).is_some();
         return Ok(crate::arena::singletons::singleton_bool(found));
     }
 
-    let aref = if scope_level == 0 {
-        ctx.current()
-    } else {
-        match ctx.get_at_level(scope_level as isize) {
+    let aref = match binding {
+        crate::node::ScopeBinding::Current => ctx.current(),
+        // `Ancestor` still walks — the pass proves only that the clamp cannot
+        // fire, it does not re-implement the walk. `Unresolved` keeps nodes
+        // built outside the compile pipeline on today's path.
+        _ => match ctx.get_at_level(scope_level as isize) {
             Some(f) => f,
             None => return Ok(crate::arena::singletons::singleton_false()),
-        }
+        },
     };
     let av = aref.data();
     let found =

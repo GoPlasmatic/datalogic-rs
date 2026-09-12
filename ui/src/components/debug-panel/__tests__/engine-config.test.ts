@@ -59,3 +59,38 @@ describe('customOperatorNamesKey', () => {
     expect(customOperatorNamesKey(undefined)).not.toBe(one);
   });
 });
+
+/**
+ * The operation budget is the one knob with no preset base: `undefined`
+ * means unbounded everywhere, so any number the user types is an override
+ * worth keeping, and clearing the field has to remove the key rather than
+ * write a zero.
+ */
+describe('ops_budget', () => {
+  it('keeps any budget as an override, under every preset', () => {
+    expect(withOverride({}, 'ops_budget', 5000)).toEqual({ ops_budget: 5000 });
+    expect(withOverride({ preset: 'strict' }, 'ops_budget', 1)).toEqual({
+      preset: 'strict',
+      ops_budget: 1,
+    });
+  });
+
+  it('clearing the field drops the key instead of storing a falsy budget', () => {
+    const budgeted = withOverride({}, 'ops_budget', 5000);
+    expect(withOverride(budgeted, 'ops_budget', undefined)).toEqual({});
+  });
+
+  it('survives a preset change: no preset implies a budget', () => {
+    const budgeted = withOverride({}, 'ops_budget', 250);
+    expect(withOverride(budgeted, 'preset', 'safe_arithmetic')).toEqual({
+      preset: 'safe_arithmetic',
+      ops_budget: 250,
+    });
+  });
+
+  it('resolves to undefined (unbounded) when unset', () => {
+    expect(resolveEvaluationConfig({}).ops_budget).toBeUndefined();
+    expect(resolveEvaluationConfig({ preset: 'strict' }).ops_budget).toBeUndefined();
+    expect(resolveEvaluationConfig({ ops_budget: 42 }).ops_budget).toBe(42);
+  });
+});

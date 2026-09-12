@@ -7,7 +7,7 @@
 
 [package]
 name = "datalogic-py"
-version = "5.4.0"
+version = "5.5.0"
 edition = "2024"
 description = "Python bindings for datalogic-rs JSONLogic engine"
 license = "Apache-2.0"
@@ -44,6 +44,8 @@ datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features =
     "ext-control",
     "ext-math",
     "flagd",
+    "tensor",
+    "budget",
 ] }
 # pyo3 0.23 is the floor for Rust edition 2024 + the `Bound<'py, T>` API.
 # `abi3-py310` produces ONE wheel per (os, arch) covering CPython 3.10+;

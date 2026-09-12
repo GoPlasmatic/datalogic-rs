@@ -45,5 +45,8 @@ fn truthy_js_owned(value: &OwnedDataValue) -> bool {
         OwnedDataValue::Object(pairs) => !pairs.is_empty(),
         #[cfg(feature = "datetime")]
         OwnedDataValue::DateTime(_) | OwnedDataValue::Duration(_) => true,
+        // Mirrors `truthy_js_arena`: empty container is falsy.
+        #[cfg(feature = "tensor")]
+        OwnedDataValue::Tensor(t) => t.numel() > 0,
     }
 }

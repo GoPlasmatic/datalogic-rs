@@ -175,6 +175,27 @@ let config = EvaluationConfig::default()
     .with_max_recursion_depth(256);
 ```
 
+### Operation Budget
+
+Cap the work one evaluation may do (requires `feature = "budget"`).
+Where the recursion depth above bounds *boundary re-entry*, this bounds
+the work itself: a `map` over a large input nested inside another `map`
+is unbounded under the depth cap and bounded under this one.
+
+```rust,ignore
+use datalogic_rs::EvaluationConfig;
+
+// Unbounded by default. `Some(n)` refuses any evaluation that would
+// charge more than n operations.
+let config = EvaluationConfig::default().with_ops_budget(Some(100_000));
+```
+
+Crossing the ceiling raises `ErrorKind::BudgetExceeded { budget, spent }`
+**before** the work is done, and a `try` in the rule cannot recover from
+it. See [Operation Budget](operation-budget.md) for what one operation
+is, how to pick a number, and the per-call
+`Engine::evaluate_metered` entry point that reports what a rule spent.
+
 ## Configuration Presets
 
 ```rust
@@ -213,6 +234,7 @@ typos fail loudly instead of being silently ignored.
 | `truthy_evaluator` | `"javascript"`, `"python"`, or `"strict_boolean"` |
 | `numeric_coercion` | object of bools: `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
 | `max_recursion_depth` | integer >= 1 |
+| `ops_budget` | integer >= 1, or `null` for unbounded (`budget` feature) |
 
 Custom truthiness closures (`TruthyEvaluator::Custom`) cannot be
 expressed in JSON; they are available through the Rust API only.

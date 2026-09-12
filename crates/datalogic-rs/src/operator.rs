@@ -44,6 +44,54 @@ impl<'ctx, 'a> EvalContext<'ctx, 'a> {
         self.inner.depth()
     }
 
+    /// Charge `n` operations against this evaluation's budget.
+    ///
+    /// Call this **before** doing work whose size the node count does not
+    /// reflect — walking a large input, building a large result — so an
+    /// over-budget rule is refused rather than run and then reported.
+    /// `n` is in whatever unit makes the operator's cost proportional to
+    /// its data: elements touched is the usual choice, and is what the
+    /// built-in tensor family uses.
+    ///
+    /// The dispatcher already charges 1 for the operator node itself, so
+    /// an operator whose work is bounded by a constant needs no charge at
+    /// all.
+    ///
+    /// Always available. With the `budget` feature off it compiles to
+    /// `Ok(())`, so an operator can call it unconditionally rather than
+    /// carrying a `cfg` of its own.
+    ///
+    /// # Errors
+    ///
+    /// [`crate::ErrorKind::BudgetExceeded`] once the running total
+    /// crosses the evaluation's ceiling. Propagate it — the counter stays
+    /// exhausted, so there is nothing useful to do but unwind.
+    ///
+    /// ```rust
+    /// use datalogic_rs::{CustomOperator, DataValue, Result, operator::EvalContext};
+    ///
+    /// struct Repeat;
+    ///
+    /// impl CustomOperator for Repeat {
+    ///     fn evaluate<'a>(
+    ///         &self,
+    ///         args: &[&'a DataValue<'a>],
+    ///         ctx: &mut EvalContext<'_, 'a>,
+    ///         arena: &'a bumpalo::Bump,
+    ///     ) -> Result<&'a DataValue<'a>> {
+    ///         let text = args.first().and_then(|v| v.as_str()).unwrap_or("");
+    ///         let times = args.get(1).and_then(|v| v.as_i64()).unwrap_or(0).max(0) as usize;
+    ///         // Price the output before allocating it.
+    ///         ctx.charge((text.len() * times) as u64)?;
+    ///         Ok(arena.alloc(DataValue::String(arena.alloc_str(&text.repeat(times)))))
+    ///     }
+    /// }
+    /// ```
+    #[inline]
+    pub fn charge(&mut self, n: u64) -> crate::Result<()> {
+        self.inner.charge(n)
+    }
+
     /// Engine-internal constructor. Used by the dispatcher when invoking a
     /// custom operator's `evaluate` method.
     #[inline]

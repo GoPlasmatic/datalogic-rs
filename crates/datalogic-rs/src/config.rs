@@ -114,6 +114,27 @@ pub struct EvaluationConfig {
     /// custom operators registered (built-ins can't recurse via
     /// boundary re-entry), so pure-built-in workloads pay nothing.
     pub max_recursion_depth: u32,
+
+    /// Ceiling on the operations one evaluation may charge, or `None`
+    /// (the default) for unbounded. Available with the `budget` feature.
+    ///
+    /// Where [`Self::max_recursion_depth`] bounds *boundary re-entry*
+    /// only, this bounds the work itself: a `map` over a large input
+    /// nested inside another `map` is unbounded under the depth cap and
+    /// bounded under this one. The count is deterministic for a pinned
+    /// crate version, which a wall-clock timeout is not, and the
+    /// evaluation is refused before the work rather than reported after
+    /// it.
+    ///
+    /// One operation is charged per dispatched node, one per item an
+    /// iterator examines, and whatever an operator charges for its own
+    /// data movement — see
+    /// [`Engine::evaluate_metered`](crate::Engine::evaluate_metered) for
+    /// exactly what the number counts. Crossing the ceiling raises
+    /// [`ErrorKind::BudgetExceeded`](crate::ErrorKind::BudgetExceeded),
+    /// which `try` observes but cannot recover from.
+    #[cfg(feature = "budget")]
+    pub ops_budget: Option<u64>,
 }
 
 /// Defines how to handle NaN (Not a Number) scenarios in arithmetic operations
@@ -269,6 +290,8 @@ impl Default for EvaluationConfig {
             truthy_evaluator: TruthyEvaluator::JavaScript,
             numeric_coercion: NumericCoercionConfig::default(),
             max_recursion_depth: 256,
+            #[cfg(feature = "budget")]
+            ops_budget: None,
         }
     }
 }
@@ -359,6 +382,31 @@ impl EvaluationConfig {
         self
     }
 
+    /// Set [`Self::ops_budget`]. Pass `None` for unbounded.
+    ///
+    /// ```rust
+    /// # #[cfg(feature = "budget")] {
+    /// use datalogic_rs::{Engine, EvaluationConfig};
+    ///
+    /// let engine = Engine::builder()
+    ///     .with_config(EvaluationConfig::default().with_ops_budget(Some(16)))
+    ///     .build();
+    /// let rule = r#"{"map": [{"var": "xs"}, {"*": [{"var": ""}, 2]}]}"#;
+    /// // Two nodes and three items: well inside 16.
+    /// assert_eq!(engine.eval_str(rule, r#"{"xs": [1, 2, 3]}"#).unwrap(), "[2,4,6]");
+    /// // The same rule over 100 items is refused.
+    /// let xs: Vec<String> = (0..100).map(|n| n.to_string()).collect();
+    /// let data = format!(r#"{{"xs": [{}]}}"#, xs.join(","));
+    /// assert_eq!(engine.eval_str(rule, &data).unwrap_err().tag(), "BudgetExceeded");
+    /// # }
+    /// ```
+    #[cfg(feature = "budget")]
+    #[must_use]
+    pub fn with_ops_budget(mut self, value: Option<u64>) -> Self {
+        self.ops_budget = value;
+        self
+    }
+
     /// Create a configuration with safe arithmetic (ignores non-numeric values)
     pub fn safe_arithmetic() -> Self {
         Self {
@@ -415,6 +463,7 @@ impl EvaluationConfig {
     /// | `truthy_evaluator` | `"javascript"` \| `"python"` \| `"strict_boolean"` |
     /// | `numeric_coercion` | object with bool keys `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
     /// | `max_recursion_depth` | integer ≥ 1 |
+    /// | `ops_budget` | integer ≥ 1, or `null` for unbounded (`budget` feature) |
     ///
     /// # Example
     ///
@@ -559,6 +608,19 @@ impl EvaluationConfig {
                             ))
                         })?;
                     config.max_recursion_depth = depth as u32;
+                }
+                #[cfg(feature = "budget")]
+                "ops_budget" => {
+                    config.ops_budget = if value.is_null() {
+                        None
+                    } else {
+                        Some(value.as_u64().filter(|n| *n >= 1).ok_or_else(|| {
+                            cfg_err(
+                                "config key \"ops_budget\" must be a positive integer or null"
+                                    .to_string(),
+                            )
+                        })?)
+                    };
                 }
                 other => {
                     return Err(cfg_err(format!("unknown config key {other:?}")));

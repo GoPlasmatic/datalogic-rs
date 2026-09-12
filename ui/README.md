@@ -16,7 +16,7 @@ see the [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 ## Features
 
 - Visual representation of JSONLogic expressions as flow diagrams
-- Every built-in operator the bundled engine accepts (64 canonical operators plus the `var`, `?:` and `match` aliases), across variables, comparison, logical, arithmetic, string, array, object, control flow, datetime, validation, error handling and the flagd feature-flag operators (`fractional`, `sem_ver`)
+- Every built-in operator the bundled engine accepts (84 canonical operators plus the `var`, `?:` and `match` aliases), across variables, comparison, logical, arithmetic, string, array, object, control flow, datetime, validation, error handling and the flagd feature-flag operators (`fractional`, `sem_ver`)
 - Per-operator help with engine-verified examples and a link to that operator's documentation page
 - Tree-based automatic layout using @dagrejs/dagre, in data-flow or JSON-hierarchy direction
 - Prop-based modes: read-only visualization, debugging with step-through trace, and full visual editing
@@ -215,9 +215,18 @@ import {
 (`'default' | 'safe_arithmetic' | 'strict'`), `arithmetic_nan_handling`,
 `division_by_zero`, `loose_equality_errors`, `truthy_evaluator`,
 `numeric_coercion` (`empty_string_to_zero`, `null_to_zero`, `bool_to_number`,
-`reject_non_numeric`) and `max_recursion_depth`. Every key is optional and
-omitted keys keep the engine default. Changing `config` or `customOperators`
-rebuilds the engine, so selection and undo history reset.
+`reject_non_numeric`), `max_recursion_depth` and `ops_budget`. Every key is
+optional and omitted keys keep the engine default. Changing `config` or
+`customOperators` rebuilds the engine, so selection and undo history reset.
+
+`ops_budget` caps the work one evaluation may do — one operation per node
+the engine dispatches, one per item an iterator walks, plus what tensor
+operators charge per element. Crossing it raises a `BudgetExceeded` error
+carrying `budget` and `spent`, which `try` cannot catch. The
+`useWasmEvaluator` hook's `evaluateMetered(logic, data)` returns
+`{ value, ops }` so a host can show what a rule costs whether or not a
+budget is set; the Studio renders that as an *N ops* badge on the Result
+panel.
 
 A custom operator receives the already-evaluated arguments and returns any
 JSON-serializable value (`undefined` becomes `null`); a thrown exception

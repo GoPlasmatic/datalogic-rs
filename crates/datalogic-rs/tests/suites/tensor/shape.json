@@ -1,0 +1,1039 @@
+[
+  "# stack \u2014 joins along a new axis",
+  {
+    "description": "stack on axis 0",
+    "rule": {
+      "to_list": [
+        {
+          "stack": [
+            [
+              {
+                "tensor": [
+                  [
+                    1,
+                    2
+                  ],
+                  "u8"
+                ]
+              },
+              {
+                "tensor": [
+                  [
+                    3,
+                    4
+                  ],
+                  "u8"
+                ]
+              }
+            ],
+            0
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        1,
+        2
+      ],
+      [
+        3,
+        4
+      ]
+    ]
+  },
+  {
+    "description": "stack on axis 1",
+    "rule": {
+      "to_list": [
+        {
+          "stack": [
+            [
+              {
+                "tensor": [
+                  [
+                    1,
+                    2
+                  ],
+                  "u8"
+                ]
+              },
+              {
+                "tensor": [
+                  [
+                    3,
+                    4
+                  ],
+                  "u8"
+                ]
+              }
+            ],
+            1
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        1,
+        3
+      ],
+      [
+        2,
+        4
+      ]
+    ]
+  },
+  {
+    "description": "stack raises the rank",
+    "rule": {
+      "shape": [
+        {
+          "stack": [
+            [
+              {
+                "tensor": [
+                  [
+                    1,
+                    2
+                  ],
+                  "u8"
+                ]
+              }
+            ],
+            0
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      1,
+      2
+    ]
+  },
+  {
+    "description": "stack needs matching shapes",
+    "rule": {
+      "stack": [
+        [
+          {
+            "tensor": [
+              [
+                1,
+                2
+              ],
+              "u8"
+            ]
+          },
+          {
+            "tensor": [
+              [
+                1,
+                2,
+                3
+              ],
+              "u8"
+            ]
+          }
+        ],
+        0
+      ]
+    },
+    "data": null,
+    "error": {
+      "type": "stack: every tensor must have the same shape"
+    }
+  },
+  {
+    "description": "stack needs matching dtypes",
+    "rule": {
+      "stack": [
+        [
+          {
+            "tensor": [
+              [
+                1
+              ],
+              "u8"
+            ]
+          },
+          {
+            "tensor": [
+              [
+                1
+              ],
+              "i32"
+            ]
+          }
+        ],
+        0
+      ]
+    },
+    "data": null,
+    "error": {
+      "type": "tensors must share a dtype"
+    }
+  },
+  "# concat \u2014 joins along an existing axis",
+  {
+    "description": "concat on axis 0",
+    "rule": {
+      "to_list": [
+        {
+          "concat": [
+            [
+              {
+                "tensor": [
+                  [
+                    1,
+                    2
+                  ],
+                  "u8"
+                ]
+              },
+              {
+                "tensor": [
+                  [
+                    3
+                  ],
+                  "u8"
+                ]
+              }
+            ],
+            0
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      1,
+      2,
+      3
+    ]
+  },
+  {
+    "description": "concat on axis 1",
+    "rule": {
+      "to_list": [
+        {
+          "concat": [
+            [
+              {
+                "tensor": [
+                  [
+                    [
+                      1
+                    ],
+                    [
+                      2
+                    ]
+                  ],
+                  "u8"
+                ]
+              },
+              {
+                "tensor": [
+                  [
+                    [
+                      3
+                    ],
+                    [
+                      4
+                    ]
+                  ],
+                  "u8"
+                ]
+              }
+            ],
+            1
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        1,
+        3
+      ],
+      [
+        2,
+        4
+      ]
+    ]
+  },
+  {
+    "description": "a negative axis counts from the end",
+    "rule": {
+      "to_list": [
+        {
+          "concat": [
+            [
+              {
+                "tensor": [
+                  [
+                    1
+                  ],
+                  "u8"
+                ]
+              },
+              {
+                "tensor": [
+                  [
+                    2
+                  ],
+                  "u8"
+                ]
+              }
+            ],
+            -1
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      1,
+      2
+    ]
+  },
+  {
+    "description": "concat needs the other axes to agree",
+    "rule": {
+      "concat": [
+        [
+          {
+            "tensor": [
+              [
+                [
+                  1,
+                  2
+                ]
+              ],
+              "u8"
+            ]
+          },
+          {
+            "tensor": [
+              [
+                [
+                  1
+                ],
+                [
+                  2
+                ]
+              ],
+              "u8"
+            ]
+          }
+        ],
+        0
+      ]
+    },
+    "data": null,
+    "error": {
+      "type": "concat: shapes must match on every axis but the concatenated one"
+    }
+  },
+  "# unstack \u2014 the inverse of stack",
+  {
+    "description": "unstack splits and drops the axis",
+    "rule": {
+      "map": [
+        {
+          "unstack": [
+            {
+              "tensor": [
+                [
+                  [
+                    1,
+                    2
+                  ],
+                  [
+                    3,
+                    4
+                  ]
+                ],
+                "u8"
+              ]
+            },
+            0
+          ]
+        },
+        {
+          "to_list": [
+            {
+              "val": []
+            }
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        1,
+        2
+      ],
+      [
+        3,
+        4
+      ]
+    ]
+  },
+  {
+    "description": "unstack on axis 1",
+    "rule": {
+      "map": [
+        {
+          "unstack": [
+            {
+              "tensor": [
+                [
+                  [
+                    1,
+                    2
+                  ],
+                  [
+                    3,
+                    4
+                  ]
+                ],
+                "u8"
+              ]
+            },
+            1
+          ]
+        },
+        {
+          "to_list": [
+            {
+              "val": []
+            }
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        1,
+        3
+      ],
+      [
+        2,
+        4
+      ]
+    ]
+  },
+  "# reshape \u2014 a new header over the same bytes",
+  {
+    "description": "reshape a flat list into a matrix",
+    "rule": {
+      "to_list": [
+        {
+          "reshape": [
+            {
+              "tensor": [
+                [
+                  1,
+                  2,
+                  3,
+                  4
+                ],
+                "u8"
+              ]
+            },
+            [
+              2,
+              2
+            ]
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        1,
+        2
+      ],
+      [
+        3,
+        4
+      ]
+    ]
+  },
+  {
+    "description": "reshape to 0-d",
+    "rule": {
+      "to_list": [
+        {
+          "reshape": [
+            {
+              "tensor": [
+                [
+                  7
+                ],
+                "u8"
+              ]
+            },
+            []
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": 7
+  },
+  {
+    "description": "reshape must preserve the element count",
+    "rule": {
+      "reshape": [
+        {
+          "tensor": [
+            [
+              1,
+              2,
+              3
+            ],
+            "u8"
+          ]
+        },
+        [
+          2,
+          2
+        ]
+      ]
+    },
+    "data": null,
+    "error": {
+      "type": "reshape: the new shape must hold exactly as many elements"
+    }
+  },
+  "# transpose",
+  {
+    "description": "transpose reverses the axes by default",
+    "rule": {
+      "to_list": [
+        {
+          "transpose": [
+            {
+              "tensor": [
+                [
+                  [
+                    1,
+                    2
+                  ],
+                  [
+                    3,
+                    4
+                  ]
+                ],
+                "u8"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        1,
+        3
+      ],
+      [
+        2,
+        4
+      ]
+    ]
+  },
+  {
+    "description": "transpose of a non-square matrix",
+    "rule": {
+      "shape": [
+        {
+          "transpose": [
+            {
+              "tensor": [
+                [
+                  [
+                    1,
+                    2,
+                    3
+                  ],
+                  [
+                    4,
+                    5,
+                    6
+                  ]
+                ],
+                "u8"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      3,
+      2
+    ]
+  },
+  {
+    "description": "an explicit permutation",
+    "rule": {
+      "to_list": [
+        {
+          "transpose": [
+            {
+              "tensor": [
+                [
+                  [
+                    1,
+                    2
+                  ],
+                  [
+                    3,
+                    4
+                  ]
+                ],
+                "u8"
+              ]
+            },
+            [
+              0,
+              1
+            ]
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        1,
+        2
+      ],
+      [
+        3,
+        4
+      ]
+    ]
+  },
+  {
+    "description": "a permutation must name every axis",
+    "rule": {
+      "transpose": [
+        {
+          "tensor": [
+            [
+              [
+                1,
+                2
+              ]
+            ],
+            "u8"
+          ]
+        },
+        [
+          0
+        ]
+      ]
+    },
+    "data": null,
+    "error": {
+      "type": "transpose: perm must name every axis"
+    }
+  },
+  {
+    "description": "a permutation may not repeat an axis",
+    "rule": {
+      "transpose": [
+        {
+          "tensor": [
+            [
+              [
+                1,
+                2
+              ]
+            ],
+            "u8"
+          ]
+        },
+        [
+          0,
+          0
+        ]
+      ]
+    },
+    "data": null,
+    "error": {
+      "type": "transpose: perm must be a permutation of the axes"
+    }
+  },
+  "# pad and crop",
+  {
+    "description": "pad grows each axis",
+    "rule": {
+      "to_list": [
+        {
+          "pad": [
+            {
+              "tensor": [
+                [
+                  1,
+                  2
+                ],
+                "u8"
+              ]
+            },
+            [
+              1
+            ],
+            [
+              2
+            ]
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      0,
+      1,
+      2,
+      0,
+      0
+    ]
+  },
+  {
+    "description": "pad with a fill value",
+    "rule": {
+      "to_list": [
+        {
+          "pad": [
+            {
+              "tensor": [
+                [
+                  1,
+                  2
+                ],
+                "u8"
+              ]
+            },
+            [
+              1
+            ],
+            [
+              1
+            ],
+            9
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      9,
+      1,
+      2,
+      9
+    ]
+  },
+  {
+    "description": "pad in two dimensions",
+    "rule": {
+      "to_list": [
+        {
+          "pad": [
+            {
+              "tensor": [
+                [
+                  [
+                    1
+                  ]
+                ],
+                "u8"
+              ]
+            },
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              1
+            ]
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        0,
+        0
+      ],
+      [
+        1,
+        0
+      ]
+    ]
+  },
+  {
+    "description": "crop cuts a window",
+    "rule": {
+      "to_list": [
+        {
+          "crop": [
+            {
+              "tensor": [
+                [
+                  1,
+                  2,
+                  3,
+                  4
+                ],
+                "u8"
+              ]
+            },
+            [
+              1
+            ],
+            [
+              2
+            ]
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      2,
+      3
+    ]
+  },
+  {
+    "description": "crop is the inverse of pad",
+    "rule": {
+      "to_list": [
+        {
+          "crop": [
+            {
+              "pad": [
+                {
+                  "tensor": [
+                    [
+                      1,
+                      2
+                    ],
+                    "u8"
+                  ]
+                },
+                [
+                  1
+                ],
+                [
+                  1
+                ]
+              ]
+            },
+            [
+              1
+            ],
+            [
+              2
+            ]
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      1,
+      2
+    ]
+  },
+  {
+    "description": "crop may not run past the end",
+    "rule": {
+      "crop": [
+        {
+          "tensor": [
+            [
+              1,
+              2
+            ],
+            "u8"
+          ]
+        },
+        [
+          1
+        ],
+        [
+          2
+        ]
+      ]
+    },
+    "data": null,
+    "error": {
+      "type": "crop: the window runs past the end of the tensor"
+    }
+  },
+  {
+    "description": "pad needs one entry per axis",
+    "rule": {
+      "pad": [
+        {
+          "tensor": [
+            [
+              1,
+              2
+            ],
+            "u8"
+          ]
+        },
+        [
+          1,
+          1
+        ],
+        [
+          0
+        ]
+      ]
+    },
+    "data": null,
+    "error": {
+      "type": "pad: before and after must have one entry per axis"
+    }
+  },
+  "# gather",
+  {
+    "description": "gather selects and reorders",
+    "rule": {
+      "to_list": [
+        {
+          "gather": [
+            {
+              "tensor": [
+                [
+                  10,
+                  20,
+                  30
+                ],
+                "u8"
+              ]
+            },
+            [
+              2,
+              0,
+              2
+            ]
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      30,
+      10,
+      30
+    ]
+  },
+  {
+    "description": "gather on axis 1",
+    "rule": {
+      "to_list": [
+        {
+          "gather": [
+            {
+              "tensor": [
+                [
+                  [
+                    1,
+                    2
+                  ],
+                  [
+                    3,
+                    4
+                  ]
+                ],
+                "u8"
+              ]
+            },
+            [
+              1
+            ],
+            1
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        2
+      ],
+      [
+        4
+      ]
+    ]
+  },
+  {
+    "description": "a negative index counts from the end",
+    "rule": {
+      "to_list": [
+        {
+          "gather": [
+            {
+              "tensor": [
+                [
+                  10,
+                  20
+                ],
+                "u8"
+              ]
+            },
+            [
+              -1
+            ]
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      20
+    ]
+  },
+  {
+    "description": "gather rejects an out-of-range index",
+    "rule": {
+      "gather": [
+        {
+          "tensor": [
+            [
+              10,
+              20
+            ],
+            "u8"
+          ]
+        },
+        [
+          5
+        ]
+      ]
+    },
+    "data": null,
+    "error": {
+      "type": "gather: index out of range"
+    }
+  }
+]

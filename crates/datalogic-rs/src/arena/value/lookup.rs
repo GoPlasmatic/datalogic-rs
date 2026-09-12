@@ -235,10 +235,10 @@ pub(crate) fn object_lookup_field_hinted<'a>(
     target: &str,
     hint: &mut usize,
 ) -> Option<&'a DataValue<'a>> {
-    if let Some((k, v)) = pairs.get(*hint) {
-        if key_eq(k, target) {
-            return Some(v);
-        }
+    if let Some((k, v)) = pairs.get(*hint)
+        && key_eq(k, target)
+    {
+        return Some(v);
     }
     let idx = pairs.iter().position(|(k, _)| key_eq(k, target))?;
     *hint = idx;

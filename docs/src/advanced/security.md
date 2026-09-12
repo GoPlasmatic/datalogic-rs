@@ -46,39 +46,64 @@ bucketing (a fixed murmurhash3), are pure functions of their arguments.
 | JSON parse depth | 256 | Parsing a rule or data **string** cannot overflow the stack. |
 | Compile nesting depth | 256 | A programmatically-built rule (`IntoLogic` from an owned value, which skips the parser) cannot overflow the stack in compile, dispatch, or drop. Exceeding it is a `ConfigurationError`. |
 | `max_recursion_depth` | 256 | Caps nested `Engine::evaluate` re-entry from custom operators that hold an `Arc<Engine>`. Configurable via `EvaluationConfig::with_max_recursion_depth`. Pure built-in workloads skip the check. |
+| `ops_budget` | unset | Caps the **work** one evaluation may do: one operation per dispatched node, one per item an iterator examines, plus what operators charge for the data they move. Off unless you set it. Requires the `budget` feature (on in every published binding). |
 
 Arena memory grows during a single evaluation and is released when the
 arena is dropped (per-call tiers) or reset. In a long-running `Session`,
 call `Session::reset()` between logical batches so peak memory tracks the
 largest single evaluation rather than the cumulative loop.
 
-## What is NOT bounded
+## Bounding the work a rule does
 
-The engine does **not** impose limits on, and has no built-in timeout or
-cancellation for:
+Iteration count and output size are functions of the **input data size**
+and the **rule complexity**. A `map` over a large array nested inside
+another `map` does not touch the recursion cap at all — it is one
+boundary call doing N x M items of work.
 
-- **Wall-clock time / CPU.** A rule that iterates a large array or nests
-  `map`/`reduce`/`filter` can run for a long time.
-- **Iteration count.** `map`/`filter`/`reduce`/`all`/`some`/`none` process
-  every element of whatever array they are given.
-- **Output size.** A templating rule or `merge` can produce an output much
-  larger than its input.
+Set an **operation budget** to bound that directly:
 
-These are all functions of the **input data size** and the **rule
-complexity**, both of which you control. Mitigate them at the edges:
+```rust,ignore
+use datalogic_rs::{Engine, EvaluationConfig};
+
+let engine = Engine::builder()
+    .with_config(EvaluationConfig::default().with_ops_budget(Some(100_000)))
+    .build();
+```
+
+Every binding accepts the same thing as the `ops_budget` config key.
+Crossing the ceiling fails the evaluation with `BudgetExceeded` **before**
+the work is done, carrying the node breadcrumb, and a `try` inside the
+rule cannot recover from it. The count is deterministic for a pinned
+engine version, so a rule that is refused is refused identically on every
+machine. See [Operation Budget](operation-budget.md) for what one
+operation is and how to pick a number.
+
+Belt and braces, in the order that buys the most:
 
 1. **Bound attacker-controlled input.** Cap array lengths and total payload
-   size before evaluating. This is the single most effective control,
-   because iteration and output size scale with the data, not the rule.
-2. **Bound rule complexity.** For user-authored rules, cap the serialized
+   size before evaluating. Iteration and output size scale with the data,
+   so this is the cheapest control and the one that fails earliest.
+2. **Set an operation budget.** This is the control that survives a rule
+   designed to be expensive over input you thought was small enough.
+3. **Bound rule complexity.** For user-authored rules, cap the serialized
    rule size and reject or lower `max_recursion_depth` / compile depth as
    appropriate for your risk tolerance.
-3. **For hard wall-clock guarantees, isolate the evaluation.** Rust cannot
-   safely abort a thread mid-computation, so a timeout that must interrupt a
-   running evaluation needs process-level isolation (run evaluation in a
-   subprocess or sandbox you can kill). For most workloads, input and
-   complexity bounds are sufficient and far cheaper; reach for process
-   isolation only when you must survive an adversarial worst case.
+
+## What is still NOT bounded
+
+- **Wall-clock time / CPU.** An operation budget bounds *work*, and work
+  correlates with time, but it is not a time limit: there is no built-in
+  timeout or cancellation, and an individual operator's charge is taken
+  before its work, not during it.
+- **Anything at all, if you leave `ops_budget` unset.** It is off by
+  default; an engine without one will iterate whatever array it is given.
+
+For hard wall-clock guarantees, isolate the evaluation. Rust cannot safely
+abort a thread mid-computation, so a timeout that must interrupt a running
+evaluation needs process-level isolation (run evaluation in a subprocess or
+sandbox you can kill). For most workloads a budget plus input bounds is
+sufficient and far cheaper; reach for process isolation only when you must
+survive an adversarial worst case.
 
 ## Untrusted-rule checklist
 
@@ -87,6 +112,8 @@ complexity**, both of which you control. Mitigate them at the edges:
       path.
 - [ ] Size-limit the input data (array lengths, total bytes).
 - [ ] Size-limit the rule text.
+- [ ] Set an `ops_budget`. Meter your real rules against your real payloads
+      to calibrate it, then leave generous headroom.
 - [ ] Decide how `throw` should surface: a thrown error is a normal
       `Result::Err` (kind `Thrown`) carrying the thrown value, not a crash.
       Catch it if user rules are expected to throw.

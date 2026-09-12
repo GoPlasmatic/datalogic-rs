@@ -14,8 +14,8 @@ via cgo, linking `libdatalogic_c.a` statically — no runtime
 shared-library dependency for end-user binaries.
 
 Same rules, same semantics as the Rust crate: every binding runs the
-same core and passes the same 1,698-case conformance battery
-(59 suites). For the cross-runtime overview and the API-tier model
+same core and passes the same 1,804-case conformance battery
+(63 suites). For the cross-runtime overview and the API-tier model
 every binding implements, see the
 [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
@@ -237,10 +237,27 @@ All keys are optional. `preset` (`"default"`, `"safe_arithmetic"`, or
 `"strict"`) picks the starting point; the remaining keys override
 individual fields on top of it: `arithmetic_nan_handling`,
 `division_by_zero`, `loose_equality_errors`, `truthy_evaluator`,
-`numeric_coercion`, and `max_recursion_depth`. The accepted values for
-each key are listed on the `SetConfigJSON` doc comment; the underlying
-knobs are described in the
+`numeric_coercion`, `max_recursion_depth`, and `ops_budget`. The accepted
+values for each key are listed on the `SetConfigJSON` doc comment; the
+underlying knobs are described in the
 [Rust crate README](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs#readme).
+
+`ops_budget` is the one worth knowing about for untrusted rules: an
+integer ceiling on the operations one evaluation may charge — one per
+node the engine dispatches, one per item an iterator walks, plus what
+operators charge for the data they move — or `null` for unbounded (the
+default). Crossing it fails with `Error.Type == "BudgetExceeded"` before
+the work is done, and a `try` in the rule cannot recover from it. Unlike a
+wall-clock timeout the count is deterministic, so the same rule and data
+are refused on every machine.
+
+```go
+b := datalogic.NewEngineBuilder()
+if err := b.SetConfigJSON(`{"ops_budget":100000}`); err != nil {
+    log.Fatal(err)
+}
+engine, err := b.Build()
+```
 
 ## Traced evaluation
 

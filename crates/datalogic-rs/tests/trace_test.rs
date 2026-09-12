@@ -263,6 +263,8 @@ fn test_trace_ternary_operator() {
 }
 
 /// Test coalesce operator with tracing
+// `??` is an `ext-control` operator.
+#[cfg(feature = "ext-control")]
 #[test]
 fn test_trace_coalesce_operator() {
     let engine = Engine::new();

@@ -139,10 +139,10 @@ impl ExpressionNode {
         default_value: Option<&CompiledNode>,
     ) -> ExpressionNode {
         let mut children = Vec::new();
-        if let Some(def) = default_value {
-            if Self::is_operator_node(def) {
-                children.push(Self::build_node(def));
-            }
+        if let Some(def) = default_value
+            && Self::is_operator_node(def)
+        {
+            children.push(Self::build_node(def));
         }
         ExpressionNode {
             id,
@@ -437,7 +437,10 @@ impl<'e> TracedSession<'e> {
             Ok(av) => av,
             Err(e) => return Self::failed(expression_tree, e),
         };
-        let mut ctx = crate::arena::ContextStack::new(data_ref);
+        // Same context as an untraced evaluation, engine-wide budget
+        // included: a rule the engine would refuse must not quietly
+        // succeed in the debugger.
+        let mut ctx = self.engine.new_context(compiled, data_ref);
         ctx.attach_tracer(TraceCollector::new());
 
         let outcome = self.engine.dispatch_node(&compiled.root, &mut ctx, arena);

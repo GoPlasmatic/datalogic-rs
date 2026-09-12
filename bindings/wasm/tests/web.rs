@@ -839,3 +839,127 @@ fn test_compiled_rule_template_key_escape() {
     let rule = CompiledRule::new(r#"{"$type": 1}"#, true, None, None).unwrap();
     assert_eq!(rule.evaluate("{}").unwrap(), r#"{"$type":1}"#);
 }
+
+// =============== Operation budget ===============
+
+/// `{"xs":[0,1,...,n-1]}`
+fn budget_items(n: usize) -> String {
+    let parts: Vec<String> = (0..n).map(|i| i.to_string()).collect();
+    format!(r#"{{"xs":[{}]}}"#, parts.join(","))
+}
+
+const BUDGET_RULE: &str = r#"{"map":[{"var":"xs"},{"*":[{"var":""},2]}]}"#;
+
+/// Build an options bag `{ config: { ops_budget: n } }`.
+fn budget_options(n: f64) -> JsValue {
+    let config = Object::new();
+    Reflect::set(
+        &config,
+        &JsValue::from_str("ops_budget"),
+        &JsValue::from_f64(n),
+    )
+    .unwrap();
+    build_config_options(&config)
+}
+
+#[wasm_bindgen_test]
+fn test_eval_metered_reports_the_result_and_the_cost() {
+    let engine = Engine::new(build_options(false, &[])).unwrap();
+    let envelope = engine
+        .eval_metered(BUDGET_RULE, &budget_items(3), None)
+        .unwrap();
+    assert!(envelope.contains(r#""result":[0,2,4]"#), "got: {envelope}");
+    assert!(envelope.contains(r#""ops":"#), "got: {envelope}");
+}
+
+#[wasm_bindgen_test]
+fn test_a_constant_folded_rule_costs_nothing() {
+    let engine = Engine::new(build_options(false, &[])).unwrap();
+    let envelope = engine.eval_metered(r#"{"+":[1,2]}"#, "{}", None).unwrap();
+    assert_eq!(envelope, r#"{"result":3,"ops":0}"#);
+}
+
+#[wasm_bindgen_test]
+fn test_an_explicit_budget_refuses_an_evaluation_that_would_cross_it() {
+    let engine = Engine::new(build_options(false, &[])).unwrap();
+    assert!(
+        engine
+            .eval_metered(BUDGET_RULE, &budget_items(200), Some(10.0))
+            .is_err()
+    );
+    // ...and a budget that fits does not.
+    assert!(
+        engine
+            .eval_metered(BUDGET_RULE, &budget_items(3), Some(1000.0))
+            .is_ok()
+    );
+}
+
+#[wasm_bindgen_test]
+fn test_the_configured_budget_bounds_every_entry_point() {
+    let engine = Engine::new(budget_options(10.0)).unwrap();
+    assert!(engine.eval_str(BUDGET_RULE, &budget_items(200)).is_err());
+    // Metering with no explicit argument falls back to the same ceiling.
+    assert!(
+        engine
+            .eval_metered(BUDGET_RULE, &budget_items(200), None)
+            .is_err()
+    );
+    // An explicit argument overrides it for one call.
+    assert!(
+        engine
+            .eval_metered(BUDGET_RULE, &budget_items(200), Some(100_000.0))
+            .is_ok()
+    );
+}
+
+#[wasm_bindgen_test]
+fn test_try_cannot_recover_from_an_exhausted_budget() {
+    let engine = Engine::new(budget_options(10.0)).unwrap();
+    let rule = format!(r#"{{"try":[{BUDGET_RULE},"fallback"]}}"#);
+    assert!(engine.eval_str(&rule, &budget_items(200)).is_err());
+}
+
+#[wasm_bindgen_test]
+fn test_a_rejected_budget_argument_is_an_error_not_a_truncation() {
+    let engine = Engine::new(build_options(false, &[])).unwrap();
+    for bad in [0.0, -1.0, 2.5] {
+        assert!(
+            engine
+                .eval_metered(BUDGET_RULE, &budget_items(3), Some(bad))
+                .is_err(),
+            "budget {bad} should be rejected"
+        );
+    }
+}
+
+#[wasm_bindgen_test]
+fn test_rule_and_session_meter_too() {
+    let engine = Engine::new(build_options(false, &[])).unwrap();
+    let rule = engine.compile(BUDGET_RULE).unwrap();
+    let envelope = rule.evaluate_metered(&budget_items(3), None).unwrap();
+    assert!(envelope.contains(r#""result":[0,2,4]"#), "got: {envelope}");
+
+    let mut session = engine.session();
+    let envelope = session
+        .evaluate_metered(&rule, &budget_items(3), None)
+        .unwrap();
+    assert!(envelope.contains(r#""result":[0,2,4]"#), "got: {envelope}");
+    assert!(
+        session
+            .evaluate_metered(&rule, &budget_items(200), Some(5.0))
+            .is_err()
+    );
+}
+
+#[wasm_bindgen_test]
+fn test_tensor_operators_are_priced_by_the_elements_they_move() {
+    // `zeros` allocates 256 elements from a three-node rule: the node
+    // count alone would price this at nothing.
+    let engine = Engine::new(budget_options(100.0)).unwrap();
+    assert!(
+        engine
+            .eval_str(r#"{"zeros":[[16,16],"f32"]}"#, "{}")
+            .is_err()
+    );
+}

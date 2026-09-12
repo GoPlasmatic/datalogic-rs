@@ -129,6 +129,9 @@ jobs:
           - ext-control
           - ext-math
           - flagd
+          - tensor
+          - tensor-half
+          - budget
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -150,15 +153,78 @@ jobs:
       - name: Build with only `${{ matrix.feature }}` enabled
         run: cargo build -p datalogic-rs --no-default-features --features ${{ matrix.feature }}
 
+  feature-combos:
+    name: Conformance (${{ matrix.combo }})
+    runs-on: ubuntu-latest
+    # `feature-matrix` above can only *build* its legs: the conformance runner
+    # is gated on `serde_json` + `templating`, so a single-feature leg compiles
+    # it to nothing and reports success without evaluating a single rule.
+    #
+    # These legs pair that baseline with one operator family at a time, so the
+    # battery actually runs. It used to fail here — the index lists every suite
+    # and a build without `ext-control` cannot evaluate `switch` — which is now
+    # handled by the runner skipping cases whose operators are not compiled in
+    # (see crates/datalogic-rs/tests/README.md). What this guards is the code
+    # *between* the two endpoints `check` covers: anything that assumes an
+    # operator family is present, or that mis-`cfg`s a compile-time table.
+    strategy:
+      fail-fast: false
+      matrix:
+        combo:
+          - serde_json,templating,trace
+          - serde_json,templating,trace,error-handling
+          - serde_json,templating,trace,ext-array
+          - serde_json,templating,trace,ext-control
+          - serde_json,templating,trace,datetime
+          - serde_json,templating,trace,ext-string,ext-object,ext-math
+          # `tensor` needs `ext-control` + `ext-array` in the mix: the
+          # suites reach for `type` and `sort` to assert how a tensor
+          # behaves as a value.
+          - serde_json,templating,trace,tensor,ext-control,ext-array
+          - serde_json,templating,trace,tensor,tensor-half,ext-control,ext-array
+          # `budget` charges from inside every iterator operator and the
+          # tensor family, and `try` has to refuse to catch its error, so
+          # the leg that matters pairs it with `error-handling` and the
+          # array operators rather than running it alone.
+          - serde_json,templating,trace,budget,error-handling,ext-array,ext-control
+          - serde_json,templating,trace,budget,tensor,ext-control,ext-array
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          # Keyed per combo like `feature-matrix`: the legs build different
+          # feature sets, so one shared `target/` would be rebuilt by every
+          # leg but the one that saved it.
+          key: ${{ runner.os }}-cargo-combos-${{ matrix.combo }}-${{ hashFiles('Cargo.toml', 'crates/datalogic-rs/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-combos-${{ matrix.combo }}-
+            ${{ runner.os }}-cargo-combos-
+
+      - name: Test with `${{ matrix.combo }}`
+        run: cargo test -p datalogic-rs --no-default-features --features ${{ matrix.combo }}
+
   msrv:
-    name: MSRV (Rust 1.85)
+    name: MSRV (Rust 1.98)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Setup Rust 1.85 (matches `rust-version` in Cargo.toml)
-        uses: dtolnay/rust-toolchain@b0480e2d44a72e89a62650e223ba831cbca8d2be # 1.85
+      # Floor tracks `datavalue-rs` 0.3, which declares 1.98; the
+      # library's own language use is still well below that.
+      - name: Setup Rust 1.98 (matches `rust-version` in Cargo.toml)
+        uses: dtolnay/rust-toolchain@1.98.0
 
       - name: Cache cargo (separate from stable to avoid toolchain mix)
         uses: actions/cache@v5

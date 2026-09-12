@@ -23,19 +23,18 @@ pub(crate) fn reduce(node: CompiledNode) -> (CompiledNode, bool) {
                     args: inner_args,
                     ..
                 } = &args[0]
+                    && inner_args.len() == 1
                 {
-                    if inner_args.len() == 1 {
-                        return (
-                            CompiledNode::BuiltinOperator {
-                                id: *id,
-                                opcode: OpCode::BoolCast,
-                                args: inner_args.clone(),
-                                predicate_hint: None,
-                                iter_arg_kind: crate::operators::array::IterArgKind::General,
-                            },
-                            true,
-                        );
-                    }
+                    return (
+                        CompiledNode::BuiltinOperator {
+                            id: *id,
+                            opcode: OpCode::BoolCast,
+                            args: inner_args.clone(),
+                            predicate_hint: None,
+                            iter_arg_kind: crate::operators::array::IterArgKind::General,
+                        },
+                        true,
+                    );
                 }
                 (node, false)
             }
@@ -46,19 +45,18 @@ pub(crate) fn reduce(node: CompiledNode) -> (CompiledNode, bool) {
                     args: inner_args,
                     ..
                 } = &args[0]
+                    && inner_args.len() == 1
                 {
-                    if inner_args.len() == 1 {
-                        return (
-                            CompiledNode::BuiltinOperator {
-                                id: *id,
-                                opcode: OpCode::BoolCast,
-                                args: inner_args.clone(),
-                                predicate_hint: None,
-                                iter_arg_kind: crate::operators::array::IterArgKind::General,
-                            },
-                            true,
-                        );
-                    }
+                    return (
+                        CompiledNode::BuiltinOperator {
+                            id: *id,
+                            opcode: OpCode::BoolCast,
+                            args: inner_args.clone(),
+                            predicate_hint: None,
+                            iter_arg_kind: crate::operators::array::IterArgKind::General,
+                        },
+                        true,
+                    );
                 }
                 (node, false)
             }

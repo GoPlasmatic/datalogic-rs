@@ -142,6 +142,7 @@ pub(super) fn dispatch_node_inner<'a>(
                 reduce_hint,
                 metadata_hint,
                 default_value,
+                binding,
                 ..
             } => crate::operators::variable::evaluate_val_compiled(
                 crate::operators::variable::CompiledVarSpec {
@@ -150,6 +151,7 @@ pub(super) fn dispatch_node_inner<'a>(
                     reduce_hint: *reduce_hint,
                     metadata_hint: *metadata_hint,
                     default_value: default_value.as_deref(),
+                    binding: *binding,
                 },
                 ctx,
                 engine,
@@ -163,6 +165,7 @@ pub(super) fn dispatch_node_inner<'a>(
             CompiledNode::Exists(data) => crate::operators::variable::evaluate_exists_compiled(
                 data.scope_level,
                 &data.segments,
+                data.binding,
                 ctx,
             ),
 
@@ -322,6 +325,50 @@ pub(super) fn dispatch_node_inner<'a>(
             Fractional => crate::operators::flagd::evaluate_fractional,
             #[cfg(feature = "flagd")]
             SemVer => crate::operators::flagd::evaluate_sem_ver,
+
+            // tensor. Every operator in the family takes a fixed
+            // positional argument list, so all twenty are the `simple`
+            // shape.
+            #[cfg(feature = "tensor")]
+            TensorMake => crate::operators::tensor::evaluate_tensor,
+            #[cfg(feature = "tensor")]
+            TensorZeros => crate::operators::tensor::evaluate_zeros,
+            #[cfg(feature = "tensor")]
+            TensorFull => crate::operators::tensor::evaluate_full,
+            #[cfg(feature = "tensor")]
+            TensorScatter => crate::operators::tensor::evaluate_scatter,
+            #[cfg(feature = "tensor")]
+            TensorRleExpand => crate::operators::tensor::evaluate_rle_expand,
+            #[cfg(feature = "tensor")]
+            TensorOneHot => crate::operators::tensor::evaluate_one_hot,
+            #[cfg(feature = "tensor")]
+            TensorStack => crate::operators::tensor::evaluate_stack,
+            #[cfg(feature = "tensor")]
+            TensorConcat => crate::operators::tensor::evaluate_concat,
+            #[cfg(feature = "tensor")]
+            TensorUnstack => crate::operators::tensor::evaluate_unstack,
+            #[cfg(feature = "tensor")]
+            TensorReshape => crate::operators::tensor::evaluate_reshape,
+            #[cfg(feature = "tensor")]
+            TensorTranspose => crate::operators::tensor::evaluate_transpose,
+            #[cfg(feature = "tensor")]
+            TensorPad => crate::operators::tensor::evaluate_pad,
+            #[cfg(feature = "tensor")]
+            TensorCrop => crate::operators::tensor::evaluate_crop,
+            #[cfg(feature = "tensor")]
+            TensorCast => crate::operators::tensor::evaluate_cast,
+            #[cfg(feature = "tensor")]
+            TensorNormalize => crate::operators::tensor::evaluate_normalize,
+            #[cfg(feature = "tensor")]
+            TensorArgmax => crate::operators::tensor::evaluate_argmax,
+            #[cfg(feature = "tensor")]
+            TensorGather => crate::operators::tensor::evaluate_gather,
+            #[cfg(feature = "tensor")]
+            TensorToList => crate::operators::tensor::evaluate_to_list,
+            #[cfg(feature = "tensor")]
+            TensorShape => crate::operators::tensor::evaluate_shape,
+            #[cfg(feature = "tensor")]
+            TensorDtype => crate::operators::tensor::evaluate_dtype,
         ],
 
         // `BuiltinOperator { opcode, args, iter_arg_kind, .. } => fn(args,
@@ -388,7 +435,19 @@ fn dispatch_cse<'a>(
     ctx: &mut ContextStack<'a>,
     arena: &'a bumpalo::Bump,
 ) -> Result<&'a crate::arena::DataValue<'a>> {
-    if ctx.depth() == 0 && !ctx.is_tracing() {
+    // The depth half of the old gate is a compile-time tautology: the CSE pass
+    // never descends into a child position for which
+    // `compile::scope::frames_pushed_for_child` is non-zero, so every `Cse`
+    // node in a compiled tree sits at static frame depth 0. Only the tracer
+    // half is genuinely dynamic. The assertion below pins the invariant from
+    // the runtime side; `cse::tests::no_cse_node_sits_under_a_pushed_frame`
+    // pins it from the compile side.
+    debug_assert_eq!(
+        ctx.depth(),
+        0,
+        "Cse node dispatched under a pushed frame — the memo would leak across frames"
+    );
+    if !ctx.is_tracing() {
         if let Some(hit) = ctx.cse_slot(data.slot) {
             return Ok(hit);
         }

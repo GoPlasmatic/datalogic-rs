@@ -35,7 +35,7 @@ cargo test
 contract mechanics — abi/version, status codes, error handles,
 borrowed session results, owned bufs, data handles, typed results,
 batch, callbacks, and NULL-safety. `tests/conformance.rs` drives the
-full 1,698-case conformance suite (59 suites) through the ABI, each
+full 1,804-case conformance suite (63 suites) through the ABI, each
 case evaluated twice: once via one-shot `apply` and once via the
 compile + data-handle + session hot path.
 

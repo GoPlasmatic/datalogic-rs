@@ -152,6 +152,9 @@ opt in via their dependency line.
 | `ext-string`, `ext-array`, `ext-object`, `ext-control`, `ext-math` | Optional operator families | WASM, Node, Python, C; opt-in per Rust consumer |
 | `flagd`           | `fractional` + `sem_ver` operators (OpenFeature flagd spec); pulls in `semver` | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit). See [flagd docs](https://flagd.dev/reference/custom-operations/) |
 | `wasm-clock`      | JS-host clock for `now` on `wasm32-unknown-unknown` (forwards to `chrono/wasmbind`). Deliberately opt-in: it links JS imports that non-JS wasm runtimes (wasmtime, wazero, Chicory) cannot satisfy — issue #47 | WASM only. Never enable when the module runs outside a JS host |
+| `tensor`          | datavalue's `Tensor` value (dtype + shape + row-major byte buffer) and 20 marshalling-only operators over it. Arithmetic-free by design: every operator's cost is proportional to the data it moves, which is what lets `budget` price it honestly. No new dependency; crosses JSON as the tagged `{"tensor": {..}}` form, so the text-returning bindings carry it with no FFI change | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit), `benchmark` |
+| `tensor-half`     | Lifts the `f16` / `bf16` restriction on the element-wise tensor operators (the byte-moving ones already work on every dtype). Pulls in `half` through datavalue | Opt-in per Rust consumer; not enabled in any binding |
+| `budget`          | Per-evaluation operation counter with a hard abort: `EvaluationConfig::ops_budget`, `Engine::evaluate_metered` / `Session::eval_metered`, `EvalContext::charge`, and `ErrorKind::BudgetExceeded`. Costs ~3.6% geomean when compiled in and unset (22.75 -> 23.56 ns/op on the self benchmark), which is why it is a flag | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit) |
 
 The non-Rust bindings (Go, JVM, .NET, PHP) inherit whatever feature set
 `bindings/c` is compiled with — they don't have their own Cargo
@@ -208,6 +211,18 @@ directory and registering it from `optimize/mod.rs`.
 | `dead_code`      | Elides unreachable arms (`if` with constant condition, etc.)          | `optimize/dead_code.rs`     |
 | `strength`       | Strength reduction (`{"+": [x]}` → `x`, `{"*": [x]}` → `x`)           | `optimize/strength.rs`      |
 | `cse`            | Memoizes structurally identical pure subtrees into per-evaluation slots (`Logic::cse_slot_count()`); never memoizes custom operators, `try` / `throw`, `now`, `fractional`, `sem_ver`, or the per-item bodies of iterating operators. Runs once after the fixpoint loop. | `optimize/cse.rs`           |
+| `scope`          | Resolves every `var` / `val` / `exists` reference to a compile-time `ScopeBinding` (`Root` / `Current` / `Ancestor`), so the runtime reads a precomputed frame target instead of probing `ctx.depth()`. Runs once after CSE; unconditional, so no-fold and traced compiles get the same resolution. | `compile/scope.rs`          |
+| `scope` (cont.)  | The same pass reports `Logic::needs_ancestor_frames` — whether any reference can reach past the innermost frame. When false (the overwhelming majority: an ancestor is not addressable until three levels of iterator nesting) evaluation skips maintaining the ancestor-frame list entirely. | `compile/scope.rs`          |
+
+`compile/scope.rs` also owns `frames_pushed_for_child`, the single source
+of truth for which argument positions execute under a pushed context frame
+(iterator bodies, sort/group_by/distinct key expressions, a multi-arg `try`'s
+catch arm). Both the scope pass and `optimize/cse.rs` read it, so the two can
+never drift. **An operator that pushes a frame must register its argument
+position there**, or variable references beneath it resolve against the wrong
+frame; a debug-only oracle in `operators::variable` cross-checks every
+resolution against the runtime walk and fires on the first test that
+exercises an omission.
 
 The runtime side has its own fast paths that don't need a compile-time
 pass to fire — notably:
@@ -217,8 +232,9 @@ pass to fire — notably:
 - `filter_strict_eq_field_fast_path` recognises
   `filter(arr, == [{var: "field"}, invariant])` and evaluates the
   invariant once outside the loop.
-- `evaluate_invariant_no_push` short-circuits any predicate-side node
-  that doesn't reference the iteration scope.
+- `is_filter_invariant` admits only literals and root-bound references
+  to that hoist, since neither reads the frame stack the fast path
+  skips.
 - `dispatch_node` (`crates/datalogic-rs/src/engine/mod.rs`) carries a
   literal fast path: every `CompiledNode::Value` reachable from a `Logic`
   carries a pre-built `PreLit` view (trivial values from `precompute_lit`

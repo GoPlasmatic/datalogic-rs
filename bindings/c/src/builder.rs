@@ -167,11 +167,19 @@ pub unsafe extern "C" fn datalogic_engine_builder_set_templating(
 /// ([`EvaluationConfig::from_json_str`]) — the same wire format every
 /// binding uses (`preset`, `arithmetic_nan_handling`,
 /// `division_by_zero`, `loose_equality_errors`, `truthy_evaluator`,
-/// `numeric_coercion`, `max_recursion_depth`). Unknown keys and enum
-/// strings are rejected (tag `"ConfigurationError"`) so typos fail
-/// loudly. Each call replaces the builder's entire evaluation config;
-/// templating and registered operators are unaffected. A failed call
-/// leaves the builder usable.
+/// `numeric_coercion`, `max_recursion_depth`, `ops_budget`). Unknown
+/// keys and enum strings are rejected (tag `"ConfigurationError"`) so
+/// typos fail loudly. Each call replaces the builder's entire evaluation
+/// config; templating and registered operators are unaffected. A failed
+/// call leaves the builder usable.
+///
+/// `ops_budget` is how a caller through this ABI bounds the work a rule
+/// may do: an integer ceiling on the operations one evaluation may
+/// charge, or `null` for unbounded (the default). Crossing it fails the
+/// evaluation with tag `"BudgetExceeded"` before the work is done, and a
+/// `try` in the rule cannot recover from it. There is no per-call budget
+/// across this ABI yet — the config is engine-wide, so build a second
+/// engine when two budgets are wanted.
 ///
 /// # Safety
 ///

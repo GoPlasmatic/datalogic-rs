@@ -8,13 +8,49 @@ use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 use std::ops::ControlFlow;
 
-/// Check if a compiled node is loop-invariant (doesn't depend on the current iteration context).
-/// Used by filter/quantifier fast paths to detect values that can be evaluated once before the loop.
+/// Check if a compiled node is loop-invariant — i.e. whether hoisting it out
+/// of the iteration and evaluating it once yields what the per-item path
+/// would have produced. Used by the filter/quantifier fast paths.
+///
+/// The subtlety is what "invariant" has to mean here. The fast path skips
+/// the per-item frame entirely and dispatches the hoisted operand one frame
+/// shallower than its static depth, so a reference is invariant exactly when
+/// it cannot observe the frame stack at all:
+///
+/// - A literal takes the dispatcher's literal fast path.
+/// - [`ScopeBinding::Root`] reads the rule input straight from
+///   `ctx.root_input()`; and a level that clamps to the root at the
+///   predicate's static depth still clamps one frame shallower, so the
+///   debug oracle agrees with the hoisted evaluation.
+/// - [`ScopeBinding::Current`] *is* the per-item frame. Not invariant.
+/// - [`ScopeBinding::Ancestor`] indexes the stack relative to a frame that
+///   is not pushed on this path. Rare (depth >= 3) and left to the general
+///   path rather than resolved with a second copy of the level arithmetic.
+/// - [`ScopeBinding::Unresolved`] means the scope pass never reached this
+///   node, so nothing is proven. Treated as not invariant.
+///
+/// A bare `scope_level > 0` test is **not** a substitute for the binding:
+/// `{"val": [[1], …]}` resolves to the current frame whenever the filter
+/// itself sits one or more frames deep, which is the shape that made this
+/// predicate wrong before. Metadata and reduce hints read `ctx.current()`
+/// regardless of level, so they are never invariant; and a `default_value`
+/// is an arbitrary subtree that could.
 #[inline]
 pub(super) fn is_filter_invariant(node: &CompiledNode) -> bool {
     match node {
         CompiledNode::Value { .. } => true,
-        CompiledNode::Var { scope_level, .. } => *scope_level > 0,
+        CompiledNode::Var {
+            binding,
+            reduce_hint,
+            metadata_hint,
+            default_value,
+            ..
+        } => {
+            *binding == crate::node::ScopeBinding::Root
+                && *reduce_hint == ReduceHint::None
+                && *metadata_hint == MetadataHint::None
+                && default_value.is_none()
+        }
         _ => false,
     }
 }
@@ -35,34 +71,12 @@ pub(super) fn try_extract_filter_field_cmp<'a>(
         default_value: None,
         ..
     } = a
+        && !segments.is_empty()
+        && is_filter_invariant(b)
     {
-        if !segments.is_empty() && is_filter_invariant(b) {
-            return Some((segments, b));
-        }
+        return Some((segments, b));
     }
     None
-}
-
-/// Evaluate a loop-invariant predicate-side node once, before iteration.
-/// Literal values are deep-converted into the arena; outer-scope
-/// `CompiledVar`s resolve through arena dispatch with a synthesized null iter
-/// frame so the var sees the outer context unaffected by the missing iter
-/// frame this fast path skips.
-#[inline]
-pub(super) fn evaluate_invariant_no_push<'a>(
-    invariant_node: &'a CompiledNode,
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    if let CompiledNode::Value { value, .. } = invariant_node {
-        return Ok(arena.alloc(value.to_arena(arena)));
-    }
-    let null_av: &'a DataValue<'a> = crate::arena::singletons::singleton_null();
-    ctx.push(null_av);
-    let result = engine.dispatch_node(invariant_node, ctx, arena);
-    ctx.pop();
-    result
 }
 
 /// Represents a detected fast-path predicate pattern for quantifier/filter
@@ -261,57 +275,56 @@ impl FastPredicate {
                 default_value: None,
                 ..
             } = &pred_args[var_idx]
+                && let CompiledNode::Value { value: literal, .. } = &pred_args[lit_idx]
             {
-                if let CompiledNode::Value { value: literal, .. } = &pred_args[lit_idx] {
-                    let var_path: Box<[crate::node::PathSegment]> = segments.clone();
+                let var_path: Box<[crate::node::PathSegment]> = segments.clone();
 
-                    match opcode {
-                        OpCode::StrictEquals | OpCode::StrictNotEquals => {
-                            let negate = matches!(opcode, OpCode::StrictNotEquals);
-                            return Some(FastPredicate::StrictEq {
+                match opcode {
+                    OpCode::StrictEquals | OpCode::StrictNotEquals => {
+                        let negate = matches!(opcode, OpCode::StrictNotEquals);
+                        return Some(FastPredicate::StrictEq {
+                            var_path,
+                            literal: literal.clone(),
+                            negate,
+                        });
+                    }
+                    OpCode::Equals | OpCode::NotEquals => {
+                        // For loose equality with numeric literals, we can use a fast
+                        // numeric comparison (loose == is same as strict for numbers)
+                        if let Some(lit_f) = literal.as_f64() {
+                            let negate = matches!(opcode, OpCode::NotEquals);
+                            return Some(FastPredicate::LooseNumericEq {
                                 var_path,
-                                literal: literal.clone(),
+                                literal_f: lit_f,
                                 negate,
                             });
                         }
-                        OpCode::Equals | OpCode::NotEquals => {
-                            // For loose equality with numeric literals, we can use a fast
-                            // numeric comparison (loose == is same as strict for numbers)
-                            if let Some(lit_f) = literal.as_f64() {
-                                let negate = matches!(opcode, OpCode::NotEquals);
-                                return Some(FastPredicate::LooseNumericEq {
-                                    var_path,
-                                    literal_f: lit_f,
-                                    negate,
-                                });
-                            }
-                            // String literals: same-type loose equality is
-                            // plain equality; other value types stay
-                            // indeterminate at evaluation time.
-                            if let datavalue::OwnedDataValue::String(s) = literal {
-                                let negate = matches!(opcode, OpCode::NotEquals);
-                                return Some(FastPredicate::LooseStrEq {
-                                    var_path,
-                                    literal: s.as_str().into(),
-                                    negate,
-                                });
-                            }
+                        // String literals: same-type loose equality is
+                        // plain equality; other value types stay
+                        // indeterminate at evaluation time.
+                        if let datavalue::OwnedDataValue::String(s) = literal {
+                            let negate = matches!(opcode, OpCode::NotEquals);
+                            return Some(FastPredicate::LooseStrEq {
+                                var_path,
+                                literal: s.as_str().into(),
+                                negate,
+                            });
                         }
-                        OpCode::GreaterThan
-                        | OpCode::GreaterThanEqual
-                        | OpCode::LessThan
-                        | OpCode::LessThanEqual => {
-                            if let Some(lit_f) = literal.as_f64() {
-                                return Some(FastPredicate::NumericCmp {
-                                    var_path,
-                                    literal_f: lit_f,
-                                    opcode,
-                                    var_is_lhs,
-                                });
-                            }
-                        }
-                        _ => {}
                     }
+                    OpCode::GreaterThan
+                    | OpCode::GreaterThanEqual
+                    | OpCode::LessThan
+                    | OpCode::LessThanEqual => {
+                        if let Some(lit_f) = literal.as_f64() {
+                            return Some(FastPredicate::NumericCmp {
+                                var_path,
+                                literal_f: lit_f,
+                                opcode,
+                                var_is_lhs,
+                            });
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -626,25 +639,46 @@ pub(crate) fn resolve_iter_input<'a>(
     if let IterArgKind::RootVarBorrow {
         path_segments_empty,
     } = kind
+        && ctx.depth() == 0
     {
-        if ctx.depth() == 0 {
-            let root = ctx.root_input();
-            let av = if path_segments_empty {
-                Some(root)
-            } else if let CompiledNode::Var { segments, .. } = arg {
-                crate::arena::value::traverse_segments(root, segments)
-            } else {
-                // Compile-time invariant violated; fall through to General path.
-                None
-            };
-            if let Some(av) = av {
-                return Ok(value_as_iter(av));
-            }
+        let root = ctx.root_input();
+        let av = if path_segments_empty {
+            Some(root)
+        } else if let CompiledNode::Var { segments, .. } = arg {
+            crate::arena::value::traverse_segments(root, segments)
+        } else {
+            // Compile-time invariant violated; fall through to General path.
+            None
+        };
+        if let Some(av) = av {
+            return charged(value_as_iter(av), ctx);
         }
     }
 
     let av = engine.dispatch_node(arg, ctx, arena)?;
-    Ok(value_as_iter(av))
+    charged(value_as_iter(av), ctx)
+}
+
+/// Charge one operation per item the caller is about to examine.
+///
+/// Every iterator operator funnels through [`resolve_iter_input`], so this
+/// is the one place the per-item cost has to be taken — and taking it here,
+/// before the caller chooses between its compile-time fast paths and the
+/// general path, is what makes the cost independent of that choice. A fast
+/// path that evaluates a predicate inline never dispatches the body and
+/// would otherwise cost 0 per item, which would make whether a rule fits
+/// its budget depend on which shape the populate pass recognised.
+///
+/// An object source arrives as `Bridge` and is charged 1 here; its pairs
+/// dispatch the body individually, so the per-item cost lands anyway.
+#[inline(always)]
+fn charged<'a>(input: ResolvedInput<'a>, ctx: &mut ContextStack<'a>) -> Result<ResolvedInput<'a>> {
+    let items = match &input {
+        ResolvedInput::Iterable(src) => src.len() as u64,
+        _ => 1,
+    };
+    ctx.charge(items)?;
+    Ok(input)
 }
 
 /// Convert a resolved arena value into an `IterSrc` view, or signal Empty/Bridge.
@@ -854,5 +888,122 @@ impl FusedMapBody<'_> {
                 })
             }
         }
+    }
+}
+
+#[cfg(all(test, feature = "serde_json"))]
+mod invariant_tests {
+    use super::is_filter_invariant;
+    use crate::node::CompiledNode;
+    use crate::{Engine, Logic};
+
+    /// Pull the right-hand operand out of `{"filter": [src, {"===": [a, b]}]}`.
+    fn filter_rhs(logic: &Logic) -> &CompiledNode {
+        let CompiledNode::BuiltinOperator { args, .. } = &logic.root else {
+            panic!("expected filter at the root");
+        };
+        let CompiledNode::BuiltinOperator { args: pred, .. } = &args[1] else {
+            panic!("expected a comparison predicate");
+        };
+        &pred[1]
+    }
+
+    /// Nested form: reach into `{"map": [src, {"filter": …}]}`.
+    fn nested_filter_rhs(logic: &Logic) -> &CompiledNode {
+        let CompiledNode::BuiltinOperator { args, .. } = &logic.root else {
+            panic!("expected map at the root");
+        };
+        let CompiledNode::BuiltinOperator { args: inner, .. } = &args[1] else {
+            panic!("expected a nested filter");
+        };
+        let CompiledNode::BuiltinOperator { args: pred, .. } = &inner[1] else {
+            panic!("expected a comparison predicate");
+        };
+        &pred[1]
+    }
+
+    /// The strict-eq filter fast path evaluates a "loop-invariant" operand
+    /// once, before the loop, with no per-item frame pushed. Anything that
+    /// reads the frame stack must therefore be rejected, or the fast path
+    /// and the general path disagree.
+    ///
+    /// Pins both directions: the shapes that must stay hoistable (or the fast
+    /// path is silently lost) and the shapes that must not be (or results are
+    /// wrong). The rejected cases below each produced a different answer from
+    /// the general path before the binding check replaced a bare
+    /// `scope_level > 0` test.
+    #[test]
+    fn only_frame_independent_operands_are_hoistable() {
+        let engine = Engine::new();
+
+        // Hoistable: a literal, and levels that resolve to the root.
+        for rule in [
+            r#"{"filter": [{"val": "xs"}, {"===": [{"var": "a"}, 1]}]}"#,
+            r#"{"filter": [{"val": "xs"}, {"===": [{"var": "a"}, {"val": [[2], "d"]}]}]}"#,
+            r#"{"filter": [{"val": "xs"}, {"===": [{"var": "a"}, {"val": [[1], "d"]}]}]}"#,
+        ] {
+            let logic = engine.compile(rule).unwrap();
+            assert!(
+                is_filter_invariant(filter_rhs(&logic)),
+                "should be hoistable, losing this loses the fast path: {rule}"
+            );
+        }
+
+        // Not hoistable: metadata hints read `ctx.current()` whatever the
+        // level, so hoisted they would read the enclosing frame, not the item.
+        for rule in [
+            r#"{"filter": [{"val": "xs"}, {"===": [{"var": "a"}, {"val": [[1], "index"]}]}]}"#,
+            r#"{"filter": [{"val": "xs"}, {"===": [{"var": "a"}, {"val": [[1], "key"]}]}]}"#,
+        ] {
+            let logic = engine.compile(rule).unwrap();
+            assert!(
+                !is_filter_invariant(filter_rhs(&logic)),
+                "metadata hint must not be hoisted: {rule}"
+            );
+        }
+
+        // Not hoistable: one frame deeper, `[[1]]` names the current item.
+        let nested = r#"{"map": [{"val": "g"}, {"filter": [{"val": "i"}, {"===": [{"var": "a"}, {"val": [[1], "a"]}]}]}]}"#;
+        let logic = engine.compile(nested).unwrap();
+        assert!(
+            !is_filter_invariant(nested_filter_rhs(&logic)),
+            "[[1]] inside a nested filter is the current item, not an outer frame"
+        );
+
+        // Hoistable again at the same nesting once the level clamps to root.
+        let nested_root = r#"{"map": [{"val": "g"}, {"filter": [{"val": "i"}, {"===": [{"var": "a"}, {"val": [[2], "a"]}]}]}]}"#;
+        let logic = engine.compile(nested_root).unwrap();
+        assert!(
+            is_filter_invariant(nested_filter_rhs(&logic)),
+            "a level that clamps to root stays hoistable"
+        );
+
+        // Not hoistable: a genuine ancestor frame is indexed relative to the
+        // per-item frame this path never pushes. Two `map`s deep, `[[2]]`
+        // names the outer map's item; the general path resolves it.
+        let ancestor = r#"{"map": [{"val": "g"}, {"map": [{"val": "h"}, {"filter": [{"val": "i"}, {"===": [{"var": "a"}, {"val": [[2], "a"]}]}]}]}]}"#;
+        let logic = engine.compile(ancestor).unwrap();
+        let CompiledNode::BuiltinOperator { args, .. } = &logic.root else {
+            panic!("expected map at the root");
+        };
+        let inner = nested_filter_rhs_of(&args[1]);
+        assert!(
+            !is_filter_invariant(inner),
+            "an ancestor reference takes the general path"
+        );
+    }
+
+    /// `nested_filter_rhs` for a subtree rather than a `Logic`.
+    fn nested_filter_rhs_of(map: &CompiledNode) -> &CompiledNode {
+        let CompiledNode::BuiltinOperator { args, .. } = map else {
+            panic!("expected map");
+        };
+        let CompiledNode::BuiltinOperator { args: inner, .. } = &args[1] else {
+            panic!("expected a nested filter");
+        };
+        let CompiledNode::BuiltinOperator { args: pred, .. } = &inner[1] else {
+            panic!("expected a comparison predicate");
+        };
+        &pred[1]
     }
 }

@@ -44,5 +44,10 @@ pub(crate) fn truthy_js_arena(v: &DataValue<'_>) -> bool {
         DataValue::Object(pairs) => !pairs.is_empty(),
         #[cfg(feature = "datetime")]
         DataValue::DateTime(_) | DataValue::Duration(_) => true,
+        // A tensor is a container, so it follows the container rule:
+        // empty is falsy. `numel` is the product of the shape, which is
+        // 1 for a 0-d tensor (a scalar) and 0 as soon as any axis is 0.
+        #[cfg(feature = "tensor")]
+        DataValue::Tensor(t) => t.numel() > 0,
     }
 }
