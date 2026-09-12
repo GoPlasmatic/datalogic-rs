@@ -412,10 +412,10 @@ fn node_count(node: &CompiledNode) -> usize {
 }
 
 fn contains_iterator_op(node: &CompiledNode) -> bool {
-    if let CompiledNode::BuiltinOperator { opcode, .. } = node {
-        if is_iterator_opcode(*opcode) {
-            return true;
-        }
+    if let CompiledNode::BuiltinOperator { opcode, .. } = node
+        && is_iterator_opcode(*opcode)
+    {
+        return true;
     }
     let mut found = false;
     node.visit_indexed_children(&mut |_, child| {

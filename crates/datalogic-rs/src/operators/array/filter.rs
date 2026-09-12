@@ -48,10 +48,10 @@ pub(crate) fn evaluate_filter<'a>(
             return Ok(result);
         }
 
-        if let Some(fast_pred) = FastPredicate::from_node(predicate) {
-            if let Some(result) = filter_with_fast_predicate(&src, fast_pred, engine, arena) {
-                return Ok(result);
-            }
+        if let Some(fast_pred) = FastPredicate::from_node(predicate)
+            && let Some(result) = filter_with_fast_predicate(&src, fast_pred, engine, arena)
+        {
+            return Ok(result);
         }
     }
 

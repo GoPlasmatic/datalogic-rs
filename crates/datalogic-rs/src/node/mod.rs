@@ -390,10 +390,10 @@ impl CompiledNode {
     /// literal); runtime wrappers go through [`Self::synthetic_value`].
     pub(crate) fn compile_time_value(id: NodeId, value: OwnedDataValue) -> Self {
         let mut node = Self::value_with_id(id, value);
-        if let CompiledNode::Value { value, lit, .. } = &mut node {
-            if lit.is_none() {
-                *lit = PreLit::composite(value);
-            }
+        if let CompiledNode::Value { value, lit, .. } = &mut node
+            && lit.is_none()
+        {
+            *lit = PreLit::composite(value);
         }
         node
     }

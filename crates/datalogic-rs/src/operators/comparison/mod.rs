@@ -278,10 +278,10 @@ pub(crate) fn compare_equals(
             // Fast path: strings in the strict ISO shape with identical
             // designator and precision are temporally equal iff byte-equal;
             // skip parsing. See `iso_byte_compare_eligible` for the invariant.
-            if let (DataValue::String(l), DataValue::String(r)) = (left, right) {
-                if iso_byte_compare_eligible(l, r) {
-                    return Ok(l == r);
-                }
+            if let (DataValue::String(l), DataValue::String(r)) = (left, right)
+                && iso_byte_compare_eligible(l, r)
+            {
+                return Ok(l == r);
             }
             let left_dt = extract_datetime(left);
             let right_dt = extract_datetime(right);
@@ -329,13 +329,12 @@ fn compare_ordered(
     // also compare byte-wise when the strict-ISO gate proves byte order
     // equals the parse path's verdict; see `iso_byte_compare_eligible`.
     #[cfg(feature = "datetime")]
-    if let (Some(l), Some(r)) = (left.as_str(), right.as_str()) {
-        if !could_be_datetime_or_duration(l)
+    if let (Some(l), Some(r)) = (left.as_str(), right.as_str())
+        && (!could_be_datetime_or_duration(l)
             || !could_be_datetime_or_duration(r)
-            || iso_byte_compare_eligible(l, r)
-        {
-            return Ok(op.apply_str(l, r));
-        }
+            || iso_byte_compare_eligible(l, r))
+    {
+        return Ok(op.apply_str(l, r));
     }
     #[cfg(not(feature = "datetime"))]
     if let (Some(l), Some(r)) = (left.as_str(), right.as_str()) {

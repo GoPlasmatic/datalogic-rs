@@ -332,10 +332,10 @@ impl Error {
         prefer_existing_op: bool,
     ) -> Self {
         self.node_ids = node_ids.into();
-        if !prefer_existing_op || self.operator.is_none() {
-            if let Some(name) = compiled.root_op_name.clone() {
-                self.operator = Some(name);
-            }
+        if (!prefer_existing_op || self.operator.is_none())
+            && let Some(name) = compiled.root_op_name.clone()
+        {
+            self.operator = Some(name);
         }
         self
     }

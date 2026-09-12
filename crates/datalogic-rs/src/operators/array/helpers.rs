@@ -72,10 +72,10 @@ pub(super) fn try_extract_filter_field_cmp<'a>(
         default_value: None,
         ..
     } = a
+        && !segments.is_empty()
+        && is_filter_invariant(b)
     {
-        if !segments.is_empty() && is_filter_invariant(b) {
-            return Some((segments, b));
-        }
+        return Some((segments, b));
     }
     None
 }
@@ -298,57 +298,56 @@ impl FastPredicate {
                 default_value: None,
                 ..
             } = &pred_args[var_idx]
+                && let CompiledNode::Value { value: literal, .. } = &pred_args[lit_idx]
             {
-                if let CompiledNode::Value { value: literal, .. } = &pred_args[lit_idx] {
-                    let var_path: Box<[crate::node::PathSegment]> = segments.clone();
+                let var_path: Box<[crate::node::PathSegment]> = segments.clone();
 
-                    match opcode {
-                        OpCode::StrictEquals | OpCode::StrictNotEquals => {
-                            let negate = matches!(opcode, OpCode::StrictNotEquals);
-                            return Some(FastPredicate::StrictEq {
+                match opcode {
+                    OpCode::StrictEquals | OpCode::StrictNotEquals => {
+                        let negate = matches!(opcode, OpCode::StrictNotEquals);
+                        return Some(FastPredicate::StrictEq {
+                            var_path,
+                            literal: literal.clone(),
+                            negate,
+                        });
+                    }
+                    OpCode::Equals | OpCode::NotEquals => {
+                        // For loose equality with numeric literals, we can use a fast
+                        // numeric comparison (loose == is same as strict for numbers)
+                        if let Some(lit_f) = literal.as_f64() {
+                            let negate = matches!(opcode, OpCode::NotEquals);
+                            return Some(FastPredicate::LooseNumericEq {
                                 var_path,
-                                literal: literal.clone(),
+                                literal_f: lit_f,
                                 negate,
                             });
                         }
-                        OpCode::Equals | OpCode::NotEquals => {
-                            // For loose equality with numeric literals, we can use a fast
-                            // numeric comparison (loose == is same as strict for numbers)
-                            if let Some(lit_f) = literal.as_f64() {
-                                let negate = matches!(opcode, OpCode::NotEquals);
-                                return Some(FastPredicate::LooseNumericEq {
-                                    var_path,
-                                    literal_f: lit_f,
-                                    negate,
-                                });
-                            }
-                            // String literals: same-type loose equality is
-                            // plain equality; other value types stay
-                            // indeterminate at evaluation time.
-                            if let datavalue::OwnedDataValue::String(s) = literal {
-                                let negate = matches!(opcode, OpCode::NotEquals);
-                                return Some(FastPredicate::LooseStrEq {
-                                    var_path,
-                                    literal: s.as_str().into(),
-                                    negate,
-                                });
-                            }
+                        // String literals: same-type loose equality is
+                        // plain equality; other value types stay
+                        // indeterminate at evaluation time.
+                        if let datavalue::OwnedDataValue::String(s) = literal {
+                            let negate = matches!(opcode, OpCode::NotEquals);
+                            return Some(FastPredicate::LooseStrEq {
+                                var_path,
+                                literal: s.as_str().into(),
+                                negate,
+                            });
                         }
-                        OpCode::GreaterThan
-                        | OpCode::GreaterThanEqual
-                        | OpCode::LessThan
-                        | OpCode::LessThanEqual => {
-                            if let Some(lit_f) = literal.as_f64() {
-                                return Some(FastPredicate::NumericCmp {
-                                    var_path,
-                                    literal_f: lit_f,
-                                    opcode,
-                                    var_is_lhs,
-                                });
-                            }
-                        }
-                        _ => {}
                     }
+                    OpCode::GreaterThan
+                    | OpCode::GreaterThanEqual
+                    | OpCode::LessThan
+                    | OpCode::LessThanEqual => {
+                        if let Some(lit_f) = literal.as_f64() {
+                            return Some(FastPredicate::NumericCmp {
+                                var_path,
+                                literal_f: lit_f,
+                                opcode,
+                                var_is_lhs,
+                            });
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -663,20 +662,19 @@ pub(crate) fn resolve_iter_input<'a>(
     if let IterArgKind::RootVarBorrow {
         path_segments_empty,
     } = kind
+        && ctx.depth() == 0
     {
-        if ctx.depth() == 0 {
-            let root = ctx.root_input();
-            let av = if path_segments_empty {
-                Some(root)
-            } else if let CompiledNode::Var { segments, .. } = arg {
-                crate::arena::value::traverse_segments(root, segments)
-            } else {
-                // Compile-time invariant violated; fall through to General path.
-                None
-            };
-            if let Some(av) = av {
-                return Ok(value_as_iter(av));
-            }
+        let root = ctx.root_input();
+        let av = if path_segments_empty {
+            Some(root)
+        } else if let CompiledNode::Var { segments, .. } = arg {
+            crate::arena::value::traverse_segments(root, segments)
+        } else {
+            // Compile-time invariant violated; fall through to General path.
+            None
+        };
+        if let Some(av) = av {
+            return Ok(value_as_iter(av));
         }
     }
 

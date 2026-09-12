@@ -240,10 +240,10 @@ fn accumulate_dynamic_missing<'a>(
     match av {
         DataValue::Array(items) => {
             for it in *items {
-                if let Some(path) = it.as_str() {
-                    if !crate::arena::value::path_exists_str(lookup, path) {
-                        missing.push(DataValue::String(arena.alloc_str(path)));
-                    }
+                if let Some(path) = it.as_str()
+                    && !crate::arena::value::path_exists_str(lookup, path)
+                {
+                    missing.push(DataValue::String(arena.alloc_str(path)));
                 }
             }
         }

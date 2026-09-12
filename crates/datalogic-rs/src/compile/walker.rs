@@ -229,14 +229,14 @@ fn compile_builtin(
     // results carry their prebuilt view immediately — an enclosing static
     // operator folded right after this consumes it structurally (e.g.
     // `evaluate_switch`'s folded-case-table arms).
-    if let Some(eng) = engine {
-        if !ctx.skip_fold() {
-            node = optimize::optimize(node, eng);
-            if node_is_static(&node) {
-                if let Some(value) = optimize::constant_fold::fold_static_node(&node, eng) {
-                    return Ok(CompiledNode::compile_time_value(Some(ctx.next_id()), value));
-                }
-            }
+    if let Some(eng) = engine
+        && !ctx.skip_fold()
+    {
+        node = optimize::optimize(node, eng);
+        if node_is_static(&node)
+            && let Some(value) = optimize::constant_fold::fold_static_node(&node, eng)
+        {
+            return Ok(CompiledNode::compile_time_value(Some(ctx.next_id()), value));
         }
     }
 
@@ -365,11 +365,11 @@ fn compile_templating_unknown(
     templating: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
-    if let Some(eng) = engine {
-        if eng.has_custom_operator(op_name) {
-            let args = compile_args(args_value, engine, templating, ctx)?;
-            return Ok(custom_operator_node(op_name, args, ctx));
-        }
+    if let Some(eng) = engine
+        && eng.has_custom_operator(op_name)
+    {
+        let args = compile_args(args_value, engine, templating, ctx)?;
+        return Ok(custom_operator_node(op_name, args, ctx));
     }
     single_field_object(op_name, args_value, engine, templating, false, ctx)
 }
@@ -429,17 +429,17 @@ fn compile_array(
         nodes: nodes_boxed,
     };
 
-    if let Some(eng) = engine {
-        if !ctx.skip_fold() && node_is_static(&node) {
-            if let Some(value) = optimize::constant_fold::fold_static_node(&node, eng) {
-                // `compile_time_value`: the folded array carries its
-                // prebuilt composite view immediately, so an enclosing
-                // static operator folded during this same compile (e.g. a
-                // literal-discriminant `switch` matching its case table
-                // via `lit: Some`) evaluates correctly at fold time.
-                return Ok(CompiledNode::compile_time_value(Some(ctx.next_id()), value));
-            }
-        }
+    if let Some(eng) = engine
+        && !ctx.skip_fold()
+        && node_is_static(&node)
+        && let Some(value) = optimize::constant_fold::fold_static_node(&node, eng)
+    {
+        // `compile_time_value`: the folded array carries its
+        // prebuilt composite view immediately, so an enclosing
+        // static operator folded during this same compile (e.g. a
+        // literal-discriminant `switch` matching its case table
+        // via `lit: Some`) evaluates correctly at fold time.
+        return Ok(CompiledNode::compile_time_value(Some(ctx.next_id()), value));
     }
 
     Ok(node)

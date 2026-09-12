@@ -323,10 +323,10 @@ impl<'a> ContextStack<'a> {
     #[inline]
     fn push_frame(&mut self, frame: ContextFrame<'a>) -> FrameToken<'a> {
         let prev = self.top.replace(frame);
-        if self.track_ancestors {
-            if let Some(p) = prev {
-                self.parents.push(p);
-            }
+        if self.track_ancestors
+            && let Some(p) = prev
+        {
+            self.parents.push(p);
         }
         self.depth += 1;
         FrameToken(prev)

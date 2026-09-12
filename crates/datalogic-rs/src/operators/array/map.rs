@@ -47,12 +47,11 @@ pub(crate) fn evaluate_map<'a>(
     // per-iteration markers. Only enter them when no tracer is attached.
     // Shape detection is shared with the reduce(map(...)) fusion — see
     // `FusedMapBody::detect`.
-    if !ctx.is_tracing() {
-        if let Some(shape) = FusedMapBody::detect(body) {
-            if let Some(result) = map_fused(&src, &shape, arena) {
-                return Ok(result);
-            }
-        }
+    if !ctx.is_tracing()
+        && let Some(shape) = FusedMapBody::detect(body)
+        && let Some(result) = map_fused(&src, &shape, arena)
+    {
+        return Ok(result);
     }
 
     map_general(&src, body, ctx, engine, arena)
@@ -105,10 +104,10 @@ fn map_arith_var_lit<'a>(
 
     // Integer fast path. Aborts (without committing results) on the first
     // overflow or non-integer input — caller falls through to f64.
-    if let Some(li) = lit_i {
-        if let Some(av) = map_arith_var_lit_int(src, var_segs, li, opcode, var_is_lhs, len, arena) {
-            return Some(av);
-        }
+    if let Some(li) = lit_i
+        && let Some(av) = map_arith_var_lit_int(src, var_segs, li, opcode, var_is_lhs, len, arena)
+    {
+        return Some(av);
     }
 
     // f64 path.

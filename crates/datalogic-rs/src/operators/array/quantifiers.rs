@@ -78,26 +78,26 @@ fn evaluate_quantifier<'a>(
     // when a tracer is attached so iteration markers still get recorded.
     // An indeterminate item (see `FastPredicate::evaluate_opt`) drops to
     // the general loop below, which is exact: fast evaluation is pure.
-    if !ctx.is_tracing() {
-        if let Some(fast_pred) = FastPredicate::from_node(predicate) {
-            let len = src.len();
-            let mut verdict = Some(false);
-            for i in 0..len {
-                match fast_pred.evaluate_opt(src.get(i), engine) {
-                    Some(hit) if hit == shape.short_circuit_on => {
-                        verdict = Some(true);
-                        break;
-                    }
-                    Some(_) => {}
-                    None => {
-                        verdict = None;
-                        break;
-                    }
+    if !ctx.is_tracing()
+        && let Some(fast_pred) = FastPredicate::from_node(predicate)
+    {
+        let len = src.len();
+        let mut verdict = Some(false);
+        for i in 0..len {
+            match fast_pred.evaluate_opt(src.get(i), engine) {
+                Some(hit) if hit == shape.short_circuit_on => {
+                    verdict = Some(true);
+                    break;
+                }
+                Some(_) => {}
+                None => {
+                    verdict = None;
+                    break;
                 }
             }
-            if let Some(found_short) = verdict {
-                return Ok(singleton_bool(shape.finalize(found_short)));
-            }
+        }
+        if let Some(found_short) = verdict {
+            return Ok(singleton_bool(shape.finalize(found_short)));
         }
     }
 
