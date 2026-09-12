@@ -1,6 +1,6 @@
 [package]
 name = "datalogic-rs"
-version = "5.4.0"
+version = "5.5.0"
 edition.workspace = true
 # Floor is inherited, not chosen: `datavalue-rs` 0.3 declares
 # `rust-version = "1.98"`, and it is a non-optional dependency, so every
@@ -133,7 +133,7 @@ ryu = "1"
 # Inline-capacity frame stack for `ContextStack`, so iterator operators
 # (map/filter/reduce/quantifiers) never touch the heap at typical nesting
 # depths. Floor 1.6.1 avoids RUSTSEC-2021-0003 under minimal-versions.
-smallvec = "1.15.2"
+smallvec = "1.16.1"
 # Used by the `flagd` feature's `sem_ver` operator. `default-features =
 # false` strips `serde` / `serde1` integration we don't need — the
 # operator only uses `Version::parse` + `PartialOrd`.

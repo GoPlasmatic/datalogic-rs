@@ -176,14 +176,14 @@ Every built-in operator name this WASM build accepts, in the engine's registry o
 function builtinOperatorNames(): string[];
 ```
 
-**Returns:** Array of operator keys. The list includes the input aliases (`var` for `val`, `?:` for `if`, `match` for `switch`), so it has 67 entries for the 64 built-in operators. It is derived from the compiler's own lookup table, so tooling (editors, linters, palettes) can validate rules against the engine instead of a hand-maintained list. Custom operators are not included; see [`engine.customOperatorNames()`](#customoperatornames-string).
+**Returns:** Array of operator keys. The list includes the input aliases (`var` for `val`, `?:` for `if`, `match` for `switch`), so it has 87 entries for the 84 built-in operators. It is derived from the compiler's own lookup table, so tooling (editors, linters, palettes) can validate rules against the engine instead of a hand-maintained list. Custom operators are not included; see [`engine.customOperatorNames()`](#customoperatornames-string).
 
 **Example:**
 ```javascript
 import { builtinOperatorNames } from '@goplasmatic/datalogic-wasm';
 
 const names = builtinOperatorNames();
-names.length;                  // 67
+names.length;                  // 87
 names.includes('group_by');    // true
 names.includes('var');         // true (alias of val)
 names.includes('preserve');    // false (removed in v5)

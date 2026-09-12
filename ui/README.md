@@ -16,7 +16,7 @@ see the [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 ## Features
 
 - Visual representation of JSONLogic expressions as flow diagrams
-- Every built-in operator the bundled engine accepts (64 canonical operators plus the `var`, `?:` and `match` aliases), across variables, comparison, logical, arithmetic, string, array, object, control flow, datetime, validation, error handling and the flagd feature-flag operators (`fractional`, `sem_ver`)
+- Every built-in operator the bundled engine accepts (84 canonical operators plus the `var`, `?:` and `match` aliases), across variables, comparison, logical, arithmetic, string, array, object, control flow, datetime, validation, error handling and the flagd feature-flag operators (`fractional`, `sem_ver`)
 - Per-operator help with engine-verified examples and a link to that operator's documentation page
 - Tree-based automatic layout using @dagrejs/dagre, in data-flow or JSON-hierarchy direction
 - Prop-based modes: read-only visualization, debugging with step-through trace, and full visual editing

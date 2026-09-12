@@ -10,7 +10,74 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ## [Unreleased]
 
+## [5.5.0] - 2026-09-12
+
+### Added
+
+- **Tensor operators (`tensor` feature, off by default).** A marshalling
+  family over datavalue 0.3's `Tensor` variant — a dtype, a shape, and one
+  row-major contiguous byte buffer that travels through a rule without
+  expanding into `Array` nodes. JSON has no tensor, and anything that
+  marshals JSON into a model's inputs and its outputs back into JSON needs
+  one value that is neither a scalar nor a JSON array. Twenty operators:
+  constructors (`tensor`, `zeros`, `full`, `scatter`, `rle_expand`,
+  `one_hot`), shape moves (`stack`, `concat`, `unstack`, `reshape`,
+  `transpose`, `pad`, `crop`, `gather`), and readers (`cast`, `normalize`,
+  `argmax`, `to_list`, `shape`, `dtype`). No new dependency.
+
+  Deliberately no arithmetic. Every operator's cost is proportional to the
+  data it moves, which is what will make it honest to price through the
+  planned per-evaluation operation budget; a matmul reads 2n² elements and
+  does n³ multiplies, so pricing it by data moved under-counts by an
+  unbounded ratio. That line is also what keeps the family small.
+
+  A tensor crosses the JSON boundary as datavalue's tagged
+  `{"tensor": {"dtype", "shape", "data"}}` form, with `data` little-endian
+  base64. That is simultaneously the operator call, the form the engine
+  emits, and the form the decoder accepts, so serialized output pasted back
+  into a rule evaluates to the tensor it came from. The text-returning
+  bindings carry it with no FFI change; the Python binding returns the same
+  tagged dict.
+
+  As a value: truthy iff its element count is non-zero (so a zero-size
+  tensor is falsy like an empty array, and a 0-d tensor is truthy), `type`
+  is `"tensor"`, no numeric coercion, `sort` ranks it after `object` and
+  orders by dtype then shape then payload, and `==` / `===` are structural
+  between two tensors while a tensor against any other type follows
+  `loose_equality_errors` exactly as an object does. The family is never
+  constant-folded and never memoized by the CSE pass: folding
+  `{"zeros": [[128, 128], "f32"]}` would bake a 64 KB literal into the
+  compiled rule.
+
+  The byte-moving operators move `size_of()`-byte cells and never interpret
+  one, so they cover every dtype including `f16` / `bf16` with no `half`
+  dependency; `zeros` joins them, since an all-zero buffer is valid for
+  every dtype. The element-wise operators need the new `tensor-half`
+  feature before they will touch `f16` / `bf16`.
+
+- **90 conformance cases across four tensor suites** (`tensor/construct`,
+  `tensor/shape`, `tensor/read`, `tensor/value`), now 1,804 cases across 63
+  suites. Expected base64 is computed independently of datavalue's encoder,
+  so the wire format is genuinely checked rather than asserted against
+  itself.
+
+- **16 conformance cases for scope resolution and filter hoisting**
+  (`scopes.json` and `iterators.extra.json`). The battery
+  previously had no rule nested deeply enough to distinguish a correct
+  interior-frame resolver from a broken one — every existing leveled `val`
+  resolved either to the current frame or, via the clamp, to the root — and
+  nothing exercised the filter hoisting rule at all.
+
 ### Changed
+
+- **`datavalue-rs` 0.2.3 → 0.3, which raises this crate's MSRV to 1.98.**
+  The floor is inherited rather than chosen: the dependency is not
+  optional, so every build needs 1.98 whether or not `tensor` is enabled.
+  Nothing in this crate uses a 1.98 language feature — its own floor is
+  still 1.85. Downstream consumers pinning an older toolchain must either
+  stay on 5.4.x or move to 1.98.
+- **Nested `if` statements collapsed into let-chains.** Mechanical, no
+  behaviour change; 47 sites that predated the (now lifted) 1.85 floor.
 
 - **Compile-time scope resolution.** Variable references now carry the
   frame they resolve against, computed once at compile time by a new
@@ -27,8 +94,6 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   that pushes a frame must register its argument position there; a
   debug-only oracle cross-checks every resolution against the runtime walk
   and fires on the first test that exercises an omission.
-
-### Changed
 
 - **The evaluation context no longer carries ancestor-frame storage rules
   never use.** `ContextStack` is rebuilt on every evaluation, and more than
@@ -58,7 +123,6 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   unchanged. A new `feature-combos` CI job runs the battery across six
   configurations.
 
-
 - **Filter fast path hoisted operands it could not safely hoist.** The
   strict-equality filter fast path evaluates a "loop-invariant" predicate
   operand once, against a synthetic null frame standing in for the
@@ -73,15 +137,6 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   scope binding, which distinguishes a reference to the substituted frame
   from one to the root or a strict ancestor; the latter two stay on the
   fast path.
-
-### Added
-
-- **16 conformance cases for scope resolution and filter hoisting** (`scopes.json` and
-  `iterators.extra.json`, now 1,714 cases across 59 suites). The battery
-  previously had no rule nested deeply enough to distinguish a correct
-  interior-frame resolver from a broken one — every existing leveled `val`
-  resolved either to the current frame or, via the clamp, to the root — and
-  nothing exercised the filter hoisting rule at all.
 
 ## [5.4.0] - 2026-08-31
 

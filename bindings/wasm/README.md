@@ -9,8 +9,8 @@ runtimes** — powered by WebAssembly. WASM bindings for
 [`datalogic-rs`](https://github.com/GoPlasmatic/datalogic-rs).
 
 Same rules, same semantics as the Rust crate: every binding runs the
-same core and passes the same 1,714-case conformance battery
-(59 suites). For the cross-runtime overview and the API-tier model
+same core and passes the same 1,804-case conformance battery
+(63 suites). For the cross-runtime overview and the API-tier model
 that every binding implements, see the
 [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
@@ -302,7 +302,7 @@ import init, { builtinOperatorNames, Engine } from '@goplasmatic/datalogic-wasm'
 await init();
 
 const names = builtinOperatorNames();
-names.length;               // 67: the 64 built-in operators plus the aliases var, ?:, match
+names.length;               // 87: the 84 built-in operators plus the aliases var, ?:, match
 names.includes('group_by'); // true
 names.includes('preserve'); // false (removed in v5)
 
@@ -572,7 +572,7 @@ isolation benefit.
 
 ## Supported operators
 
-This binding exposes all 64 built-in operators from the Rust engine:
+This binding exposes all 84 built-in operators from the Rust engine:
 
 **Logical** — `and`, `or`, `!`, `!!`
 **Comparison** — `==`, `===`, `!=`, `!==`, `<`, `<=`, `>`, `>=`

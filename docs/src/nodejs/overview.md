@@ -150,7 +150,7 @@ Tooling that validates or autocompletes rules can ask the binding for its vocabu
 import { builtinOperatorNames, Engine } from '@goplasmatic/datalogic-node';
 
 const names = builtinOperatorNames();
-names.length;               // 67: the 64 built-in operators plus the aliases var, ?:, match
+names.length;               // 87: the 84 built-in operators plus the aliases var, ?:, match
 names.includes('group_by'); // true
 
 const engine = new Engine({}, { double: (a) => String(JSON.parse(a)[0] * 2) });

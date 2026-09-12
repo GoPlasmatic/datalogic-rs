@@ -51,6 +51,9 @@ stale_patterns=(
   '44 operator suites'
   '1,565'
   '59 built-in operators'
+  '1,714'
+  '59 suites'
+  '64 built-in operators'
   'Maven release pending'
 )
 for pat in "${stale_patterns[@]}"; do

@@ -13,7 +13,7 @@ reusable memory arena (10.3 ns geomean across the 51-suite benchmark
 matrix); the core is `#![forbid(unsafe_code)]` with no eval, no I/O,
 and no scripting runtime, so user-submitted rules are safe to evaluate;
 every binding runs the same 1,658-case conformance battery (58 suites)
-in CI, so semantics never drift between languages; 64 built-in
+in CI, so semantics never drift between languages; 84 built-in
 operators including datetime, string/array/object extensions, error
 handling (try/throw), and flagd-compatible feature-flag operators
 (fractional, sem_ver) with murmur3 bucketing byte-compatible with
@@ -43,7 +43,7 @@ templating mode and step-by-step trace output.
 - [Quick start](https://goplasmatic.github.io/datalogic-rs/getting-started/quick-start.html):
   first evaluation in every language
 - [Operator reference](https://goplasmatic.github.io/datalogic-rs/operators/overview.html):
-  all 64 built-in operators with examples
+  all 84 built-in operators with examples
 - [Language guides](https://goplasmatic.github.io/datalogic-rs/rust/overview.html):
   per-binding chapters (Rust, Node, WASM, Python, Go, JVM, .NET, PHP, React UI)
 - [Security & sandboxing](https://goplasmatic.github.io/datalogic-rs/advanced/security.html):

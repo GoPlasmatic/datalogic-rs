@@ -342,7 +342,7 @@ impl Engine {
     /// Creates a new Engine with all built-in operators.
     ///
     /// The engine includes every built-in operator compiled into this build
-    /// (64 canonical operators with all operator features on; see
+    /// (84 canonical operators with all operator features on; see
     /// [`Self::builtin_operator_names`]), dispatched via `OpCode`.
     /// Templating mode is disabled by default. For non-default
     /// configuration (custom [`EvaluationConfig`], templating mode,
