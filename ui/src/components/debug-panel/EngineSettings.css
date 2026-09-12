@@ -220,3 +220,29 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/*
+ * Cost of the last evaluation, sitting beside the settings badge. Neutral
+ * rather than warning-coloured: a budget being *set* is a configuration
+ * the reader should notice, but an operation count is just a reading, and
+ * it is on screen for every evaluation.
+ */
+.engine-ops-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  background: var(--code-bg);
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.engine-ops-badge-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

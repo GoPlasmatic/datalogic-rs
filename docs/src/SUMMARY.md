@@ -58,6 +58,7 @@
 
 - [Custom Operators](advanced/custom-operators.md)
 - [Configuration](advanced/configuration.md)
+- [Operation Budget](advanced/operation-budget.md)
 - [Structured Objects](advanced/structured-objects.md)
 - [Thread Safety](advanced/threading.md)
 - [Security & Sandboxing](advanced/security.md)

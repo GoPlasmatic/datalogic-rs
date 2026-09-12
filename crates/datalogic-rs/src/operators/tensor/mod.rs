@@ -88,13 +88,12 @@ pub(crate) use shape_ops::{
 /// elements is refused rather than run and then reported. The dispatcher
 /// separately charges 1 for the node itself.
 ///
-/// The counter it charges against is the `budget` feature (#70), which is
-/// not implemented yet; until it is, this is a no-op and the call sites
-/// are the point. When `budget` lands, this becomes
-/// `ctx.charge(n)` and nothing else in this module changes.
+/// The counter it charges against is the `budget` feature; without that
+/// feature the call compiles to `Ok(())` and the call sites are simply
+/// documentation of where the cost is.
 #[inline]
-fn charge(_ctx: &mut ContextStack<'_>, _elements: u64) -> Result<()> {
-    Ok(())
+fn charge(ctx: &mut ContextStack<'_>, elements: u64) -> Result<()> {
+    ctx.charge(elements)
 }
 
 /// `max(a, b)` as a charge, saturating into the counter's `u64`.

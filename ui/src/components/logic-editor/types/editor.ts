@@ -147,6 +147,18 @@ export interface DataLogicEvaluationConfig {
   };
   /** Nested evaluation-boundary cap (custom operators re-entering the engine). Default: `256`. */
   max_recursion_depth?: number;
+  /**
+   * Ceiling on the operations one evaluation may charge, or omitted for
+   * unbounded (the default).
+   *
+   * One operation is charged per dispatched node, one per item an
+   * iterator examines, and whatever an operator charges for the data it
+   * moves. Literals and constant-folded subtrees cost nothing. Crossing
+   * the ceiling raises a `BudgetExceeded` error that `try` cannot
+   * recover from — the evaluation is refused before the work, not
+   * reported after it.
+   */
+  ops_budget?: number;
 }
 
 /**

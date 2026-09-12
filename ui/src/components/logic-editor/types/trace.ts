@@ -40,6 +40,10 @@ export interface StructuredError {
   index?: number;
   length?: number;
   stage?: string;
+  /** `BudgetExceeded`: the operation ceiling that was crossed. */
+  budget?: number;
+  /** `BudgetExceeded`: operations charged when the crossing was detected. */
+  spent?: number;
   node_ids?: number[];
 }
 

@@ -145,3 +145,68 @@ describe('createWasmEngine', () => {
     }
   });
 });
+
+/**
+ * The operation budget is the Studio's only engine setting whose effect is
+ * visible on a *successful* run: every evaluation reports what it cost, and
+ * the cap only shows up when a rule crosses it. Both halves are asserted
+ * against the real WASM engine, since the count is the engine's to define.
+ */
+describe('operation budget', () => {
+  const MAP = '{"map":[{"var":"xs"},{"*":[{"var":""},2]}]}';
+  const small = '{"xs":[1,2,3]}';
+  const large = `{"xs":[${Array.from({ length: 200 }, (_, i) => i).join(',')}]}`;
+
+  it('reports the operations an evaluation charged', () => {
+    const engine = createWasmEngine(module, {});
+    const { result, ops } = JSON.parse(engine.evalMetered!(MAP, small));
+    expect(result).toEqual([2, 4, 6]);
+    // One per dispatched node plus one per item; the exact figure is the
+    // engine's to define, so pin the floor rather than the number.
+    expect(ops).toBeGreaterThanOrEqual(3);
+    engine.free?.();
+  });
+
+  it('charges nothing for a rule the compiler folded to a literal', () => {
+    const engine = createWasmEngine(module, {});
+    expect(JSON.parse(engine.evalMetered!('{"+":[1,2]}', '{}')).ops).toBe(0);
+    engine.free?.();
+  });
+
+  it('refuses an evaluation that would cross the configured ceiling', () => {
+    const engine = createWasmEngine(module, { config: { ops_budget: 10 } });
+    let caught: unknown;
+    try { engine.evalMetered!(MAP, large); } catch (err) { caught = err; }
+    const structured = parseStructuredError(caught, 'fallback');
+    expect(structured.type).toBe('BudgetExceeded');
+    expect(structured.budget).toBe(10);
+    expect(structured.spent).toBeGreaterThan(10);
+    // The breadcrumb survives, so the editor can still highlight the node.
+    expect(structured.node_ids?.length).toBeGreaterThan(0);
+    engine.free?.();
+  });
+
+  it('applies the configured ceiling to plain evaluation too, and try cannot catch it', () => {
+    const engine = createWasmEngine(module, { config: { ops_budget: 10 } });
+    expect(() => engine.evalStr(MAP, large)).toThrow();
+    expect(() => engine.evalStr(`{"try":[${MAP},"fallback"]}`, large)).toThrow();
+    engine.free?.();
+  });
+
+  it('leaves an unset budget unbounded', () => {
+    const engine = createWasmEngine(module, {});
+    expect(JSON.parse(engine.evalMetered!(MAP, large)).result).toHaveLength(200);
+    engine.free?.();
+  });
+
+  it('prices tensor operators by the elements they move', () => {
+    const engine = createWasmEngine(module, {});
+    const { ops } = JSON.parse(engine.evalMetered!('{"zeros":[[16,16],"f32"]}', '{}'));
+    expect(ops).toBeGreaterThanOrEqual(256);
+    engine.free?.();
+  });
+
+  it('summarizes a budget in the engine-settings badge', () => {
+    expect(summarizeEvaluationConfig({ ops_budget: 5000 })).toContain('budget 5000');
+  });
+});

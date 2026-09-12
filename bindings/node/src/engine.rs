@@ -36,8 +36,8 @@ pub struct EngineOptions {
     /// `EvaluationConfig::from_json_str` wire parser, so every binding
     /// accepts the same keys: `preset`, `arithmetic_nan_handling`,
     /// `division_by_zero`, `loose_equality_errors`, `truthy_evaluator`,
-    /// `numeric_coercion`, `max_recursion_depth`. Unknown keys or
-    /// values throw at construction with
+    /// `numeric_coercion`, `max_recursion_depth`, `ops_budget`. Unknown
+    /// keys or values throw at construction with
     /// `errorType: "ConfigurationError"`.
     pub config: Option<Value>,
     /// Single-character prefix that marks a template key as a literal
@@ -55,6 +55,23 @@ pub struct EngineOptions {
     /// one-character string throws at construction with
     /// `errorType: "InvalidArguments"`.
     pub template_key_escape: Option<String>,
+}
+
+/// An evaluation's result paired with what it cost, returned by the
+/// `*Metered` methods.
+#[napi(object)]
+pub struct MeteredResult {
+    /// The evaluation's result, as a JSON string. A string rather than a
+    /// JS value so metering costs no more than `evaluateStr`; parse it
+    /// with `JSON.parse` when a value is wanted.
+    pub result: String,
+    /// Operations charged: one per dispatched node, one per item an
+    /// iterator examined, plus whatever an operator charged for the data
+    /// it moved. Literals and constant-folded subtrees cost nothing.
+    ///
+    /// Typed as a JS number, which is exact to 2^53 — far past any
+    /// budget worth setting.
+    pub ops: f64,
 }
 
 /// JSONLogic compile/evaluate engine.
@@ -207,6 +224,35 @@ impl Engine {
         Ok(traced_run_to_json(&run))
     }
 
+    /// One-shot metered evaluation: compile `rule`, evaluate it against
+    /// `data` under an operation budget, and report what it cost.
+    ///
+    /// `budget` caps the operations the rule may charge; omit it to fall
+    /// back to this engine's `config.ops_budget`, and omit both to meter
+    /// without bounding.
+    ///
+    /// An operation is one dispatched node, one item examined by an
+    /// iterator, or whatever an operator charges for the data it moves —
+    /// the tensor family prices itself in elements. Literals and
+    /// constant-folded subtrees cost nothing. The count is deterministic
+    /// for a given rule, data and engine version; budget for the work you
+    /// want to allow rather than for a number you measured.
+    ///
+    /// Throws `errorType: "BudgetExceeded"` (carrying `budget` and
+    /// `spent`) when the rule charges past the ceiling. The evaluation is
+    /// refused before the work, and a `try` in the rule cannot recover.
+    #[napi]
+    pub fn eval_metered(
+        &self,
+        env: Env,
+        rule: Value,
+        data: Value,
+        budget: Option<f64>,
+    ) -> Result<MeteredResult> {
+        let logic = compile_inner(&env, &self.inner, rule)?;
+        evaluate_metered(&env, &self.inner, &logic, data, budget)
+    }
+
     /// Open a hot-loop `Session` bound to this engine. The session
     /// reuses one bumpalo arena across calls and is reset between
     /// evaluations to bound peak memory.
@@ -260,6 +306,22 @@ impl Rule {
     #[napi]
     pub fn evaluate_str(&self, env: Env, data: Value) -> Result<String> {
         evaluate_str(&env, &self.engine, &self.logic, data)
+    }
+
+    /// Evaluate against `data` under an operation budget, returning the
+    /// result JSON and what the evaluation cost.
+    ///
+    /// Same metering as `Engine.evalMetered`, on an already-compiled
+    /// rule. Omit `budget` to fall back to the engine's
+    /// `config.ops_budget`.
+    #[napi]
+    pub fn evaluate_metered(
+        &self,
+        env: Env,
+        data: Value,
+        budget: Option<f64>,
+    ) -> Result<MeteredResult> {
+        evaluate_metered(&env, &self.engine, &self.logic, data, budget)
     }
 
     /// Evaluate against a pre-parsed `DataHandle` and return the result
@@ -534,6 +596,53 @@ pub(crate) fn evaluate_value(
     };
     serde_json::to_value(av)
         .map_err(|e| engine_error(env, &datalogic_rs::Error::wrap(e), Some(logic)))
+}
+
+/// Resolve a JS-supplied operation budget: an explicit number wins, then
+/// the engine's configured `ops_budget`, then unbounded.
+///
+/// JS has one number type, so the budget arrives as an `f64`. Anything
+/// that is not a whole number >= 1 is rejected rather than silently
+/// truncated — a budget of `0.5` means the caller has confused this with
+/// a duration or a fraction.
+fn resolve_budget(env: &Env, engine: &Arc<RsEngine>, budget: Option<f64>) -> Result<u64> {
+    /// Largest budget a JS number carries without losing integer precision.
+    const MAX_SAFE_BUDGET: f64 = 9_007_199_254_740_991.0;
+    match budget {
+        None => Ok(engine.config().ops_budget.unwrap_or(u64::MAX)),
+        Some(n) if n.is_finite() && n >= 1.0 && n.fract() == 0.0 && n <= MAX_SAFE_BUDGET => {
+            Ok(n as u64)
+        }
+        Some(_) => Err(engine_error(
+            env,
+            &datalogic_rs::Error::invalid_arguments(
+                "budget must be a whole number of operations >= 1",
+            ),
+            None,
+        )),
+    }
+}
+
+pub(crate) fn evaluate_metered(
+    env: &Env,
+    engine: &Arc<RsEngine>,
+    logic: &Arc<Logic>,
+    data: Value,
+    budget: Option<f64>,
+) -> Result<MeteredResult> {
+    let budget = resolve_budget(env, engine, budget)?;
+    let arena = Bump::new();
+    // Same string fast path as `evaluate_str`: a JSON-string input parses
+    // straight into the arena instead of through a `serde_json::Value`.
+    let metered = match &data {
+        Value::String(s) => engine.evaluate_metered(logic, s.as_str(), &arena, budget),
+        other => engine.evaluate_metered(logic, other, &arena, budget),
+    }
+    .map_err(|e| engine_error(env, &e, Some(logic)))?;
+    Ok(MeteredResult {
+        result: metered.value.to_string(),
+        ops: metered.ops as f64,
+    })
 }
 
 pub(crate) fn evaluate_str(

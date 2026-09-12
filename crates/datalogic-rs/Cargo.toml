@@ -93,6 +93,24 @@ flagd = ["dep:semver"]
 # implemented on this platform"); on WASI chrono uses the OS clock and
 # this feature is unnecessary.
 wasm-clock = ["chrono?/wasmbind"]
+# `budget` bounds the work one evaluation may do: a per-evaluation
+# operation counter with a hard abort. One unit per dispatched node, one
+# per item an iterator examines, and whatever an operator charges for
+# itself (the tensor family prices its work in elements); crossing the
+# limit raises `ErrorKind::BudgetExceeded`, which `try` cannot recover.
+# Set it engine-wide with `EvaluationConfig::ops_budget`, or per call with
+# `Engine::evaluate_metered` / `Session::eval_metered`, which also report
+# what was spent. Off by default: with the feature compiled out the
+# counter, the compare, and the error variant do not exist.
+#
+# Deliberately a Cargo feature rather than an always-on `Option<u64>`:
+# the add-and-compare per dispatched node is measurable, not free. Self
+# benchmark, `--all`, paired runs on one machine: 22.75 ns/op with the
+# feature off, 23.56 ns/op with it compiled in and no budget set
+# (+3.6%). That is what the flag buys back for builds that do not want a
+# counter; the feature-off number is unchanged from before the feature
+# existed.
+budget = []
 # `tensor` adds datavalue's `Tensor` variant (an opaque dtype + shape +
 # row-major byte buffer) to the value enum and a marshalling-only operator
 # family over it: constructors (`tensor`, `zeros`, `full`, `scatter`,

@@ -15,7 +15,15 @@
 //!   .path        resolved root-to-leaf array of { nodeId, operator,
 //!                argIndex, jsonPointer } objects (only when the binding
 //!                has the compiled Logic at hand; null otherwise)
+//!   .budget      `BudgetExceeded` only: the operation ceiling crossed
+//!   .spent       `BudgetExceeded` only: operations the rule asked for
 //! ```
+//!
+//! `budget` / `spent` are the one kind-specific pair carried here,
+//! because they are the only variant extras a caller has to *act* on:
+//! recovering from a budget failure means choosing a larger number, and
+//! the two figures are what that choice is made from. Every other
+//! variant's extras are readable in `.message`.
 //!
 //! Consumer pattern:
 //!
@@ -79,6 +87,7 @@ pub fn type_mismatch_error(env: &Env, message: &str) -> napi::Error {
         operator: None,
         node_ids: &[],
         path: None,
+        budget: None,
     };
     throw_attrs(env, &attrs).unwrap_or_else(|| napi::Error::from_reason(message.to_string()))
 }
@@ -101,6 +110,16 @@ fn engine_attrs<'a>(
         operator: err.operator(),
         node_ids: err.node_ids(),
         path: compiled.map(|c| resolve_path(err, c)),
+        budget: budget_figures(err),
+    }
+}
+
+/// `(budget, spent)` for a `BudgetExceeded` error, `None` for every other
+/// kind. Matched on the kind rather than parsed out of the message.
+fn budget_figures(err: &RsError) -> Option<(u64, u64)> {
+    match &err.kind {
+        datalogic_rs::ErrorKind::BudgetExceeded { budget, spent } => Some((*budget, *spent)),
+        _ => None,
     }
 }
 
@@ -113,6 +132,9 @@ struct ErrorAttrs<'a> {
     /// `None` → not resolvable (binding had no `&Logic`); surfaces as JS `null`.
     /// `Some(vec)` → resolved (possibly empty); surfaces as a JS array.
     path: Option<Vec<Value>>,
+    /// `(budget, spent)` for `BudgetExceeded`; omitted entirely otherwise,
+    /// so `'budget' in err` distinguishes the kind without a tag compare.
+    budget: Option<(u64, u64)>,
 }
 
 /// Create the decorated JS Error object (a real `Error` instance with
@@ -137,6 +159,10 @@ fn build_attrs_object<'env>(env: &'env Env, attrs: &ErrorAttrs<'_>) -> Option<Ob
             obj.set_named_property("path", array_value).ok()?;
         }
         None => obj.set_named_property("path", Null).ok()?,
+    }
+    if let Some((budget, spent)) = attrs.budget {
+        obj.set_named_property("budget", budget as f64).ok()?;
+        obj.set_named_property("spent", spent as f64).ok()?;
     }
     Some(obj)
 }

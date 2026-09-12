@@ -64,13 +64,25 @@ public sealed class EngineBuilder
     /// point and the remaining keys (<c>arithmetic_nan_handling</c>,
     /// <c>division_by_zero</c>, <c>loose_equality_errors</c>,
     /// <c>truthy_evaluator</c>, <c>numeric_coercion</c> as an object of
-    /// bools, <c>max_recursion_depth</c>) override individual fields on
-    /// top of it. Unknown keys and values are rejected (error type
-    /// <c>"ConfigurationError"</c>) so typos fail loudly instead of
-    /// being silently ignored. Each call replaces the builder's entire
-    /// evaluation config; templating and registered operators are
-    /// unaffected.
+    /// bools, <c>max_recursion_depth</c>, <c>ops_budget</c>) override
+    /// individual fields on top of it. Unknown keys and values are
+    /// rejected (error type <c>"ConfigurationError"</c>) so typos fail
+    /// loudly instead of being silently ignored. Each call replaces the
+    /// builder's entire evaluation config; templating and registered
+    /// operators are unaffected.
     /// </summary>
+    /// <remarks>
+    /// <c>ops_budget</c> bounds the work a rule may do: an integer
+    /// ceiling on the operations one evaluation may charge — one per
+    /// node the engine dispatches, one per item an iterator walks, plus
+    /// what operators charge for the data they move — or <c>null</c> for
+    /// unbounded (the default). Crossing it throws an
+    /// <see cref="EvaluateException"/> with <c>ErrorType</c>
+    /// <c>"BudgetExceeded"</c> before the work is done, and a
+    /// <c>try</c> in the rule cannot recover from it. Unlike a
+    /// wall-clock timeout the count is deterministic, so the same rule
+    /// and data are refused on every machine.
+    /// </remarks>
     /// <exception cref="EvaluateException">
     /// The config JSON is malformed or contains unknown keys or values.
     /// </exception>

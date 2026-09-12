@@ -468,6 +468,9 @@ Runnable example: [`examples/thread_safety.rs`](https://github.com/GoPlasmatic/d
 | `ext-string`, `ext-array`, `ext-object`, `ext-control`, `ext-math` | Optional operator families |
 | `flagd`           | flagd-compat operators (`fractional`, `sem_ver`); pulls in `semver`       |
 | `wasm-clock`      | JS-host clock for `now` on `wasm32-unknown-unknown` (`chrono/wasmbind`). Enable only when a JS host runs the module; never for wasmtime / wazero / Chicory (issue #47). Without it `now` traps on that target |
+| `tensor`          | The `Tensor` value plus 20 marshalling-only operators over it (JSON to a model's inputs and back). No new dependency |
+| `tensor-half`     | Lifts the `f16` / `bf16` restriction on the element-wise tensor operators; pulls in `half` through datavalue |
+| `budget`          | Per-evaluation operation counter with a hard abort — `EvaluationConfig::ops_budget`, `Engine::evaluate_metered`, `EvalContext::charge`, `ErrorKind::BudgetExceeded` |
 
 The default build is `serde_json`-free; opt in via
 `features = ["serde_json"]` when you need the value boundary.
@@ -524,6 +527,43 @@ Conformance test suites under
 [`tests/suites/flagd/`](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs/tests/suites/flagd/) mirror the canonical Go test
 files in `open-feature/flagd` so every release is checked against the
 upstream behaviour.
+
+### `budget` — bounding the work a rule does
+
+Untrusted rules need a bound that is not a wall-clock timeout: one that
+is the same on every machine, and that refuses the work rather than
+reporting it afterwards. The `budget` feature adds a per-evaluation
+operation counter with a hard abort.
+
+```rust,ignore
+// Cargo.toml: datalogic-rs = { version = "5", features = ["budget"] }
+use datalogic_rs::{Engine, EvaluationConfig, Metered};
+use bumpalo::Bump;
+
+// Engine-wide: every evaluation is bounded.
+let engine = Engine::builder()
+    .with_config(EvaluationConfig::default().with_ops_budget(Some(100_000)))
+    .build();
+
+// Per call, and reporting what was spent.
+let compiled = engine.compile(r#"{"map": [{"var": "xs"}, {"*": [{"var": ""}, 2]}]}"#)?;
+let arena = Bump::new();
+let Metered { value, ops } =
+    engine.evaluate_metered(&compiled, r#"{"xs": [1, 2, 3]}"#, &arena, u64::MAX)?;
+# Ok::<(), datalogic_rs::Error>(())
+```
+
+One operation is one dispatched node, one item an iterator examines, or
+whatever an operator charges for the data it moves — the tensor family
+prices itself in elements, and a `CustomOperator` can do the same through
+`EvalContext::charge`. Literals and constant-folded subtrees cost nothing.
+Crossing the ceiling raises `ErrorKind::BudgetExceeded { budget, spent }`
+before the work is done, decorated with the node breadcrumb like every
+other error; `try` observes it but cannot recover from it.
+
+Full guide, including how to pick a number and what the count does *not*
+promise across versions:
+[Operation Budget](https://goplasmatic.github.io/datalogic-rs/advanced/operation-budget.html).
 
 ## Performance
 

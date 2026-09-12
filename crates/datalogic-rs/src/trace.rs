@@ -438,6 +438,13 @@ impl<'e> TracedSession<'e> {
             Err(e) => return Self::failed(expression_tree, e),
         };
         let mut ctx = crate::arena::ContextStack::new(data_ref, compiled.needs_ancestor_frames);
+        // The traced surface honours the engine-wide budget too: a rule
+        // the engine would refuse must not quietly succeed in the
+        // debugger.
+        #[cfg(feature = "budget")]
+        if let Some(budget) = self.engine.config().ops_budget {
+            ctx.set_budget(budget);
+        }
         ctx.attach_tracer(TraceCollector::new());
 
         let outcome = self.engine.dispatch_node(&compiled.root, &mut ctx, arena);

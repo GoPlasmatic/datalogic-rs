@@ -187,6 +187,43 @@ fn type_mismatch_err_to_js(message: &str) -> JsValue {
 /// `JSON.stringify`), then parses it with
 /// [`EvaluationConfig::from_json_str`]. Unknown keys or values reject with
 /// a `ConfigurationError`.
+/// Resolve a JS-supplied operation budget: an explicit number wins, then
+/// the engine's configured `ops_budget`, then unbounded.
+///
+/// JS has one number type, so the budget arrives as an `f64`. Anything
+/// that is not a whole number ≥ 1 is rejected rather than silently
+/// truncated — a budget of `0.5` means the caller has confused this with
+/// a duration or a fraction.
+fn resolve_budget(engine: &RsEngine, budget: Option<f64>) -> Result<u64, JsValue> {
+    match budget {
+        None => Ok(engine.config().ops_budget.unwrap_or(u64::MAX)),
+        Some(n) if n.is_finite() && n >= 1.0 && n.fract() == 0.0 && n <= MAX_SAFE_BUDGET => {
+            Ok(n as u64)
+        }
+        Some(_) => Err(input_err_to_js(
+            "parse-budget",
+            "budget must be a whole number of operations >= 1",
+        )),
+    }
+}
+
+/// Largest budget a JS number can carry without losing integer precision.
+const MAX_SAFE_BUDGET: f64 = 9_007_199_254_740_991.0;
+
+/// `{"result": <value>, "ops": <n>}` — built by concatenation because the
+/// result is already a JSON string and re-parsing it to re-serialise it
+/// would be the most expensive part of a metered call.
+fn metered_envelope(value: &DataValue<'_>, ops: u64) -> String {
+    let result = value.to_string();
+    let mut out = String::with_capacity(result.len() + 32);
+    out.push_str("{\"result\":");
+    out.push_str(&result);
+    out.push_str(",\"ops\":");
+    out.push_str(&ops.to_string());
+    out.push('}');
+    out
+}
+
 fn parse_config_value(value: &JsValue) -> Result<Option<EvaluationConfig>, JsValue> {
     if value.is_null() || value.is_undefined() {
         return Ok(None);
@@ -588,6 +625,47 @@ impl Engine {
             .map_err(|e| engine_err_to_js(&e))
     }
 
+    /// One-shot metered evaluation: compile `logic`, evaluate it against
+    /// `data` under an operation budget, and report what it cost.
+    ///
+    /// Returns a JSON string `{"result": <value>, "ops": <number>}`.
+    /// `budget` caps the operations the rule may charge; omit it to fall
+    /// back to this engine's `config.ops_budget`, and omit both to meter
+    /// without bounding.
+    ///
+    /// An operation is one dispatched node, one item examined by an
+    /// iterator, or whatever an operator charges for the data it moves —
+    /// the tensor family prices itself in elements. Literals and
+    /// constant-folded subtrees cost nothing. The count is deterministic
+    /// for a given rule, data and engine version; budget for the work you
+    /// want to allow rather than for a number you measured.
+    ///
+    /// # Throws
+    /// An `Error` named `BudgetExceeded` (carrying `budget` and `spent`)
+    /// when the rule charges past the ceiling. The evaluation is refused
+    /// before the work, and a `try` in the rule cannot recover from it.
+    #[wasm_bindgen(js_name = evalMetered)]
+    pub fn eval_metered(
+        &self,
+        logic: &str,
+        data: &str,
+        budget: Option<f64>,
+    ) -> Result<String, JsValue> {
+        let budget = resolve_budget(&self.inner, budget)?;
+        let compiled = self
+            .inner
+            .compile_arc(logic)
+            .map_err(|e| engine_err_to_js(&e))?;
+        let arena = Bump::new();
+        let data_dv = DataValue::from_str(data, &arena)
+            .map_err(|e| input_err_to_js("parse-data", format!("{:?}", e)))?;
+        let metered = self
+            .inner
+            .evaluate_metered(&compiled, data_dv, &arena, budget)
+            .map_err(|e| engine_err_to_js(&e))?;
+        Ok(metered_envelope(metered.value, metered.ops))
+    }
+
     /// Open a [`Session`]: a reusable evaluation handle that owns a bump
     /// arena and resets it at the start of every `evaluate` call. This is
     /// the hot-loop tier: steady-state evaluation reuses the arena chunks
@@ -658,6 +736,25 @@ impl Rule {
         Ok(result.to_string())
     }
 
+    /// Evaluate the compiled rule against `data` under an operation
+    /// budget, returning `{"result": <value>, "ops": <number>}`.
+    ///
+    /// Same metering as `Engine.evalMetered`, on an already-compiled
+    /// rule. Omit `budget` to fall back to the engine's
+    /// `config.ops_budget`.
+    #[wasm_bindgen(js_name = evaluateMetered)]
+    pub fn evaluate_metered(&self, data: &str, budget: Option<f64>) -> Result<String, JsValue> {
+        let budget = resolve_budget(&self.engine, budget)?;
+        let arena = Bump::new();
+        let data_dv = DataValue::from_str(data, &arena)
+            .map_err(|e| input_err_to_js("parse-data", format!("{:?}", e)))?;
+        let metered = self
+            .engine
+            .evaluate_metered(&self.compiled, data_dv, &arena, budget)
+            .map_err(|e| engine_err_to_js(&e))?;
+        Ok(metered_envelope(metered.value, metered.ops))
+    }
+
     /// Internal: deposit a cheap reference-counted duplicate (two `Arc`
     /// clones) into the batch stash. Called through the JS prototype by
     /// [`Session::evaluate_many`] to snapshot rules out of a JS array
@@ -717,6 +814,31 @@ impl Session {
             .evaluate(&rule.compiled, data_dv, &self.arena)
             .map_err(|e| engine_err_to_js(&e))?;
         Ok(result.to_string())
+    }
+
+    /// Evaluate a compiled [`Rule`] against `data` under an operation
+    /// budget, reusing this session's arena. Returns
+    /// `{"result": <value>, "ops": <number>}`.
+    ///
+    /// The metering tier for hot loops: same arena reuse as `evaluate`,
+    /// with the per-call cost reported back. Omit `budget` to fall back
+    /// to the engine's `config.ops_budget`.
+    #[wasm_bindgen(js_name = evaluateMetered)]
+    pub fn evaluate_metered(
+        &mut self,
+        rule: &Rule,
+        data: &str,
+        budget: Option<f64>,
+    ) -> Result<String, JsValue> {
+        let budget = resolve_budget(&self.engine, budget)?;
+        self.arena.reset();
+        let data_dv = DataValue::from_str(data, &self.arena)
+            .map_err(|e| input_err_to_js("parse-data", format!("{:?}", e)))?;
+        let metered = self
+            .engine
+            .evaluate_metered(&rule.compiled, data_dv, &self.arena, budget)
+            .map_err(|e| engine_err_to_js(&e))?;
+        Ok(metered_envelope(metered.value, metered.ops))
     }
 
     /// Evaluate a compiled [`Rule`] against a pre-parsed [`DataHandle`],

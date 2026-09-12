@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { ChevronDown, Copy, Check, Settings2 } from 'lucide-react';
+import { ChevronDown, Copy, Check, Gauge, Settings2 } from 'lucide-react';
 import type { JsonLogicValue } from '../logic-editor/types';
 import { JsonEditor, JsonDisplay } from './JsonHighlighter';
 import { ErrorDisplay, type DebugError } from './ErrorDisplay';
@@ -19,6 +19,13 @@ interface DebugPanelProps {
   onDataChange: (text: string) => void;
   dataError: DebugError;
   result: unknown;
+  /**
+   * Operations the engine charged for the last evaluation, or `null` when
+   * nothing has run yet (or the WASM build predates metering). Shown next
+   * to the result so the cost of a rule is visible while editing it, not
+   * only when it trips the budget.
+   */
+  resultOps?: number | null;
   resultError: DebugError;
   wasmReady: boolean;
   wasmLoading: boolean;
@@ -42,6 +49,7 @@ export function DebugPanel({
   onDataChange,
   dataError,
   result,
+  resultOps = null,
   resultError,
   wasmReady,
   wasmLoading,
@@ -99,6 +107,22 @@ export function DebugPanel({
       // Ignore format errors
     }
   }, [dataText, onDataChange]);
+
+  const opsBadge = resultOps === null || resultError !== null ? null : (
+    <Tooltip
+      label={
+        `${resultOps.toLocaleString()} operations charged. One per node the engine dispatched, ` +
+        `one per item an iterator walked, plus what operators charge per element. ` +
+        `Literals and constant-folded subtrees cost nothing.`
+      }
+      side="left"
+    >
+      <span className="engine-ops-badge">
+        <Gauge size={11} />
+        <span className="engine-ops-badge-text">{resultOps.toLocaleString()} ops</span>
+      </span>
+    </Tooltip>
+  );
 
   const configBadge = configSummary ? (
     <Tooltip label={`Engine settings: ${configSummary}`} side="left">
@@ -248,6 +272,7 @@ export function DebugPanel({
             </div>
           )}
           <div className="debug-section-header-right">
+            {opsBadge}
             {configBadge}
             {wasmLoading && <span className="wasm-status loading">Loading</span>}
             {wasmReady && (

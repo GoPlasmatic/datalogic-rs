@@ -42,6 +42,9 @@ function App() {
   const [dataError, setDataError] = useState<string | null>(null);
 
   const [result, setResult] = useState<unknown>(undefined);
+  // Operations the last evaluation charged; `null` before the first run
+  // or on a WASM build without metering.
+  const [resultOps, setResultOps] = useState<number | null>(null);
   const [resultError, setResultError] = useState<DebugError>(null);
 
   // Templating mode state: multi-key objects compile to output-shaping
@@ -81,7 +84,7 @@ function App() {
   const {
     ready: wasmReady,
     loading: wasmLoading,
-    evaluate,
+    evaluateMetered,
   } = useWasmEvaluator({ templating, config: engineConfig });
 
   // Update expression when logic text changes
@@ -252,22 +255,25 @@ function App() {
     if (!wasmReady || !expression || logicError || dataError) {
       setResult(undefined);
       setResultError(null);
+      setResultOps(null);
       return;
     }
 
     try {
-      const evalResult = evaluate(expression, data);
-      setResult(evalResult);
+      const { value, ops } = evaluateMetered(expression, data);
+      setResult(value);
+      setResultOps(ops);
       setResultError(null);
     } catch (err) {
       setResult(undefined);
+      setResultOps(null);
       if (err instanceof DataLogicEvaluationError) {
         setResultError(err.structured);
       } else {
         setResultError(err instanceof Error ? err.message : typeof err === 'string' ? err : "Evaluation failed");
       }
     }
-  }, [wasmReady, expression, data, logicError, dataError, evaluate]);
+  }, [wasmReady, expression, data, logicError, dataError, evaluateMetered]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Handle divider dragging
@@ -325,6 +331,7 @@ function App() {
       onDataChange={handleDataChange}
       dataError={dataError}
       result={result}
+      resultOps={resultOps}
       resultError={resultError}
       wasmReady={wasmReady}
       wasmLoading={wasmLoading}

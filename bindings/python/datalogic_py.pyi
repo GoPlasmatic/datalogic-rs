@@ -86,6 +86,18 @@ class Engine:
     def eval_str(self, rule: Any, data: Any) -> str:
         """One-shot evaluation returning the result as a JSON str."""
 
+    def eval_metered(
+        self, rule: Any, data: Any, budget: int | None = None
+    ) -> tuple[str, int]:
+        """One-shot metered evaluation: ``(result_json, ops)``.
+
+        ``budget`` caps the operations the rule may charge; ``None``
+        falls back to the engine's ``ops_budget`` config key, and meters
+        without bounding if that is unset. Raises
+        :class:`DataLogicError` with ``error_type == "BudgetExceeded"``
+        when the rule charges past the ceiling.
+        """
+
     def evaluate_with_trace(self, logic: str, data: str) -> str:
         """Evaluate with step-by-step tracing (both args JSON strs).
 
@@ -113,6 +125,11 @@ class Rule:
 
     def evaluate_str(self, data: str) -> str:
         """Evaluate against a JSON str, returning a JSON str."""
+
+    def evaluate_metered(
+        self, data: Any, budget: int | None = None
+    ) -> tuple[str, int]:
+        """Evaluate under an operation budget: ``(result_json, ops)``."""
 
     def evaluate_data(self, data: DataHandle) -> Any:
         """Evaluate against a pre-parsed handle (zero parse per call)."""

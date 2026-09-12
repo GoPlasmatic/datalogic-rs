@@ -674,12 +674,34 @@ pub(crate) fn resolve_iter_input<'a>(
             None
         };
         if let Some(av) = av {
-            return Ok(value_as_iter(av));
+            return charged(value_as_iter(av), ctx);
         }
     }
 
     let av = engine.dispatch_node(arg, ctx, arena)?;
-    Ok(value_as_iter(av))
+    charged(value_as_iter(av), ctx)
+}
+
+/// Charge one operation per item the caller is about to examine.
+///
+/// Every iterator operator funnels through [`resolve_iter_input`], so this
+/// is the one place the per-item cost has to be taken — and taking it here,
+/// before the caller chooses between its compile-time fast paths and the
+/// general path, is what makes the cost independent of that choice. A fast
+/// path that evaluates a predicate inline never dispatches the body and
+/// would otherwise cost 0 per item, which would make whether a rule fits
+/// its budget depend on which shape the populate pass recognised.
+///
+/// An object source arrives as `Bridge` and is charged 1 here; its pairs
+/// dispatch the body individually, so the per-item cost lands anyway.
+#[inline(always)]
+fn charged<'a>(input: ResolvedInput<'a>, ctx: &mut ContextStack<'a>) -> Result<ResolvedInput<'a>> {
+    let items = match &input {
+        ResolvedInput::Iterable(src) => src.len() as u64,
+        _ => 1,
+    };
+    ctx.charge(items)?;
+    Ok(input)
 }
 
 /// Convert a resolved arena value into an `IterSrc` view, or signal Empty/Bridge.

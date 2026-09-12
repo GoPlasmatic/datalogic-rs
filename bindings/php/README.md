@@ -219,6 +219,7 @@ $strict->apply('{"+":["",1]}', '{}');         // throws: strict rejects non-nume
 | `truthy_evaluator` | `"javascript"`, `"python"`, `"strict_boolean"` |
 | `numeric_coercion` | object of bools: `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
 | `max_recursion_depth` | integer >= 1 |
+| `ops_budget` | integer >= 1, or `null` for unbounded — caps the work one evaluation may do; crossing it raises `BudgetExceeded` |
 
 The `preset` applies first; the remaining keys override individual
 fields on top of it. Every binding shares this JSON schema and parses it

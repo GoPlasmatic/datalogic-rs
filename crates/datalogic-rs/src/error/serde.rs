@@ -50,6 +50,12 @@ fn write_kind_message(f: &mut fmt::Formatter<'_>, kind: &ErrorKind) -> fmt::Resu
             index, length
         ),
         ErrorKind::ConfigurationError(msg) => write!(f, "Configuration error: {}", msg),
+        #[cfg(feature = "budget")]
+        ErrorKind::BudgetExceeded { budget, spent } => write!(
+            f,
+            "Operation budget exceeded: {} operations charged against a budget of {}",
+            spent, budget
+        ),
     }
 }
 
@@ -124,6 +130,11 @@ impl Serialize for Error {
             ErrorKind::IndexOutOfBounds { index, length } => {
                 map.serialize_entry("index", index)?;
                 map.serialize_entry("length", length)?;
+            }
+            #[cfg(feature = "budget")]
+            ErrorKind::BudgetExceeded { budget, spent } => {
+                map.serialize_entry("budget", budget)?;
+                map.serialize_entry("spent", spent)?;
             }
             _ => {}
         }

@@ -271,6 +271,7 @@ lenient.eval({"/": [1.5, 0]}, {})     # None
 | `truthy_evaluator` | `"javascript"`, `"python"`, `"strict_boolean"` |
 | `numeric_coercion` | object of bools: `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
 | `max_recursion_depth` | integer >= 1 |
+| `ops_budget` | integer >= 1, or `null` for unbounded — caps the work one evaluation may do; crossing it raises `BudgetExceeded` |
 
 The `preset` applies first; the remaining keys override individual fields
 on top of it. Every binding shares this JSON schema and parses it with
@@ -278,6 +279,31 @@ the same core code, so a config that works here works in the WASM and
 Node bindings too. The full semantics of each knob are documented on the
 Rust crate's
 [`EvaluationConfig`](https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.EvaluationConfig.html).
+
+### Metering: what a rule costs
+
+`eval_metered` returns `(result_json, ops)` — the result as a JSON `str`
+and the operations the evaluation charged — so you can see what a rule
+costs whether or not a budget is set. `Rule.evaluate_metered(data,
+budget=None)` is the same thing on an already-compiled rule.
+
+```python
+engine = Engine()
+engine.eval_metered({"map": [{"var": "xs"}, {"*": [{"var": ""}, 2]}]}, {"xs": [1, 2, 3]})
+# ('[2,4,6]', 4)
+
+# The optional `budget` argument caps the operations for that one call,
+# overriding the engine's `ops_budget` config key.
+engine.eval_metered(rule, data, budget=100_000)
+```
+
+One operation is one node the engine dispatches, one item an iterator
+walks, or whatever an operator charges for the data it moves (the tensor
+family prices itself in elements). Literals and constant-folded subtrees
+cost nothing. Exceeding the budget raises `EvaluateError` with
+`.error_type == "BudgetExceeded"`, carrying `.budget` and `.spent` — the
+evaluation is refused before the work, and a `try` in the rule cannot
+recover from it.
 
 ## Error handling
 

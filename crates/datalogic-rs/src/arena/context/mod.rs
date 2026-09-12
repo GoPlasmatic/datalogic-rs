@@ -90,6 +90,16 @@ pub(crate) struct ContextStack<'a> {
     /// unrelated `Thrown` error from a non-deferring producer.
     #[cfg(feature = "error-handling")]
     thrown_slot: Option<&'a DataValue<'a>>,
+    /// Operations charged so far this evaluation — see [`Self::charge`].
+    /// Saturating, so a runaway rule pins the counter at `u64::MAX`
+    /// instead of wrapping back under `budget`.
+    #[cfg(feature = "budget")]
+    ops: u64,
+    /// Ceiling `ops` may not cross. `u64::MAX` when no budget is set,
+    /// which makes the per-charge compare a never-taken branch rather
+    /// than a second condition to test.
+    #[cfg(feature = "budget")]
+    budget: u64,
     /// Optional trace collector, owned by this stack while a traced
     /// evaluation is in flight. The trace driver moves a fresh collector
     /// in via [`Self::attach_tracer`] before dispatch and pulls it back out
@@ -98,8 +108,13 @@ pub(crate) struct ContextStack<'a> {
     /// the arena reference and so can't accommodate a function-local
     /// collector. Tracing is a dev-time debugging feature, so the move
     /// cost is irrelevant.
+    ///
+    /// Boxed: the collector is 56 bytes and every evaluation in a
+    /// trace-enabled build pays that as stack traffic whether or not it
+    /// traces, while the one allocation lands only on the traced path
+    /// where it is lost in the noise of rendering steps.
     #[cfg(feature = "trace")]
-    tracer: Option<crate::trace::TraceCollector>,
+    tracer: Option<Box<crate::trace::TraceCollector>>,
 }
 
 /// Receipt for a pushed context frame: it carries the frame that was
@@ -129,6 +144,10 @@ impl<'a> ContextStack<'a> {
             catch_depth: 0,
             #[cfg(feature = "error-handling")]
             thrown_slot: None,
+            #[cfg(feature = "budget")]
+            ops: 0,
+            #[cfg(feature = "budget")]
+            budget: u64::MAX,
             #[cfg(feature = "trace")]
             tracer: None,
         }
@@ -150,7 +169,7 @@ impl<'a> ContextStack<'a> {
     #[cfg(feature = "trace")]
     #[inline]
     pub(crate) fn attach_tracer(&mut self, tracer: crate::trace::TraceCollector) {
-        self.tracer = Some(tracer);
+        self.tracer = Some(Box::new(tracer));
     }
 
     /// Pull the tracer back out (e.g., after a traced evaluation completes)
@@ -158,7 +177,7 @@ impl<'a> ContextStack<'a> {
     #[cfg(feature = "trace")]
     #[inline]
     pub(crate) fn detach_tracer(&mut self) -> Option<crate::trace::TraceCollector> {
-        self.tracer.take()
+        self.tracer.take().map(|boxed| *boxed)
     }
 
     /// True iff a tracer has been attached.
@@ -429,6 +448,57 @@ impl<'a> ContextStack<'a> {
     #[inline]
     pub(crate) fn take_error_path(&mut self) -> Vec<u32> {
         std::mem::take(&mut self.error_path)
+    }
+
+    // ----- operation budget --------------------------------------------------
+
+    /// Charge `n` operations against this evaluation's budget.
+    ///
+    /// Every charge happens **before** the work it pays for, so a rule
+    /// that would build a billion-element result is refused rather than
+    /// run and then reported. The dispatcher charges 1 per node,
+    /// iterator operators charge 1 per item they are about to examine,
+    /// and operators that move an amount of data the node count does not
+    /// reflect (the tensor family) charge their own element count.
+    ///
+    /// Compiles to `Ok(())` — no counter, no compare — when the `budget`
+    /// feature is off.
+    ///
+    /// # Errors
+    ///
+    /// [`crate::ErrorKind::BudgetExceeded`] once the running total
+    /// crosses the ceiling. The counter is left past the ceiling, so
+    /// every later charge fails too: that is what makes the abort final
+    /// rather than something a `try` arm can step over.
+    #[cfg(feature = "budget")]
+    #[inline]
+    pub(crate) fn charge(&mut self, n: u64) -> crate::Result<()> {
+        self.ops = self.ops.saturating_add(n);
+        if self.ops > self.budget {
+            return Err(crate::Error::budget_exceeded(self.budget, self.ops));
+        }
+        Ok(())
+    }
+
+    /// Cross-feature no-op form of [`Self::charge`].
+    #[cfg(not(feature = "budget"))]
+    #[inline(always)]
+    pub(crate) fn charge(&mut self, _n: u64) -> crate::Result<()> {
+        Ok(())
+    }
+
+    /// Set the ceiling for this evaluation. `u64::MAX` means unbounded.
+    #[cfg(feature = "budget")]
+    #[inline]
+    pub(crate) fn set_budget(&mut self, budget: u64) {
+        self.budget = budget;
+    }
+
+    /// Operations charged so far.
+    #[cfg(feature = "budget")]
+    #[inline]
+    pub(crate) fn ops_spent(&self) -> u64 {
+        self.ops
     }
 
     // ----- deferred thrown-payload channel (see field docs) ------------------
@@ -828,7 +898,9 @@ mod tests {
     /// ancestor frame is not addressable until three levels of iterator
     /// nesting. Dropping the buffer was worth 7-15% on shallow rules.
     ///
-    /// Shrink the payload rather than raising this bound.
+    /// Shrink the payload rather than raising this bound. The `budget`
+    /// feature's two counters were paid for by boxing the trace
+    /// collector, which no evaluation reads unless it is being traced.
     #[test]
     #[cfg(target_pointer_width = "64")]
     fn context_stack_stays_small() {

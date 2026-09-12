@@ -136,6 +136,8 @@ impl Error {
             ErrorKind::FormatError(_) => "FormatError",
             ErrorKind::IndexOutOfBounds { .. } => "IndexOutOfBounds",
             ErrorKind::ConfigurationError(_) => "ConfigurationError",
+            #[cfg(feature = "budget")]
+            ErrorKind::BudgetExceeded { .. } => "BudgetExceeded",
         }
     }
 
@@ -291,6 +293,18 @@ impl Error {
     #[inline]
     pub fn configuration_error(msg: impl Into<Cow<'static, str>>) -> Self {
         ErrorKind::ConfigurationError(msg.into()).into()
+    }
+
+    /// The evaluation's operation budget was exhausted.
+    ///
+    /// `#[cold]`: this is raised once per aborted evaluation and never on
+    /// a path that completes, so it stays out of the charge site's
+    /// inlined body.
+    #[cfg(feature = "budget")]
+    #[cold]
+    #[inline(never)]
+    pub(crate) fn budget_exceeded(budget: u64, spent: u64) -> Self {
+        ErrorKind::BudgetExceeded { budget, spent }.into()
     }
 
     /// Canonical "Invalid Arguments" error. Used wherever an operator

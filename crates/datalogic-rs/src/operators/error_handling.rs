@@ -178,6 +178,16 @@ pub(crate) fn evaluate_try<'a>(
         match result {
             Ok(v) => return Ok(v),
             Err(e) => {
+                // An exhausted operation budget is not a recoverable
+                // failure: the counter stays past its ceiling, so every
+                // later charge fails too. Propagating here rather than
+                // falling into the next arm makes that final even when
+                // the catch arm is a literal, which would otherwise
+                // return without dispatching (and so without charging).
+                #[cfg(feature = "budget")]
+                if matches!(e.kind, crate::ErrorKind::BudgetExceeded { .. }) {
+                    return Err(e);
+                }
                 ctx.truncate_error_path(saved_len);
                 last_err = Some(e);
             }

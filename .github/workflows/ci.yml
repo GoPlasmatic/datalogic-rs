@@ -131,6 +131,7 @@ jobs:
           - flagd
           - tensor
           - tensor-half
+          - budget
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -181,6 +182,12 @@ jobs:
           # behaves as a value.
           - serde_json,templating,trace,tensor,ext-control,ext-array
           - serde_json,templating,trace,tensor,tensor-half,ext-control,ext-array
+          # `budget` charges from inside every iterator operator and the
+          # tensor family, and `try` has to refuse to catch its error, so
+          # the leg that matters pairs it with `error-handling` and the
+          # array operators rather than running it alone.
+          - serde_json,templating,trace,budget,error-handling,ext-array,ext-control
+          - serde_json,templating,trace,budget,tensor,ext-control,ext-array
     steps:
       - name: Checkout
         uses: actions/checkout@v6

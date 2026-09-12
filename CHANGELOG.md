@@ -10,6 +10,112 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ## [Unreleased]
 
+### Added
+
+- **Operation budget (`budget` feature, off by default).** A per-evaluation
+  operation counter with a hard abort, so the work an untrusted rule may do
+  can be bounded without a wall-clock timeout. `max_recursion_depth` only
+  ever bounded boundary re-entry; a `map` over a large input nested inside
+  another `map` is one boundary call doing N x M items of work, and until
+  now nothing capped it.
+
+  A count is the right shape for this where a timeout is not: it is
+  deterministic (the same rule over the same data charges the same number
+  on every machine, so a rule accepted in staging is accepted in
+  production), it is charged *before* the work rather than measured after
+  it, and the failure is attributable — `BudgetExceeded` carries the node
+  breadcrumb like every other engine error.
+
+  One operation is one dispatched node, one item an iterator examines, or
+  whatever an operator charges for the data it moves. Literals and
+  constant-folded subtrees cost nothing, and a CSE-memoised subtree is
+  charged once. The per-item charge is taken when an iterator's source
+  resolves, *before* the operator picks between its compile-time fast paths
+  and the general path: several predicate and body shapes are recognised at
+  compile time and evaluated inline without dispatching the body, and
+  charging per dispatch would have made "does this rule fit its budget"
+  depend on which shape the populate pass happened to recognise.
+
+  Surface: `EvaluationConfig::ops_budget` (engine-wide, and reaching every
+  binding through the existing `from_json_str` wire format as the
+  `ops_budget` key), `Engine::evaluate_metered` / `Session::eval_metered`
+  (per call, returning `Metered { value, ops }`), `EvalContext::charge` for
+  custom operators, and `ErrorKind::BudgetExceeded { budget, spent }`.
+  `charge` is always present — a no-op when the feature is off — so a
+  custom operator can call it without a `cfg` of its own.
+
+  `try` observes `BudgetExceeded` but cannot recover from it: the counter
+  stays past its ceiling, and `try` propagates rather than moving to its
+  next arm. Without that carve-out a literal catch arm would return without
+  dispatching, and a rule could catch its own budget failure and spend the
+  budget in a loop.
+
+  A Cargo feature rather than an always-on `Option<u64>` because the cost
+  is measurable, not free: self benchmark `--all`, paired runs on one
+  machine, 22.75 ns/op with the feature off and 23.56 ns/op with it
+  compiled in and no budget set (+3.6%). The feature-off number is
+  unchanged from before the feature existed; builds that do not want a
+  counter compile out the counter, the compare and the error variant
+  entirely.
+
+- **The tensor family now charges through that counter.** `charge()` in
+  `operators/tensor/` stopped being a no-op; every operator prices itself
+  at `max(elements read, elements produced)` before it allocates, so a rule
+  that would build a billion-element tensor is refused rather than run and
+  then reported. This is what the family's arithmetic-free line was for.
+
+- **Per-call metering in the JS and Python bindings.** `Engine.evalMetered`
+  / `Rule.evaluateMetered` / `Session.evaluateMetered` (WASM),
+  `Engine.evalMetered` / `Rule.evaluateMetered` (Node), and
+  `Engine.eval_metered` / `Rule.evaluate_metered` (Python) evaluate under a
+  budget and report what was spent. The C ABI — and the Go, JVM, .NET and
+  PHP bindings built on it — carry the engine-wide `ops_budget` config key
+  only; a per-call entry point there can follow.
+
+- **`budget` and `spent` on binding errors.** The Node and Python error
+  bridges now attach the two figures to a `BudgetExceeded` error. They are
+  the one kind-specific pair carried as structured fields, because they are
+  the only variant extras a caller has to act on: recovering means choosing
+  a larger number, and these are what that choice is made from.
+
+- **Operation budget in the UI and Studio.** `DataLogicEvaluationConfig`
+  gains `ops_budget`, the Engine settings panel gains an "Operation budget"
+  field (blank means unlimited), and the `useWasmEvaluator` hook gains
+  `evaluateMetered(logic, data)` returning `{ value, ops }`. The Studio
+  reports what every evaluation spent as an *N ops* badge on the Result
+  panel — visible on success, not only when a rule trips a ceiling — and
+  renders `BudgetExceeded` with its `budget` / `spent` chips and the usual
+  node highlight. The budget rides along in share links like every other
+  engine setting.
+
+- **Three tensor examples in the Studio's Examples menu** — "Model Input
+  Batch" (normalize and stack a request batch), "Model Output Labels"
+  (`argmax` a logits tensor and label the winners), and "One-Hot Encode".
+  The tensor operators had been in the UI's registry and insert palette
+  since 5.5.0 with nothing in the examples menu to find them from.
+
+- **Budget and tensor test coverage in every binding.** A budget suite for
+  the core (26 cases: what the count means, one per fast path, the abort,
+  the entry points, custom-operator charges) plus per-binding suites for
+  WASM, Node, Python, the C ABI, Go, JVM, .NET and PHP. The C-family
+  suites also pin that a tensor round-trips through those bindings as the
+  tagged JSON form, which is the property that let the family ship without
+  an FFI change.
+
+### Changed
+
+- **The trace collector is boxed inside `ContextStack`.** 56 bytes of
+  per-evaluation stack traffic that every evaluation in a trace-enabled
+  build paid whether or not it traced; the one allocation now lands only on
+  the traced path. This is what paid for the budget counters — the stack
+  stays under its 256-byte bound, at 224 bytes.
+
+### Fixed
+
+- **`tests/tensor_test.rs` failed under `--features tensor,serde_json`.**
+  One case used templating without the file being gated on it. Split into
+  its own `#[cfg(feature = "templating")]` test.
+
 ## [5.5.0] - 2026-09-12
 
 ### Added

@@ -11,7 +11,15 @@
 //!                              .path       — list of {operator, json_pointer, ...} dicts
 //!                                            (populated when the binding has the compiled
 //!                                            Logic at hand to resolve)
+//!                              .budget     — BudgetExceeded only: the ceiling crossed
+//!                              .spent      — BudgetExceeded only: operations asked for
 //! ```
+//!
+//! `.budget` / `.spent` are the one kind-specific pair carried as
+//! attributes, because they are the only variant extras a caller has to
+//! *act* on: recovering from a budget failure means choosing a larger
+//! number, and these two figures are what that choice is made from. Every
+//! other variant's extras are readable in the message.
 //!
 //! Conversion goes through [`engine_error_to_pyerr`] (or its helpers below)
 //! rather than `From` so the binding can attach `.path` when it has the
@@ -117,6 +125,11 @@ fn attach_attrs(py: Python<'_>, pyerr: &PyErr, err: &Error, compiled: Option<&Lo
         .map(|c| serialize_path(py, &err.resolve_path(c)))
         .unwrap_or_else(|| py.None());
     let _ = value.setattr("path", path_value);
+
+    if let datalogic_rs::ErrorKind::BudgetExceeded { budget, spent } = &err.kind {
+        let _ = value.setattr("budget", *budget);
+        let _ = value.setattr("spent", *spent);
+    }
 }
 
 fn serialize_path(py: Python<'_>, steps: &[datalogic_rs::PathStep]) -> Py<PyAny> {

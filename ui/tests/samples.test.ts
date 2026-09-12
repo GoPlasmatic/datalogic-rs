@@ -54,6 +54,7 @@ describe('Studio sample expressions', () => {
       'abs', 'ceil', 'floor', 'max', 'min', '%',
       '===', '!==', '!!',
       'val', 'var', 'map', 'filter', 'reduce', 'all', 'some', 'none',
+      'tensor', 'stack', 'normalize', 'argmax', 'one_hot', 'to_list', 'shape',
     ];
     const missing = required.filter((op) => !used.has(op));
     expect(missing).toEqual([]);

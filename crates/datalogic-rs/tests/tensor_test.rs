@@ -144,12 +144,19 @@ fn a_tensor_renders_as_the_tagged_form() {
 
 #[test]
 fn a_tensor_nested_in_a_result_still_renders() {
-    // Inside an array, and (with templating) inside an object field —
-    // both walk composite arms that could have dropped it.
+    // Inside an array — a composite arm that could have dropped it.
     assert_eq!(
         eval(r#"[{"tensor": [[1], "u8"]}]"#),
         r#"[{"tensor":{"dtype":"u8","shape":[1],"data":"AQ=="}}]"#
     );
+}
+
+/// The object-field half of the case above. Split out and gated: a
+/// template is only a template with the `templating` feature on, and
+/// without the split this file failed under `--features tensor,serde_json`.
+#[cfg(feature = "templating")]
+#[test]
+fn a_tensor_in_a_template_field_still_renders() {
     let templated = Engine::builder()
         .with_templating(true)
         .build()

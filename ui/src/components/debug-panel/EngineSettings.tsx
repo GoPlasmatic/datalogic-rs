@@ -239,6 +239,33 @@ export function EngineSettingsPanel({
             Nested engine re-entries allowed before a ConfigurationError (custom operators only). Default 256.
           </span>
         </label>
+
+        <label className="engine-settings-field">
+          <span className="engine-settings-label">Operation budget</span>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            placeholder="Unlimited"
+            value={resolved.ops_budget ?? ''}
+            onChange={(e) => {
+              const parsed = Number.parseInt(e.target.value, 10);
+              onChange(
+                withOverride(
+                  config,
+                  'ops_budget',
+                  Number.isFinite(parsed) && parsed >= 1 ? parsed : undefined,
+                ),
+              );
+            }}
+          />
+          <span className="engine-settings-hint">
+            Caps the work one evaluation may do — one operation per node the engine dispatches, one
+            per item an iterator walks, plus what tensor operators charge per element. Crossing it
+            raises BudgetExceeded, which <code>try</code> cannot catch. Blank means unlimited; the
+            result panel reports what each run actually spent.
+          </span>
+        </label>
       </div>
     </div>
   );

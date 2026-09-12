@@ -185,6 +185,9 @@ pub use config::{
 /// what [`Engine::eval_str`] uses internally.
 pub use datavalue;
 pub use engine::Engine;
+#[cfg(feature = "budget")]
+#[cfg_attr(docsrs, doc(cfg(feature = "budget")))]
+pub use engine::Metered;
 pub use error::{CustomErrorSource, Error, ErrorKind};
 pub use eval_input::{EvalInput, OwnedInput};
 pub use logic_input::IntoLogic;

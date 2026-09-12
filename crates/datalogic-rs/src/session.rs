@@ -184,6 +184,56 @@ impl<'engine> Session<'engine> {
         serde_json::from_value(value).map_err(crate::Error::from)
     }
 
+    /// Evaluate under an explicit operation budget, reporting what the
+    /// evaluation spent.
+    ///
+    /// Session-arena counterpart to [`Engine::evaluate_metered`], which
+    /// documents what one operation is. The value is deep-cloned out like
+    /// [`Self::eval`]'s, so the count survives the next `reset`.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # #[cfg(feature = "budget")] {
+    /// use datalogic_rs::{Engine, Metered};
+    ///
+    /// let engine = Engine::new();
+    /// let compiled = engine.compile(r#"{"filter": [{"var": "xs"}, {">": [{"var": ""}, 1]}]}"#).unwrap();
+    /// let mut session = engine.session();
+    ///
+    /// let Metered { value, ops } = session
+    ///     .eval_metered(&compiled, r#"{"xs": [1, 2, 3]}"#, u64::MAX)
+    ///     .unwrap();
+    /// assert_eq!(value.to_json_string(), "[2,3]");
+    /// assert!(ops >= 3, "at least one operation per item filtered");
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorKind::BudgetExceeded`](crate::ErrorKind::BudgetExceeded)
+    /// when the rule charges past `budget`, plus every error
+    /// [`Self::eval`] can return.
+    #[cfg(feature = "budget")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "budget")))]
+    pub fn eval_metered<'a, D>(
+        &'a mut self,
+        compiled: &Logic,
+        data: D,
+        budget: u64,
+    ) -> Result<crate::Metered<OwnedDataValue>>
+    where
+        D: EvalInput<'a>,
+    {
+        let arena: &'a Bump = &self.arena;
+        let av = data.into_arena_value(arena)?;
+        let metered = self.engine.evaluate_metered(compiled, av, arena, budget)?;
+        Ok(crate::Metered {
+            value: crate::FromDataValue::from_arena(metered.value)?,
+            ops: metered.ops,
+        })
+    }
+
     /// Evaluate and return a borrowed result tied to this session's
     /// arena. Same semantics as [`Self::eval`] but skips the deep-clone
     /// — the returned reference is invalidated by the next `&mut self`

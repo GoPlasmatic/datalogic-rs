@@ -17,7 +17,7 @@ type Error struct {
 	Message string
 	// Type is the engine's stable error tag: one of "ParseError",
 	// "Thrown", "TypeError", "ArithmeticError", "InvalidOperator",
-	// "ConfigurationError", "Custom", etc., plus the binding-level
+	// "ConfigurationError", "BudgetExceeded", "Custom", etc., plus the binding-level
 	// "TypeMismatch", "InvalidArgument", and "InternalError". Arithmetic
 	// NaN failures surface as "Thrown" (the payload carries
 	// {"type":"NaN"}), never as a "NaN" tag. Match on this for

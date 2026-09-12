@@ -480,6 +480,7 @@ values throw a `ConfigurationError`:
 | `truthy_evaluator` | `"javascript"` \| `"python"` \| `"strict_boolean"` |
 | `numeric_coercion` | object of booleans: `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
 | `max_recursion_depth` | integer >= 1 |
+| `ops_budget` | integer >= 1, or `null` for unbounded — caps the work one evaluation may do; crossing it raises `BudgetExceeded` |
 
 `preset` applies first; the remaining keys override it individually.
 
@@ -493,6 +494,31 @@ engine.evalStr('{"+": [null, 1]}', '{}');
 // The same config as a JSON string, through the engine-free fast path.
 const rule = new CompiledRule('{"+": [null, 1]}', false, '{"preset": "strict"}');
 ```
+
+
+### Metering: what a rule costs
+
+`evalMetered` returns a JSON envelope `{"result": ..., "ops": N}` instead
+of a bare result, so you can see what an evaluation charged whether or not
+a budget is set. The same method exists on `Rule` and `Session` as
+`evaluateMetered`.
+
+```javascript
+const engine = new Engine({});
+JSON.parse(engine.evalMetered('{"map":[{"var":"xs"},{"*":[{"var":""},2]}]}', '{"xs":[1,2,3]}'));
+// { result: [2, 4, 6], ops: 4 }
+
+// An optional third argument caps the operations for that one call,
+// overriding the engine's `config.ops_budget`.
+engine.evalMetered(rule, data, 100_000);
+```
+
+One operation is one node the engine dispatches, one item an iterator
+walks, or whatever an operator charges for the data it moves (the tensor
+family prices itself in elements). Literals and constant-folded subtrees
+cost nothing. Exceeding the budget throws an `Error` named
+`BudgetExceeded` carrying `budget` and `spent` — the evaluation is refused
+before the work, and a `try` in the rule cannot recover from it.
 
 ## Error handling
 
@@ -586,6 +612,14 @@ This binding exposes all 84 built-in operators from the Rust engine:
 **Error handling** — `try`, `throw`
 **Type** — `type`
 **Feature flags (flagd)** — `fractional`, `sem_ver`
+**Tensor** — `tensor`, `zeros`, `full`, `scatter`, `rle_expand`, `one_hot`, `stack`, `concat`, `unstack`, `reshape`, `transpose`, `pad`, `crop`, `gather`, `cast`, `normalize`, `argmax`, `to_list`, `shape`, `dtype`
+
+> **Tensors on the wire:** a tensor crosses the JSON boundary as the
+> tagged `{"tensor": {"dtype", "shape", "data"}}` form, with `data`
+> little-endian base64 — and that same form is accepted back as a rule,
+> so a result pasted into a new rule evaluates to the tensor it came
+> from. The family is marshalling-only (no arithmetic): it moves JSON
+> into a model's inputs and its outputs back into JSON.
 
 > **Templating mode:** v5 removed the `preserve` *operator*. To enable
 > JSON templates with embedded JSONLogic (multi-key objects become

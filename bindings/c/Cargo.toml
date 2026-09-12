@@ -43,6 +43,7 @@ datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features =
     "ext-math",
     "flagd",
     "tensor",
+    "budget",
 ] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

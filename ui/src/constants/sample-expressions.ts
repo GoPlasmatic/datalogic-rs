@@ -627,6 +627,73 @@ export const SAMPLE_EXPRESSIONS: Record<string, SampleExpression> = {
   },
 
   // ============================================
+  // Tensor: marshalling JSON into a model's inputs and back out
+  // ============================================
+
+  // Encode a request into the shape a model expects: normalize the raw
+  // features, then stack them into one batch tensor. `shape` is read back
+  // rather than the buffer, which is base64 on the wire.
+  "Model Input Batch": {
+    logic: {
+      shape: [
+        {
+          stack: [
+            {
+              map: [
+                { var: "requests" },
+                { normalize: [{ tensor: [{ var: "features" }, "f32"] }, 0.5, 2] },
+              ],
+            },
+            0,
+          ],
+        },
+      ],
+    },
+    data: {
+      requests: [
+        { features: [0.1, 0.7, 0.4, 0.9] },
+        { features: [0.3, 0.2, 0.8, 0.6] },
+        { features: [0.5, 0.5, 0.5, 0.5] },
+      ],
+    },
+    expected: [3, 4],
+  },
+
+  // Read a model's output back into JSON: pick the winning class per row
+  // and label it. `argmax` collapses an axis and hands back a plain list,
+  // so ordinary array operators take over from there.
+  "Model Output Labels": {
+    logic: {
+      map: [
+        { argmax: [{ tensor: [{ var: "logits" }, "f32"] }, 1] },
+        { val: [[2], "labels", { val: [] }] },
+      ],
+    },
+    data: {
+      logits: [
+        [0.1, 0.8, 0.1],
+        [0.7, 0.2, 0.1],
+        [0.2, 0.3, 0.5],
+      ],
+      labels: ["cat", "dog", "bird"],
+    },
+    expected: ["dog", "cat", "bird"],
+  },
+
+  // One-hot a categorical field into the dense row a model wants.
+  "One-Hot Encode": {
+    logic: {
+      to_list: [{ one_hot: [{ var: "category_ids" }, 4, "u8"] }],
+    },
+    data: { category_ids: [0, 3, 1] },
+    expected: [
+      [1, 0, 0, 0],
+      [0, 0, 0, 1],
+      [0, 1, 0, 0],
+    ],
+  },
+
+  // ============================================
   // Templating mode (multi-key objects are output templates)
   // ============================================
 

@@ -15,6 +15,8 @@ export interface ResolvedConfig {
   truthy_evaluator: TruthyEvaluator;
   numeric_coercion: CoercionFlags;
   max_recursion_depth: number;
+  /** `undefined` means unbounded — the engine's default. */
+  ops_budget: number | undefined;
 }
 
 const DEFAULT_COERCION: CoercionFlags = {
@@ -39,6 +41,7 @@ export const PRESET_BASES: Record<Preset, ResolvedConfig> = {
     truthy_evaluator: 'javascript',
     numeric_coercion: { ...DEFAULT_COERCION },
     max_recursion_depth: 256,
+    ops_budget: undefined,
   },
   safe_arithmetic: {
     preset: 'safe_arithmetic',
@@ -48,6 +51,7 @@ export const PRESET_BASES: Record<Preset, ResolvedConfig> = {
     truthy_evaluator: 'javascript',
     numeric_coercion: { ...DEFAULT_COERCION },
     max_recursion_depth: 256,
+    ops_budget: undefined,
   },
   strict: {
     preset: 'strict',
@@ -62,6 +66,7 @@ export const PRESET_BASES: Record<Preset, ResolvedConfig> = {
       reject_non_numeric: true,
     },
     max_recursion_depth: 256,
+    ops_budget: undefined,
   },
 };
 
@@ -77,6 +82,7 @@ export function resolveEvaluationConfig(config: DataLogicEvaluationConfig | unde
     truthy_evaluator: config?.truthy_evaluator ?? base.truthy_evaluator,
     numeric_coercion: { ...base.numeric_coercion, ...(config?.numeric_coercion ?? {}) },
     max_recursion_depth: config?.max_recursion_depth ?? base.max_recursion_depth,
+    ops_budget: config?.ops_budget ?? base.ops_budget,
   };
 }
 
@@ -86,6 +92,9 @@ const TOP_LEVEL_KNOBS = [
   'loose_equality_errors',
   'truthy_evaluator',
   'max_recursion_depth',
+  // No preset sets a budget, so an explicit one is never a restatement —
+  // it survives pruning by the `!== undefined` guard in `pruneAgainstPreset`.
+  'ops_budget',
 ] as const;
 
 /**

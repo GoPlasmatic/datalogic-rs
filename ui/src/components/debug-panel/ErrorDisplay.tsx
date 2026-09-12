@@ -16,6 +16,8 @@ function collectDetailChips(error: StructuredError): DetailChip[] {
   if (error.level !== undefined) chips.push({ label: 'level', value: String(error.level) });
   if (error.index !== undefined) chips.push({ label: 'index', value: String(error.index) });
   if (error.length !== undefined) chips.push({ label: 'length', value: String(error.length) });
+  if (error.budget !== undefined) chips.push({ label: 'budget', value: error.budget.toLocaleString() });
+  if (error.spent !== undefined) chips.push({ label: 'spent', value: error.spent.toLocaleString() });
   if (error.stage !== undefined) chips.push({ label: 'stage', value: String(error.stage) });
   return chips;
 }
@@ -34,7 +36,8 @@ interface ErrorDisplayProps {
  * Renders a debug-panel error. Strings render as-is; structured engine
  * errors get a type pill, the message, the failing operator, the
  * `node_ids` breadcrumb (compile-time node ids, root to leaf), any variant
- * extras (variable, index/length, stage) and the thrown payload as JSON.
+ * extras (variable, index/length, stage, budget/spent) and the thrown
+ * payload as JSON.
  */
 export function ErrorDisplay({ error, compact = false }: ErrorDisplayProps) {
   if (typeof error === 'string') {

@@ -27,6 +27,48 @@ thread_local! {
     static DISPATCH_DEPTH: Cell<u32> = const { Cell::new(0) };
 }
 
+/// An evaluation's result paired with what it cost.
+///
+/// Returned by [`Engine::evaluate_metered`] and
+/// [`Session::eval_metered`](crate::Session::eval_metered). `T` is
+/// whatever that entry point produces — a borrowed
+/// `&'a DataValue<'a>` from the engine, an owned value or JSON string
+/// from a session.
+///
+/// Both fields are public, so the usual shape is a destructure:
+///
+/// ```rust
+/// # #[cfg(feature = "budget")] {
+/// use bumpalo::Bump;
+/// use datalogic_rs::{Engine, Metered};
+///
+/// let engine = Engine::new();
+/// let compiled = engine.compile(r#"{"+": [{"var": "x"}, 2]}"#).unwrap();
+/// let arena = Bump::new();
+/// let Metered { value, ops } = engine
+///     .evaluate_metered(&compiled, r#"{"x": 1}"#, &arena, u64::MAX)
+///     .unwrap();
+/// assert_eq!(value.as_i64(), Some(3));
+/// assert_eq!(ops, 2, "the `+` and the `var`; the literal 2 costs nothing");
+///
+/// // `{"+": [1, 2]}` costs 0: the compiler folded it to a literal, and a
+/// // literal is returned before dispatch.
+/// let folded = engine.compile(r#"{"+": [1, 2]}"#).unwrap();
+/// let metered = engine.evaluate_metered(&folded, "null", &arena, u64::MAX).unwrap();
+/// assert_eq!(metered.ops, 0);
+/// # }
+/// ```
+#[cfg(feature = "budget")]
+#[cfg_attr(docsrs, doc(cfg(feature = "budget")))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Metered<T> {
+    /// The evaluation's result.
+    pub value: T,
+    /// Operations charged. See [`Engine::evaluate_metered`] for what one
+    /// operation is.
+    pub ops: u64,
+}
+
 /// Restores [`DISPATCH_DEPTH`] to its prior value on drop. Used by
 /// the boundary entry points (`Engine::evaluate`, `TracedSession::evaluate`)
 /// so early returns and panics leave the counter consistent.
@@ -577,8 +619,101 @@ impl Engine {
         let _depth_guard = self.enter_dispatch_boundary()?;
         let data_ref = data.into_arena_value(arena)?;
         let mut ctx = crate::arena::ContextStack::new(data_ref, compiled.needs_ancestor_frames);
+        #[cfg(feature = "budget")]
+        if let Some(budget) = self.config.ops_budget {
+            ctx.set_budget(budget);
+        }
         match self.dispatch_node(&compiled.root, &mut ctx, arena) {
             Ok(av) => Ok(av),
+            Err(e) => Err(e.decorated(ctx.take_error_path(), compiled, true)),
+        }
+    }
+
+    /// Evaluate under an explicit operation budget, reporting what the
+    /// evaluation spent.
+    ///
+    /// Same evaluation as [`Self::evaluate`], with two differences: the
+    /// `budget` argument overrides
+    /// [`EvaluationConfig::ops_budget`](crate::EvaluationConfig::ops_budget)
+    /// for this call, and the result carries the operation count next to
+    /// the value. Pass `u64::MAX` to meter without bounding.
+    ///
+    /// # What the count means
+    ///
+    /// "Nodes dispatched at runtime, plus whatever operators charge" —
+    /// not "nodes in the source". Concretely:
+    ///
+    /// - **1 per dispatched node.** Literals cost 0 (they return before
+    ///   dispatch), and so do constant-folded subtrees — the compiler
+    ///   already did that work, and charging for it would make the count
+    ///   depend on whether folding was enabled.
+    /// - **1 per item an iterator examines**, charged by `map`, `filter`,
+    ///   `reduce`, the quantifiers, `sort` and friends as soon as the
+    ///   source is resolved. This is what keeps the number honest when a
+    ///   compile-time fast path evaluates a predicate inline instead of
+    ///   dispatching its body: the iteration costs at least its input
+    ///   length whichever path runs.
+    /// - **Whatever an operator charges for itself.** The tensor family
+    ///   prices each operator at `max(elements read, elements produced)`,
+    ///   before it allocates. A [`crate::CustomOperator`] that walks a
+    ///   large input should do the same via
+    ///   [`EvalContext::charge`](crate::operator::EvalContext::charge).
+    /// - **A CSE-memoised subtree is charged once**, on the evaluation
+    ///   that fills the slot.
+    ///
+    /// The count is deterministic for a pinned crate version and a given
+    /// (rule, data) pair. It is not stable *across* versions: a new fast
+    /// path or fold changes what gets dispatched. Budget for the work you
+    /// want to allow, not for an exact number you measured.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # #[cfg(feature = "budget")] {
+    /// use bumpalo::Bump;
+    /// use datalogic_rs::Engine;
+    ///
+    /// let engine = Engine::new();
+    /// let compiled = engine.compile(r#"{"map": [{"var": "xs"}, {"*": [{"var": ""}, 2]}]}"#).unwrap();
+    /// let arena = Bump::new();
+    ///
+    /// let metered = engine
+    ///     .evaluate_metered(&compiled, r#"{"xs": [1, 2, 3]}"#, &arena, u64::MAX)
+    ///     .unwrap();
+    /// assert_eq!(metered.value.to_json_string(), "[2,4,6]");
+    /// assert!(metered.ops >= 3, "at least one operation per item");
+    ///
+    /// // Too tight a budget refuses the evaluation instead of running it.
+    /// let err = engine
+    ///     .evaluate_metered(&compiled, r#"{"xs": [1, 2, 3]}"#, &arena, 2)
+    ///     .unwrap_err();
+    /// assert_eq!(err.tag(), "BudgetExceeded");
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorKind::BudgetExceeded`](crate::ErrorKind::BudgetExceeded)
+    /// when the rule charges past `budget`, plus every error
+    /// [`Self::evaluate`] can return.
+    #[cfg(feature = "budget")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "budget")))]
+    pub fn evaluate_metered<'a, D: crate::EvalInput<'a>>(
+        &self,
+        compiled: &'a Logic,
+        data: D,
+        arena: &'a bumpalo::Bump,
+        budget: u64,
+    ) -> Result<Metered<&'a crate::arena::DataValue<'a>>> {
+        let _depth_guard = self.enter_dispatch_boundary()?;
+        let data_ref = data.into_arena_value(arena)?;
+        let mut ctx = crate::arena::ContextStack::new(data_ref, compiled.needs_ancestor_frames);
+        ctx.set_budget(budget);
+        match self.dispatch_node(&compiled.root, &mut ctx, arena) {
+            Ok(value) => Ok(Metered {
+                value,
+                ops: ctx.ops_spent(),
+            }),
             Err(e) => Err(e.decorated(ctx.take_error_path(), compiled, true)),
         }
     }
@@ -787,6 +922,15 @@ impl Engine {
         let ctx_snapshot: Option<serde_json::Value> =
             ctx.has_tracer().then(|| ctx.current_data_as_value());
 
+        // One operation per dispatched node, charged before the work.
+        // Literals returned above cost nothing — they are data the
+        // compiler already resolved, not work the rule asked for.
+        #[cfg(feature = "budget")]
+        let result = match ctx.charge(1) {
+            Ok(()) => dispatch::dispatch_node_inner(self, node, ctx, arena),
+            Err(e) => Err(e),
+        };
+        #[cfg(not(feature = "budget"))]
         let result = dispatch::dispatch_node_inner(self, node, ctx, arena);
 
         // Accumulate the failing node's id on every Err. We always pay
