@@ -63,7 +63,17 @@ impl<'ctx, 'a> EvalContext<'ctx, 'a> {
     ///
     /// # Errors
     ///
-    /// [`crate::ErrorKind::BudgetExceeded`] once the running total
+    // `ErrorKind::BudgetExceeded` is gated behind `budget`; link it when
+    // the feature is on, otherwise reference it as code text so the docs
+    // stay resolvable in a default-features build.
+    #[cfg_attr(
+        feature = "budget",
+        doc = "[`crate::ErrorKind::BudgetExceeded`] once the running total"
+    )]
+    #[cfg_attr(
+        not(feature = "budget"),
+        doc = "`ErrorKind::BudgetExceeded` (with the `budget` feature) once the running total"
+    )]
     /// crosses the evaluation's ceiling. Propagate it — the counter stays
     /// exhausted, so there is nothing useful to do but unwind.
     ///
