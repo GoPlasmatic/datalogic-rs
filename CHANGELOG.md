@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
-## [Unreleased]
+## [5.5.0] - 2026-09-12
 
 ### Added
 
@@ -107,24 +107,6 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   tagged JSON form, which is the property that let the family ship without
   an FFI change.
 
-### Changed
-
-- **The trace collector is boxed inside `ContextStack`.** 56 bytes of
-  per-evaluation stack traffic that every evaluation in a trace-enabled
-  build paid whether or not it traced; the one allocation now lands only on
-  the traced path. This is what paid for the budget counters — the stack
-  stays under its 256-byte bound, at 224 bytes.
-
-### Fixed
-
-- **`tests/tensor_test.rs` failed under `--features tensor,serde_json`.**
-  One case used templating without the file being gated on it. Split into
-  its own `#[cfg(feature = "templating")]` test.
-
-## [5.5.0] - 2026-09-12
-
-### Added
-
 - **Tensor operators (`tensor` feature, off by default).** A marshalling
   family over datavalue 0.3's `Tensor` variant — a dtype, a shape, and one
   row-major contiguous byte buffer that travels through a rule without
@@ -181,6 +163,12 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ### Changed
 
+- **The trace collector is boxed inside `ContextStack`.** 56 bytes of
+  per-evaluation stack traffic that every evaluation in a trace-enabled
+  build paid whether or not it traced; the one allocation now lands only on
+  the traced path. This is what paid for the budget counters — the stack
+  stays under its 256-byte bound, at 224 bytes.
+
 - **`datavalue-rs` 0.2.3 → 0.3, which raises this crate's MSRV to 1.98.**
   The floor is inherited rather than chosen: the dependency is not
   optional, so every build needs 1.98 whether or not `tensor` is enabled.
@@ -219,6 +207,10 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   `comparison/lessThan` 6.9%, with no cost to deeply nested rules.
 
 ### Fixed
+
+- **`tests/tensor_test.rs` failed under `--features tensor,serde_json`.**
+  One case used templating without the file being gated on it. Split into
+  its own `#[cfg(feature = "templating")]` test.
 
 - **The conformance harness can now run under partial feature sets.** The
   suite index lists every suite, but a build without `ext-control` cannot
