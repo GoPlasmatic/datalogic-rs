@@ -40,6 +40,7 @@ datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features =
     "ext-control",
     "ext-math",
     "flagd",
+    "tensor",
 ] }
 # napi 3.x is the current major and the floor for `napi-derive` 3.x's
 # improved async / class ergonomics. `napi9` enables Node 18+ ABI. The

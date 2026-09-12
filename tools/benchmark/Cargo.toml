@@ -30,6 +30,7 @@ datalogic-rs = { path = "../../crates/datalogic-rs", features = [
     "ext-control",
     "ext-math",
     "flagd",
+    "tensor",
 ] }
 serde_json = "1.0"
 bumpalo = "3"

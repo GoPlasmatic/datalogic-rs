@@ -1,6 +1,6 @@
 # Operators Overview
 
-datalogic-rs provides 64 built-in operators organized into logical categories. In the Rust crate, 33 baseline operators are always available in the default build (`default = []`); a further 29 canonical operators are enabled by opt-in Cargo features, and two flagd-compatible operators (`fractional`, `sem_ver`) sit behind the `flagd` feature. Every language binding (WASM, Node, Python, Go, JVM, .NET, PHP) ships with all operator features enabled, so the full set is available out of the box outside Rust. Counts are by canonical operator: `var` and `?:` are accepted as input aliases of `val` and `if`, and `match` is an alias of `switch`, so the aliases are not counted separately. This section documents each operator with syntax, examples, and notes on behavior.
+datalogic-rs provides 84 built-in operators organized into logical categories. In the Rust crate, 33 baseline operators are always available in the default build (`default = []`); a further 29 canonical operators are enabled by opt-in Cargo features, twenty tensor-marshalling operators sit behind the `tensor` feature, and two flagd-compatible operators (`fractional`, `sem_ver`) sit behind the `flagd` feature. Every language binding (WASM, Node, Python, Go, JVM, .NET, PHP) ships with all operator features enabled, so the full set is available out of the box outside Rust. Counts are by canonical operator: `var` and `?:` are accepted as input aliases of `val` and `if`, and `match` is an alias of `switch`, so the aliases are not counted separately. This section documents each operator with syntax, examples, and notes on behavior.
 
 ## Operator Categories
 
@@ -17,6 +17,7 @@ datalogic-rs provides 64 built-in operators organized into logical categories. I
 | [DateTime](datetime.md) | `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`, `now` | Date and time |
 | [Missing Values](missing.md) | `missing`, `missing_some` | Check for missing data |
 | [Error Handling](error-handling.md) | `try`, `throw` | Exception handling |
+| [Tensor](tensor.md) | `tensor`, `zeros`, `full`, `scatter`, `rle_expand`, `one_hot`, `stack`, `concat`, `unstack`, `reshape`, `transpose`, `pad`, `crop`, `cast`, `normalize`, `argmax`, `gather`, `to_list`, `shape`, `dtype` | Marshalling JSON to and from typed n-dimensional buffers; requires `features = ["tensor"]` |
 | [flagd-Compat](flagd.md) | `fractional`, `sem_ver` | Feature-flag targeting (OpenFeature flagd spec); requires `features = ["flagd"]` |
 
 ## Which operators need which Cargo feature
@@ -33,6 +34,8 @@ This split only affects the **Rust crate**: only the baseline set is built in th
 | `ext-control` | `exists`, `??`, `switch`/`match`, `type` |
 | `error-handling` | `try`, `throw` |
 | `datetime` | `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`, `now` |
+| `tensor` | `tensor`, `zeros`, `full`, `scatter`, `rle_expand`, `one_hot`, `stack`, `concat`, `unstack`, `reshape`, `transpose`, `pad`, `crop`, `cast`, `normalize`, `argmax`, `gather`, `to_list`, `shape`, `dtype` |
+| `tensor-half` | (no new operators — lets the element-wise ones handle `f16` / `bf16`) |
 | `flagd` | `fractional`, `sem_ver` |
 
 The table above is maintained by hand; the machine-readable source of

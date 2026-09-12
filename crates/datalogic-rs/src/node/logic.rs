@@ -299,6 +299,20 @@ fn opcode_is_static(opcode: &OpCode, args: &[CompiledNode]) -> bool {
         #[cfg(feature = "datetime")]
         Now => false,
 
+        // Tensor: pure functions of their arguments, and folded they
+        // would be correct — but folding `zeros([128,128], "f32")` bakes
+        // a 64 KB literal into the `Logic` (and into its `PreLit`), and
+        // folded work is never charged, so a budgeted operation count
+        // would depend on which subtrees the optimizer happened to
+        // recognise. Both reasons argue for evaluating them at runtime.
+        // Revisit with a size cap if a workload shows repeated constant
+        // tensors.
+        #[cfg(feature = "tensor")]
+        TensorMake | TensorZeros | TensorFull | TensorScatter | TensorRleExpand | TensorOneHot
+        | TensorStack | TensorConcat | TensorUnstack | TensorReshape | TensorTranspose
+        | TensorPad | TensorCrop | TensorCast | TensorNormalize | TensorArgmax | TensorGather
+        | TensorToList | TensorShape | TensorDtype => false,
+
         // Context-dependent in implicit form: when the bucketing
         // expression is omitted, `fractional` reads `$flagd.flagKey` and
         // `targetingKey` from the root data, so it cannot be folded even

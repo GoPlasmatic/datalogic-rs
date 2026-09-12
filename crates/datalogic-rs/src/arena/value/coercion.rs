@@ -106,5 +106,11 @@ pub(crate) fn coerce_to_number(v: &DataValue<'_>) -> Option<f64> {
         DataValue::Object(_) => None,
         #[cfg(feature = "datetime")]
         DataValue::DateTime(_) | DataValue::Duration(_) => None,
+        // No coercion. A 1-element tensor could arguably yield its scalar
+        // (as a 1-element array does), but that would make arithmetic on
+        // tensors silently shape-dependent; `to_list` is the explicit way
+        // out.
+        #[cfg(feature = "tensor")]
+        DataValue::Tensor(_) => None,
     }
 }

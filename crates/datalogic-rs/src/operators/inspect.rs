@@ -85,6 +85,8 @@ pub(crate) fn evaluate_type<'a>(
         DataValue::DateTime(_) => "datetime",
         #[cfg(feature = "datetime")]
         DataValue::Duration(_) => "duration",
+        #[cfg(feature = "tensor")]
+        DataValue::Tensor(_) => "tensor",
     };
     Ok(crate::arena::singletons::singleton_type_name(type_str))
 }

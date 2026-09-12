@@ -117,6 +117,24 @@ fn loose_equals_core(left: &DataValue<'_>, right: &DataValue<'_>) -> LooseEquals
             }
         }
 
+        // Tensor-tensor is datavalue's structural `PartialEq`: dtype,
+        // shape, and payload bytes. Two tensors that differ are genuinely
+        // `NotEqual` rather than `Incompatible` — unlike arrays, there is
+        // no coercion left to try.
+        #[cfg(feature = "tensor")]
+        (DataValue::Tensor(a), DataValue::Tensor(b)) => {
+            if a == b {
+                Equal
+            } else {
+                NotEqual
+            }
+        }
+        // A tensor against anything else is incompatible, the same answer
+        // an object gets, so it follows the `loose_equality_errors` config
+        // rather than silently reporting `false`.
+        #[cfg(feature = "tensor")]
+        (DataValue::Tensor(_), _) | (_, DataValue::Tensor(_)) => Incompatible,
+
         _ => NotEqual,
     }
 }

@@ -40,6 +40,8 @@ static SINGLETON_TYPE_OBJECT: DataValue<'static> = DataValue::String("object");
 static SINGLETON_TYPE_DATETIME: DataValue<'static> = DataValue::String("datetime");
 #[cfg(all(feature = "ext-control", feature = "datetime"))]
 static SINGLETON_TYPE_DURATION: DataValue<'static> = DataValue::String("duration");
+#[cfg(all(feature = "ext-control", feature = "tensor"))]
+static SINGLETON_TYPE_TENSOR: DataValue<'static> = DataValue::String("tensor");
 
 /// Borrow the static `Null` singleton at any caller lifetime.
 #[inline]
@@ -128,6 +130,8 @@ pub(crate) fn singleton_type_name<'a>(name: &'static str) -> &'a DataValue<'a> {
         "datetime" => &SINGLETON_TYPE_DATETIME,
         #[cfg(feature = "datetime")]
         "duration" => &SINGLETON_TYPE_DURATION,
+        #[cfg(feature = "tensor")]
+        "tensor" => &SINGLETON_TYPE_TENSOR,
         // Unknown name: fall through to a Null singleton. Should be
         // unreachable — `type_op.rs` only ever passes names from the fixed
         // set above — but we want a safe fallback rather than a panic on

@@ -2,14 +2,16 @@
 name = "datalogic-rs"
 version = "5.4.0"
 edition.workspace = true
-# Floor matches edition 2024 (stable in 1.85). Bump deliberately when a
-# newer language feature is actually needed; downstream pinning depends on
-# this staying conservative. Requires `datavalue-rs >= 0.2.3`: 0.2.0 and
-# earlier used let-chains (would push this floor to 1.88), and 0.2.2 and
-# earlier printed whole floats outside i64's exact range through a
-# saturating cast — `float_to_str`'s fast path mirrors the fixed Display
-# and would break byte-parity against them.
-rust-version = "1.85"
+# Floor is inherited, not chosen: `datavalue-rs` 0.3 declares
+# `rust-version = "1.98"`, and it is a non-optional dependency, so every
+# build of this crate needs 1.98 whether or not `tensor` is on. The
+# previous 1.85 floor tracked edition 2024 and the crate's own language
+# use, which is still 1.85 — nothing here needs 1.98 directly. Requires
+# `datavalue-rs >= 0.3`: 0.2.2 and earlier printed whole floats outside
+# i64's exact range through a saturating cast (`float_to_str`'s fast path
+# mirrors the fixed Display and would break byte-parity against them), and
+# the `Tensor` variant the `tensor` feature matches on arrived in 0.3.
+rust-version = "1.98"
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
@@ -89,6 +91,23 @@ flagd = ["dep:semver"]
 # implemented on this platform"); on WASI chrono uses the OS clock and
 # this feature is unnecessary.
 wasm-clock = ["chrono?/wasmbind"]
+# `tensor` adds datavalue's `Tensor` variant (an opaque dtype + shape +
+# row-major byte buffer) to the value enum and a marshalling-only operator
+# family over it: constructors (`tensor`, `zeros`, `full`, `scatter`,
+# `rle_expand`, `one_hot`), shape moves (`stack`, `concat`, `unstack`,
+# `reshape`, `transpose`, `pad`, `crop`, `gather`), and readers (`cast`,
+# `normalize`, `argmax`, `to_list`, `shape`, `dtype`). No new dependency.
+# The family is deliberately arithmetic-free: it marshals JSON into a
+# model's inputs and its outputs back into JSON, and nothing more.
+#
+# A tensor crosses the JSON boundary as datavalue's tagged
+# `{"tensor": {"dtype": .., "shape": [..], "data": "<base64>"}}` form, so
+# the text-returning bindings carry it with no FFI change.
+tensor = ["datavalue/tensor"]
+# `tensor-half` lifts the `f16` / `bf16` restriction on the element-wise
+# operators (the byte-moving ones already work on every dtype, since they
+# never interpret an element). Pulls in `half` through datavalue.
+tensor-half = ["tensor", "datavalue/tensor-half"]
 
 [dependencies]
 # Floors below are the **minimum** versions we actually compile against.
@@ -103,7 +122,7 @@ chrono = { version = "0.4.45", default-features = false, features = ["std", "clo
 # `format_date` / `parse_date`. 0.10.x tracks chrono 0.4.x. Rides the
 # `datetime` feature (see the feature comment above).
 chrono-tz = { version = "0.10", default-features = false, features = ["std"], optional = true }
-datavalue = { version = "0.2.3", package = "datavalue-rs", features = ["serde"] }
+datavalue = { version = "0.3", package = "datavalue-rs", features = ["serde"] }
 bumpalo = { version = "3.20", features = ["collections"] }
 # Number -> string rendering on the `cat` / string-coercion hot path
 # (`arena::value::strings`). Both render digits without the `core::fmt`

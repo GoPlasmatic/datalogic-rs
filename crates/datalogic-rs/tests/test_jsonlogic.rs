@@ -140,6 +140,26 @@ const GATED_OPERATORS: &[(&str, bool)] = &[
     ("split", cfg!(feature = "ext-string")),
     ("fractional", cfg!(feature = "flagd")),
     ("sem_ver", cfg!(feature = "flagd")),
+    ("tensor", cfg!(feature = "tensor")),
+    ("zeros", cfg!(feature = "tensor")),
+    ("full", cfg!(feature = "tensor")),
+    ("scatter", cfg!(feature = "tensor")),
+    ("rle_expand", cfg!(feature = "tensor")),
+    ("one_hot", cfg!(feature = "tensor")),
+    ("stack", cfg!(feature = "tensor")),
+    ("concat", cfg!(feature = "tensor")),
+    ("unstack", cfg!(feature = "tensor")),
+    ("reshape", cfg!(feature = "tensor")),
+    ("transpose", cfg!(feature = "tensor")),
+    ("pad", cfg!(feature = "tensor")),
+    ("crop", cfg!(feature = "tensor")),
+    ("cast", cfg!(feature = "tensor")),
+    ("normalize", cfg!(feature = "tensor")),
+    ("argmax", cfg!(feature = "tensor")),
+    ("gather", cfg!(feature = "tensor")),
+    ("to_list", cfg!(feature = "tensor")),
+    ("shape", cfg!(feature = "tensor")),
+    ("dtype", cfg!(feature = "tensor")),
 ];
 
 /// Whether this build has the named cargo feature. Backs a case's optional
@@ -157,6 +177,8 @@ fn feature_enabled(name: &str) -> bool {
         "ext-string" => cfg!(feature = "ext-string"),
         "flagd" => cfg!(feature = "flagd"),
         "templating" => cfg!(feature = "templating"),
+        "tensor" => cfg!(feature = "tensor"),
+        "tensor-half" => cfg!(feature = "tensor-half"),
         other => panic!("unknown feature {other:?} in a case's `requires` list"),
     }
 }

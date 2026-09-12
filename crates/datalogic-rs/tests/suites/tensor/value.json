@@ -1,0 +1,368 @@
+[
+  "# how a tensor behaves as a value",
+  {
+    "description": "type reports \"tensor\"",
+    "rule": {
+      "type": [
+        {
+          "tensor": [
+            [
+              1,
+              2
+            ],
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": "tensor"
+  },
+  {
+    "description": "a non-empty tensor is truthy",
+    "rule": {
+      "!!": [
+        {
+          "tensor": [
+            [
+              1,
+              2
+            ],
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": true
+  },
+  {
+    "description": "a zero-size tensor is falsy, like an empty array",
+    "rule": {
+      "!!": [
+        {
+          "zeros": [
+            [
+              0
+            ],
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": false
+  },
+  {
+    "description": "a 0-d tensor holds one element, so it is truthy",
+    "rule": {
+      "!!": [
+        {
+          "zeros": [
+            [],
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": true
+  },
+  {
+    "description": "equality is structural",
+    "rule": {
+      "==": [
+        {
+          "tensor": [
+            [
+              1,
+              2
+            ],
+            "u8"
+          ]
+        },
+        {
+          "tensor": [
+            [
+              1,
+              2
+            ],
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": true
+  },
+  {
+    "description": "different payloads are unequal",
+    "rule": {
+      "==": [
+        {
+          "tensor": [
+            [
+              1,
+              2
+            ],
+            "u8"
+          ]
+        },
+        {
+          "tensor": [
+            [
+              1,
+              3
+            ],
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": false
+  },
+  {
+    "description": "different dtypes are unequal",
+    "rule": {
+      "==": [
+        {
+          "tensor": [
+            [
+              1
+            ],
+            "u8"
+          ]
+        },
+        {
+          "tensor": [
+            [
+              1
+            ],
+            "i32"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": false
+  },
+  {
+    "description": "different shapes are unequal",
+    "rule": {
+      "==": [
+        {
+          "tensor": [
+            [
+              [
+                1,
+                2
+              ]
+            ],
+            "u8"
+          ]
+        },
+        {
+          "tensor": [
+            [
+              1,
+              2
+            ],
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": false
+  },
+  {
+    "description": "!= is the negation",
+    "rule": {
+      "!=": [
+        {
+          "tensor": [
+            [
+              1
+            ],
+            "u8"
+          ]
+        },
+        {
+          "tensor": [
+            [
+              2
+            ],
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": true
+  },
+  "# a tensor passes through the collection vocabulary untouched",
+  {
+    "description": "through map",
+    "rule": {
+      "map": [
+        [
+          1,
+          2
+        ],
+        {
+          "dtype": [
+            {
+              "tensor": [
+                [
+                  1
+                ],
+                "u8"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      "u8",
+      "u8"
+    ]
+  },
+  {
+    "description": "inside a plain array literal",
+    "rule": {
+      "map": [
+        [
+          {
+            "tensor": [
+              [
+                1,
+                2
+              ],
+              "u8"
+            ]
+          }
+        ],
+        {
+          "to_list": [
+            {
+              "val": []
+            }
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        1,
+        2
+      ]
+    ]
+  },
+  {
+    "description": "through an object field in templating mode",
+    "rule": {
+      "out": {
+        "tensor": [
+          [
+            1,
+            2
+          ],
+          "u8"
+        ]
+      }
+    },
+    "data": null,
+    "result": {
+      "out": {
+        "tensor": {
+          "dtype": "u8",
+          "shape": [
+            2
+          ],
+          "data": "AQI="
+        }
+      }
+    },
+    "templating": true
+  },
+  {
+    "description": "nested two deep in templating mode",
+    "rule": {
+      "a": {
+        "b": {
+          "tensor": [
+            [
+              1
+            ],
+            "u8"
+          ]
+        }
+      }
+    },
+    "data": null,
+    "result": {
+      "a": {
+        "b": {
+          "tensor": {
+            "dtype": "u8",
+            "shape": [
+              1
+            ],
+            "data": "AQ=="
+          }
+        }
+      }
+    },
+    "templating": true
+  },
+  "# sorting",
+  {
+    "description": "two tensors order by dtype, then shape, then payload",
+    "rule": {
+      "map": [
+        {
+          "sort": [
+            [
+              {
+                "tensor": [
+                  [
+                    2
+                  ],
+                  "u8"
+                ]
+              },
+              {
+                "tensor": [
+                  [
+                    1
+                  ],
+                  "u8"
+                ]
+              }
+            ]
+          ]
+        },
+        {
+          "to_list": [
+            {
+              "val": []
+            }
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        1
+      ],
+      [
+        2
+      ]
+    ]
+  }
+]

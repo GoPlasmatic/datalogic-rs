@@ -145,6 +145,30 @@ const CORPUS: CorpusRule[] = [
   // flagd
   { name: 'fractional', rule: { fractional: [{ var: 'key' }, ['red', 50], ['blue', 50]] } },
   { name: 'sem_ver', rule: { sem_ver: [{ var: 'ver' }, '>=', '1.0.0'] } },
+  // ---- tensor: one rule per operator, so the corpus keeps covering
+  // every builtin the engine reports.
+  { name: 'tensor', rule: { tensor: [[1, 2], 'u8'] } },
+  { name: 'tensor wire form', rule: { tensor: { dtype: 'u8', shape: [2], data: 'AQI=' } } },
+  { name: 'zeros', rule: { zeros: [[2, 2], 'i32'] } },
+  { name: 'full', rule: { full: [[2], 'f32', 1.5] } },
+  { name: 'scatter', rule: { scatter: [[[0, 1]], [2, 2], 'u8'] } },
+  { name: 'rle_expand', rule: { rle_expand: [[0, 2, 1, 2], [2, 2], 'u8'] } },
+  { name: 'one_hot', rule: { one_hot: [[0, 2], 3, 'u8'] } },
+  { name: 'stack', rule: { stack: [[{ tensor: [[1, 2], 'u8'] }, { tensor: [[3, 4], 'u8'] }], 0] } },
+  { name: 'concat', rule: { concat: [[{ tensor: [[1], 'u8'] }, { tensor: [[2], 'u8'] }], 0] } },
+  { name: 'unstack', rule: { unstack: [{ tensor: [[[1, 2], [3, 4]], 'u8'] }, 0] } },
+  { name: 'reshape', rule: { reshape: [{ tensor: [[1, 2, 3, 4], 'u8'] }, [2, 2]] } },
+  { name: 'transpose', rule: { transpose: [{ tensor: [[[1, 2], [3, 4]], 'u8'] }] } },
+  { name: 'transpose with perm', rule: { transpose: [{ tensor: [[[1, 2], [3, 4]], 'u8'] }, [1, 0]] } },
+  { name: 'pad', rule: { pad: [{ tensor: [[1, 2], 'u8'] }, [1], [1], 9] } },
+  { name: 'crop', rule: { crop: [{ tensor: [[1, 2, 3, 4], 'u8'] }, [1], [2]] } },
+  { name: 'cast', rule: { cast: [{ tensor: [[1.7], 'f64'] }, 'u8'] } },
+  { name: 'normalize', rule: { normalize: [{ tensor: [[0, 255], 'u8'] }, 127.5, 0.5] } },
+  { name: 'argmax', rule: { argmax: [{ tensor: [[1, 9, 3], 'f32'] }, 0] } },
+  { name: 'gather', rule: { gather: [{ tensor: [[10, 20, 30], 'u8'] }, [2, 0]] } },
+  { name: 'to_list', rule: { to_list: [{ tensor: [[[1, 2], [3, 4]], 'i32'] }] } },
+  { name: 'shape', rule: { shape: [{ tensor: [[1, 2, 3], 'u8'] }] } },
+  { name: 'dtype', rule: { dtype: [{ tensor: [[1], 'f32'] }] } },
   // templating structures
   {
     name: 'template object with nested structures',

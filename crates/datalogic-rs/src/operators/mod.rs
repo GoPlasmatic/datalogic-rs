@@ -78,3 +78,5 @@ pub(crate) mod flagd;
 pub(crate) mod inspect;
 #[cfg(feature = "ext-object")]
 pub(crate) mod object;
+#[cfg(feature = "tensor")]
+pub(crate) mod tensor;

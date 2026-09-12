@@ -25,7 +25,8 @@ export type OperatorCategory =
   | 'validation'
   | 'error'
   | 'utility'
-  | 'flagd';
+  | 'flagd'
+  | 'tensor';
 
 // ============================================================================
 // Arity Types

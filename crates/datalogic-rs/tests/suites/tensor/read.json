@@ -1,0 +1,409 @@
+[
+  "# cast \u2014 the one cross-dtype conversion",
+  {
+    "description": "narrowing saturates rather than wrapping",
+    "rule": {
+      "to_list": [
+        {
+          "cast": [
+            {
+              "tensor": [
+                [
+                  1.7,
+                  300,
+                  -5
+                ],
+                "f64"
+              ]
+            },
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      1,
+      255,
+      0
+    ]
+  },
+  {
+    "description": "widening is exact",
+    "rule": {
+      "to_list": [
+        {
+          "cast": [
+            {
+              "tensor": [
+                [
+                  1,
+                  2
+                ],
+                "u8"
+              ]
+            },
+            "f32"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      1,
+      2
+    ]
+  },
+  {
+    "description": "casting to the dtype it already has is a no-op",
+    "rule": {
+      "dtype": [
+        {
+          "cast": [
+            {
+              "tensor": [
+                [
+                  1
+                ],
+                "u8"
+              ]
+            },
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": "u8"
+  },
+  {
+    "description": "a float truncates toward zero",
+    "rule": {
+      "to_list": [
+        {
+          "cast": [
+            {
+              "tensor": [
+                [
+                  2.9
+                ],
+                "f32"
+              ]
+            },
+            "i32"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      2
+    ]
+  },
+  "# normalize \u2014 always to f32",
+  {
+    "description": "(x - mean) * scale",
+    "rule": {
+      "to_list": [
+        {
+          "normalize": [
+            {
+              "tensor": [
+                [
+                  0,
+                  255
+                ],
+                "u8"
+              ]
+            },
+            127.5,
+            0.5
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      -63.75,
+      63.75
+    ]
+  },
+  {
+    "description": "scale defaults to 1",
+    "rule": {
+      "to_list": [
+        {
+          "normalize": [
+            {
+              "tensor": [
+                [
+                  10
+                ],
+                "u8"
+              ]
+            },
+            4
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      6
+    ]
+  },
+  {
+    "description": "the output dtype is always f32",
+    "rule": {
+      "dtype": [
+        {
+          "normalize": [
+            {
+              "tensor": [
+                [
+                  1
+                ],
+                "i32"
+              ]
+            },
+            0
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": "f32"
+  },
+  "# argmax \u2014 returns plain JSON",
+  {
+    "description": "argmax of a 1-d tensor is a bare number",
+    "rule": {
+      "argmax": [
+        {
+          "tensor": [
+            [
+              1,
+              9,
+              3
+            ],
+            "f32"
+          ]
+        },
+        0
+      ]
+    },
+    "data": null,
+    "result": 1
+  },
+  {
+    "description": "argmax along axis 1",
+    "rule": {
+      "argmax": [
+        {
+          "tensor": [
+            [
+              [
+                1,
+                9
+              ],
+              [
+                7,
+                3
+              ]
+            ],
+            "f32"
+          ]
+        },
+        1
+      ]
+    },
+    "data": null,
+    "result": [
+      1,
+      0
+    ]
+  },
+  {
+    "description": "argmax along axis 0",
+    "rule": {
+      "argmax": [
+        {
+          "tensor": [
+            [
+              [
+                1,
+                9
+              ],
+              [
+                7,
+                3
+              ]
+            ],
+            "f32"
+          ]
+        },
+        0
+      ]
+    },
+    "data": null,
+    "result": [
+      1,
+      0
+    ]
+  },
+  {
+    "description": "ties go to the first occurrence",
+    "rule": {
+      "argmax": [
+        {
+          "tensor": [
+            [
+              5,
+              5,
+              5
+            ],
+            "u8"
+          ]
+        },
+        0
+      ]
+    },
+    "data": null,
+    "result": 0
+  },
+  "# to_list, shape, dtype",
+  {
+    "description": "to_list expands into nested arrays",
+    "rule": {
+      "to_list": [
+        {
+          "tensor": [
+            [
+              [
+                1,
+                2
+              ],
+              [
+                3,
+                4
+              ]
+            ],
+            "i32"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        1,
+        2
+      ],
+      [
+        3,
+        4
+      ]
+    ]
+  },
+  {
+    "description": "to_list of a 0-d tensor is a scalar",
+    "rule": {
+      "to_list": [
+        {
+          "tensor": [
+            5,
+            "i32"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": 5
+  },
+  {
+    "description": "shape reports the dimensions",
+    "rule": {
+      "shape": [
+        {
+          "tensor": [
+            [
+              [
+                1,
+                2,
+                3
+              ]
+            ],
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      1,
+      3
+    ]
+  },
+  {
+    "description": "shape of a 0-d tensor is empty",
+    "rule": {
+      "shape": [
+        {
+          "tensor": [
+            1,
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": []
+  },
+  {
+    "description": "dtype reports the wire name",
+    "rule": {
+      "dtype": [
+        {
+          "zeros": [
+            [
+              1
+            ],
+            "bf16"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": "bf16"
+  },
+  {
+    "description": "dtype feeds straight back into zeros",
+    "rule": {
+      "shape": [
+        {
+          "zeros": [
+            [
+              2
+            ],
+            {
+              "dtype": [
+                {
+                  "tensor": [
+                    [
+                      1
+                    ],
+                    "f64"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      2
+    ]
+  }
+]

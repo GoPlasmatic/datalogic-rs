@@ -115,6 +115,8 @@ fn arena_type_name(v: &DataValue<'_>) -> &'static str {
         DataValue::DateTime(_) => "datetime",
         #[cfg(feature = "datetime")]
         DataValue::Duration(_) => "duration",
+        #[cfg(feature = "tensor")]
+        DataValue::Tensor(_) => "tensor",
     }
 }
 
@@ -133,6 +135,8 @@ fn value_type_name(v: &OwnedDataValue) -> &'static str {
         OwnedDataValue::DateTime(_) => "datetime",
         #[cfg(feature = "datetime")]
         OwnedDataValue::Duration(_) => "duration",
+        #[cfg(feature = "tensor")]
+        OwnedDataValue::Tensor(_) => "tensor",
     }
 }
 

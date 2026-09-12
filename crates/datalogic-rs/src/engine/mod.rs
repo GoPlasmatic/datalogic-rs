@@ -249,6 +249,11 @@ fn borrow_to_arena<'a>(
         OwnedDataValue::DateTime(d) => DataValue::DateTime(*d),
         #[cfg(feature = "datetime")]
         OwnedDataValue::Duration(d) => DataValue::Duration(*d),
+        // `to_arena` copies the shape and the payload into the arena, so
+        // the result does not borrow the `Arc`. One bump for the 40-byte
+        // header on top, which is what `DataValue::Tensor` points at.
+        #[cfg(feature = "tensor")]
+        OwnedDataValue::Tensor(t) => DataValue::tensor_in(t.to_arena(arena), arena),
     }
 }
 

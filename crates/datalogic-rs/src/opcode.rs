@@ -36,6 +36,10 @@
 //! - **ext-control**: `exists`, `??`, `switch`/`match`, `type`
 //! - **error-handling**: `try`, `throw`
 //! - **ext-math**: `abs`, `ceil`, `floor`
+//! - **tensor**: `tensor`, `zeros`, `full`, `scatter`, `rle_expand`,
+//!   `one_hot`, `stack`, `concat`, `unstack`, `reshape`, `transpose`,
+//!   `pad`, `crop`, `cast`, `normalize`, `argmax`, `gather`, `to_list`,
+//!   `shape`, `dtype`
 //! - **flagd** ([spec](https://flagd.dev/reference/custom-operations/)):
 //!   `fractional` (murmurhash3 percentage bucketing), `sem_ver`
 //!   (semantic-version comparison with flagd-spec normalizations)
@@ -183,6 +187,51 @@ pub(crate) enum OpCode {
     Fractional = 60,
     #[cfg(feature = "flagd")]
     SemVer = 61,
+
+    // === tensor ===
+    // Variant names carry a `Tensor` prefix so they never collide with an
+    // existing opcode (`Concat` is already `cat`, `Type` is already
+    // `type`); the wire names below are the bare ones.
+    #[cfg(feature = "tensor")]
+    TensorMake = 67,
+    #[cfg(feature = "tensor")]
+    TensorZeros = 68,
+    #[cfg(feature = "tensor")]
+    TensorFull = 69,
+    #[cfg(feature = "tensor")]
+    TensorScatter = 70,
+    #[cfg(feature = "tensor")]
+    TensorRleExpand = 71,
+    #[cfg(feature = "tensor")]
+    TensorOneHot = 72,
+    #[cfg(feature = "tensor")]
+    TensorStack = 73,
+    #[cfg(feature = "tensor")]
+    TensorConcat = 74,
+    #[cfg(feature = "tensor")]
+    TensorUnstack = 75,
+    #[cfg(feature = "tensor")]
+    TensorReshape = 76,
+    #[cfg(feature = "tensor")]
+    TensorTranspose = 77,
+    #[cfg(feature = "tensor")]
+    TensorPad = 78,
+    #[cfg(feature = "tensor")]
+    TensorCrop = 79,
+    #[cfg(feature = "tensor")]
+    TensorCast = 80,
+    #[cfg(feature = "tensor")]
+    TensorNormalize = 81,
+    #[cfg(feature = "tensor")]
+    TensorArgmax = 82,
+    #[cfg(feature = "tensor")]
+    TensorGather = 83,
+    #[cfg(feature = "tensor")]
+    TensorToList = 84,
+    #[cfg(feature = "tensor")]
+    TensorShape = 85,
+    #[cfg(feature = "tensor")]
+    TensorDtype = 86,
 }
 
 /// Single source of truth for `(operator string, OpCode)` mappings.
@@ -307,6 +356,47 @@ const OPCODE_NAMES: &[(&str, OpCode)] = &[
     ("ceil", OpCode::Ceil),
     #[cfg(feature = "ext-math")]
     ("floor", OpCode::Floor),
+    // tensor
+    #[cfg(feature = "tensor")]
+    ("tensor", OpCode::TensorMake),
+    #[cfg(feature = "tensor")]
+    ("zeros", OpCode::TensorZeros),
+    #[cfg(feature = "tensor")]
+    ("full", OpCode::TensorFull),
+    #[cfg(feature = "tensor")]
+    ("scatter", OpCode::TensorScatter),
+    #[cfg(feature = "tensor")]
+    ("rle_expand", OpCode::TensorRleExpand),
+    #[cfg(feature = "tensor")]
+    ("one_hot", OpCode::TensorOneHot),
+    #[cfg(feature = "tensor")]
+    ("stack", OpCode::TensorStack),
+    #[cfg(feature = "tensor")]
+    ("concat", OpCode::TensorConcat),
+    #[cfg(feature = "tensor")]
+    ("unstack", OpCode::TensorUnstack),
+    #[cfg(feature = "tensor")]
+    ("reshape", OpCode::TensorReshape),
+    #[cfg(feature = "tensor")]
+    ("transpose", OpCode::TensorTranspose),
+    #[cfg(feature = "tensor")]
+    ("pad", OpCode::TensorPad),
+    #[cfg(feature = "tensor")]
+    ("crop", OpCode::TensorCrop),
+    #[cfg(feature = "tensor")]
+    ("cast", OpCode::TensorCast),
+    #[cfg(feature = "tensor")]
+    ("normalize", OpCode::TensorNormalize),
+    #[cfg(feature = "tensor")]
+    ("argmax", OpCode::TensorArgmax),
+    #[cfg(feature = "tensor")]
+    ("gather", OpCode::TensorGather),
+    #[cfg(feature = "tensor")]
+    ("to_list", OpCode::TensorToList),
+    #[cfg(feature = "tensor")]
+    ("shape", OpCode::TensorShape),
+    #[cfg(feature = "tensor")]
+    ("dtype", OpCode::TensorDtype),
     // flagd
     #[cfg(feature = "flagd")]
     ("fractional", OpCode::Fractional),
@@ -457,6 +547,47 @@ impl OpCode {
             OpCode::Ceil => "ceil",
             #[cfg(feature = "ext-math")]
             OpCode::Floor => "floor",
+            // tensor
+            #[cfg(feature = "tensor")]
+            OpCode::TensorMake => "tensor",
+            #[cfg(feature = "tensor")]
+            OpCode::TensorZeros => "zeros",
+            #[cfg(feature = "tensor")]
+            OpCode::TensorFull => "full",
+            #[cfg(feature = "tensor")]
+            OpCode::TensorScatter => "scatter",
+            #[cfg(feature = "tensor")]
+            OpCode::TensorRleExpand => "rle_expand",
+            #[cfg(feature = "tensor")]
+            OpCode::TensorOneHot => "one_hot",
+            #[cfg(feature = "tensor")]
+            OpCode::TensorStack => "stack",
+            #[cfg(feature = "tensor")]
+            OpCode::TensorConcat => "concat",
+            #[cfg(feature = "tensor")]
+            OpCode::TensorUnstack => "unstack",
+            #[cfg(feature = "tensor")]
+            OpCode::TensorReshape => "reshape",
+            #[cfg(feature = "tensor")]
+            OpCode::TensorTranspose => "transpose",
+            #[cfg(feature = "tensor")]
+            OpCode::TensorPad => "pad",
+            #[cfg(feature = "tensor")]
+            OpCode::TensorCrop => "crop",
+            #[cfg(feature = "tensor")]
+            OpCode::TensorCast => "cast",
+            #[cfg(feature = "tensor")]
+            OpCode::TensorNormalize => "normalize",
+            #[cfg(feature = "tensor")]
+            OpCode::TensorArgmax => "argmax",
+            #[cfg(feature = "tensor")]
+            OpCode::TensorGather => "gather",
+            #[cfg(feature = "tensor")]
+            OpCode::TensorToList => "to_list",
+            #[cfg(feature = "tensor")]
+            OpCode::TensorShape => "shape",
+            #[cfg(feature = "tensor")]
+            OpCode::TensorDtype => "dtype",
             // flagd
             #[cfg(feature = "flagd")]
             OpCode::Fractional => "fractional",

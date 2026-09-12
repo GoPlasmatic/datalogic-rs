@@ -1,0 +1,723 @@
+[
+  "# tensor \u2014 the constructor and the sentinel",
+  {
+    "description": "nested arrays with a declared dtype",
+    "rule": {
+      "tensor": [
+        [
+          [
+            1,
+            2
+          ],
+          [
+            3,
+            4
+          ]
+        ],
+        "f32"
+      ]
+    },
+    "data": null,
+    "result": {
+      "tensor": {
+        "dtype": "f32",
+        "shape": [
+          2,
+          2
+        ],
+        "data": "AACAPwAAAEAAAEBAAACAQA=="
+      }
+    }
+  },
+  {
+    "description": "a bare scalar makes a 0-d tensor",
+    "rule": {
+      "tensor": [
+        7,
+        "i32"
+      ]
+    },
+    "data": null,
+    "result": {
+      "tensor": {
+        "dtype": "i32",
+        "shape": [],
+        "data": "BwAAAA=="
+      }
+    }
+  },
+  {
+    "description": "a flat list makes a 1-d tensor",
+    "rule": {
+      "tensor": [
+        [
+          1,
+          2,
+          3
+        ],
+        "u8"
+      ]
+    },
+    "data": null,
+    "result": {
+      "tensor": {
+        "dtype": "u8",
+        "shape": [
+          3
+        ],
+        "data": "AQID"
+      }
+    }
+  },
+  {
+    "description": "an empty list is a zero-size tensor",
+    "rule": {
+      "tensor": [
+        [],
+        "u8"
+      ]
+    },
+    "data": null,
+    "result": {
+      "tensor": {
+        "dtype": "u8",
+        "shape": [
+          0
+        ],
+        "data": ""
+      }
+    }
+  },
+  {
+    "description": "a tensor passes through untouched",
+    "rule": {
+      "tensor": [
+        {
+          "tensor": [
+            [
+              1,
+              2
+            ],
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": {
+      "tensor": {
+        "dtype": "u8",
+        "shape": [
+          2
+        ],
+        "data": "AQI="
+      }
+    }
+  },
+  {
+    "description": "the emitted wire form evaluates back to the same tensor",
+    "rule": {
+      "tensor": {
+        "dtype": "u8",
+        "shape": [
+          2
+        ],
+        "data": "AQI="
+      }
+    },
+    "data": null,
+    "result": {
+      "tensor": {
+        "dtype": "u8",
+        "shape": [
+          2
+        ],
+        "data": "AQI="
+      }
+    }
+  },
+  {
+    "description": "the wire form is also readable out of the data",
+    "rule": {
+      "tensor": [
+        {
+          "val": "t"
+        }
+      ]
+    },
+    "data": {
+      "t": {
+        "tensor": {
+          "dtype": "u8",
+          "shape": [
+            2
+          ],
+          "data": "AQI="
+        }
+      }
+    },
+    "result": {
+      "tensor": {
+        "dtype": "u8",
+        "shape": [
+          2
+        ],
+        "data": "AQI="
+      }
+    }
+  },
+  {
+    "description": "booleans round-trip",
+    "rule": {
+      "tensor": [
+        [
+          true,
+          false,
+          true
+        ],
+        "bool"
+      ]
+    },
+    "data": null,
+    "result": {
+      "tensor": {
+        "dtype": "bool",
+        "shape": [
+          3
+        ],
+        "data": "AQAB"
+      }
+    }
+  },
+  {
+    "description": "nested arrays without a dtype",
+    "rule": {
+      "tensor": [
+        [
+          [
+            1,
+            2
+          ]
+        ]
+      ]
+    },
+    "data": null,
+    "error": {
+      "type": "tensor: nested-array input needs a dtype, e.g. {\"tensor\": [[[1,2]], \"f32\"]}"
+    }
+  },
+  {
+    "description": "too many arguments",
+    "rule": {
+      "tensor": [
+        [
+          1
+        ],
+        "u8",
+        "extra"
+      ]
+    },
+    "data": null,
+    "error": {
+      "type": "too many arguments"
+    }
+  },
+  "# zeros",
+  {
+    "description": "zeros fills a shape",
+    "rule": {
+      "to_list": [
+        {
+          "zeros": [
+            [
+              2,
+              3
+            ],
+            "i32"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ]
+    ]
+  },
+  {
+    "description": "zeros of a zero-length axis is empty",
+    "rule": {
+      "shape": [
+        {
+          "zeros": [
+            [
+              0,
+              4
+            ],
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      0,
+      4
+    ]
+  },
+  {
+    "description": "zeros needs no element support, so f16 works without tensor-half",
+    "rule": {
+      "dtype": [
+        {
+          "zeros": [
+            [
+              2
+            ],
+            "f16"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": "f16"
+  },
+  {
+    "description": "zeros rejects an unknown dtype spelling as a non-string",
+    "rule": {
+      "zeros": [
+        [
+          2
+        ],
+        32
+      ]
+    },
+    "data": null,
+    "error": {
+      "type": "dtype must be a string"
+    }
+  },
+  "# full",
+  {
+    "description": "full fills every element",
+    "rule": {
+      "to_list": [
+        {
+          "full": [
+            [
+              2,
+              2
+            ],
+            "i32",
+            7
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        7,
+        7
+      ],
+      [
+        7,
+        7
+      ]
+    ]
+  },
+  {
+    "description": "full with a float dtype",
+    "rule": {
+      "to_list": [
+        {
+          "full": [
+            [
+              2
+            ],
+            "f64",
+            1.5
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      1.5,
+      1.5
+    ]
+  },
+  "# scatter",
+  {
+    "description": "scatter writes 1 at each point by default",
+    "rule": {
+      "to_list": [
+        {
+          "scatter": [
+            [
+              [
+                0,
+                1
+              ],
+              [
+                1,
+                0
+              ]
+            ],
+            [
+              2,
+              2
+            ],
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        0
+      ]
+    ]
+  },
+  {
+    "description": "a trailing entry is the value written",
+    "rule": {
+      "to_list": [
+        {
+          "scatter": [
+            [
+              [
+                0,
+                1,
+                9
+              ]
+            ],
+            [
+              2,
+              2
+            ],
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        0,
+        9
+      ],
+      [
+        0,
+        0
+      ]
+    ]
+  },
+  {
+    "description": "an explicit default value",
+    "rule": {
+      "to_list": [
+        {
+          "scatter": [
+            [
+              [
+                0
+              ]
+            ],
+            [
+              2
+            ],
+            "u8",
+            5
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      5,
+      0
+    ]
+  },
+  {
+    "description": "out-of-range points are dropped",
+    "rule": {
+      "to_list": [
+        {
+          "scatter": [
+            [
+              [
+                9,
+                9
+              ],
+              [
+                0,
+                0
+              ]
+            ],
+            [
+              2,
+              2
+            ],
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        1,
+        0
+      ],
+      [
+        0,
+        0
+      ]
+    ]
+  },
+  {
+    "description": "a negative coordinate is dropped, not wrapped",
+    "rule": {
+      "to_list": [
+        {
+          "scatter": [
+            [
+              [
+                -1,
+                0
+              ]
+            ],
+            [
+              2,
+              2
+            ],
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ]
+    ]
+  },
+  {
+    "description": "a point whose length matches neither rank nor rank+1",
+    "rule": {
+      "scatter": [
+        [
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        [
+          2,
+          2
+        ],
+        "u8"
+      ]
+    },
+    "data": null,
+    "error": {
+      "type": "scatter: point length must match the rank, or rank + 1"
+    }
+  },
+  "# rle_expand",
+  {
+    "description": "runs decode row-major",
+    "rule": {
+      "to_list": [
+        {
+          "rle_expand": [
+            [
+              0,
+              2,
+              1,
+              2
+            ],
+            [
+              2,
+              2
+            ],
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        0,
+        0
+      ],
+      [
+        1,
+        1
+      ]
+    ]
+  },
+  {
+    "description": "an odd run list",
+    "rule": {
+      "rle_expand": [
+        [
+          0,
+          2,
+          1
+        ],
+        [
+          2,
+          2
+        ],
+        "u8"
+      ]
+    },
+    "data": null,
+    "error": {
+      "type": "rle_expand: runs must have an even length"
+    }
+  },
+  {
+    "description": "runs that overshoot the shape",
+    "rule": {
+      "rle_expand": [
+        [
+          1,
+          9
+        ],
+        [
+          2,
+          2
+        ],
+        "u8"
+      ]
+    },
+    "data": null,
+    "error": {
+      "type": "rle_expand: runs decode to more elements than the shape holds"
+    }
+  },
+  {
+    "description": "runs that undershoot the shape",
+    "rule": {
+      "rle_expand": [
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          2
+        ],
+        "u8"
+      ]
+    },
+    "data": null,
+    "error": {
+      "type": "rle_expand: runs decode to fewer elements than the shape holds"
+    }
+  },
+  "# one_hot",
+  {
+    "description": "one_hot builds a [len, depth] matrix",
+    "rule": {
+      "to_list": [
+        {
+          "one_hot": [
+            [
+              0,
+              2
+            ],
+            3,
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        1,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        1
+      ]
+    ]
+  },
+  {
+    "description": "an out-of-range index leaves its row zero",
+    "rule": {
+      "to_list": [
+        {
+          "one_hot": [
+            [
+              9,
+              -1
+            ],
+            2,
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        0
+      ]
+    ]
+  },
+  {
+    "description": "no indices gives a [0, depth] tensor",
+    "rule": {
+      "shape": [
+        {
+          "one_hot": [
+            [],
+            3,
+            "u8"
+          ]
+        }
+      ]
+    },
+    "data": null,
+    "result": [
+      0,
+      3
+    ]
+  }
+]

@@ -24,6 +24,7 @@
     - [DateTime](operators/datetime.md)
     - [Missing Values](operators/missing.md)
     - [Error Handling](operators/error-handling.md)
+    - [Tensor](operators/tensor.md)
     - [flagd-Compat (`fractional`, `sem_ver`)](operators/flagd.md)
 
 # Languages

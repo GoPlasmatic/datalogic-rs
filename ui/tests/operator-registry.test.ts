@@ -14,8 +14,8 @@ const KNOWN_ALIASES: Record<string, string> = {
 describe('operator registry vs engine builtinOperatorNames()', () => {
   const engineNames = wasm.builtinOperatorNames();
 
-  it('lists the 64 canonical operators plus the var, ?: and match aliases', () => {
-    expect(engineNames).toHaveLength(67);
+  it('lists the 84 canonical operators plus the var, ?: and match aliases', () => {
+    expect(engineNames).toHaveLength(87);
     expect(engineNames).toEqual(expect.arrayContaining(['var', '?:', 'match']));
   });
 

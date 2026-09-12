@@ -325,6 +325,50 @@ pub(super) fn dispatch_node_inner<'a>(
             Fractional => crate::operators::flagd::evaluate_fractional,
             #[cfg(feature = "flagd")]
             SemVer => crate::operators::flagd::evaluate_sem_ver,
+
+            // tensor. Every operator in the family takes a fixed
+            // positional argument list, so all twenty are the `simple`
+            // shape.
+            #[cfg(feature = "tensor")]
+            TensorMake => crate::operators::tensor::evaluate_tensor,
+            #[cfg(feature = "tensor")]
+            TensorZeros => crate::operators::tensor::evaluate_zeros,
+            #[cfg(feature = "tensor")]
+            TensorFull => crate::operators::tensor::evaluate_full,
+            #[cfg(feature = "tensor")]
+            TensorScatter => crate::operators::tensor::evaluate_scatter,
+            #[cfg(feature = "tensor")]
+            TensorRleExpand => crate::operators::tensor::evaluate_rle_expand,
+            #[cfg(feature = "tensor")]
+            TensorOneHot => crate::operators::tensor::evaluate_one_hot,
+            #[cfg(feature = "tensor")]
+            TensorStack => crate::operators::tensor::evaluate_stack,
+            #[cfg(feature = "tensor")]
+            TensorConcat => crate::operators::tensor::evaluate_concat,
+            #[cfg(feature = "tensor")]
+            TensorUnstack => crate::operators::tensor::evaluate_unstack,
+            #[cfg(feature = "tensor")]
+            TensorReshape => crate::operators::tensor::evaluate_reshape,
+            #[cfg(feature = "tensor")]
+            TensorTranspose => crate::operators::tensor::evaluate_transpose,
+            #[cfg(feature = "tensor")]
+            TensorPad => crate::operators::tensor::evaluate_pad,
+            #[cfg(feature = "tensor")]
+            TensorCrop => crate::operators::tensor::evaluate_crop,
+            #[cfg(feature = "tensor")]
+            TensorCast => crate::operators::tensor::evaluate_cast,
+            #[cfg(feature = "tensor")]
+            TensorNormalize => crate::operators::tensor::evaluate_normalize,
+            #[cfg(feature = "tensor")]
+            TensorArgmax => crate::operators::tensor::evaluate_argmax,
+            #[cfg(feature = "tensor")]
+            TensorGather => crate::operators::tensor::evaluate_gather,
+            #[cfg(feature = "tensor")]
+            TensorToList => crate::operators::tensor::evaluate_to_list,
+            #[cfg(feature = "tensor")]
+            TensorShape => crate::operators::tensor::evaluate_shape,
+            #[cfg(feature = "tensor")]
+            TensorDtype => crate::operators::tensor::evaluate_dtype,
         ],
 
         // `BuiltinOperator { opcode, args, iter_arg_kind, .. } => fn(args,

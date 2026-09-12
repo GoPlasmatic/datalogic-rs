@@ -369,6 +369,35 @@ fn opcode_is_cse_pure(opcode: OpCode) -> bool {
     if matches!(opcode, OpCode::Fractional | OpCode::SemVer) {
         return false;
     }
+    // Same reasoning as `opcode_is_static`: memoizing a tensor operator
+    // would make a budgeted operation count depend on CSE decisions, and
+    // the memo would pin a large buffer for the whole evaluation.
+    #[cfg(feature = "tensor")]
+    if matches!(
+        opcode,
+        OpCode::TensorMake
+            | OpCode::TensorZeros
+            | OpCode::TensorFull
+            | OpCode::TensorScatter
+            | OpCode::TensorRleExpand
+            | OpCode::TensorOneHot
+            | OpCode::TensorStack
+            | OpCode::TensorConcat
+            | OpCode::TensorUnstack
+            | OpCode::TensorReshape
+            | OpCode::TensorTranspose
+            | OpCode::TensorPad
+            | OpCode::TensorCrop
+            | OpCode::TensorCast
+            | OpCode::TensorNormalize
+            | OpCode::TensorArgmax
+            | OpCode::TensorGather
+            | OpCode::TensorToList
+            | OpCode::TensorShape
+            | OpCode::TensorDtype
+    ) {
+        return false;
+    }
     true
 }
 
@@ -592,6 +621,17 @@ fn hash_owned<H: Hasher>(value: &OwnedDataValue, h: &mut H) {
             h.write_u8(8);
             format!("{d:?}").hash(h);
         }
+        // `DataTensor`'s `Debug` is deliberately lossy (dtype, shape, byte
+        // count — never the payload), so unlike the datetime arms above
+        // this one cannot go through `format!`: two different tensors of
+        // the same shape would collide. Hash what `PartialEq` compares.
+        #[cfg(feature = "tensor")]
+        OwnedDataValue::Tensor(t) => {
+            h.write_u8(9);
+            t.dtype().name().hash(h);
+            t.shape().hash(h);
+            t.data().hash(h);
+        }
     }
 }
 
@@ -757,6 +797,10 @@ fn owned_eq(a: &OwnedDataValue, b: &OwnedDataValue) -> bool {
         (OwnedDataValue::Duration(x), OwnedDataValue::Duration(y)) => {
             format!("{x:?}") == format!("{y:?}")
         }
+        // datavalue's `PartialEq` is structural (dtype, shape, bytes),
+        // which is exactly the equality `hash_owned` above hashes.
+        #[cfg(feature = "tensor")]
+        (OwnedDataValue::Tensor(x), OwnedDataValue::Tensor(y)) => x == y,
         _ => false,
     }
 }

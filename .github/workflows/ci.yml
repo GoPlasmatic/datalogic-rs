@@ -129,6 +129,8 @@ jobs:
           - ext-control
           - ext-math
           - flagd
+          - tensor
+          - tensor-half
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -174,6 +176,11 @@ jobs:
           - serde_json,templating,trace,ext-control
           - serde_json,templating,trace,datetime
           - serde_json,templating,trace,ext-string,ext-object,ext-math
+          # `tensor` needs `ext-control` + `ext-array` in the mix: the
+          # suites reach for `type` and `sort` to assert how a tensor
+          # behaves as a value.
+          - serde_json,templating,trace,tensor,ext-control,ext-array
+          - serde_json,templating,trace,tensor,tensor-half,ext-control,ext-array
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -196,14 +203,16 @@ jobs:
         run: cargo test -p datalogic-rs --no-default-features --features ${{ matrix.combo }}
 
   msrv:
-    name: MSRV (Rust 1.85)
+    name: MSRV (Rust 1.98)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Setup Rust 1.85 (matches `rust-version` in Cargo.toml)
-        uses: dtolnay/rust-toolchain@b0480e2d44a72e89a62650e223ba831cbca8d2be # 1.85
+      # Floor tracks `datavalue-rs` 0.3, which declares 1.98; the
+      # library's own language use is still well below that.
+      - name: Setup Rust 1.98 (matches `rust-version` in Cargo.toml)
+        uses: dtolnay/rust-toolchain@1.98.0
 
       - name: Cache cargo (separate from stable to avoid toolchain mix)
         uses: actions/cache@v5

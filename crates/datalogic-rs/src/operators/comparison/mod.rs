@@ -264,6 +264,9 @@ pub(crate) fn compare_equals(
         let probe_dt = match (left, right) {
             (DataValue::Number(_) | DataValue::Bool(_) | DataValue::Null, _)
             | (_, DataValue::Number(_) | DataValue::Bool(_) | DataValue::Null) => false,
+            // A tensor is never a datetime sentinel, so skip the probe.
+            #[cfg(feature = "tensor")]
+            (DataValue::Tensor(_), _) | (_, DataValue::Tensor(_)) => false,
             (DataValue::String(s), _) | (_, DataValue::String(s))
                 if !could_be_datetime_or_duration(s) =>
             {

@@ -226,6 +226,8 @@ fn compare_values(a: &DataValue<'_>, b: &DataValue<'_>) -> Ordering {
             DataValue::Object(_) => 5,
             #[cfg(feature = "datetime")]
             DataValue::DateTime(_) | DataValue::Duration(_) => 3,
+            #[cfg(feature = "tensor")]
+            DataValue::Tensor(_) => 6,
         }
     }
 
@@ -246,6 +248,15 @@ fn compare_values(a: &DataValue<'_>, b: &DataValue<'_>) -> Ordering {
         (DataValue::String(a), DataValue::String(b)) => a.cmp(b),
         (DataValue::Array(_), DataValue::Array(_)) => Ordering::Equal,
         (DataValue::Object(_), DataValue::Object(_)) => Ordering::Equal,
+        // Arrays and objects compare Equal (sort is stable, so they keep
+        // input order). Tensors do better because they have a cheap total
+        // order available: dtype, then shape, then the raw payload. It is
+        // not numerically meaningful, but it is deterministic, which is
+        // what a sort key needs.
+        #[cfg(feature = "tensor")]
+        (DataValue::Tensor(x), DataValue::Tensor(y)) => {
+            (x.dtype().name(), x.shape(), x.data()).cmp(&(y.dtype().name(), y.shape(), y.data()))
+        }
         _ => type_rank(a).cmp(&type_rank(b)),
     }
 }

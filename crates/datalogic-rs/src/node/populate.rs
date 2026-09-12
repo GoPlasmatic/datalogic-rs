@@ -31,6 +31,13 @@ pub(super) fn precompute_lit(value: &OwnedDataValue) -> Option<PreLit> {
         OwnedDataValue::DateTime(d) => DataValue::DateTime(*d),
         #[cfg(feature = "datetime")]
         OwnedDataValue::Duration(d) => DataValue::Duration(*d),
+        // A tensor needs an arena to become a `DataValue` (the header is
+        // held behind a reference), and there is none here. Covered by
+        // the catch-all below either way; spelled out so the reason is on
+        // the page rather than inferred. `literal_fallback` handles it at
+        // dispatch time, where an arena exists.
+        #[cfg(feature = "tensor")]
+        OwnedDataValue::Tensor(_) => return None,
         _ => return None,
     };
     Some(PreLit::from_static(dv))

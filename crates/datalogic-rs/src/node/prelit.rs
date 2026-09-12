@@ -128,6 +128,16 @@ impl PreLit {
             OwnedDataValue::Object(o) if !o.is_empty() => {}
             _ => return None,
         }
+        // A spine holds `DataValue`s that borrow the owner, but a tensor
+        // only becomes a `DataValue` through an arena (`to_arena`), and
+        // there is no arena at compile time. So a literal containing one
+        // anywhere gets no prelit at all and falls through to
+        // `literal_fallback` at dispatch. This is the guard that makes the
+        // `Tensor` arm in `element_dv` unreachable.
+        #[cfg(feature = "tensor")]
+        if contains_tensor(value) {
+            return None;
+        }
         Some(PreLit(Box::new(PreLitInner::Cell(build_cell(LitOwner {
             value: value.clone(),
             children: build_children(value),
@@ -258,6 +268,27 @@ fn element_dv<'a>(
         OwnedDataValue::DateTime(d) => DataValue::DateTime(*d),
         #[cfg(feature = "datetime")]
         OwnedDataValue::Duration(d) => DataValue::Duration(*d),
+        // Unreachable: `PreLit::composite` refuses any literal whose tree
+        // contains a tensor, so no spine is ever built over one. Same
+        // safe-fallback-over-panic choice as the `None` arm above.
+        #[cfg(feature = "tensor")]
+        OwnedDataValue::Tensor(_) => {
+            debug_assert!(false, "composite() should have rejected this literal");
+            DataValue::Null
+        }
+    }
+}
+
+/// Whether an owned literal holds a tensor anywhere in its tree. Only the
+/// shapes `PreLit::composite` accepts need walking; a bare tensor is
+/// already rejected by the match above it.
+#[cfg(feature = "tensor")]
+fn contains_tensor(v: &OwnedDataValue) -> bool {
+    match v {
+        OwnedDataValue::Tensor(_) => true,
+        OwnedDataValue::Array(items) => items.iter().any(contains_tensor),
+        OwnedDataValue::Object(pairs) => pairs.iter().any(|(_, v)| contains_tensor(v)),
+        _ => false,
     }
 }
 

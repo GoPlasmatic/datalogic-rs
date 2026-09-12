@@ -128,6 +128,23 @@ fn compile_operator_invocation(
     Ok(custom_operator_node(op_name, args, ctx))
 }
 
+/// Exactly the object datavalue's tensor serializer emits: the three keys
+/// `dtype` / `shape` / `data`, no others, each holding a literal of the
+/// right JSON type. Deliberately narrow — anything else keeps compiling as
+/// a rule, so `{"tensor": {"val": "prediction"}}` still reads a tensor out
+/// of the data rather than being mistaken for a wire body.
+#[cfg(feature = "tensor")]
+fn is_tensor_wire_body(fields: &[(String, OwnedDataValue)]) -> bool {
+    if fields.len() != 3 {
+        return false;
+    }
+    let get = |k: &str| fields.iter().find(|(n, _)| n == k).map(|(_, v)| v);
+    matches!(get("dtype"), Some(OwnedDataValue::String(_)))
+        && matches!(get("data"), Some(OwnedDataValue::String(_)))
+        && matches!(get("shape"), Some(OwnedDataValue::Array(dims))
+            if dims.iter().all(|d| matches!(d, OwnedDataValue::Number(_))))
+}
+
 /// Build a `CustomOperator` node from an op name and its already-compiled args.
 fn custom_operator_node(
     op_name: &str,
@@ -157,6 +174,27 @@ fn compile_builtin(
     let requires_array = matches!(opcode, OpCode::And | OpCode::Or | OpCode::If);
     if requires_array && !matches!(args_value, OwnedDataValue::Array(_)) {
         return Ok(invalid_args_marker(opcode, args_value, ctx));
+    }
+
+    // `{"tensor": {"dtype": .., "shape": [..], "data": ".."}}` is both the
+    // operator call and the wire form the emitter writes, so a serialized
+    // tensor pasted into a rule has to evaluate back to itself. Compiling
+    // that body as a rule would fail — it is a three-key object, which is
+    // an unknown operator outside templating mode — so recognise the
+    // emitter's exact shape and compile it as a literal argument instead.
+    #[cfg(feature = "tensor")]
+    if opcode == OpCode::TensorMake
+        && let OwnedDataValue::Object(fields) = args_value
+        && is_tensor_wire_body(fields)
+    {
+        let body = CompiledNode::compile_time_value(Some(ctx.next_id()), args_value.clone());
+        return Ok(CompiledNode::BuiltinOperator {
+            id: Some(ctx.next_id()),
+            opcode,
+            args: Box::new([body]),
+            predicate_hint: None,
+            iter_arg_kind: crate::operators::array::IterArgKind::General,
+        });
     }
 
     let args = compile_args(args_value, engine, templating, ctx)?;
