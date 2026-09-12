@@ -11,12 +11,12 @@
 
 use super::{
     Scalar, arg, as_dtype, as_i64, as_shape, as_usize, at_most, bad, by_dtype, charge, cost,
-    finish, numel_of, opt_arg, strides_of, wrap,
+    element_error, finish, finish_bytes, finish_slice, numel_of, opt_arg, strides_of, wrap,
 };
 use crate::arena::{ContextStack, DataValue, bvec};
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
-use datavalue::{DType, DataTensor, TensorError};
+use datavalue::DataTensor;
 
 /// Is this the tagged `{"tensor": {...}}` wire form? A single-key object
 /// under datavalue's tag; anything else is a nested-array input.
@@ -104,10 +104,7 @@ pub(crate) fn evaluate_zeros<'a>(
 
     charge(ctx, numel_of(shape)? as u64)?;
     let buf = DataTensor::zeroed_bytes_in(dtype, shape, arena).map_err(wrap)?;
-    finish(
-        DataTensor::from_bytes(dtype, shape, buf).map_err(wrap)?,
-        arena,
-    )
+    finish_bytes(dtype, shape, buf, arena)
 }
 
 /// `full: [shape, dtype, value]` — every element set to `value`.
@@ -132,12 +129,10 @@ fn full_impl<'a, T: Scalar>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let fill = T::from_value(value).ok_or_else(|| element_error(0, T::DTYPE))?;
-    let mut data = bvec::<T>(arena, numel_of(shape)?);
-    data.resize(numel_of(shape)?, fill);
-    finish(
-        DataTensor::from_slice(shape, data.into_bump_slice()).map_err(wrap)?,
-        arena,
-    )
+    let numel = numel_of(shape)?;
+    let mut data = bvec::<T>(arena, numel);
+    data.resize(numel, fill);
+    finish_slice(shape, data, arena)
 }
 
 /// `scatter: [points, shape, dtype, value?]` — a sparse write into an
@@ -222,10 +217,7 @@ fn scatter_impl<'a, T: Scalar>(
         }
     }
 
-    finish(
-        DataTensor::from_slice(shape, data.into_bump_slice()).map_err(wrap)?,
-        arena,
-    )
+    finish_slice(shape, data, arena)
 }
 
 /// `rle_expand: [runs, shape, dtype]` — run-length decode into a tensor.
@@ -281,10 +273,7 @@ fn rle_impl<'a, T: Scalar>(
         ));
     }
 
-    finish(
-        DataTensor::from_slice(shape, data.into_bump_slice()).map_err(wrap)?,
-        arena,
-    )
+    finish_slice(shape, data, arena)
 }
 
 /// `one_hot: [indices, depth, dtype]` — a `[len, depth]` indicator matrix.
@@ -328,15 +317,5 @@ fn one_hot_impl<'a, T: Scalar>(
         }
     }
 
-    finish(
-        DataTensor::from_slice(shape, data.into_bump_slice()).map_err(wrap)?,
-        arena,
-    )
-}
-
-/// The same error datavalue raises when a nested leaf will not fit its
-/// dtype, so both decode paths report an unrepresentable element the same
-/// way.
-fn element_error(index: usize, expected: DType) -> crate::Error {
-    wrap(TensorError::Element { index, expected })
+    finish_slice(shape, data, arena)
 }

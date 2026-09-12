@@ -16,6 +16,9 @@ pub(crate) enum ContextFrame<'a> {
         current: &'a DataValue<'a>,
         accumulator: &'a DataValue<'a>,
     },
+    /// A value with no iteration metadata: the caught error object a
+    /// `try` catch arm runs under. Nothing else pushes one.
+    #[cfg(feature = "error-handling")]
     Data(&'a DataValue<'a>),
 }
 
@@ -23,7 +26,9 @@ impl<'a> ContextFrame<'a> {
     #[inline]
     pub(crate) fn data(&self) -> &'a DataValue<'a> {
         match self {
-            Self::Indexed { data, .. } | Self::Keyed { data, .. } | Self::Data(data) => data,
+            Self::Indexed { data, .. } | Self::Keyed { data, .. } => data,
+            #[cfg(feature = "error-handling")]
+            Self::Data(data) => data,
             Self::Reduce { current, .. } => current,
         }
     }

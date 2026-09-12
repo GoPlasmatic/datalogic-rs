@@ -91,10 +91,12 @@ pub(crate) struct StructuredObjectData {
 /// static frame depth `D` and its `scope_level` `L`.
 ///
 /// This is a predicate *over* [`crate::arena::ContextStack::get_at_level`],
-/// never a second implementation of it: the pass decides whether the walk
-/// can be skipped, and [`Self::Ancestor`] hands the job back untouched.
-/// The mapping mirrors that function exactly, **off-by-one included** —
-/// `L == 1` at `D >= 2` reads the *current* frame, not its parent.
+/// never a second implementation of it: both call
+/// [`crate::arena::frame_target`] for the arithmetic, so the pass decides
+/// whether the walk can be skipped, and [`Self::Ancestor`] hands the job
+/// back untouched. The mapping therefore matches the runtime exactly,
+/// **off-by-one included** — `L == 1` at `D >= 2` reads the *current*
+/// frame, not its parent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub(crate) enum ScopeBinding {
     /// The pass has not run on this node — it was built outside the compile
@@ -120,27 +122,14 @@ pub(crate) enum ScopeBinding {
 }
 
 impl ScopeBinding {
-    /// Resolve a `(static_depth, scope_level)` pair against the arithmetic
-    /// of [`crate::arena::ContextStack::get_at_level`].
+    /// Resolve a `(static_depth, scope_level)` pair with the same
+    /// arithmetic the runtime walk uses.
     pub(crate) fn resolve(static_depth: u32, scope_level: u32) -> Self {
-        if scope_level == 0 {
-            // `current()` is `ContextRef::Root` when nothing is pushed.
-            return if static_depth == 0 {
-                ScopeBinding::Root
-            } else {
-                ScopeBinding::Current
-            };
-        }
-        if scope_level >= static_depth {
-            // `levels_up >= frame_count` clamps to the root.
-            return ScopeBinding::Root;
-        }
-        // `target_index == frame_count - levels_up`; at `L == 1` that is the
-        // top frame itself, which is why `[[1]]` aliases `[[0]]`.
-        if scope_level == 1 {
-            ScopeBinding::Current
-        } else {
-            ScopeBinding::Ancestor
+        use crate::arena::{FrameTarget, frame_target};
+        match frame_target(static_depth as usize, scope_level as usize) {
+            FrameTarget::Root => ScopeBinding::Root,
+            FrameTarget::Top => ScopeBinding::Current,
+            FrameTarget::Ancestor(_) => ScopeBinding::Ancestor,
         }
     }
 }

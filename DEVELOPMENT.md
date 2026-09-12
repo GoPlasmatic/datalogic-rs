@@ -440,12 +440,16 @@ short form of this list; this is the full one.
    operator reads the data context, runs a callback per element, has
    side effects, or depends on runtime state, add it to the dynamic
    arms of `opcode_is_static` in `crates/datalogic-rs/src/node/logic.rs`
-   (so it is never constant-folded) and to `opcode_is_cse_pure`,
-   `is_iterator_opcode`, or `child_never_cacheable` in
-   `crates/datalogic-rs/src/compile/optimize/cse.rs` (so the CSE pass
-   neither memoizes it nor caches inside its per-item bodies). `group_by`
-   and keyed `distinct` (5.2.0) are the worked example; a pure operator
-   needs nothing here.
+   (so it is never constant-folded) and to `opcode_is_cse_pure` or
+   `is_iterator_opcode` in `crates/datalogic-rs/src/compile/optimize/cse.rs`
+   (so the CSE pass neither memoizes it nor caches inside its per-item
+   bodies). If it pushes a context frame around one of its arguments,
+   register that position in `frames_pushed_for_child` in
+   `crates/datalogic-rs/src/compile/scope.rs`, which both the scope pass
+   and CSE consult; the debug oracle in `operators/variable` fails the
+   first test that exercises an unregistered frame. `group_by` and keyed
+   `distinct` (5.2.0) are the worked example; a pure operator needs
+   nothing here.
 5. **Suite.** Add a JSON suite under
    `crates/datalogic-rs/tests/suites/<category>/` covering the happy path
    and at least one error case, and register its path in

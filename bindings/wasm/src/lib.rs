@@ -195,16 +195,55 @@ fn type_mismatch_err_to_js(message: &str) -> JsValue {
 /// truncated — a budget of `0.5` means the caller has confused this with
 /// a duration or a fraction.
 fn resolve_budget(engine: &RsEngine, budget: Option<f64>) -> Result<u64, JsValue> {
-    match budget {
-        None => Ok(engine.config().ops_budget.unwrap_or(u64::MAX)),
+    let explicit = match budget {
+        None => None,
         Some(n) if n.is_finite() && n >= 1.0 && n.fract() == 0.0 && n <= MAX_SAFE_BUDGET => {
-            Ok(n as u64)
+            Some(n as u64)
         }
-        Some(_) => Err(input_err_to_js(
-            "parse-budget",
-            "budget must be a whole number of operations >= 1",
-        )),
-    }
+        Some(_) => {
+            return Err(input_err_to_js(
+                "parse-budget",
+                "budget must be a whole number of operations >= 1",
+            ));
+        }
+    };
+    Ok(engine.resolve_ops_budget(explicit))
+}
+
+/// Parse a JSON data string into `arena`, mapping a failure to the JS
+/// error shape every entry point throws for bad input.
+fn parse_data<'a>(data: &'a str, arena: &'a Bump) -> Result<DataValue<'a>, JsValue> {
+    DataValue::from_str(data, arena).map_err(|e| input_err_to_js("parse-data", format!("{:?}", e)))
+}
+
+/// Parse, evaluate, serialise — the body of every string-in, string-out
+/// entry point. The caller chooses the arena (fresh, or a session's).
+fn evaluate_in<'a>(
+    engine: &RsEngine,
+    compiled: &'a Logic,
+    data: &'a str,
+    arena: &'a Bump,
+) -> Result<String, JsValue> {
+    let data_dv = parse_data(data, arena)?;
+    engine
+        .evaluate(compiled, data_dv, arena)
+        .map(|result| result.to_string())
+        .map_err(|e| engine_err_to_js(&e))
+}
+
+/// [`evaluate_in`] under `budget`, answering the metered envelope.
+fn metered_in<'a>(
+    engine: &RsEngine,
+    compiled: &'a Logic,
+    data: &'a str,
+    arena: &'a Bump,
+    budget: u64,
+) -> Result<String, JsValue> {
+    let data_dv = parse_data(data, arena)?;
+    let metered = engine
+        .evaluate_metered(compiled, data_dv, arena, budget)
+        .map_err(|e| engine_err_to_js(&e))?;
+    Ok(metered_envelope(metered.value, metered.ops))
 }
 
 /// Largest budget a JS number can carry without losing integer precision.
@@ -433,14 +472,7 @@ impl CompiledRule {
     /// # Throws
     /// An `Error` object carrying the structured fields (see [`evaluate`]).
     pub fn evaluate(&self, data: &str) -> Result<String, JsValue> {
-        let arena = Bump::new();
-        let data_dv = DataValue::from_str(data, &arena)
-            .map_err(|e| input_err_to_js("parse-data", format!("{:?}", e)))?;
-        let result = self
-            .engine
-            .evaluate(&self.compiled, data_dv, &arena)
-            .map_err(|e| engine_err_to_js(&e))?;
-        Ok(result.to_string())
+        evaluate_in(&self.engine, &self.compiled, data, &Bump::new())
     }
 
     /// Evaluate the compiled rule against a pre-parsed [`DataHandle`] —
@@ -656,14 +688,7 @@ impl Engine {
             .inner
             .compile_arc(logic)
             .map_err(|e| engine_err_to_js(&e))?;
-        let arena = Bump::new();
-        let data_dv = DataValue::from_str(data, &arena)
-            .map_err(|e| input_err_to_js("parse-data", format!("{:?}", e)))?;
-        let metered = self
-            .inner
-            .evaluate_metered(&compiled, data_dv, &arena, budget)
-            .map_err(|e| engine_err_to_js(&e))?;
-        Ok(metered_envelope(metered.value, metered.ops))
+        metered_in(&self.inner, &compiled, data, &Bump::new(), budget)
     }
 
     /// Open a [`Session`]: a reusable evaluation handle that owns a bump
@@ -713,14 +738,7 @@ pub struct Rule {
 impl Rule {
     /// Evaluate the compiled rule against `data` (a JSON string).
     pub fn evaluate(&self, data: &str) -> Result<String, JsValue> {
-        let arena = Bump::new();
-        let data_dv = DataValue::from_str(data, &arena)
-            .map_err(|e| input_err_to_js("parse-data", format!("{:?}", e)))?;
-        let result = self
-            .engine
-            .evaluate(&self.compiled, data_dv, &arena)
-            .map_err(|e| engine_err_to_js(&e))?;
-        Ok(result.to_string())
+        evaluate_in(&self.engine, &self.compiled, data, &Bump::new())
     }
 
     /// Evaluate the compiled rule against a pre-parsed [`DataHandle`] —
@@ -745,14 +763,7 @@ impl Rule {
     #[wasm_bindgen(js_name = evaluateMetered)]
     pub fn evaluate_metered(&self, data: &str, budget: Option<f64>) -> Result<String, JsValue> {
         let budget = resolve_budget(&self.engine, budget)?;
-        let arena = Bump::new();
-        let data_dv = DataValue::from_str(data, &arena)
-            .map_err(|e| input_err_to_js("parse-data", format!("{:?}", e)))?;
-        let metered = self
-            .engine
-            .evaluate_metered(&self.compiled, data_dv, &arena, budget)
-            .map_err(|e| engine_err_to_js(&e))?;
-        Ok(metered_envelope(metered.value, metered.ops))
+        metered_in(&self.engine, &self.compiled, data, &Bump::new(), budget)
     }
 
     /// Internal: deposit a cheap reference-counted duplicate (two `Arc`
@@ -807,13 +818,7 @@ impl Session {
         // don't pile up. The previous call's result was already
         // materialised as an owned JS string, so resetting here is safe.
         self.arena.reset();
-        let data_dv = DataValue::from_str(data, &self.arena)
-            .map_err(|e| input_err_to_js("parse-data", format!("{:?}", e)))?;
-        let result = self
-            .engine
-            .evaluate(&rule.compiled, data_dv, &self.arena)
-            .map_err(|e| engine_err_to_js(&e))?;
-        Ok(result.to_string())
+        evaluate_in(&self.engine, &rule.compiled, data, &self.arena)
     }
 
     /// Evaluate a compiled [`Rule`] against `data` under an operation
@@ -832,13 +837,7 @@ impl Session {
     ) -> Result<String, JsValue> {
         let budget = resolve_budget(&self.engine, budget)?;
         self.arena.reset();
-        let data_dv = DataValue::from_str(data, &self.arena)
-            .map_err(|e| input_err_to_js("parse-data", format!("{:?}", e)))?;
-        let metered = self
-            .engine
-            .evaluate_metered(&rule.compiled, data_dv, &self.arena, budget)
-            .map_err(|e| engine_err_to_js(&e))?;
-        Ok(metered_envelope(metered.value, metered.ops))
+        metered_in(&self.engine, &rule.compiled, data, &self.arena, budget)
     }
 
     /// Evaluate a compiled [`Rule`] against a pre-parsed [`DataHandle`],

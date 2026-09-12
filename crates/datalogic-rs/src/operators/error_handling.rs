@@ -22,7 +22,7 @@
 
 use datavalue::OwnedDataValue;
 
-use crate::arena::{ContextStack, DataValue};
+use crate::arena::{ContextStack, DataValue, IterGuard};
 use crate::{CompiledNode, Engine, Error, Result};
 use bumpalo::Bump;
 
@@ -241,10 +241,9 @@ fn try_last_with_error_context<'a>(
         Some(err) => engine_error_object(&err, arena),
         None => return engine.dispatch_node(arg, ctx, arena),
     };
-    let token = ctx.push(av);
-    let result = engine.dispatch_node(arg, ctx, arena);
-    ctx.restore_frame(token);
-    result
+    let mut guard = IterGuard::new(ctx);
+    guard.step_data(av);
+    engine.dispatch_node(arg, guard.stack(), arena)
 }
 
 /// Build the `{"type": <message>}` context object for a non-`Thrown`

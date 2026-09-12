@@ -608,19 +608,22 @@ pub(crate) fn evaluate_value(
 fn resolve_budget(env: &Env, engine: &Arc<RsEngine>, budget: Option<f64>) -> Result<u64> {
     /// Largest budget a JS number carries without losing integer precision.
     const MAX_SAFE_BUDGET: f64 = 9_007_199_254_740_991.0;
-    match budget {
-        None => Ok(engine.config().ops_budget.unwrap_or(u64::MAX)),
+    let explicit = match budget {
+        None => None,
         Some(n) if n.is_finite() && n >= 1.0 && n.fract() == 0.0 && n <= MAX_SAFE_BUDGET => {
-            Ok(n as u64)
+            Some(n as u64)
         }
-        Some(_) => Err(engine_error(
-            env,
-            &datalogic_rs::Error::invalid_arguments(
-                "budget must be a whole number of operations >= 1",
-            ),
-            None,
-        )),
-    }
+        Some(_) => {
+            return Err(engine_error(
+                env,
+                &datalogic_rs::Error::invalid_arguments(
+                    "budget must be a whole number of operations >= 1",
+                ),
+                None,
+            ));
+        }
+    };
+    Ok(engine.resolve_ops_budget(explicit))
 }
 
 pub(crate) fn evaluate_metered(
@@ -651,19 +654,7 @@ pub(crate) fn evaluate_str(
     logic: &Arc<Logic>,
     data: Value,
 ) -> Result<String> {
-    // Fast path for the common case (`data` already JSON string): hand
-    // it straight to the engine's str entry point, which parses directly
-    // into a DataValue without an intermediate `serde_json::Value`.
-    if let Value::String(ref s) = data {
-        let arena = Bump::new();
-        let av = engine
-            .evaluate(logic, s.as_str(), &arena)
-            .map_err(|e| engine_error(env, &e, Some(logic)))?;
-        return Ok(av.to_string());
-    }
-    let arena = Bump::new();
-    let av = engine
-        .evaluate(logic, &data, &arena)
-        .map_err(|e| engine_error(env, &e, Some(logic)))?;
-    Ok(av.to_string())
+    // The metered body with no explicit budget resolves to exactly what
+    // `Engine::evaluate` would apply, so this is that body minus the count.
+    evaluate_metered(env, engine, logic, data, None).map(|m| m.result)
 }

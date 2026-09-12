@@ -187,26 +187,37 @@ fn default_or_null<'a>(
 /// not value equality, since two distinct frames can hold equal data and that
 /// would still be a resolution bug.
 ///
-/// Compiled out entirely in release. In debug it turns every test in the
-/// corpus — 1,698 conformance cases, the property generators, the fuzz target
-/// — into a differential check of the analysis against the walk it replaces.
+/// Compiled out in release (the `cfg!` test folds to a constant). In debug it
+/// turns every test in the corpus — 1,698 conformance cases, the property
+/// generators, the fuzz target — into a differential check of the analysis
+/// against the walk it replaces.
+///
 /// [`ScopeBinding::Unresolved`] is skipped: those nodes deliberately keep the
-/// runtime path.
-#[cfg(debug_assertions)]
+/// runtime path. [`ScopeBinding::Ancestor`] resolves through the walk too, so
+/// there is no second answer to compare it against; what the pass claims for
+/// it is only that the clamp cannot fire, and that is what is asserted.
 #[inline]
 pub(super) fn debug_check_binding<'a>(
     binding: ScopeBinding,
     scope_level: u32,
     ctx: &ContextStack<'a>,
 ) {
+    if !cfg!(debug_assertions) {
+        return;
+    }
     let predicted: *const DataValue<'a> = match binding {
         ScopeBinding::Unresolved => return,
         ScopeBinding::Root => ctx.root_input(),
         ScopeBinding::Current => ctx.current().data(),
-        ScopeBinding::Ancestor => match ctx.get_at_level(scope_level as isize) {
-            Some(r) => r.data(),
-            None => return,
-        },
+        ScopeBinding::Ancestor => {
+            debug_assert!(
+                scope_level >= 2 && (scope_level as usize) < ctx.depth(),
+                "Ancestor binding (level {scope_level}) at depth {} is not a strict \
+                 interior frame",
+                ctx.depth()
+            );
+            return;
+        }
     };
     // The walk exactly as it stood before the pass existed.
     let actual: *const DataValue<'a> = if scope_level == 0 {
@@ -224,8 +235,3 @@ pub(super) fn debug_check_binding<'a>(
         ctx.depth()
     );
 }
-
-/// Release-build no-op counterpart of [`debug_check_binding`].
-#[cfg(not(debug_assertions))]
-#[inline(always)]
-pub(super) fn debug_check_binding(_: ScopeBinding, _: u32, _: &ContextStack<'_>) {}

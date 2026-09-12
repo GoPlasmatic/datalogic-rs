@@ -391,18 +391,6 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
     return engine;
   }, [engineKey, templating, config, customOperators, latestCustomOperators]);
 
-  const evaluate = useCallback((logic: unknown, data: unknown): unknown => {
-    const engine = getEngine();
-    const logicStr = JSON.stringify(logic);
-    const dataStr = JSON.stringify(data);
-    try {
-      const resultStr = engine.evalStr(logicStr, dataStr);
-      return JSON.parse(resultStr);
-    } catch (err) {
-      throw new DataLogicEvaluationError(parseStructuredError(err, 'Evaluation failed'));
-    }
-  }, [getEngine]);
-
   const evaluateMetered = useCallback((logic: unknown, data: unknown): MeteredResult => {
     const engine = getEngine();
     const logicStr = JSON.stringify(logic);
@@ -423,6 +411,13 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
       throw new DataLogicEvaluationError(parseStructuredError(err, 'Evaluation failed'));
     }
   }, [getEngine]);
+
+  // Same call with the count dropped: the metered path already carries
+  // the non-metered engine as its fallback.
+  const evaluate = useCallback(
+    (logic: unknown, data: unknown): unknown => evaluateMetered(logic, data).value,
+    [evaluateMetered],
+  );
 
   const evaluateWithTrace = useCallback((logic: unknown, data: unknown): TracedResult => {
     const engine = getEngine();

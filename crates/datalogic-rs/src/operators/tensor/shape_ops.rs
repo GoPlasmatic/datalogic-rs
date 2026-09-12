@@ -10,8 +10,9 @@
 //! every dtype.
 
 use super::{
-    Scalar, arg, as_axis, as_i64_list, as_shape, as_tensor, at_most, bad, by_dtype, charge, cost,
-    finish, numel_of, opt_arg, strides_of, wrap,
+    Scalar, advance, arg, as_axis, as_i64_list, as_shape, as_tensor, at_most, bad, by_dtype,
+    charge, cost, element_error, finish_bytes, numel_of, opt_arg, resolve_index,
+    shape_without_axis, split_axis, strides_of, wrap,
 };
 use crate::arena::{ContextStack, DataValue, bvec};
 use crate::{CompiledNode, Engine, Result};
@@ -20,22 +21,22 @@ use datavalue::{DType, DataTensor, TensorError};
 
 /// Collect a tensor-array argument, checking that the members agree on
 /// dtype (and, for `stack`, on shape — `concat` checks that itself).
-fn tensor_list<'a>(v: &DataValue<'a>, arena: &'a Bump) -> Result<Vec<DataTensor<'a>>> {
+fn tensor_list<'a>(v: &DataValue<'a>, arena: &'a Bump) -> Result<&'a [DataTensor<'a>]> {
     let DataValue::Array(items) = v else {
         return Err(bad("expected an array of tensors"));
     };
     if items.is_empty() {
         return Err(bad("expected at least one tensor"));
     }
-    let out: Vec<DataTensor<'a>> = items
-        .iter()
-        .map(|it| as_tensor(it, arena))
-        .collect::<Result<_>>()?;
+    let mut out = bvec::<DataTensor<'a>>(arena, items.len());
+    for it in *items {
+        out.push(as_tensor(it, arena)?);
+    }
     let dtype = out[0].dtype();
     if out.iter().any(|t| t.dtype() != dtype) {
         return Err(bad("tensors must share a dtype"));
     }
-    Ok(out)
+    Ok(out.into_bump_slice())
 }
 
 /// `stack: [tensors, axis]` — join equal-shaped tensors along a **new**
@@ -77,10 +78,7 @@ pub(crate) fn evaluate_stack<'a>(
             out[dst..dst + inner * cell].copy_from_slice(&t.data()[src..src + inner * cell]);
         }
     }
-    finish(
-        DataTensor::from_bytes(dtype, shape, out).map_err(wrap)?,
-        arena,
-    )
+    finish_bytes(dtype, shape, out, arena)
 }
 
 /// `concat: [tensors, axis]` — join along an **existing** axis. Shapes
@@ -124,26 +122,22 @@ pub(crate) fn evaluate_concat<'a>(
 
     let dtype = first.dtype();
     let cell = dtype.size_of();
-    let outer: usize = first.shape()[..axis].iter().product();
     // Bytes each tensor contributes per outer step: its own extent along
     // the axis times everything inside it.
-    let trailing: usize = first.shape()[axis + 1..].iter().product();
+    let (outer, _, trailing) = split_axis(first.shape(), axis);
 
     let out = DataTensor::zeroed_bytes_in(dtype, shape, arena).map_err(wrap)?;
     let row = shape[axis] * trailing * cell;
     for o in 0..outer {
         let mut at = o * row;
-        for t in &parts {
+        for t in parts {
             let chunk = t.shape()[axis] * trailing * cell;
             let src = o * chunk;
             out[at..at + chunk].copy_from_slice(&t.data()[src..src + chunk]);
             at += chunk;
         }
     }
-    finish(
-        DataTensor::from_bytes(dtype, shape, out).map_err(wrap)?,
-        arena,
-    )
+    finish_bytes(dtype, shape, out, arena)
 }
 
 /// `unstack: [T, axis]` — the inverse of `stack`: split along `axis` and
@@ -162,16 +156,10 @@ pub(crate) fn evaluate_unstack<'a>(
     let axis = as_axis(arg(args, 1, ctx, engine, arena)?, t.ndim(), 0)?;
     charge(ctx, t.numel() as u64)?;
 
-    let n = t.shape()[axis];
     let dtype = t.dtype();
     let cell = dtype.size_of();
-    let outer: usize = t.shape()[..axis].iter().product();
-    let inner: usize = t.shape()[axis + 1..].iter().product();
-
-    let mut shape = bvec::<usize>(arena, t.ndim() - 1);
-    shape.extend_from_slice(&t.shape()[..axis]);
-    shape.extend_from_slice(&t.shape()[axis + 1..]);
-    let shape = shape.into_bump_slice();
+    let (outer, n, inner) = split_axis(t.shape(), axis);
+    let shape = shape_without_axis(t.shape(), axis, arena);
 
     let mut parts = bvec::<DataValue<'a>>(arena, n);
     for k in 0..n {
@@ -211,10 +199,7 @@ pub(crate) fn evaluate_reshape<'a>(
     }
     // `t.data()` is already aligned for its dtype, so this is the
     // zero-copy `from_bytes` rather than the copying `from_bytes_in`.
-    finish(
-        DataTensor::from_bytes(t.dtype(), shape, t.data()).map_err(wrap)?,
-        arena,
-    )
+    finish_bytes(t.dtype(), shape, t.data(), arena)
 }
 
 /// `transpose: [T, perm?]` — permute the axes. `perm` defaults to a full
@@ -260,30 +245,23 @@ pub(crate) fn evaluate_transpose<'a>(
     let shape = shape.into_bump_slice();
 
     let dtype = t.dtype();
-    let cell = dtype.size_of();
-    let in_strides = strides_of(t.shape(), arena);
     let out = DataTensor::zeroed_bytes_in(dtype, shape, arena).map_err(wrap)?;
 
-    // Walk the output in row-major order; for each position, map its
-    // coordinates back through `perm` to find the source cell.
-    let mut idx = bvec::<usize>(arena, rank);
-    idx.resize(rank, 0);
-    let mut at = 0usize;
-    if t.numel() > 0 {
-        loop {
-            let src: usize = (0..rank).map(|i| idx[i] * in_strides[perm[i]]).sum();
-            out[at * cell..(at + 1) * cell]
-                .copy_from_slice(&t.data()[src * cell..(src + 1) * cell]);
-            at += 1;
-            if !super::advance(&mut idx, shape) {
-                break;
-            }
-        }
-    }
-    finish(
-        DataTensor::from_bytes(dtype, shape, out).map_err(wrap)?,
+    // Walking the output in row-major order, output axis `i` steps through
+    // the input by the stride of the axis `perm[i]` names.
+    let in_strides = strides_of(t.shape(), arena);
+    let mut src_strides = bvec::<usize>(arena, rank);
+    src_strides.extend(perm.iter().map(|&ax| in_strides[ax]));
+    copy_block(
+        t.data(),
+        Origin::new(0, &src_strides),
+        out,
+        Origin::new(0, strides_of(shape, arena)),
+        shape,
+        dtype.size_of(),
         arena,
-    )
+    );
+    finish_bytes(dtype, shape, out, arena)
 }
 
 /// `pad: [T, before, after, value?]` — grow every axis by a leading and a
@@ -325,18 +303,32 @@ pub(crate) fn evaluate_pad<'a>(
     // element conversion, and only then does `pad` require `tensor-half`.
     if let Some(v) = fill {
         let pattern = scalar_bytes(dtype, v, arena)?;
-        if pattern.iter().any(|b| *b != 0) {
-            for chunk in out.chunks_exact_mut(cell) {
-                chunk.copy_from_slice(pattern);
+        if pattern.iter().any(|b| *b != 0) && !out.is_empty() {
+            // Seed one cell, then double: log2(numel) copies instead of
+            // one per element.
+            out[..cell].copy_from_slice(pattern);
+            let mut filled = cell;
+            while filled < out.len() {
+                let n = filled.min(out.len() - filled);
+                out.copy_within(..n, filled);
+                filled += n;
             }
         }
     }
 
-    copy_window(t, out, shape, before, arena)?;
-    finish(
-        DataTensor::from_bytes(dtype, shape, out).map_err(wrap)?,
+    // The input lands at `before` inside the padded output.
+    let out_strides = strides_of(shape, arena);
+    let origin = before.iter().zip(out_strides).map(|(o, s)| o * s).sum();
+    copy_block(
+        t.data(),
+        Origin::new(0, strides_of(t.shape(), arena)),
+        out,
+        Origin::new(origin, out_strides),
+        t.shape(),
+        cell,
         arena,
-    )
+    );
+    finish_bytes(dtype, shape, out, arena)
 }
 
 /// `crop: [T, offset, shape]` — the inverse of `pad`: cut a sub-block out
@@ -367,30 +359,21 @@ pub(crate) fn evaluate_crop<'a>(
     charge(ctx, cost(t.numel(), numel_of(shape)?))?;
 
     let dtype = t.dtype();
-    let cell = dtype.size_of();
-    let in_strides = strides_of(t.shape(), arena);
     let out = DataTensor::zeroed_bytes_in(dtype, shape, arena).map_err(wrap)?;
 
-    let mut idx = bvec::<usize>(arena, rank);
-    idx.resize(rank, 0);
-    let mut at = 0usize;
-    if numel_of(shape)? > 0 {
-        loop {
-            let src: usize = (0..rank)
-                .map(|i| (idx[i] + offset[i]) * in_strides[i])
-                .sum();
-            out[at * cell..(at + 1) * cell]
-                .copy_from_slice(&t.data()[src * cell..(src + 1) * cell]);
-            at += 1;
-            if !super::advance(&mut idx, shape) {
-                break;
-            }
-        }
-    }
-    finish(
-        DataTensor::from_bytes(dtype, shape, out).map_err(wrap)?,
+    // The window starts at `offset` inside the input.
+    let in_strides = strides_of(t.shape(), arena);
+    let origin = offset.iter().zip(in_strides).map(|(o, s)| o * s).sum();
+    copy_block(
+        t.data(),
+        Origin::new(origin, in_strides),
+        out,
+        Origin::new(0, strides_of(shape, arena)),
+        shape,
+        dtype.size_of(),
         arena,
-    )
+    );
+    finish_bytes(dtype, shape, out, arena)
 }
 
 /// `gather: [T, indices, axis?]` — select slices along `axis` (0 by
@@ -414,16 +397,12 @@ pub(crate) fn evaluate_gather<'a>(
         None => 0,
     };
 
-    let extent = t.shape()[axis];
+    let (outer, extent, inner) = split_axis(t.shape(), axis);
     let mut resolved = bvec::<usize>(arena, indices.len());
     for &i in indices {
         // Negative indices count from the end, as they do everywhere else
         // an axis position is named in this family.
-        let r = if i < 0 { i + extent as i64 } else { i };
-        if r < 0 || r as usize >= extent {
-            return Err(bad("gather: index out of range"));
-        }
-        resolved.push(r as usize);
+        resolved.push(resolve_index(i, extent).ok_or_else(|| bad("gather: index out of range"))?);
     }
     let resolved = resolved.into_bump_slice();
 
@@ -435,9 +414,6 @@ pub(crate) fn evaluate_gather<'a>(
 
     let dtype = t.dtype();
     let cell = dtype.size_of();
-    let outer: usize = t.shape()[..axis].iter().product();
-    let inner: usize = t.shape()[axis + 1..].iter().product();
-
     let out = DataTensor::zeroed_bytes_in(dtype, shape, arena).map_err(wrap)?;
     for o in 0..outer {
         for (k, &src_k) in resolved.iter().enumerate() {
@@ -446,46 +422,82 @@ pub(crate) fn evaluate_gather<'a>(
             out[dst..dst + inner * cell].copy_from_slice(&t.data()[src..src + inner * cell]);
         }
     }
-    finish(
-        DataTensor::from_bytes(dtype, shape, out).map_err(wrap)?,
-        arena,
-    )
+    finish_bytes(dtype, shape, out, arena)
 }
 
 // ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-/// Copy `t` into `out` at `offset`, where `out` has `shape` and is at
-/// least as large as `t` on every axis. Shared by `pad`.
-fn copy_window(
-    t: DataTensor<'_>,
-    out: &mut [u8],
-    shape: &[usize],
-    offset: &[usize],
-    arena: &Bump,
-) -> Result<()> {
-    if t.numel() == 0 {
-        return Ok(());
-    }
-    let rank = t.ndim();
-    let cell = t.dtype().size_of();
-    let out_strides = strides_of(shape, arena);
+/// Where a block starts inside a row-major buffer, and how far one step
+/// along each axis moves. Both in elements.
+struct Origin<'s> {
+    base: usize,
+    strides: &'s [usize],
+}
 
-    let mut idx = bvec::<usize>(arena, rank);
-    idx.resize(rank, 0);
-    let mut at = 0usize;
+impl<'s> Origin<'s> {
+    fn new(base: usize, strides: &'s [usize]) -> Self {
+        Self { base, strides }
+    }
+
+    /// Element offset of the row that starts at `idx` (one entry per outer
+    /// axis; the innermost axis is walked by the caller).
+    fn row(&self, idx: &[usize]) -> usize {
+        self.base
+            + idx
+                .iter()
+                .zip(self.strides)
+                .map(|(i, s)| i * s)
+                .sum::<usize>()
+    }
+
+    /// Stride of the innermost axis; 1 for a 0-d block.
+    fn step(&self) -> usize {
+        self.strides.last().copied().unwrap_or(1)
+    }
+}
+
+/// Copy a `window`-shaped block from `src` at `from` to `dst` at `to`.
+///
+/// One `copy_from_slice` per innermost row when both sides are contiguous
+/// along that axis — every `crop` and `pad`, and any `transpose` that
+/// keeps the last axis — and one per cell otherwise. `crop`, `pad` and
+/// `transpose` are all this function with different origins.
+fn copy_block(
+    src: &[u8],
+    from: Origin<'_>,
+    dst: &mut [u8],
+    to: Origin<'_>,
+    window: &[usize],
+    cell: usize,
+    arena: &Bump,
+) {
+    if window.contains(&0) {
+        return;
+    }
+    // A 0-d window is one element: a single row of length 1.
+    let (rows, n) = window
+        .split_last()
+        .map_or((&[][..], 1), |(n, rows)| (rows, *n));
+    let (src_step, dst_step) = (from.step(), to.step());
+
+    let mut idx = bvec::<usize>(arena, rows.len());
+    idx.resize(rows.len(), 0);
     loop {
-        let dst: usize = (0..rank)
-            .map(|i| (idx[i] + offset[i]) * out_strides[i])
-            .sum();
-        out[dst * cell..(dst + 1) * cell].copy_from_slice(&t.data()[at * cell..(at + 1) * cell]);
-        at += 1;
-        if !super::advance(&mut idx, t.shape()) {
+        let (s, d) = (from.row(&idx), to.row(&idx));
+        if src_step == 1 && dst_step == 1 {
+            dst[d * cell..(d + n) * cell].copy_from_slice(&src[s * cell..(s + n) * cell]);
+        } else {
+            for k in 0..n {
+                let (sk, dk) = ((s + k * src_step) * cell, (d + k * dst_step) * cell);
+                dst[dk..dk + cell].copy_from_slice(&src[sk..sk + cell]);
+            }
+        }
+        if !advance(&mut idx, rows) {
             break;
         }
     }
-    Ok(())
 }
 
 /// The byte pattern of one element of `dtype` holding `v`. Built by making
@@ -496,12 +508,7 @@ fn scalar_bytes<'a>(dtype: DType, v: &DataValue<'_>, arena: &'a Bump) -> Result<
 }
 
 fn scalar_bytes_impl<'a, T: Scalar>(v: &DataValue<'_>, arena: &'a Bump) -> Result<&'a [u8]> {
-    let x = T::from_value(v).ok_or_else(|| {
-        wrap(TensorError::Element {
-            index: 0,
-            expected: T::DTYPE,
-        })
-    })?;
+    let x = T::from_value(v).ok_or_else(|| element_error(0, T::DTYPE))?;
     let one = arena.alloc_slice_copy(&[x]);
     let shape = arena.alloc_slice_copy(&[1usize]);
     Ok(DataTensor::from_slice(shape, one).map_err(wrap)?.data())

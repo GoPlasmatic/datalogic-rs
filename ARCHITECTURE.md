@@ -232,8 +232,9 @@ pass to fire — notably:
 - `filter_strict_eq_field_fast_path` recognises
   `filter(arr, == [{var: "field"}, invariant])` and evaluates the
   invariant once outside the loop.
-- `evaluate_invariant_no_push` short-circuits any predicate-side node
-  that doesn't reference the iteration scope.
+- `is_filter_invariant` admits only literals and root-bound references
+  to that hoist, since neither reads the frame stack the fast path
+  skips.
 - `dispatch_node` (`crates/datalogic-rs/src/engine/mod.rs`) carries a
   literal fast path: every `CompiledNode::Value` reachable from a `Logic`
   carries a pre-built `PreLit` view (trivial values from `precompute_lit`

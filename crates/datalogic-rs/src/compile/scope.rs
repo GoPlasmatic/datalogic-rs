@@ -20,8 +20,12 @@
 //!   guarantees an error is in hand by the time the last arm runs. Its other
 //!   early return — a literal catch arm — reads no context, so the skipped
 //!   push is unobservable.
-//! - The **filter invariant fast path** pushes a synthetic null frame
-//!   precisely to *preserve* this invariant while skipping the per-item frame.
+//! - The **filter invariant fast path** is the one deliberate exception: it
+//!   dispatches a hoisted predicate operand one frame shallower than its
+//!   static depth. That is sound only because `is_filter_invariant` admits
+//!   nothing but literals and `Root`-bound references, neither of which
+//!   reads the stack — and a level that clamps to the root at depth `D`
+//!   still clamps at `D - 1`, so the debug oracle agrees.
 //!
 //! # Single source of truth
 //!

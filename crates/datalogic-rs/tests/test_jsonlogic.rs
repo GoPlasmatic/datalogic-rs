@@ -92,8 +92,9 @@ impl Recorder {
     }
 }
 
-/// Operators that exist only behind a cargo feature, paired with whether this
-/// build compiled them in.
+/// Operators that exist only behind a cargo feature, grouped by the feature
+/// that gates them. Availability is looked up through [`feature_enabled`],
+/// so the feature-to-`cfg!` mapping lives in one place.
 ///
 /// The suite index is deliberately feature-agnostic: it lists every suite, and
 /// a reduced-feature build simply cannot evaluate some of them. Without this,
@@ -107,65 +108,76 @@ impl Recorder {
 /// in a suite stays absent from this table, so it still fails loudly instead of
 /// being skipped. `gated_operator_table_matches_engine` guards the table
 /// against drift.
-const GATED_OPERATORS: &[(&str, bool)] = &[
-    ("datetime", cfg!(feature = "datetime")),
-    ("timestamp", cfg!(feature = "datetime")),
-    ("parse_date", cfg!(feature = "datetime")),
-    ("format_date", cfg!(feature = "datetime")),
-    ("date_diff", cfg!(feature = "datetime")),
-    ("now", cfg!(feature = "datetime")),
-    ("try", cfg!(feature = "error-handling")),
-    ("throw", cfg!(feature = "error-handling")),
-    ("sort", cfg!(feature = "ext-array")),
-    ("slice", cfg!(feature = "ext-array")),
-    ("group_by", cfg!(feature = "ext-array")),
-    ("distinct", cfg!(feature = "ext-array")),
-    ("exists", cfg!(feature = "ext-control")),
-    ("??", cfg!(feature = "ext-control")),
-    ("switch", cfg!(feature = "ext-control")),
-    ("match", cfg!(feature = "ext-control")),
-    ("type", cfg!(feature = "ext-control")),
-    ("abs", cfg!(feature = "ext-math")),
-    ("ceil", cfg!(feature = "ext-math")),
-    ("floor", cfg!(feature = "ext-math")),
-    ("keys", cfg!(feature = "ext-object")),
-    ("values", cfg!(feature = "ext-object")),
-    ("entries", cfg!(feature = "ext-object")),
-    ("length", cfg!(feature = "ext-string")),
-    ("starts_with", cfg!(feature = "ext-string")),
-    ("ends_with", cfg!(feature = "ext-string")),
-    ("upper", cfg!(feature = "ext-string")),
-    ("lower", cfg!(feature = "ext-string")),
-    ("trim", cfg!(feature = "ext-string")),
-    ("split", cfg!(feature = "ext-string")),
-    ("fractional", cfg!(feature = "flagd")),
-    ("sem_ver", cfg!(feature = "flagd")),
-    ("tensor", cfg!(feature = "tensor")),
-    ("zeros", cfg!(feature = "tensor")),
-    ("full", cfg!(feature = "tensor")),
-    ("scatter", cfg!(feature = "tensor")),
-    ("rle_expand", cfg!(feature = "tensor")),
-    ("one_hot", cfg!(feature = "tensor")),
-    ("stack", cfg!(feature = "tensor")),
-    ("concat", cfg!(feature = "tensor")),
-    ("unstack", cfg!(feature = "tensor")),
-    ("reshape", cfg!(feature = "tensor")),
-    ("transpose", cfg!(feature = "tensor")),
-    ("pad", cfg!(feature = "tensor")),
-    ("crop", cfg!(feature = "tensor")),
-    ("cast", cfg!(feature = "tensor")),
-    ("normalize", cfg!(feature = "tensor")),
-    ("argmax", cfg!(feature = "tensor")),
-    ("gather", cfg!(feature = "tensor")),
-    ("to_list", cfg!(feature = "tensor")),
-    ("shape", cfg!(feature = "tensor")),
-    ("dtype", cfg!(feature = "tensor")),
+const GATED_OPERATORS: &[(&str, &[&str])] = &[
+    (
+        "datetime",
+        &[
+            "datetime",
+            "timestamp",
+            "parse_date",
+            "format_date",
+            "date_diff",
+            "now",
+        ],
+    ),
+    ("error-handling", &["try", "throw"]),
+    ("ext-array", &["sort", "slice", "group_by", "distinct"]),
+    ("ext-control", &["exists", "??", "switch", "match", "type"]),
+    ("ext-math", &["abs", "ceil", "floor"]),
+    ("ext-object", &["keys", "values", "entries"]),
+    (
+        "ext-string",
+        &[
+            "length",
+            "starts_with",
+            "ends_with",
+            "upper",
+            "lower",
+            "trim",
+            "split",
+        ],
+    ),
+    ("flagd", &["fractional", "sem_ver"]),
+    (
+        "tensor",
+        &[
+            "tensor",
+            "zeros",
+            "full",
+            "scatter",
+            "rle_expand",
+            "one_hot",
+            "stack",
+            "concat",
+            "unstack",
+            "reshape",
+            "transpose",
+            "pad",
+            "crop",
+            "cast",
+            "normalize",
+            "argmax",
+            "gather",
+            "to_list",
+            "shape",
+            "dtype",
+        ],
+    ),
 ];
+
+/// Every gated operator this build did *not* compile in.
+fn absent_operators() -> impl Iterator<Item = &'static str> {
+    GATED_OPERATORS
+        .iter()
+        .filter(|(feature, _)| !feature_enabled(feature))
+        .flat_map(|(_, ops)| ops.iter().copied())
+}
 
 /// Whether this build has the named cargo feature. Backs a case's optional
 /// `requires` field, for cases that need a feature for reasons the operator
 /// walk cannot see — a duration string only coerces to a duration under
-/// `datetime`, for instance, even though the rule is a plain `*`.
+/// `datetime`, for instance, even though the rule is a plain `*` — and the
+/// [`GATED_OPERATORS`] table.
 fn feature_enabled(name: &str) -> bool {
     match name {
         "datetime" => cfg!(feature = "datetime"),
@@ -194,10 +206,7 @@ fn absent_operator(rule: &Value) -> Option<&'static str> {
         Value::Object(map) => {
             if map.len() == 1 {
                 let key = map.keys().next().expect("len checked");
-                if let Some((name, _)) = GATED_OPERATORS
-                    .iter()
-                    .find(|(name, available)| !available && *name == key)
-                {
+                if let Some(name) = absent_operators().find(|name| name == key) {
                     return Some(name);
                 }
             }
@@ -216,12 +225,14 @@ fn absent_operator(rule: &Value) -> Option<&'static str> {
 fn gated_operator_table_matches_engine() {
     let engine = Engine::new();
     let live: std::collections::HashSet<&str> = engine.builtin_operator_names().collect();
-    for (name, available) in GATED_OPERATORS {
-        assert_eq!(
-            live.contains(name),
-            *available,
-            "GATED_OPERATORS disagrees with the engine about `{name}`"
-        );
+    for (feature, ops) in GATED_OPERATORS {
+        for name in *ops {
+            assert_eq!(
+                live.contains(name),
+                feature_enabled(feature),
+                "GATED_OPERATORS disagrees with the engine about `{name}` (feature `{feature}`)"
+            );
+        }
     }
 }
 

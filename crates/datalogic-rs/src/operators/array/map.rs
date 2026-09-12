@@ -1,6 +1,6 @@
 //! `map` — transform each item via a body expression.
 
-use crate::arena::{ContextStack, DataValue, bvec};
+use crate::arena::{ContextStack, DataValue, IterGuard, bvec};
 use crate::node::PathSegment;
 use crate::opcode::OpCode;
 use crate::{CompiledNode, Engine, Result};
@@ -326,15 +326,12 @@ fn map_bridge_single<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let item_av: &'a DataValue<'a> = input;
-    let token = ctx.push_indexed(item_av, 0);
-    // Pop before propagating errors. A bare `?` on `run_iter_body` would skip
-    // the `pop` and leak this frame; when a surrounding `try` catches the
-    // error, later evaluation would then resolve `var`/`val` against the
-    // stale frame instead of the real context.
-    let result = engine.run_iter_body(body, ctx, arena, 0, 1);
-    ctx.restore_frame(token);
-    let owned = *result?;
+    // The guard restores the enclosing frame on drop, `?` included. A bare
+    // push that skipped its pop on the error path once leaked this frame
+    // into a surrounding `try`'s catch arm (`tests/error_context_test.rs`).
+    let mut guard = IterGuard::new(ctx);
+    guard.step_indexed(input, 0);
+    let owned = *engine.run_iter_body(body, guard.stack(), arena, 0, 1)?;
     let slice = arena.alloc_slice_fill_iter(std::iter::once(owned));
     Ok(arena.alloc(DataValue::Array(slice)))
 }

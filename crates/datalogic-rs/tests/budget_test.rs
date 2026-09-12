@@ -13,18 +13,7 @@
 use bumpalo::Bump;
 use datalogic_rs::{Engine, EvaluationConfig, Metered};
 
-/// Operations charged by `rule` over `data`, with no ceiling.
-fn ops(rule: &str, data: &str) -> u64 {
-    let engine = Engine::new();
-    let compiled = engine.compile(rule).expect("compile");
-    let arena = Bump::new();
-    engine
-        .evaluate_metered(&compiled, data, &arena, u64::MAX)
-        .expect("eval")
-        .ops
-}
-
-/// Evaluate under `budget`, returning the error tag on refusal.
+/// Evaluate under `budget`, returning the operations spent or the refusal.
 fn under_budget(rule: &str, data: &str, budget: u64) -> Result<u64, datalogic_rs::Error> {
     let engine = Engine::new();
     let compiled = engine.compile(rule).expect("compile");
@@ -33,6 +22,14 @@ fn under_budget(rule: &str, data: &str, budget: u64) -> Result<u64, datalogic_rs
         .evaluate_metered(&compiled, data, &arena, budget)
         .map(|m| m.ops)
 }
+
+/// Operations charged by `rule` over `data`, with no ceiling.
+fn ops(rule: &str, data: &str) -> u64 {
+    under_budget(rule, data, u64::MAX).expect("eval")
+}
+
+/// The workhorse rule: one dispatched node per item over `xs`.
+const DOUBLE_XS: &str = r#"{"map": [{"var": "xs"}, {"*": [{"var": ""}, 2]}]}"#;
 
 fn array_of(n: usize) -> String {
     let items: Vec<String> = (0..n).map(|i| i.to_string()).collect();
@@ -132,12 +129,7 @@ fn quantifier_fast_predicate_costs_at_least_one_per_item() {
 #[test]
 fn map_fused_body_costs_at_least_one_per_item() {
     // `{"*": [{"var": ""}, 2]}` is a fusible `ArithVarLit` body.
-    assert!(
-        ops(
-            r#"{"map": [{"var": "xs"}, {"*": [{"var": ""}, 2]}]}"#,
-            &array_of(N)
-        ) >= N as u64
-    );
+    assert!(ops(DOUBLE_XS, &array_of(N)) >= N as u64);
 }
 
 #[test]
@@ -171,7 +163,7 @@ fn nested_iteration_multiplies() {
 
 #[test]
 fn crossing_the_ceiling_is_refused() {
-    let rule = r#"{"map": [{"var": "xs"}, {"*": [{"var": ""}, 2]}]}"#;
+    let rule = DOUBLE_XS;
     let data = array_of(N);
     let err = under_budget(rule, &data, 10).expect_err("should be refused");
     assert_eq!(err.tag(), "BudgetExceeded");
@@ -179,7 +171,7 @@ fn crossing_the_ceiling_is_refused() {
 
 #[test]
 fn the_error_reports_the_ceiling_and_what_was_spent() {
-    let rule = r#"{"map": [{"var": "xs"}, {"*": [{"var": ""}, 2]}]}"#;
+    let rule = DOUBLE_XS;
     let err = under_budget(rule, &array_of(N), 10).expect_err("should be refused");
     let json: serde_json::Value = serde_json::to_value(&err).expect("serialize");
     assert_eq!(json["type"], "BudgetExceeded");
@@ -190,7 +182,7 @@ fn the_error_reports_the_ceiling_and_what_was_spent() {
 
 #[test]
 fn the_error_carries_the_node_breadcrumb() {
-    let rule = r#"{"map": [{"var": "xs"}, {"*": [{"var": ""}, 2]}]}"#;
+    let rule = DOUBLE_XS;
     let err = under_budget(rule, &array_of(N), 10).expect_err("should be refused");
     assert!(
         !err.node_ids().is_empty(),
@@ -200,7 +192,7 @@ fn the_error_carries_the_node_breadcrumb() {
 
 #[test]
 fn a_budget_that_fits_is_not_refused() {
-    let rule = r#"{"map": [{"var": "xs"}, {"*": [{"var": ""}, 2]}]}"#;
+    let rule = DOUBLE_XS;
     let data = array_of(10);
     let spent = ops(rule, &data);
     assert_eq!(
@@ -219,13 +211,13 @@ fn try_cannot_recover_from_an_exhausted_budget() {
     // The catch arm is a literal, which returns before dispatch and so
     // would not charge anything: if `try` treated this like any other
     // error, the abort would not be an abort.
-    let rule = r#"{"try": [{"map": [{"var": "xs"}, {"*": [{"var": ""}, 2]}]}, "fallback"]}"#;
-    let err = under_budget(rule, &array_of(N), 10).expect_err("should not be caught");
+    let rule = format!(r#"{{"try": [{DOUBLE_XS}, "fallback"]}}"#);
+    let err = under_budget(&rule, &array_of(N), 10).expect_err("should not be caught");
     assert_eq!(err.tag(), "BudgetExceeded");
 
     // Same with a catch arm that does dispatch.
-    let rule = r#"{"try": [{"map": [{"var": "xs"}, {"*": [{"var": ""}, 2]}]}, {"var": "xs"}]}"#;
-    let err = under_budget(rule, &array_of(N), 10).expect_err("should not be caught");
+    let rule = format!(r#"{{"try": [{DOUBLE_XS}, {{"var": "xs"}}]}}"#);
+    let err = under_budget(&rule, &array_of(N), 10).expect_err("should not be caught");
     assert_eq!(err.tag(), "BudgetExceeded");
 }
 
@@ -250,7 +242,7 @@ fn the_engine_wide_budget_applies_to_every_entry_point() {
     let engine = Engine::builder()
         .with_config(EvaluationConfig::default().with_ops_budget(Some(10)))
         .build();
-    let rule = r#"{"map": [{"var": "xs"}, {"*": [{"var": ""}, 2]}]}"#;
+    let rule = DOUBLE_XS;
     let data = array_of(N);
 
     assert_eq!(
@@ -275,9 +267,7 @@ fn the_per_call_budget_overrides_the_engine_wide_one() {
     let engine = Engine::builder()
         .with_config(EvaluationConfig::default().with_ops_budget(Some(10)))
         .build();
-    let compiled = engine
-        .compile(r#"{"map": [{"var": "xs"}, {"*": [{"var": ""}, 2]}]}"#)
-        .expect("compile");
+    let compiled = engine.compile(DOUBLE_XS).expect("compile");
     let arena = Bump::new();
     let data = array_of(N);
 
@@ -313,7 +303,7 @@ fn session_eval_metered_reports_the_same_count() {
 fn an_unset_budget_evaluates_unbounded() {
     let engine = Engine::new();
     assert!(engine.config().ops_budget.is_none());
-    let rule = r#"{"map": [{"var": "xs"}, {"*": [{"var": ""}, 2]}]}"#;
+    let rule = DOUBLE_XS;
     assert!(engine.eval_str(rule, &array_of(10_000)).is_ok());
 }
 

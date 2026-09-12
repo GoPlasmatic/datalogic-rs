@@ -429,6 +429,46 @@ pub(crate) fn builtin_operator_names() -> impl Iterator<Item = &'static str> {
 }
 
 impl OpCode {
+    /// Whether this opcode belongs to the tensor family.
+    ///
+    /// The family is classified as one unit by the optimizer: never
+    /// constant-folded and never CSE-memoised, even though every member is
+    /// a pure function of its arguments. Folding `zeros([128,128], "f32")`
+    /// would bake a 64 KB literal into the `Logic` (and its `PreLit`), and
+    /// folded or memoised work is never charged, so a budgeted operation
+    /// count would depend on which subtrees the optimizer happened to
+    /// recognise. Both gates ask this one predicate, so a new tensor
+    /// operator is classified by being listed here and nowhere else.
+    /// Revisit with a size cap if a workload shows repeated constant
+    /// tensors.
+    #[cfg(feature = "tensor")]
+    #[inline]
+    pub(crate) const fn is_tensor(self) -> bool {
+        matches!(
+            self,
+            OpCode::TensorMake
+                | OpCode::TensorZeros
+                | OpCode::TensorFull
+                | OpCode::TensorScatter
+                | OpCode::TensorRleExpand
+                | OpCode::TensorOneHot
+                | OpCode::TensorStack
+                | OpCode::TensorConcat
+                | OpCode::TensorUnstack
+                | OpCode::TensorReshape
+                | OpCode::TensorTranspose
+                | OpCode::TensorPad
+                | OpCode::TensorCrop
+                | OpCode::TensorCast
+                | OpCode::TensorNormalize
+                | OpCode::TensorArgmax
+                | OpCode::TensorGather
+                | OpCode::TensorToList
+                | OpCode::TensorShape
+                | OpCode::TensorDtype
+        )
+    }
+
     /// Convert OpCode back to its canonical string form (for debugging /
     /// display / serialization).
     ///

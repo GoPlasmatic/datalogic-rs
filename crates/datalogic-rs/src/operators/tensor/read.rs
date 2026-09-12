@@ -8,29 +8,35 @@
 
 use super::{
     Scalar, arg, as_axis, as_dtype, as_f64, as_tensor, at_most, bad, by_dtype, charge, finish,
-    opt_arg, wrap,
+    finish_slice, opt_arg, shape_without_axis, split_axis, wrap,
 };
 use crate::arena::{ContextStack, DataValue, bvec};
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 use datavalue::{DType, DataTensor, NumberValue};
 
-/// Widen every element to `f64`, once, so the operators below can be
-/// written against a single element type instead of a 13 × 13 matrix of
-/// source/destination dtype pairs.
+/// The tensor's payload as a typed slice. Every element-wise reader starts
+/// here, inside a `by_dtype!` monomorphisation, so it walks native elements
+/// rather than an intermediate buffer.
+#[inline]
+fn elements<'t, T: Scalar>(t: &'t DataTensor<'_>) -> Result<&'t [T]> {
+    t.as_slice::<T>()
+        .ok_or_else(|| bad("tensor: dtype does not match its payload"))
+}
+
+/// Widen every element to `f64`, once, so `cast` can be written against a
+/// single element type instead of a 13 × 13 matrix of source/destination
+/// dtype pairs.
 ///
 /// The buffer lives in the evaluation arena and is dropped with it.
 /// Elements of the 64-bit integer dtypes above 2^53 lose their low bits
-/// here; that is the documented limit of `cast`, `normalize` and `argmax`
-/// on `i64` / `u64`.
+/// here; that is the documented limit of `cast` on `i64` / `u64`.
 fn widen<'a>(t: DataTensor<'_>, arena: &'a Bump) -> Result<&'a [f64]> {
     by_dtype!(t.dtype(), widen_impl, t, arena)
 }
 
 fn widen_impl<'a, T: Scalar>(t: DataTensor<'_>, arena: &'a Bump) -> Result<&'a [f64]> {
-    let src = t
-        .as_slice::<T>()
-        .ok_or_else(|| bad("tensor: dtype does not match its payload"))?;
+    let src = elements::<T>(&t)?;
     let mut out = bvec::<f64>(arena, src.len());
     out.extend(src.iter().map(|v| v.to_f64()));
     Ok(out.into_bump_slice())
@@ -53,10 +59,7 @@ fn narrow_impl<'a, T: Scalar>(
 ) -> Result<&'a DataValue<'a>> {
     let mut out = bvec::<T>(arena, values.len());
     out.extend(values.iter().map(|v| T::from_f64_saturating(*v)));
-    finish(
-        DataTensor::from_slice(shape, out.into_bump_slice()).map_err(wrap)?,
-        arena,
-    )
+    finish_slice(shape, out, arena)
 }
 
 /// `cast: [T, dtype]` — the family's one cross-dtype conversion.
@@ -106,14 +109,19 @@ pub(crate) fn evaluate_normalize<'a>(
         None => 1.0,
     };
     charge(ctx, t.numel() as u64)?;
+    by_dtype!(t.dtype(), normalize_impl, t, mean, scale, arena)
+}
 
-    let values = widen(t, arena)?;
-    let mut out = bvec::<f32>(arena, values.len());
-    out.extend(values.iter().map(|v| ((v - mean) * scale) as f32));
-    finish(
-        DataTensor::from_slice(t.shape(), out.into_bump_slice()).map_err(wrap)?,
-        arena,
-    )
+fn normalize_impl<'a, T: Scalar>(
+    t: DataTensor<'a>,
+    mean: f64,
+    scale: f64,
+    arena: &'a Bump,
+) -> Result<&'a DataValue<'a>> {
+    let src = elements::<T>(&t)?;
+    let mut out = bvec::<f32>(arena, src.len());
+    out.extend(src.iter().map(|v| ((v.to_f64() - mean) * scale) as f32));
+    finish_slice(t.shape(), out, arena)
 }
 
 /// `argmax: [T, axis]` — index of the largest element along `axis`,
@@ -139,16 +147,23 @@ pub(crate) fn evaluate_argmax<'a>(
         return Err(bad("argmax: cannot reduce a zero-length axis"));
     }
     charge(ctx, t.numel() as u64)?;
+    by_dtype!(t.dtype(), argmax_impl, t, axis, arena)
+}
 
-    let values = widen(t, arena)?;
-    let extent = t.shape()[axis];
-    let outer: usize = t.shape()[..axis].iter().product();
-    let inner: usize = t.shape()[axis + 1..].iter().product();
+/// Compares native elements in place (`Scalar: PartialOrd`), so 64-bit
+/// integers are ordered exactly and nothing is widened or copied first.
+fn argmax_impl<'a, T: Scalar>(
+    t: DataTensor<'a>,
+    axis: usize,
+    arena: &'a Bump,
+) -> Result<&'a DataValue<'a>> {
+    let src = elements::<T>(&t)?;
+    let (outer, extent, inner) = split_axis(t.shape(), axis);
 
     let mut out = bvec::<i64>(arena, outer * inner);
     for o in 0..outer {
         for i in 0..inner {
-            let at = |k: usize| values[((o * extent) + k) * inner + i];
+            let at = |k: usize| src[((o * extent) + k) * inner + i];
             let mut best = 0usize;
             let mut best_v = at(0);
             for k in 1..extent {
@@ -163,14 +178,9 @@ pub(crate) fn evaluate_argmax<'a>(
         }
     }
 
-    // The reduced shape drops `axis`. Building the answer as an i64
-    // tensor and expanding it reuses datavalue's nesting rather than
-    // hand-rolling a second one.
-    let mut shape = bvec::<usize>(arena, t.ndim() - 1);
-    shape.extend_from_slice(&t.shape()[..axis]);
-    shape.extend_from_slice(&t.shape()[axis + 1..]);
-    let shape = shape.into_bump_slice();
-
+    // Building the answer as an i64 tensor and expanding it reuses
+    // datavalue's nesting rather than hand-rolling a second one.
+    let shape = shape_without_axis(t.shape(), axis, arena);
     let reduced = DataTensor::from_slice(shape, out.into_bump_slice()).map_err(wrap)?;
     Ok(arena.alloc(reduced.to_nested_in(arena).map_err(wrap)?))
 }

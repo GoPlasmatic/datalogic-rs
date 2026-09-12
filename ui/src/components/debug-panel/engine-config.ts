@@ -120,6 +120,16 @@ function pruneAgainstPreset(config: DataLogicEvaluationConfig): DataLogicEvaluat
 }
 
 /**
+ * Parse a number input's raw text as a whole number >= 1, or `undefined`
+ * when it is blank or invalid, which `withOverride` treats as "clear the
+ * override". Shared by every integer knob in the settings panel.
+ */
+export function positiveInt(raw: string): number | undefined {
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 1 ? parsed : undefined;
+}
+
+/**
  * Set one top-level knob (including `preset` itself), keeping the stored
  * config minimal: only overrides that differ from the preset survive.
  */

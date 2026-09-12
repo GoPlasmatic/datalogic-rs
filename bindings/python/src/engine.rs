@@ -514,52 +514,26 @@ pub(crate) fn evaluate_value(
     }
 }
 
+/// String-result evaluation under the engine's own budget. The metered
+/// body already runs every input tier; with no explicit budget it
+/// resolves to exactly what `Engine::evaluate` would apply, so this is
+/// that body minus the count.
 pub(crate) fn evaluate_str(
     py: Python<'_>,
     engine: &Arc<RsEngine>,
     logic: &Arc<Logic>,
     data: &Bound<'_, PyAny>,
 ) -> PyResult<String> {
-    let engine_ref: &RsEngine = engine;
-    let logic_ref: &Logic = logic;
-    if let Ok(s) = data.cast::<PyString>() {
-        let s_owned = s.to_str()?.to_string();
-        return py
-            .detach(|| -> Result<String, datalogic_rs::Error> {
-                let arena = Bump::new();
-                let av = engine_ref.evaluate(logic_ref, s_owned.as_str(), &arena)?;
-                Ok(av.to_string())
-            })
-            .map_err(|e| engine_error_to_pyerr(py, &e, Some(logic)));
-    }
-    // Dict input: direct walk (with pythonize fallback), string result
-    // materialised inside the detached closure.
-    match build_py_tree(data) {
-        Ok(tree) => py
-            .detach(move || -> Result<String, datalogic_rs::Error> {
-                let arena = Bump::new();
-                let av = engine_ref.evaluate(logic_ref, tree.value(), &arena)?;
-                Ok(av.to_string())
-            })
-            .map_err(|e| engine_error_to_pyerr(py, &e, Some(logic))),
-        Err(_) => {
-            let value = dict_to_value(py, data)?;
-            py.detach(|| -> Result<String, datalogic_rs::Error> {
-                let arena = Bump::new();
-                let av = engine_ref.evaluate(logic_ref, &value, &arena)?;
-                Ok(av.to_string())
-            })
-            .map_err(|e| engine_error_to_pyerr(py, &e, Some(logic)))
-        }
-    }
+    evaluate_metered(py, engine, logic, data, None).map(|(json, _)| json)
 }
 
 /// Shared body for the `*_metered` methods: evaluate under `budget` and
 /// hand back `(result_json, ops)`.
 ///
-/// `budget` of `None` falls back to the engine's configured `ops_budget`,
-/// then to unbounded — the same precedence the JS bindings use, so a rule
-/// metered from Python and from Node reports the same number.
+/// `budget` of `None` resolves through `Engine::resolve_ops_budget` — the
+/// engine's configured `ops_budget`, then unbounded — the same precedence
+/// the JS bindings use, so a rule metered from Python and from Node
+/// reports the same number.
 pub(crate) fn evaluate_metered(
     py: Python<'_>,
     engine: &Arc<RsEngine>,
@@ -567,12 +541,12 @@ pub(crate) fn evaluate_metered(
     data: &Bound<'_, PyAny>,
     budget: Option<u64>,
 ) -> PyResult<(String, u64)> {
-    let budget = budget.or(engine.config().ops_budget).unwrap_or(u64::MAX);
+    let budget = engine.resolve_ops_budget(budget);
     let engine_ref: &RsEngine = engine;
     let logic_ref: &Logic = logic;
 
     // String input parses straight into the arena; anything else walks
-    // the Python object tree, mirroring `evaluate_str`'s tiers.
+    // the Python object tree.
     if let Ok(s) = data.cast::<PyString>() {
         let s_owned = s.to_str()?.to_string();
         return py

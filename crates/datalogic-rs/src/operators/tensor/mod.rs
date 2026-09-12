@@ -118,6 +118,13 @@ fn bad(msg: &'static str) -> Error {
     Error::invalid_arguments(msg)
 }
 
+/// The same error datavalue raises when a nested leaf will not fit its
+/// dtype, so every decode path reports an unrepresentable element the
+/// same way.
+fn element_error(index: usize, expected: DType) -> Error {
+    wrap(TensorError::Element { index, expected })
+}
+
 // ---------------------------------------------------------------------------
 // Argument plumbing
 // ---------------------------------------------------------------------------
@@ -252,17 +259,21 @@ fn as_f64(v: &DataValue<'_>) -> Result<f64> {
     }
 }
 
-/// Resolve an axis argument against a rank, accepting Python-style
-/// negative indexing (`-1` is the last axis). `extra` is 1 for `stack`,
-/// where the axis names a position in the *output* rank.
+/// Resolve a position in `0..extent`, accepting Python-style negative
+/// indexing (`-1` is the last position). `None` when out of range either
+/// way. Shared by every place this family names an axis or an index.
+#[inline]
+fn resolve_index(i: i64, extent: usize) -> Option<usize> {
+    let resolved = if i < 0 { i + extent as i64 } else { i };
+    usize::try_from(resolved).ok().filter(|r| *r < extent)
+}
+
+/// Resolve an axis argument against a rank. `extra` is 1 for `stack`,
+/// where the axis names a position in the *output* rank. A 0-d tensor
+/// still accepts axis 0 so the rank-0 checks each operator does can
+/// produce their own, more specific error.
 fn as_axis(v: &DataValue<'_>, rank: usize, extra: usize) -> Result<usize> {
-    let limit = rank + extra;
-    let a = as_i64(v)?;
-    let resolved = if a < 0 { a + limit as i64 } else { a };
-    if resolved < 0 || resolved as usize >= limit.max(1) {
-        return Err(bad("axis out of range"));
-    }
-    Ok(resolved as usize)
+    resolve_index(as_i64(v)?, (rank + extra).max(1)).ok_or_else(|| bad("axis out of range"))
 }
 
 // ---------------------------------------------------------------------------
@@ -303,6 +314,26 @@ fn advance(idx: &mut [usize], shape: &[usize]) -> bool {
     false
 }
 
+/// Split a shape around `axis` into `(outer, extent, inner)`: the element
+/// counts before the axis, along it, and after it. Every operator that
+/// walks one axis of a row-major buffer needs exactly these three numbers.
+#[inline]
+fn split_axis(shape: &[usize], axis: usize) -> (usize, usize, usize) {
+    (
+        shape[..axis].iter().product(),
+        shape[axis],
+        shape[axis + 1..].iter().product(),
+    )
+}
+
+/// `shape` with `axis` removed — the result shape of `unstack` and `argmax`.
+fn shape_without_axis<'a>(shape: &[usize], axis: usize, arena: &'a Bump) -> &'a [usize] {
+    let mut out = crate::arena::bvec::<usize>(arena, shape.len() - 1);
+    out.extend_from_slice(&shape[..axis]);
+    out.extend_from_slice(&shape[axis + 1..]);
+    out.into_bump_slice()
+}
+
 // ---------------------------------------------------------------------------
 // Producing a result
 // ---------------------------------------------------------------------------
@@ -312,6 +343,37 @@ fn advance(idx: &mut [usize], shape: &[usize]) -> bool {
 #[inline]
 fn finish<'a>(t: DataTensor<'a>, arena: &'a Bump) -> Result<&'a DataValue<'a>> {
     Ok(arena.alloc(DataValue::tensor_in(t, arena)))
+}
+
+/// [`finish`] over a byte buffer the operator filled itself — the
+/// byte-moving operators' exit. `bytes` must already be aligned for
+/// `dtype`, which everything `DataTensor::zeroed_bytes_in` hands out is.
+#[inline]
+fn finish_bytes<'a>(
+    dtype: DType,
+    shape: &'a [usize],
+    bytes: &'a [u8],
+    arena: &'a Bump,
+) -> Result<&'a DataValue<'a>> {
+    finish(
+        DataTensor::from_bytes(dtype, shape, bytes).map_err(wrap)?,
+        arena,
+    )
+}
+
+/// [`finish`] over an element vector the operator built — the element-wise
+/// operators' exit. The vector's own allocation becomes the payload, no
+/// copy.
+#[inline]
+fn finish_slice<'a, T: datavalue::Element>(
+    shape: &'a [usize],
+    data: bumpalo::collections::Vec<'a, T>,
+    arena: &'a Bump,
+) -> Result<&'a DataValue<'a>> {
+    finish(
+        DataTensor::from_slice(shape, data.into_bump_slice()).map_err(wrap)?,
+        arena,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -339,9 +401,9 @@ pub(crate) trait Scalar: datavalue::Element + PartialOrd {
     /// `cast`, which is defined as a lossy narrowing.
     fn from_f64_saturating(v: f64) -> Self;
 
-    /// Widen for `normalize` and `argmax`. Lossy above 2^53 for the 64-bit
+    /// Widen for `cast` and `normalize`. Lossy above 2^53 for the 64-bit
     /// integer dtypes; `argmax` therefore compares elements directly
-    /// rather than through this.
+    /// (`Scalar: PartialOrd`) rather than through this.
     fn to_f64(self) -> f64;
 }
 

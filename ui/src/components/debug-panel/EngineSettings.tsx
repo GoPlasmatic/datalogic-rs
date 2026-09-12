@@ -4,6 +4,7 @@ import type { DataLogicEvaluationConfig } from '../logic-editor/types';
 import { normalizeEvaluationConfig } from '../logic-editor/hooks/useWasmEvaluator';
 import {
   resolveEvaluationConfig,
+  positiveInt,
   withOverride,
   withCoercion,
   type Preset,
@@ -224,16 +225,9 @@ export function EngineSettingsPanel({
             min={1}
             step={1}
             value={resolved.max_recursion_depth}
-            onChange={(e) => {
-              const parsed = Number.parseInt(e.target.value, 10);
-              onChange(
-                withOverride(
-                  config,
-                  'max_recursion_depth',
-                  Number.isFinite(parsed) && parsed >= 1 ? parsed : undefined,
-                ),
-              );
-            }}
+            onChange={(e) =>
+              onChange(withOverride(config, 'max_recursion_depth', positiveInt(e.target.value)))
+            }
           />
           <span className="engine-settings-hint">
             Nested engine re-entries allowed before a ConfigurationError (custom operators only). Default 256.
@@ -248,16 +242,7 @@ export function EngineSettingsPanel({
             step={1}
             placeholder="Unlimited"
             value={resolved.ops_budget ?? ''}
-            onChange={(e) => {
-              const parsed = Number.parseInt(e.target.value, 10);
-              onChange(
-                withOverride(
-                  config,
-                  'ops_budget',
-                  Number.isFinite(parsed) && parsed >= 1 ? parsed : undefined,
-                ),
-              );
-            }}
+            onChange={(e) => onChange(withOverride(config, 'ops_budget', positiveInt(e.target.value)))}
           />
           <span className="engine-settings-hint">
             Caps the work one evaluation may do — one operation per node the engine dispatches, one

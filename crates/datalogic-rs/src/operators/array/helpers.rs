@@ -12,19 +12,20 @@ use std::ops::ControlFlow;
 /// of the iteration and evaluating it once yields what the per-item path
 /// would have produced. Used by the filter/quantifier fast paths.
 ///
-/// The subtlety is what "invariant" has to mean here. The fast path does not
-/// simply skip the per-item frame: [`evaluate_invariant_no_push`] substitutes
-/// a synthetic `ContextFrame::Data(null)` for it, so the frame *count* is
-/// unchanged and only the innermost frame's *contents* differ from the
-/// general path. So a reference is invariant exactly when it cannot observe
-/// that innermost frame:
+/// The subtlety is what "invariant" has to mean here. The fast path skips
+/// the per-item frame entirely and dispatches the hoisted operand one frame
+/// shallower than its static depth, so a reference is invariant exactly when
+/// it cannot observe the frame stack at all:
 ///
-/// - [`ScopeBinding::Root`] reads the rule input — same either way.
-/// - [`ScopeBinding::Ancestor`] indexes strictly below the top of the stack
-///   (`2 <= level <= depth - 1`), so it lands in `parents`, never on the
-///   substituted frame.
-/// - [`ScopeBinding::Current`] *is* the substituted frame: the item on the
-///   general path, `null` here. Not invariant.
+/// - A literal takes the dispatcher's literal fast path.
+/// - [`ScopeBinding::Root`] reads the rule input straight from
+///   `ctx.root_input()`; and a level that clamps to the root at the
+///   predicate's static depth still clamps one frame shallower, so the
+///   debug oracle agrees with the hoisted evaluation.
+/// - [`ScopeBinding::Current`] *is* the per-item frame. Not invariant.
+/// - [`ScopeBinding::Ancestor`] indexes the stack relative to a frame that
+///   is not pushed on this path. Rare (depth >= 3) and left to the general
+///   path rather than resolved with a second copy of the level arithmetic.
 /// - [`ScopeBinding::Unresolved`] means the scope pass never reached this
 ///   node, so nothing is proven. Treated as not invariant.
 ///
@@ -33,7 +34,7 @@ use std::ops::ControlFlow;
 /// itself sits one or more frames deep, which is the shape that made this
 /// predicate wrong before. Metadata and reduce hints read `ctx.current()`
 /// regardless of level, so they are never invariant; and a `default_value`
-/// would be dispatched against the substituted context too.
+/// is an arbitrary subtree that could.
 #[inline]
 pub(super) fn is_filter_invariant(node: &CompiledNode) -> bool {
     match node {
@@ -45,10 +46,8 @@ pub(super) fn is_filter_invariant(node: &CompiledNode) -> bool {
             default_value,
             ..
         } => {
-            matches!(
-                binding,
-                crate::node::ScopeBinding::Root | crate::node::ScopeBinding::Ancestor
-            ) && *reduce_hint == ReduceHint::None
+            *binding == crate::node::ScopeBinding::Root
+                && *reduce_hint == ReduceHint::None
                 && *metadata_hint == MetadataHint::None
                 && default_value.is_none()
         }
@@ -78,28 +77,6 @@ pub(super) fn try_extract_filter_field_cmp<'a>(
         return Some((segments, b));
     }
     None
-}
-
-/// Evaluate a loop-invariant predicate-side node once, before iteration.
-/// Literal values are deep-converted into the arena; outer-scope
-/// `CompiledVar`s resolve through arena dispatch with a synthesized null iter
-/// frame so the var sees the outer context unaffected by the missing iter
-/// frame this fast path skips.
-#[inline]
-pub(super) fn evaluate_invariant_no_push<'a>(
-    invariant_node: &'a CompiledNode,
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    if let CompiledNode::Value { value, .. } = invariant_node {
-        return Ok(arena.alloc(value.to_arena(arena)));
-    }
-    let null_av: &'a DataValue<'a> = crate::arena::singletons::singleton_null();
-    let token = ctx.push(null_av);
-    let result = engine.dispatch_node(invariant_node, ctx, arena);
-    ctx.restore_frame(token);
-    result
 }
 
 /// Represents a detected fast-path predicate pattern for quantifier/filter
@@ -946,9 +923,9 @@ mod invariant_tests {
     }
 
     /// The strict-eq filter fast path evaluates a "loop-invariant" operand
-    /// once, against a synthetic null frame standing in for the per-item one.
-    /// Anything that can observe that innermost frame must therefore be
-    /// rejected, or the fast path and the general path disagree.
+    /// once, before the loop, with no per-item frame pushed. Anything that
+    /// reads the frame stack must therefore be rejected, or the fast path
+    /// and the general path disagree.
     ///
     /// Pins both directions: the shapes that must stay hoistable (or the fast
     /// path is silently lost) and the shapes that must not be (or results are
@@ -973,7 +950,7 @@ mod invariant_tests {
         }
 
         // Not hoistable: metadata hints read `ctx.current()` whatever the
-        // level, so they see the synthetic null instead of the item.
+        // level, so hoisted they would read the enclosing frame, not the item.
         for rule in [
             r#"{"filter": [{"val": "xs"}, {"===": [{"var": "a"}, {"val": [[1], "index"]}]}]}"#,
             r#"{"filter": [{"val": "xs"}, {"===": [{"var": "a"}, {"val": [[1], "key"]}]}]}"#,
@@ -1000,5 +977,33 @@ mod invariant_tests {
             is_filter_invariant(nested_filter_rhs(&logic)),
             "a level that clamps to root stays hoistable"
         );
+
+        // Not hoistable: a genuine ancestor frame is indexed relative to the
+        // per-item frame this path never pushes. Two `map`s deep, `[[2]]`
+        // names the outer map's item; the general path resolves it.
+        let ancestor = r#"{"map": [{"val": "g"}, {"map": [{"val": "h"}, {"filter": [{"val": "i"}, {"===": [{"var": "a"}, {"val": [[2], "a"]}]}]}]}]}"#;
+        let logic = engine.compile(ancestor).unwrap();
+        let CompiledNode::BuiltinOperator { args, .. } = &logic.root else {
+            panic!("expected map at the root");
+        };
+        let inner = nested_filter_rhs_of(&args[1]);
+        assert!(
+            !is_filter_invariant(inner),
+            "an ancestor reference takes the general path"
+        );
+    }
+
+    /// `nested_filter_rhs` for a subtree rather than a `Logic`.
+    fn nested_filter_rhs_of(map: &CompiledNode) -> &CompiledNode {
+        let CompiledNode::BuiltinOperator { args, .. } = map else {
+            panic!("expected map");
+        };
+        let CompiledNode::BuiltinOperator { args: inner, .. } = &args[1] else {
+            panic!("expected a nested filter");
+        };
+        let CompiledNode::BuiltinOperator { args: pred, .. } = &inner[1] else {
+            panic!("expected a comparison predicate");
+        };
+        &pred[1]
     }
 }

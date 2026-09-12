@@ -39,8 +39,11 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   Surface: `EvaluationConfig::ops_budget` (engine-wide, and reaching every
   binding through the existing `from_json_str` wire format as the
   `ops_budget` key), `Engine::evaluate_metered` / `Session::eval_metered`
-  (per call, returning `Metered { value, ops }`), `EvalContext::charge` for
-  custom operators, and `ErrorKind::BudgetExceeded { budget, spent }`.
+  (per call, returning `Metered { value, ops }`),
+  `Engine::resolve_ops_budget` (the "explicit, else configured, else
+  unbounded" precedence every binding's optional-budget form goes
+  through), `EvalContext::charge` for custom operators, and
+  `ErrorKind::BudgetExceeded { budget, spent }`.
   `charge` is always present — a no-op when the feature is off — so a
   custom operator can call it without a `cfg` of its own.
 
@@ -233,18 +236,17 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 - **Filter fast path hoisted operands it could not safely hoist.** The
   strict-equality filter fast path evaluates a "loop-invariant" predicate
-  operand once, against a synthetic null frame standing in for the
-  per-item one — but it classified *any* `{"val": [[N], …]}` as invariant.
-  Two shapes therefore disagreed with the general path: a predicate reading
-  `index` or `key`, which resolve against the current frame whatever the
-  level, and a `[[1]]` reference inside a filter that is itself nested one
-  or more frames deep, where `[[1]]` names the current item. Both silently
-  returned wrong rows — e.g. `{"filter": [{"var":"xs"}, {"===": [{"var":"a"},
-  {"val":[[1],"index"]}]}]}` over `[{"a":0},{"a":1},{"a":2}]` matched
-  nothing instead of everything. Hoisting is now gated on the compile-time
-  scope binding, which distinguishes a reference to the substituted frame
-  from one to the root or a strict ancestor; the latter two stay on the
-  fast path.
+  operand once, without the per-item frame — but it classified *any*
+  `{"val": [[N], …]}` as invariant. Two shapes therefore disagreed with
+  the general path: a predicate reading `index` or `key`, which resolve
+  against the current frame whatever the level, and a `[[1]]` reference
+  inside a filter that is itself nested one or more frames deep, where
+  `[[1]]` names the current item. Both silently returned wrong rows — e.g.
+  `{"filter": [{"var":"xs"}, {"===": [{"var":"a"}, {"val":[[1],"index"]}]}]}`
+  over `[{"a":0},{"a":1},{"a":2}]` matched nothing instead of everything.
+  Hoisting is now gated on the compile-time scope binding: only a literal
+  or a reference that provably resolves to the root input is hoisted, since
+  neither reads the frame stack; everything else takes the general path.
 
 ## [5.4.0] - 2026-08-31
 

@@ -203,8 +203,13 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-combos-${{ hashFiles('Cargo.toml', 'crates/datalogic-rs/Cargo.toml') }}
-          restore-keys: ${{ runner.os }}-cargo-combos-
+          # Keyed per combo like `feature-matrix`: the legs build different
+          # feature sets, so one shared `target/` would be rebuilt by every
+          # leg but the one that saved it.
+          key: ${{ runner.os }}-cargo-combos-${{ matrix.combo }}-${{ hashFiles('Cargo.toml', 'crates/datalogic-rs/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-combos-${{ matrix.combo }}-
+            ${{ runner.os }}-cargo-combos-
 
       - name: Test with `${{ matrix.combo }}`
         run: cargo test -p datalogic-rs --no-default-features --features ${{ matrix.combo }}

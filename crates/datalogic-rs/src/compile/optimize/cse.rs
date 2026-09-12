@@ -369,33 +369,11 @@ fn opcode_is_cse_pure(opcode: OpCode) -> bool {
     if matches!(opcode, OpCode::Fractional | OpCode::SemVer) {
         return false;
     }
-    // Same reasoning as `opcode_is_static`: memoizing a tensor operator
-    // would make a budgeted operation count depend on CSE decisions, and
-    // the memo would pin a large buffer for the whole evaluation.
+    // Memoizing a tensor operator would make a budgeted operation count
+    // depend on CSE decisions, and the memo would pin a large buffer for
+    // the whole evaluation — see `OpCode::is_tensor`.
     #[cfg(feature = "tensor")]
-    if matches!(
-        opcode,
-        OpCode::TensorMake
-            | OpCode::TensorZeros
-            | OpCode::TensorFull
-            | OpCode::TensorScatter
-            | OpCode::TensorRleExpand
-            | OpCode::TensorOneHot
-            | OpCode::TensorStack
-            | OpCode::TensorConcat
-            | OpCode::TensorUnstack
-            | OpCode::TensorReshape
-            | OpCode::TensorTranspose
-            | OpCode::TensorPad
-            | OpCode::TensorCrop
-            | OpCode::TensorCast
-            | OpCode::TensorNormalize
-            | OpCode::TensorArgmax
-            | OpCode::TensorGather
-            | OpCode::TensorToList
-            | OpCode::TensorShape
-            | OpCode::TensorDtype
-    ) {
+    if opcode.is_tensor() {
         return false;
     }
     true

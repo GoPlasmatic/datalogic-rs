@@ -19,11 +19,10 @@ fn eval_err(rule: &str) -> datalogic_rs::Error {
         .expect_err("expected error")
 }
 
-/// The `TensorError` a failure came from, recovered by walking the source
-/// chain rather than by matching on a rendered message.
-fn tensor_error(rule: &str) -> TensorError {
-    let err = eval_err(rule);
-    let mut source: Option<&(dyn std::error::Error + 'static)> = std::error::Error::source(&err);
+/// The `TensorError` an engine error came from, recovered by walking the
+/// source chain rather than by matching on a rendered message.
+fn tensor_error_in(err: &datalogic_rs::Error) -> TensorError {
+    let mut source: Option<&(dyn std::error::Error + 'static)> = std::error::Error::source(err);
     while let Some(e) = source {
         if let Some(te) = e.downcast_ref::<TensorError>() {
             return te.clone();
@@ -31,6 +30,11 @@ fn tensor_error(rule: &str) -> TensorError {
         source = std::error::Error::source(e);
     }
     panic!("no TensorError in the source chain of {err:?}");
+}
+
+/// [`tensor_error_in`] for a rule evaluated over empty data.
+fn tensor_error(rule: &str) -> TensorError {
+    tensor_error_in(&eval_err(rule))
 }
 
 // ---------------------------------------------------------------------------
@@ -94,17 +98,9 @@ fn the_tagged_decoder_stays_strict_about_unknown_fields() {
     let err = engine
         .eval_str(r#"{"tensor": [{"val": "t"}]}"#, data)
         .expect_err("expected a decode error");
-    let mut source: Option<&(dyn std::error::Error + 'static)> = std::error::Error::source(&err);
-    let mut found = None;
-    while let Some(e) = source {
-        if let Some(te) = e.downcast_ref::<TensorError>() {
-            found = Some(te.clone());
-            break;
-        }
-        source = std::error::Error::source(e);
-    }
+    let found = tensor_error_in(&err);
     assert!(
-        matches!(found, Some(TensorError::UnexpectedField(_))),
+        matches!(found, TensorError::UnexpectedField(_)),
         "got {found:?}"
     );
 }

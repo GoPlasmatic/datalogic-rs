@@ -618,15 +618,50 @@ impl Engine {
     ) -> Result<&'a crate::arena::DataValue<'a>> {
         let _depth_guard = self.enter_dispatch_boundary()?;
         let data_ref = data.into_arena_value(arena)?;
+        let mut ctx = self.new_context(compiled, data_ref);
+        match self.dispatch_node(&compiled.root, &mut ctx, arena) {
+            Ok(av) => Ok(av),
+            Err(e) => Err(e.decorated(ctx.take_error_path(), compiled, true)),
+        }
+    }
+
+    /// Build the context stack for one evaluation of `compiled` over
+    /// `data_ref`: ancestor tracking as the scope pass decided, and the
+    /// engine-wide operation budget when one is configured. Every
+    /// evaluation entry point (plain, metered, traced) starts here so a
+    /// per-evaluation knob is wired in exactly one place.
+    #[inline(always)]
+    pub(crate) fn new_context<'a>(
+        &self,
+        compiled: &'a Logic,
+        data_ref: &'a crate::arena::DataValue<'a>,
+    ) -> crate::arena::ContextStack<'a> {
+        // Only the budget branch mutates; without the feature the binding
+        // is returned as built.
+        #[cfg_attr(not(feature = "budget"), allow(unused_mut))]
         let mut ctx = crate::arena::ContextStack::new(data_ref, compiled.needs_ancestor_frames);
         #[cfg(feature = "budget")]
         if let Some(budget) = self.config.ops_budget {
             ctx.set_budget(budget);
         }
-        match self.dispatch_node(&compiled.root, &mut ctx, arena) {
-            Ok(av) => Ok(av),
-            Err(e) => Err(e.decorated(ctx.take_error_path(), compiled, true)),
-        }
+        ctx
+    }
+
+    /// The budget a metered call runs under: `explicit` when the caller
+    /// gave one, else the engine-wide
+    /// [`EvaluationConfig::ops_budget`](crate::EvaluationConfig::ops_budget),
+    /// else unbounded (`u64::MAX`).
+    ///
+    /// This is the precedence [`Self::evaluate`] applies implicitly, made
+    /// available to callers of [`Self::evaluate_metered`] — the language
+    /// bindings' "omit the budget to use the engine's" forms all resolve
+    /// through here, so a rule metered from any of them reports the same
+    /// number.
+    #[cfg(feature = "budget")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "budget")))]
+    #[inline]
+    pub fn resolve_ops_budget(&self, explicit: Option<u64>) -> u64 {
+        explicit.or(self.config.ops_budget).unwrap_or(u64::MAX)
     }
 
     /// Evaluate under an explicit operation budget, reporting what the
@@ -707,7 +742,7 @@ impl Engine {
     ) -> Result<Metered<&'a crate::arena::DataValue<'a>>> {
         let _depth_guard = self.enter_dispatch_boundary()?;
         let data_ref = data.into_arena_value(arena)?;
-        let mut ctx = crate::arena::ContextStack::new(data_ref, compiled.needs_ancestor_frames);
+        let mut ctx = self.new_context(compiled, data_ref);
         ctx.set_budget(budget);
         match self.dispatch_node(&compiled.root, &mut ctx, arena) {
             Ok(value) => Ok(Metered {
@@ -924,14 +959,13 @@ impl Engine {
 
         // One operation per dispatched node, charged before the work.
         // Literals returned above cost nothing — they are data the
-        // compiler already resolved, not work the rule asked for.
-        #[cfg(feature = "budget")]
+        // compiler already resolved, not work the rule asked for. With
+        // the `budget` feature off `charge` is an inlined `Ok(())`, so
+        // this folds to the bare inner dispatch.
         let result = match ctx.charge(1) {
             Ok(()) => dispatch::dispatch_node_inner(self, node, ctx, arena),
             Err(e) => Err(e),
         };
-        #[cfg(not(feature = "budget"))]
-        let result = dispatch::dispatch_node_inner(self, node, ctx, arena);
 
         // Accumulate the failing node's id on every Err. We always pay
         // the (single) Vec::push since errors are rare and structured-error
