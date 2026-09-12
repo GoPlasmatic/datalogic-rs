@@ -8,6 +8,7 @@ import {
   shapeHasLed,
   pillTypeForText,
   operatorRenderKind,
+  drawnShape,
   isWiredCell,
   cellDisplayText,
 } from '../utils/nodeShape';
@@ -65,9 +66,11 @@ export const UnifiedOperatorNode = memo(function UnifiedOperatorNode({
   // handles/rows inherit the same signal tint. `shape` (its role) drives the CSS
   // silhouette; `renderKind` picks the tap/infix/card layout — the one decision
   // shared with utils/layout.ts so the node's footprint matches what's drawn.
+  // A variable with a computed path renders as a card and draws as a value
+  // card (drawnShape): the tap silhouette only fits the tap render.
   const color = signalVar(signalForOperator(data.operator, data.category));
-  const shape = shapeForOperator(data.operator, data.category);
   const renderKind = operatorRenderKind(data);
+  const shape = drawnShape(shapeForOperator(data.operator, data.category), renderKind);
   const isFlow = useIsFlowDirection();
   const debugClassName = useDebugClassName(id);
   const toggleNodeCollapse = useNodeCollapse(id);

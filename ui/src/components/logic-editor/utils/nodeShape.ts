@@ -7,6 +7,7 @@ import { getOperator } from '../config/operators';
 import type { OperatorCategory } from '../config/operators.types';
 import type { CellData, OperatorNodeData } from '../types';
 import { isIfOperator, isDecisionCells } from './converters/if-else-converter';
+import { hasVariableCells } from './converters/variable-cells';
 
 export type NodeShape =
   | 'tap'        // var / val / exists — a plug into the data
@@ -113,9 +114,13 @@ export type RenderKind = 'tap' | 'infix-gate' | 'infix-arith' | 'card' | 'gate-s
 export function operatorRenderKind(
   data: Pick<OperatorNodeData, 'operator' | 'category' | 'cells'>,
 ): RenderKind {
-  // var / val / exists with a plain path render as a compact data tap; a
-  // computed path needs the full card (the plug can't host a child handle).
-  if (data.category === 'variable' && !hasChildCell(data.cells)) return 'tap';
+  // var / val / exists with a plain path render as a compact data tap. A
+  // computed path (no editable path cells: its operands are ordinary
+  // arguments, wired or inlined as pills) and a var with a wired default both
+  // need the full card (the plug can't host a child handle).
+  if (data.category === 'variable' && hasVariableCells(data.cells) && !hasChildCell(data.cells)) {
+    return 'tap';
+  }
 
   // if / else-if: each condition is its own decision diamond (when/then/else).
   // A generic `if` node (shorthand or single-operand form) has no diamond
@@ -144,6 +149,19 @@ export function operatorRenderKind(
     return infix;
   }
   return 'card';
+}
+
+/**
+ * The silhouette a node actually draws with. `shapeForOperator` names the
+ * operator's ROLE; the tap silhouette, though, exists only in the tap render.
+ * A var / val / exists with a computed path renders as a card (see
+ * operatorRenderKind) and must not carry the tap class: the tap CSS makes the
+ * node box transparent and paints its selection / debug rings as solid
+ * clip-path fills behind the plug, which on a card sit on top of the rows.
+ * Such a card draws as a plain value card (its signal colour stays data-teal).
+ */
+export function drawnShape(shape: NodeShape, renderKind: RenderKind): NodeShape {
+  return shape === 'tap' && renderKind !== 'tap' ? 'value' : shape;
 }
 
 /** Display text of an operand cell (summary for wired, value/label for inline). */

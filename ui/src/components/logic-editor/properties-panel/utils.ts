@@ -16,7 +16,9 @@ import { getOperator } from '../config/operators';
 import { literalPanelConfig, structurePanelConfig } from '../config/literalPanel';
 import { isSimpleOperand } from '../utils/type-helpers';
 import {
+  hasVariableCells,
   isMetadataAccess,
+  isVariableOperatorName,
   pathComponentsFromCellValue,
   rawOperandOf,
 } from '../utils/converters/variable-cells';
@@ -80,6 +82,13 @@ export function getInitialValuesFromNode(data: LogicNodeData): Record<string, un
 function getOperatorInitialValues(data: OperatorNodeData): Record<string, unknown> {
   const raw = rawOperandOf(data.expression);
   const operands: JsonLogicValue[] = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
+
+  // A var / val / exists with a computed path (an expression where a path
+  // segment is expected) is a generic operator node: it has no path cells to
+  // seed from and its operands are edited through the arguments section.
+  if (isVariableOperatorName(data.operator) && !hasVariableCells(data.cells)) {
+    return {};
+  }
 
   // For variable operators, extract values from editable cells
   if (data.operator === 'var') {

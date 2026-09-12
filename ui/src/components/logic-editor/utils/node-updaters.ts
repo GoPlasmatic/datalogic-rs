@@ -6,7 +6,8 @@
  *
  * Variable operators (var, val, exists) rebuild their cells together with the
  * expression so the two never diverge; a value the panel did not touch keeps
- * what the node already had.
+ * what the node already had. A computed path (no editable cells) is left
+ * exactly as stored.
  */
 
 import type {
@@ -20,6 +21,7 @@ import type { JsonLogicValue } from '../types/jsonlogic';
 import { buildVariableCells } from './node-factory';
 import {
   METADATA_SCOPE,
+  hasVariableCells,
   isVariableOperatorName,
   pathComponentsFromCellValue,
   rawOperandOf,
@@ -39,9 +41,11 @@ export function panelValuesToNodeData(
     case 'literal':
       return literalPanelToData(currentData, panelValues);
     case 'operator': {
-      // Check if this is a variable operator (var, val, exists) which has editable fields
+      // A variable operator (var, val, exists) with a static path has editable
+      // fields. A computed path is wired as ordinary arguments and has no path
+      // cells, so the variable panel cannot (and must not) rebuild it.
       const opData = currentData as OperatorNodeData;
-      if (isVariableOperatorName(opData.operator)) {
+      if (isVariableOperatorName(opData.operator) && hasVariableCells(opData.cells)) {
         return variablePanelToData(currentData as VariableNodeData, panelValues);
       }
       // Other operator types don't have editable panel fields (their children are edited separately)
