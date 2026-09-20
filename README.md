@@ -58,7 +58,7 @@ The same evaluation, one line in each runtime:
 | **.NET (C#)** | `engine.Apply(rule, data)` |
 | **PHP** | `$engine->apply($rule, $data)` |
 
-Same bytes in, same bytes out: every binding wraps the same core and passes the same 63-suite conformance battery. Each package README has the full quickstart for its language, and every binding ships the same three runnable programs under its `examples/` folder — the folders themselves are the parity demo.
+Same bytes in, same bytes out: every binding wraps the same core and passes the same 64-suite conformance battery. Each package README has the full quickstart for its language, and every binding ships the same three runnable programs under its `examples/` folder — the folders themselves are the parity demo.
 
 ---
 
