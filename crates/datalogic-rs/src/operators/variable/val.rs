@@ -14,13 +14,15 @@ use super::{
 };
 use crate::arena::{ContextStack, DataValue};
 use crate::node::{MetadataHint, PathSegment, ReduceHint, ScopeBinding};
-use crate::{CompiledNode, Error, Result};
+use crate::{ArenaExt, CompiledNode, Error, Result};
 
 /// Arena variant of `evaluate_val_compiled`. Dispatches through four
 /// resolution stages in order:
 ///
-/// 1. **Metadata** (`{"val": [n, "index"]}` / `"key"`) — reads the iteration
-///    frame's bookkeeping directly.
+/// 1. **Metadata** (`{"val": [[n], "index"]}` / `"key"`) — reads the
+///    bookkeeping of the frame `metadata_climb(n)` climbs up. Total: a level
+///    that names no metadata frame, or a frame with no such slot, is null
+///    rather than a field lookup.
 /// 2. **Reduce** (`current` / `accumulator` and their `.path` siblings) —
 ///    reads the reduce frame's slots.
 /// 3. **Root-scope fast path** (`scope_level == 0` at root depth) — arena
@@ -76,8 +78,13 @@ pub(crate) fn evaluate_val_compiled<'a>(
         };
     }
 
-    if let Some(av) = resolve_metadata_hint(metadata_hint, ctx, arena) {
-        return Ok(av);
+    if metadata_hint != MetadataHint::None {
+        return Ok(resolve_metadata_hint(
+            metadata_hint,
+            scope_level as isize,
+            ctx,
+            arena,
+        ));
     }
 
     if let Some(res) = resolve_reduce_hint(
@@ -95,31 +102,47 @@ pub(crate) fn evaluate_val_compiled<'a>(
     resolve_via_context_stack(scope_level, segments, ctx, engine, arena, default_value)
 }
 
-/// Stage 1 — metadata hints (`index` / `key`) read from the current iteration
-/// frame. Returns `Some(av)` only when the corresponding slot is populated;
-/// `None` lets the caller fall through to the next stage.
+/// Stage 1 — metadata hints (`index` / `key`), read from the frame
+/// `metadata_climb(level)` climbs above the current one: `[[1]]` is the
+/// innermost frame, `[[3]]` the one enclosing it. The compiler only sets a
+/// hint on a level that names a metadata frame, so the remaining misses are
+/// runtime ones — a climb past the outermost frame, `key` over an array, or a
+/// `reduce` / `try` frame, which carry no iteration metadata — and all of them
+/// are null. This is **total**: the caller never falls through to a data read
+/// of a field literally named `index` or `key`.
+///
+/// Shared with the interpreted path (`super::metadata_hint_lookup`), which
+/// classifies the path string and then calls this, so "what `index` evaluates
+/// to" has one definition.
 #[inline]
-fn resolve_metadata_hint<'a>(
+pub(super) fn resolve_metadata_hint<'a>(
     hint: MetadataHint,
+    level: isize,
     ctx: &ContextStack<'a>,
     arena: &'a Bump,
-) -> Option<&'a DataValue<'a>> {
-    match hint {
-        MetadataHint::Index => ctx.current().get_index().map(|idx| {
-            let i = idx as i64;
-            crate::arena::singletons::singleton_small_int(i).unwrap_or_else(|| {
-                &*arena.alloc(DataValue::Number(datavalue::NumberValue::Integer(i)))
-            })
-        }),
+) -> &'a DataValue<'a> {
+    debug_assert!(
+        crate::arena::metadata_climb(level.unsigned_abs()).is_some(),
+        "metadata hint on level {level}, which names an element frame - the \
+         compile-time parity gate broke"
+    );
+    let frame = ctx.metadata_at_level(level);
+    let resolved = match hint {
+        MetadataHint::Index => frame
+            .and_then(|f| f.get_index())
+            .map(|idx| arena.i64(idx as i64)),
         // `key` already has lifetime `'a` (object pairs live in the arena
         // for the call) — no `alloc_str` copy needed; only the `String`
         // wrapper requires a bump alloc.
-        MetadataHint::Key => ctx
-            .current()
-            .get_key()
+        MetadataHint::Key => frame
+            .and_then(|f| f.get_key())
             .map(|key| &*arena.alloc(DataValue::String(key))),
-        MetadataHint::None => None,
-    }
+        MetadataHint::None => {
+            debug_assert!(false, "guarded by the caller");
+            None
+        }
+    };
+    resolved.unwrap_or_else(crate::arena::singletons::singleton_null)
 }
 
 /// Stage 2 — reduce-frame hints. `Current` / `Accumulator` return the slot
@@ -256,7 +279,7 @@ fn eval_val_multiarg<'a>(
         if args.len() == 2 {
             let path_av = engine.dispatch_node(&args[1], ctx, arena)?;
             let path_str = path_av.as_str().unwrap_or("");
-            if let Some(av) = metadata_hint_lookup(ctx, path_str, arena) {
+            if let Some(av) = metadata_hint_lookup(ctx, level, path_str, arena) {
                 return Ok(av);
             }
 
@@ -323,6 +346,11 @@ fn eval_val_multiarg<'a>(
 /// Single-arg `val` where the path arg evaluated to an array. Distinguishes
 /// `[[level], path...]` from a plain path-chain array. Empty array →
 /// current data (matches `{"var": []}` semantics).
+///
+/// The bare `{"val": [[N]]}` is not handled here: its level is a literal by
+/// construction, so `try_compile_val` always turns it into a `Var` node. A
+/// one-element array reaching this path is therefore a *computed* path, and
+/// keeps its path meaning — `[0]` is "index 0", not "level 0".
 fn eval_val_array_path<'a>(
     path_av: &'a DataValue<'a>,
     arr_len: usize,
@@ -341,7 +369,7 @@ fn eval_val_array_path<'a>(
                 let second = array_get(path_av, 1)
                     .unwrap_or_else(|| crate::arena::singletons::singleton_null());
                 let path_str = second.as_str().unwrap_or("");
-                if let Some(av) = metadata_hint_lookup(ctx, path_str, arena) {
+                if let Some(av) = metadata_hint_lookup(ctx, level, path_str, arena) {
                     return Ok(av);
                 }
             }

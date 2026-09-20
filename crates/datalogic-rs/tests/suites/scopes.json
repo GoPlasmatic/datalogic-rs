@@ -163,7 +163,7 @@
             }
         ]
     },
-    "Interior-frame addressing at three levels of nesting. Frames are [A, B, C] with C current; only these cases reach the ScopeBinding::Ancestor branch, which no other suite exercises.",
+    "Interior-frame addressing at two and three levels of nesting. Frames are [A, B, C] with C current. A level climbs ceil(N/2) frames, so [[1]] and [[2]] both name the enclosing frame and the clamp to root only fires once the climb passes the outermost frame. `scopes-nested.json` covers the full matrix; these cases pin the ScopeBinding::Ancestor branch.",
     {
         "description": "Depth 3: [[0]] reads the current frame",
         "rule": {
@@ -222,7 +222,7 @@
         ]
     },
     {
-        "description": "Depth 3: [[1]] aliases [[0]] and also reads the current frame",
+        "description": "Depth 3: [[1]] reads the enclosing frame, like [[2]]",
         "rule": {
             "map": [
                 {
@@ -273,7 +273,7 @@
         "result": [
             [
                 [
-                    "C"
+                    "B"
                 ]
             ]
         ]
@@ -336,7 +336,7 @@
         ]
     },
     {
-        "description": "Depth 3: [[3]] clamps to root",
+        "description": "Depth 3: [[3]] reads two frames out, like [[4]]",
         "rule": {
             "map": [
                 {
@@ -387,7 +387,7 @@
         "result": [
             [
                 [
-                    "ROOT"
+                    "A"
                 ]
             ]
         ]
@@ -450,7 +450,7 @@
         ]
     },
     {
-        "description": "Depth 2: [[1]] reads the current frame, not its parent",
+        "description": "Depth 2: [[1]] reads the enclosing frame",
         "rule": {
             "map": [
                 {
@@ -493,12 +493,12 @@
         },
         "result": [
             [
-                "B"
+                "A"
             ]
         ]
     },
     {
-        "description": "Depth 2: [[2]] clamps to root",
+        "description": "Depth 2: [[2]] reads the enclosing frame, like [[1]]",
         "rule": {
             "map": [
                 {
@@ -541,7 +541,7 @@
         },
         "result": [
             [
-                "ROOT"
+                "A"
             ]
         ]
     },
@@ -592,7 +592,7 @@
         ]
     },
     {
-        "description": "Inside a catch arm at depth 2, [[1]] aliases [[0]] and is still the error object",
+        "description": "Inside a catch arm at depth 2, [[1]] leaves the catch frame for the map element, which has no `type`",
         "rule": {
             "map": [
                 {
@@ -634,11 +634,11 @@
             ]
         },
         "result": [
-            "boom"
+            null
         ]
     },
     {
-        "description": "Inside a catch arm at depth 2, [[2]] clamps past the map frame to root",
+        "description": "Inside a catch arm at depth 2, [[2]] reads the enclosing map element",
         "rule": {
             "map": [
                 {
@@ -680,7 +680,7 @@
             ]
         },
         "result": [
-            "ROOT"
+            "A"
         ]
     }
 ]

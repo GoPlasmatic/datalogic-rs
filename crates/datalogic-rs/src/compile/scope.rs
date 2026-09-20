@@ -34,7 +34,7 @@
 //! wrapping subtrees that could never hit the depth-gated runtime memo).
 //! Both call [`frames_pushed_for_child`] so the two can never drift.
 
-use crate::node::{CompiledNode, ScopeBinding};
+use crate::node::{CompiledNode, MetadataHint, ScopeBinding, metadata_reads_ancestor};
 use crate::opcode::OpCode;
 
 /// Number of context frames pushed around child `index` of `opcode` when that
@@ -107,9 +107,12 @@ pub(crate) fn frames_pushed_for_child(opcode: OpCode, index: usize, len: usize) 
 /// silently disable those fast paths without a compile error.
 /// Returns whether the tree can ever read an *ancestor* frame — i.e. a frame
 /// below the innermost one. That is the only thing `ContextStack::parents`
-/// exists to serve: `get_at_level` reaches it solely when `levels_up >= 2`,
-/// which is exactly [`ScopeBinding::Ancestor`]. When this is `false` the
-/// evaluator can skip maintaining the ancestor list entirely.
+/// exists to serve: a lookup reaches it exactly when its climb lands on a
+/// strict ancestor, which for a data read is [`ScopeBinding::Ancestor`] and
+/// for an `index` / `key` read is [`metadata_reads_ancestor`]. The two can
+/// disagree, because a metadata climb is one frame shorter than the data
+/// climb at the same odd level. When this is `false` the evaluator can skip
+/// maintaining the ancestor list entirely.
 ///
 /// Deliberately conservative. A dynamic `val` — `{"val": [<expr>, …]}`, which
 /// stays a `BuiltinOperator` because its level is not a literal — resolves its
@@ -126,10 +129,18 @@ fn resolve_at(node: &mut CompiledNode, depth: u32, needs_ancestors: &mut bool) {
         CompiledNode::Var {
             scope_level,
             binding,
+            metadata_hint,
             ..
         } => {
             *binding = ScopeBinding::resolve(depth, *scope_level);
-            *needs_ancestors |= *binding == ScopeBinding::Ancestor;
+            // A node with a metadata hint reads `index`/`key` from the frame
+            // `metadata_climb` names and never walks to `binding`'s frame, so
+            // only one of the two questions applies to it.
+            *needs_ancestors |= if *metadata_hint != MetadataHint::None {
+                metadata_reads_ancestor(depth, *scope_level)
+            } else {
+                *binding == ScopeBinding::Ancestor
+            };
         }
         #[cfg(feature = "ext-control")]
         CompiledNode::Exists(data) => {
@@ -170,7 +181,7 @@ fn resolve_at(node: &mut CompiledNode, depth: u32, needs_ancestors: &mut bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::node::ScopeBinding;
+    use crate::node::{ScopeBinding, metadata_reads_ancestor};
 
     #[test]
     fn iterator_bodies_push_one_frame() {
@@ -228,15 +239,14 @@ mod tests {
         assert_eq!(frames_pushed_for_child(OpCode::Try, 2, 3), 1);
     }
 
-    /// The full `(static_depth, scope_level)` resolution table, pinned against
-    /// the arithmetic of `ContextStack::get_at_level` — clamp and off-by-one
-    /// included. Verified against a direct probe of the running engine: with
-    /// three nested `map`s over frames `[A, B, C]`, `[[0]]` and `[[1]]` both
-    /// yield `C`, `[[2]]` yields `B`, and `[[3]]` and beyond yield the root.
-    ///
-    /// Note `Ancestor` only becomes reachable at depth 3. That is why the
-    /// conformance corpus — whose deepest iterator nesting is 2 — cannot
-    /// distinguish a correct interior-frame resolver from a broken one.
+    /// The full `(static_depth, scope_level)` resolution table for a data
+    /// read, pinned against the arithmetic of `ContextStack::get_at_level`.
+    /// A level climbs `ceil(level / 2)` frames, so `[[2k-1]]` and `[[2k]]`
+    /// name the same frame and the clamp fires only once the climb passes the
+    /// outermost frame. Verified against a direct probe of the running
+    /// engine: with three nested `map`s over frames `[A, B, C]`, `[[0]]`
+    /// yields `C`, `[[1]]` and `[[2]]` yield `B`, `[[3]]` and `[[4]]` yield
+    /// `A`, and `[[5]]` and beyond yield the root.
     #[test]
     fn resolution_table() {
         use ScopeBinding::{Ancestor, Current, Root};
@@ -246,19 +256,22 @@ mod tests {
             (0, 1, Root),    // clamp
             (0, 5, Root),    // clamp
             (1, 0, Current), // the sole frame
-            (1, 1, Root),    // clamp: level >= depth
+            (1, 1, Root),    // clamp: climb 1 >= depth
             (1, 2, Root),
             (2, 0, Current),
-            (2, 1, Current), // the off-by-one: [[1]] aliases [[0]]
-            (2, 2, Root),    // clamp
-            (2, 3, Root),
+            (2, 1, Ancestor), // climb 1: the enclosing frame
+            (2, 2, Ancestor), // same frame as [[1]]
+            (2, 3, Root),     // clamp: climb 2 >= depth
+            (2, 4, Root),
             (3, 0, Current),
-            (3, 1, Current),  // off-by-one again
-            (3, 2, Ancestor), // first genuinely reachable interior frame
-            (3, 3, Root),     // clamp
-            (4, 2, Ancestor),
-            (4, 3, Ancestor),
-            (4, 4, Root),
+            (3, 1, Ancestor), // climb 1
+            (3, 2, Ancestor),
+            (3, 3, Ancestor), // climb 2: the outermost frame
+            (3, 4, Ancestor),
+            (3, 5, Root), // clamp
+            (4, 4, Ancestor),
+            (4, 6, Ancestor),
+            (4, 7, Root),
         ];
         for (depth, level, want) in expected {
             assert_eq!(
@@ -269,25 +282,96 @@ mod tests {
         }
     }
 
-    /// The outermost frame is unreachable at every depth: no level resolves to
-    /// frame index 0. Pinned so a future change to the walk has to confront it
-    /// deliberately rather than "fixing" it by accident.
+    /// Every frame is addressable, the outermost included — the property
+    /// issue #74 was about. The outermost frame is the one a climb of
+    /// `depth - 1` names, which is where levels `2*depth - 3` and
+    /// `2*depth - 2` land.
     #[test]
-    fn outermost_frame_is_never_addressable() {
-        for depth in 1..8u32 {
-            for level in 0..depth + 3 {
-                let b = ScopeBinding::resolve(depth, level);
-                // `Ancestor` covers 2..=depth-1, which never includes the
-                // index-0 frame; everything else is Current or Root.
-                if b == ScopeBinding::Ancestor {
-                    assert!(
-                        (2..depth).contains(&level),
-                        "Ancestor at depth={depth} level={level} is out of the \
-                         reachable interior range 2..{depth}"
-                    );
-                }
+    fn every_frame_is_addressable() {
+        use crate::arena::{FrameTarget, frame_at_climb};
+        for depth in 2..8u32 {
+            assert_eq!(
+                frame_at_climb(depth as usize, depth as usize - 1),
+                FrameTarget::Ancestor(0),
+                "the outermost frame sits at parents[0] at depth={depth}"
+            );
+            for level in [2 * depth - 3, 2 * depth - 2] {
+                assert_eq!(
+                    ScopeBinding::resolve(depth, level),
+                    ScopeBinding::Ancestor,
+                    "depth={depth} level={level} names the outermost frame"
+                );
             }
+            assert_eq!(
+                ScopeBinding::resolve(depth, 2 * depth - 1),
+                ScopeBinding::Root,
+                "one level further clamps to the root"
+            );
         }
+    }
+
+    /// What `needs_ancestor_frames` actually costs: it turns on only for a
+    /// rule that both nests two frames and reads a level that reaches past
+    /// the innermost one. A single iterator never pays for the ancestor list,
+    /// whatever level it uses, because every level there clamps to the root.
+    #[cfg(feature = "serde_json")]
+    #[test]
+    fn ancestor_tracking_turns_on_only_where_a_level_can_reach_one() {
+        let engine = crate::Engine::new();
+        for (rule, want, why) in [
+            (
+                r#"{"map": [{"val": "a"}, {"val": [[2], "x"]}]}"#,
+                false,
+                "one frame: clamps to root",
+            ),
+            (
+                r#"{"map": [{"val": "a"}, {"val": [[1], "index"]}]}"#,
+                false,
+                "metadata of the current frame",
+            ),
+            (
+                r#"{"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": "x"}]}]}"#,
+                false,
+                "nested, but no level",
+            ),
+            (
+                r#"{"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[1], "x"]}]}]}"#,
+                true,
+                "nested data level",
+            ),
+            (
+                r#"{"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[3], "index"]}]}]}"#,
+                true,
+                "nested metadata level: the data climb clamps to root, the metadata climb does not",
+            ),
+            (
+                r#"{"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[1], "index"]}]}]}"#,
+                false,
+                "nested metadata level naming the innermost frame: the data binding is Ancestor, but the node never walks it",
+            ),
+            (
+                r#"{"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[4], "x"]}]}]}"#,
+                false,
+                "nested, but the level clamps past both frames",
+            ),
+        ] {
+            let logic = engine.compile(rule).expect("compiles");
+            assert_eq!(logic.needs_ancestor_frames, want, "{why}: {rule}");
+        }
+    }
+
+    /// A metadata climb is one frame shorter than the data climb at the same
+    /// odd level, so the ancestor requirement has to be tested separately.
+    #[test]
+    fn metadata_climb_can_need_ancestors_when_data_does_not() {
+        // depth 2, `[[3]]`: data clamps to the root, metadata reads the
+        // enclosing frame's index.
+        assert_eq!(ScopeBinding::resolve(2, 3), ScopeBinding::Root);
+        assert!(metadata_reads_ancestor(2, 3));
+        // `[[1]]` reads the innermost frame's metadata at any depth.
+        assert!(!metadata_reads_ancestor(4, 1));
+        // An even level names no metadata frame at all.
+        assert!(!metadata_reads_ancestor(4, 2));
     }
 
     /// Ordinary operators evaluate every argument at their own depth.

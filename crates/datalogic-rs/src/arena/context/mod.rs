@@ -46,11 +46,11 @@ pub(crate) struct ContextStack<'a> {
     /// Ancestor frames, oldest first — everything below `top`.
     ///
     /// Maintained **only** when the compiled rule can read an ancestor frame
-    /// (`Logic::needs_ancestor_frames`). `get_at_level` reaches this list
-    /// solely for `levels_up >= 2`, and restoring the enclosing frame now
-    /// goes through [`FrameToken`], so for the overwhelming majority of rules
-    /// nothing ever touches it — an ancestor is not even addressable until
-    /// three levels of iterator nesting. A plain `Vec` rather than a
+    /// (`Logic::needs_ancestor_frames`). A lookup reaches this list only when
+    /// its climb is a strict ancestor, and restoring the enclosing frame goes
+    /// through [`FrameToken`], so for the overwhelming majority of rules
+    /// nothing ever touches it — it takes both two levels of iterator nesting
+    /// and a level marker inside the inner one. A plain `Vec` rather than a
     /// `SmallVec`: an inline buffer would be paid for on every evaluation to
     /// serve well under 1% of them, whereas an unused `Vec` never allocates.
     parents: Vec<ContextFrame<'a>>,
@@ -129,50 +129,81 @@ pub(crate) struct ContextStack<'a> {
 #[must_use = "hand the FrameToken back to `restore_frame`, or the displaced frame is lost"]
 struct FrameToken<'a>(Option<ContextFrame<'a>>);
 
-/// Where a `levels_up` walk lands when `frame_count` frames are pushed.
+/// Where a climb of `climb` frames above the current one lands when
+/// `frame_count` frames are pushed.
 ///
-/// The conceptual frame list is `parents ++ [top]`, so the top frame's
-/// index is `frame_count - 1` and walking `levels_up` targets index
-/// `frame_count - levels_up`. Three consequences, all deliberate and all
-/// pinned by the conformance suite:
+/// The conceptual frame list is `parents ++ [top]`, so `parents` holds
+/// `frame_count - 1` entries oldest-first and a climb of `c` names
+/// conceptual index `frame_count - 1 - c`.
 ///
-/// - `levels_up == 0` is the current frame — the root when nothing is
-///   pushed.
-/// - `levels_up >= frame_count` clamps to the root rather than erroring.
-/// - `levels_up == 1` names the top frame itself, so `[[1]]` aliases
-///   `[[0]]` whenever two or more frames are pushed; only `levels_up >= 2`
-///   reaches a strict ancestor.
-///
-/// This is the one place the arithmetic lives. [`ContextStack::get_at_level`]
-/// applies it at runtime and [`crate::node::ScopeBinding::resolve`] at
-/// compile time, so the two cannot drift.
+/// - `climb == 0` is the current frame — the root when nothing is pushed.
+/// - `climb >= frame_count` clamps to the root rather than erroring.
+/// - every frame in between, the outermost included, is addressable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FrameTarget {
     /// The rule's root input.
     Root,
     /// The innermost pushed frame.
     Top,
-    /// A strict ancestor, by index into the conceptual frame list.
+    /// A strict ancestor, by index into `parents`.
     Ancestor(usize),
 }
 
+/// Frames to climb for a **data** read at absolute level `level`.
+///
+/// The reference implementation (json-logic-engine) keeps two chain entries
+/// per iterator — an `{iterator, index}` metadata entry and the enclosing
+/// element — so odd levels name metadata and even levels name elements.
+/// datalogic stores one frame per iterator and carries the metadata on it,
+/// so both `[[2k-1]]` and `[[2k]]` land on the same frame, `k` climbs up.
+/// A level whose path is not `index`/`key` therefore reads data from
+/// `ceil(level / 2)` climbs up, which is what keeps `{"val": [[1], "field"]}`
+/// meaning "the root" inside a single iterator.
+///
+/// Written as `level / 2 + (level & 1)` rather than `(level + 1) / 2` so a
+/// `u32::MAX` level cannot overflow.
 #[inline]
-pub(crate) const fn frame_target(frame_count: usize, levels_up: usize) -> FrameTarget {
-    if levels_up == 0 {
-        return if frame_count == 0 {
-            FrameTarget::Root
-        } else {
-            FrameTarget::Top
-        };
+pub(crate) const fn data_climb(level: usize) -> usize {
+    level / 2 + (level & 1)
+}
+
+/// Frames to climb for a **metadata** (`index` / `key`) read at absolute
+/// level `level`, or `None` when the level names no metadata frame.
+///
+/// Only `[[0]]` and odd levels do: an even, non-zero level names an element
+/// frame, where `index` and `key` are ordinary field names. `[[0]]` is a
+/// datalogic legacy — the reference implementation reads the element there.
+#[inline]
+pub(crate) const fn metadata_climb(level: usize) -> Option<usize> {
+    if level == 0 || level % 2 == 1 {
+        Some(level / 2)
+    } else {
+        None
     }
-    if levels_up >= frame_count {
+}
+
+/// Where a climb lands. This is the one place the frame arithmetic lives;
+/// [`ContextStack::get_at_level`] and [`ContextStack::metadata_at_level`]
+/// apply it at runtime and [`crate::node::ScopeBinding::resolve`] at compile
+/// time, so the two cannot drift.
+#[inline]
+pub(crate) const fn frame_at_climb(frame_count: usize, climb: usize) -> FrameTarget {
+    // Subsumes `frame_count == 0`, where every climb is at or past the root.
+    if climb >= frame_count {
         return FrameTarget::Root;
     }
-    if levels_up == 1 {
+    if climb == 0 {
         FrameTarget::Top
     } else {
-        FrameTarget::Ancestor(frame_count - levels_up)
+        FrameTarget::Ancestor(frame_count - 1 - climb)
     }
+}
+
+/// Where a data read at absolute `level` lands with `frame_count` frames
+/// pushed — [`data_climb`] composed with [`frame_at_climb`].
+#[inline]
+pub(crate) const fn frame_target(frame_count: usize, level: usize) -> FrameTarget {
+    frame_at_climb(frame_count, data_climb(level))
 }
 
 impl<'a> ContextStack<'a> {
@@ -352,22 +383,48 @@ impl<'a> ContextStack<'a> {
         }
     }
 
-    /// Walk `level` frames up from the current context. Negative/positive
-    /// magnitudes are treated as absolute. The arithmetic is
+    /// Read data at absolute `level` frames up from the current context.
+    /// Negative and positive magnitudes are treated alike. The arithmetic is
     /// [`frame_target`]'s; only the `Ancestor` case touches `parents`.
     pub(crate) fn get_at_level(&self, level: isize) -> Option<ContextRef<'a, '_>> {
         match frame_target(self.depth(), level.unsigned_abs()) {
             FrameTarget::Root => Some(ContextRef::Root(self.root)),
-            FrameTarget::Top => self.top.as_ref().map(ContextRef::Frame),
+            target => self.frame_at(target).map(ContextRef::Frame),
+        }
+    }
+
+    /// The frame a resolved [`FrameTarget`] names, or `None` for the root,
+    /// which is not a frame. Holds the ancestor-tracking invariant for both
+    /// [`Self::get_at_level`] and [`Self::metadata_at_level`].
+    #[inline]
+    fn frame_at(&self, target: FrameTarget) -> Option<&ContextFrame<'a>> {
+        match target {
+            FrameTarget::Root => None,
+            FrameTarget::Top => self.top.as_ref(),
             FrameTarget::Ancestor(index) => {
                 debug_assert!(
                     self.track_ancestors,
                     "ancestor lookup on a stack built without ancestor tracking - \
                      `Logic::needs_ancestor_frames` under-approximated"
                 );
-                self.parents.get(index).map(ContextRef::Frame)
+                self.parents.get(index)
             }
         }
+    }
+
+    /// The frame whose iteration metadata absolute `level` names, or `None`
+    /// when the level names no metadata frame: an even non-zero level (which
+    /// names an element), or a climb at or past the outermost frame. Metadata
+    /// never clamps to the root, because the root has no index or key.
+    #[inline]
+    pub(crate) fn metadata_at_level(&self, level: isize) -> Option<&ContextFrame<'a>> {
+        let climb = metadata_climb(level.unsigned_abs())?;
+        // `[[0]]` and `[[1]]` — every metadata read in a plain iterator —
+        // land on the top frame whatever the depth, so skip the depth probe.
+        if climb == 0 {
+            return self.top.as_ref();
+        }
+        self.frame_at(frame_at_climb(self.depth(), climb))
     }
 
     // ----- frame mutation ---------------------------------------------------
@@ -754,18 +811,40 @@ mod tests {
 
         let a: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(10)));
         let b: &DataValue = arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(20)));
+        // Distinct indices so the frames are told apart by identity, not value.
         let _ta = ctx.push_indexed(a, 0);
-        let _tb = ctx.push_indexed(b, 0);
+        let _tb = ctx.push_indexed(b, 1);
         assert_eq!(ctx.depth(), 2);
 
-        // Level 0 = current (b)
-        assert!(ctx.get_at_level(0).and_then(|r| r.frame_data()).is_some());
-        // Level 1 = parent (a)
-        assert!(ctx.get_at_level(1).and_then(|r| r.frame_data()).is_some());
-        // Level 2 = root
-        assert!(ctx.get_at_level(2).and_then(|r| r.root_data()).is_some());
-        // Level 5 (overflow) = root
-        assert!(ctx.get_at_level(5).and_then(|r| r.root_data()).is_some());
+        // Level 0 = current (b, index 1)
+        assert_eq!(ctx.get_at_level(0).and_then(|r| r.get_index()), Some(1));
+        // Levels 1 and 2 both climb one frame: the parent (a, index 0)
+        assert_eq!(ctx.get_at_level(1).and_then(|r| r.get_index()), Some(0));
+        assert_eq!(ctx.get_at_level(2).and_then(|r| r.get_index()), Some(0));
+        // Level 3 climbs two frames, past the outermost: root
+        assert!(ctx.get_at_level(3).and_then(|r| r.root_data()).is_some());
+        // Level 9 (overflow) = root
+        assert!(ctx.get_at_level(9).and_then(|r| r.root_data()).is_some());
+
+        // Metadata climbs one frame less than data at the same odd level.
+        assert_eq!(
+            ctx.metadata_at_level(1).and_then(|f| f.get_index()),
+            Some(1),
+            "[[1]] names the innermost frame's metadata"
+        );
+        assert_eq!(
+            ctx.metadata_at_level(3).and_then(|f| f.get_index()),
+            Some(0),
+            "[[3]] names the enclosing frame's metadata"
+        );
+        assert!(
+            ctx.metadata_at_level(2).is_none(),
+            "an even level names an element frame, not metadata"
+        );
+        assert!(
+            ctx.metadata_at_level(5).is_none(),
+            "a metadata climb past the outermost frame has no frame"
+        );
     }
 
     #[test]
@@ -814,17 +893,35 @@ mod tests {
         assert_eq!(ctx.depth(), depth);
         assert_eq!(ctx.current().get_index(), Some(depth - 1));
 
-        // Walking `levels_up` lands on frame index `depth - levels_up`
-        // (existing single-`Vec` arithmetic), and past the bottom is root.
-        for levels_up in 1..depth {
-            let r = ctx.get_at_level(levels_up as isize).expect("in range");
-            assert_eq!(r.get_index(), Some(depth - levels_up));
+        // A level climbs `data_climb(level)` frames and lands on frame index
+        // `depth - 1 - climb`; the outermost frame is reachable, and a climb
+        // past it is the root.
+        for level in 1..2 * depth - 1 {
+            let climb = data_climb(level);
+            let r = ctx.get_at_level(level as isize).expect("in range");
+            assert_eq!(
+                r.get_index(),
+                Some(depth - 1 - climb),
+                "level {level} climbs {climb}"
+            );
         }
-        assert!(
-            ctx.get_at_level(depth as isize)
-                .and_then(|r| r.root_data())
-                .is_some()
-        );
+        for level in 2 * depth - 1..2 * depth + 3 {
+            assert!(
+                ctx.get_at_level(level as isize)
+                    .and_then(|r| r.root_data())
+                    .is_some(),
+                "level {level} clamps to the root"
+            );
+        }
+        // Metadata reaches one frame further out at the same level.
+        for level in (1..2 * depth).step_by(2) {
+            assert_eq!(
+                ctx.metadata_at_level(level as isize)
+                    .and_then(|f| f.get_index()),
+                Some(depth - 1 - metadata_climb(level).expect("odd level")),
+                "metadata at level {level}"
+            );
+        }
 
         for i in (0..depth).rev() {
             assert_eq!(ctx.current().get_index(), Some(i));
@@ -948,10 +1045,10 @@ mod tests {
     }
     /// `ContextStack` is built fresh on every `Engine::evaluate`, so its size
     /// is per-evaluation stack traffic, not a one-off. It was 400 bytes when
-    /// `parents` carried a four-slot inline buffer — storage that a census of
-    /// the conformance corpus showed 99.1% of rules never write, because an
-    /// ancestor frame is not addressable until three levels of iterator
-    /// nesting. Dropping the buffer was worth 7-15% on shallow rules.
+    /// `parents` carried a four-slot inline buffer — storage the overwhelming
+    /// majority of rules never write, because reaching an ancestor frame takes
+    /// both two levels of iterator nesting and a level marker inside the inner
+    /// one. Dropping the buffer was worth 7-15% on shallow rules.
     ///
     /// Shrink the payload rather than raising this bound. The `budget`
     /// feature's two counters were paid for by boxing the trace

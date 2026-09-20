@@ -19,7 +19,7 @@ pub(crate) mod value;
 
 pub(crate) use context::ContextStack;
 pub(crate) use context::IterGuard;
-pub(crate) use context::{FrameTarget, frame_target};
+pub(crate) use context::{FrameTarget, frame_at_climb, frame_target, metadata_climb};
 pub(crate) use util::bvec;
 pub use value::DataValue;
 pub(crate) use value::{

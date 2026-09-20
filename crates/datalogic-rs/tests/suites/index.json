@@ -30,6 +30,7 @@
   "val-compat.json",
   "val.extra.json",
   "scopes.json",
+  "scopes-nested.json",
   "empty-objects.json",
   "structured-objects.json",
   "unknown-operators.json",

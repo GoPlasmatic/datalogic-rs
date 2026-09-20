@@ -183,16 +183,16 @@ export const variableOperators: Record<string, Operator> = {
           note: '[[1]] jumps out of the map frame to the data holding multiplier',
         },
         {
-          title: 'Grandparent scope',
+          title: 'Enclosing element from a nested iterator',
           rule: {
             map: [
               { var: 'rows' },
-              { map: [{ var: 'cols' }, { val: [[2], 'config', 'limit'] }] },
+              { map: [{ var: 'cols' }, { '*': [{ var: '' }, { val: [[2], 'rate'] }] }] },
             ],
           },
-          data: { rows: [{ cols: [1, 2] }, { cols: [3] }], config: { limit: 5 } },
-          result: [[5, 5], [5]],
-          note: 'Two nested iterators: [[2]] reaches the root data',
+          data: { rows: [{ rate: 10, cols: [1, 2] }, { rate: 100, cols: [3] }] },
+          result: [[10, 20], [300]],
+          note: '[[2]] leaves the inner map for the row; [[4]] would reach the root',
         },
         {
           title: 'Get iteration index',
@@ -219,10 +219,12 @@ export const variableOperators: Record<string, Operator> = {
       ],
       notes: [
         'Path is array of components: ["a", "b", "c"]',
-        'Scope jump: [[N], ...] goes up N context levels',
+        'Scope jump: levels come in pairs, so [[1]] and [[2]] both name the frame one iterator out, [[3]] and [[4]] the next',
         'Sign is ignored: [1] and [-1] are equivalent',
-        'If level exceeds depth, returns root data',
+        'A level past the outermost frame returns root data',
         'Iteration metadata: {"val": [[1], "index"]} and {"val": [[1], "key"]} (the string form {"val": "index"} looks up a key named "index")',
+        'Outer metadata is odd-numbered: [[3], "index"] is the enclosing iterator\'s index; an even level reads a field of that name instead',
+        'A bare {"val": [[N]]} is the frame itself, not a lookup of the key "N"',
         'No default argument: use var\'s second argument or ?? for fallbacks',
       ],
       seeAlso: ['var', 'exists'],

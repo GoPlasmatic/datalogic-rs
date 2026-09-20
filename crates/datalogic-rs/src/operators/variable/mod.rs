@@ -26,30 +26,31 @@ mod val;
 pub(crate) use exists::{evaluate_exists, evaluate_exists_compiled};
 pub(crate) use val::{evaluate_val, evaluate_val_compiled};
 
-/// Resolve a `[level]` + metadata-hint path (`"index"` / `"key"`) against
-/// the current frame, returning the singleton/string handle if it matches.
-/// Used by both the multi-arg and single-arg array branches of `evaluate_val`
-/// — extracted so the branches don't drift.
+/// Resolve a `[level]` + metadata-hint path (`"index"` / `"key"`) for the
+/// interpreted path, which only learns the path string at runtime. Used by
+/// both the multi-arg and single-arg array branches of `evaluate_val` — and
+/// it owns only the classification: the value comes from the same
+/// [`val::resolve_metadata_hint`] the compiled path uses.
+///
+/// `None` means "not a metadata access at this level" — either the path is
+/// not `index`/`key`, or the level names an element frame (an even, non-zero
+/// level), where those are ordinary field names. A metadata access that finds
+/// no frame or no slot is `Some(null)`, not a fall-through.
 #[inline]
 fn metadata_hint_lookup<'a>(
     ctx: &ContextStack<'a>,
+    level: i64,
     path: &str,
     arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
-    if path == "index" {
-        let idx = ctx.current().get_index()?;
-        let i = idx as i64;
-        return Some(
-            crate::arena::singletons::singleton_small_int(i).unwrap_or_else(|| {
-                arena.alloc(DataValue::Number(datavalue::NumberValue::Integer(i)))
-            }),
-        );
+    let hint = MetadataHint::from_path(path);
+    if hint == MetadataHint::None {
+        return None;
     }
-    if path == "key" {
-        let key = ctx.current().get_key()?;
-        return Some(arena.alloc(DataValue::String(key)));
-    }
-    None
+    // An even, non-zero level names an element frame, where `index` and `key`
+    // are ordinary field names — not a metadata access.
+    crate::arena::metadata_climb(level.unsigned_abs() as usize)?;
+    Some(val::resolve_metadata_hint(hint, level as isize, ctx, arena))
 }
 
 /// Return the current frame's data as an `&'a DataValue<'a>`. Root and frame
@@ -188,14 +189,15 @@ fn default_or_null<'a>(
 /// would still be a resolution bug.
 ///
 /// Compiled out in release (the `cfg!` test folds to a constant). In debug it
-/// turns every test in the corpus — 1,698 conformance cases, the property
-/// generators, the fuzz target — into a differential check of the analysis
-/// against the walk it replaces.
+/// turns every test in the corpus — the whole conformance battery, the
+/// property generators, the fuzz target — into a differential check of the
+/// analysis against the walk it replaces.
 ///
 /// [`ScopeBinding::Unresolved`] is skipped: those nodes deliberately keep the
 /// runtime path. [`ScopeBinding::Ancestor`] resolves through the walk too, so
 /// there is no second answer to compare it against; what the pass claims for
 /// it is only that the clamp cannot fire, and that is what is asserted.
+///
 #[inline]
 pub(super) fn debug_check_binding<'a>(
     binding: ScopeBinding,
@@ -211,7 +213,10 @@ pub(super) fn debug_check_binding<'a>(
         ScopeBinding::Current => ctx.current().data(),
         ScopeBinding::Ancestor => {
             debug_assert!(
-                scope_level >= 2 && (scope_level as usize) < ctx.depth(),
+                matches!(
+                    crate::arena::frame_target(ctx.depth(), scope_level as usize),
+                    crate::arena::FrameTarget::Ancestor(_)
+                ),
                 "Ancestor binding (level {scope_level}) at depth {} is not a strict \
                  interior frame",
                 ctx.depth()

@@ -8,6 +8,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
+## [5.6.0] - 2026-09-20
+
+### Fixed
+
+- **`val` scope levels could not reach an enclosing iterator's element
+  (#74).** Inside two nested iterators no form reached the outer element:
+  `[[0]]` and `[[1]]` both read the current one, and `[[2]]` and every higher
+  level read the root. `{"val": [[N], "index"]}` was worse — it ignored `N`
+  entirely and always returned the innermost index, at any nesting. Rules
+  that needed a value from the enclosing element had to thread it through a
+  `reduce` accumulator.
+
+  Two defects combined in the frame arithmetic. `levels_up == 1` returned the
+  *top* frame, so `[[1]]` aliased `[[0]]` and one level of addressing was
+  wasted; and the clamp to the root fired one frame early, so the outermost
+  frame was never addressable — at two levels of nesting that frame *is* the
+  parent, which is why exactly that case was dead. A third, separate defect
+  made metadata level-independent.
+
+  Levels now come in pairs, matching the `above` chain of the reference
+  implementation this form comes from: a level reads data from the frame
+  `ceil(N / 2)` iterators out, so `[[1]]` and `[[2]]` are the enclosing
+  element and `[[3]]`/`[[4]]` the one beyond it, while `index` and `key` read
+  the metadata of the frame `N / 2` out, on odd levels only. Every frame is
+  now addressable, the outermost included.
+
+  From inside a nested `map`:
+
+  | | 5.5.0 | 5.6.0 |
+  |---|---|---|
+  | `{"val": [[1], "k"]}` | `null` | the enclosing element's `k` |
+  | `{"val": [[2], "k"]}` | `null` (root) | the enclosing element's `k` |
+  | `{"val": [[3], "index"]}` | the inner index | the enclosing index |
+  | `{"val": [[4], "tag"]}` | root | root |
+  | `{"val": [[9], "tag"]}` | root | root |
+
+  **Nothing changes for a rule with a single iterator**, which is the
+  overwhelming majority: at one frame deep every level from `[[1]]` up still
+  resolves to the root, and `[[1], "index"]` / `[[1], "key"]` are unchanged.
+  What changes is a level of `2` or more *inside nested frames*, which
+  previously collapsed to the root. Note a `reduce` body and a `try` catch
+  arm are frames too, so `{"try": [risky, {"val": [[2], "fallback"]}]}` nested
+  inside an iterator now reads that iterator's element rather than the root —
+  see [MIGRATION.md](./MIGRATION.md).
+
+  Two further changes fall out of the model. A bare `{"val": [[N]]}` is now a
+  level marker naming the frame itself, where it used to be a path walk
+  looking up a key literally named `"N"`. And `index`/`key` resolution is now
+  total: at a level that names no metadata frame, or on a frame that carries
+  none (`reduce`, a catch arm, `key` over an array), it returns `null` instead
+  of falling through to a data field of that name.
+
+### Changed
+
+- **83 conformance cases for the full level matrix** (`scopes-nested.json`):
+  levels 0-9 at nesting depths 1-4 for data, `index` and `key`, the bare
+  level form, and one case per frame-pushing operator — `filter`, `all`,
+  `some`, `none`, `reduce`, `try`, `group_by`, `sort`, `distinct` — since
+  their frame shapes differ, plus `var`/`val` parity on the level forms and
+  a computed-segment block that runs the same levels through the interpreted
+  resolver.
+  Expectations are derived from the model and
+  cross-checked cell by cell against json-logic-engine: the engine now agrees
+  with it on all 160 cells of the matrix, where before it diverged on 75.
+
+  Parity with that engine holds for every level it resolves, with three
+  deliberate exceptions, each returning something useful where it returns
+  `null`: an odd level with a non-metadata path falls through to the next
+  frame out (this is what keeps `[[1], "field"]` meaning "the root" inside a
+  single iterator), a level past the outermost frame clamps to the root, and
+  `{"val": [[0], "index"]}` stays the current index. Parity is also limited
+  to iterator nesting: a `reduce` or `try` frame consumes one level here and
+  two there.
+
+- **The filter fast path keeps a narrower set of hoistable operands.** A
+  `[[2]]` reference inside a nested `filter` used to clamp to the root, which
+  made it loop-invariant; it now names the enclosing element, so it takes the
+  general path. Hoisting itself is unchanged — only a root-bound operand
+  resolves to the same frame when it is dispatched one frame shallower, which
+  is what `is_filter_invariant` already required.
+
 ## [5.5.0] - 2026-09-12
 
 ### Added

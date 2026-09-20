@@ -41,6 +41,51 @@ published as a standalone artifact), the v1 symbols are gone. Assert
 Full contract: [`bindings/c/README.md`](./bindings/c/README.md) and the
 generated [`bindings/c/include/datalogic.h`](./bindings/c/include/datalogic.h).
 
+## 5.5.0 → 5.6.0: `val` scope levels
+
+5.6.0 fixes [#74](https://github.com/GoPlasmatic/datalogic-rs/issues/74):
+inside nested iterators, no `val` form could reach the enclosing iterator's
+element or its index. Fixing it changes what a level marker resolves to.
+
+**If every `val` level in your rules sits inside a single iterator, nothing
+changes** — `[[1], "field"]` and every higher level still read the root, and
+`[[1], "index"]` / `[[1], "key"]` are unchanged. Levels only move when a
+level marker of 1 or more sits inside **two or more nested frames**, where it
+used to collapse to the root.
+
+Levels now come in pairs, matching the chain of the reference implementation:
+a data read climbs `ceil(N / 2)` frames, and `index` / `key` read the
+metadata of the frame `N / 2` frames up (odd levels only).
+
+| where | before | after |
+|---|---|---|
+| `[[1], "f"]` in a nested iterator | current element's `f` | **enclosing** element's `f` |
+| `[[2], "f"]` in a nested iterator | root's `f` | **enclosing** element's `f` |
+| `[[3], "index"]` in a nested iterator | innermost index | **enclosing** index |
+| `[[4], "f"]` two frames deep | root's `f` | root's `f` (unchanged) |
+| `[[2], "index"]` anywhere | innermost index | field named `index` on that frame |
+| `{"val": [[N]]}` (no path) | lookup of the key `"N"` | the frame itself |
+
+**Read this one carefully: a `reduce` body and a `try` catch arm are frames
+too.** They consume a level exactly like a `map` body, so
+
+```json
+{ "map": [{ "val": "rows" },
+          { "try": [ <risky>, { "val": [[2], "fallback"] } ] }] }
+```
+
+now reads `fallback` from the **row**, not from the root. The same rule
+outside any iterator is unaffected. To reach the root regardless of nesting,
+count the frames — `[[2 * frames]]` — or use a level well past them, which
+still clamps to the root.
+
+To find affected rules, grep for a level marker of 1 or more and check
+whether it sits inside more than one frame:
+
+```bash
+grep -rE '"(val|var)"\s*:\s*\[\s*\[\s*-?[1-9]' <your rules>
+```
+
 ## v4 → v5 in 60 seconds
 
 Most call-site changes are mechanical 1:1 renames. The deep-dive is

@@ -22,6 +22,10 @@ impl<'a, 'ctx> ContextRef<'a, 'ctx> {
         }
     }
 
+    /// Test-only: production metadata reads go through
+    /// [`super::ContextStack::metadata_at_level`], which resolves the frame a
+    /// level names rather than assuming the current one.
+    #[cfg(test)]
     #[inline]
     pub(crate) fn get_index(&self) -> Option<usize> {
         match self {
@@ -30,6 +34,8 @@ impl<'a, 'ctx> ContextRef<'a, 'ctx> {
         }
     }
 
+    /// Test-only: see [`Self::get_index`].
+    #[cfg(test)]
     #[inline]
     pub(crate) fn get_key(&self) -> Option<&'a str> {
         match self {
@@ -44,15 +50,6 @@ impl<'a, 'ctx> ContextRef<'a, 'ctx> {
         match self {
             Self::Root(av) => Some(*av),
             Self::Frame(_) => None,
-        }
-    }
-
-    #[cfg(all(test, feature = "serde_json"))]
-    #[inline]
-    pub(super) fn frame_data(&self) -> Option<&'a DataValue<'a>> {
-        match self {
-            Self::Frame(f) => Some(f.data()),
-            Self::Root(_) => None,
         }
     }
 }

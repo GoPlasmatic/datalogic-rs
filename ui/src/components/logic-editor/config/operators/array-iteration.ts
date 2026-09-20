@@ -30,7 +30,7 @@ export const arrayIterationOperators: Record<string, Operator> = {
     help: {
       summary: 'Apply an expression to each element of an array',
       details:
-        'Iterates over an array and applies the given expression to each element. Use {"var": ""} to access the current element, {"val": [[1], "index"]} for the current index and {"val": [[1], "field"]} to read a field from the parent scope.',
+        'Iterates over an array and applies the given expression to each element. Use {"var": ""} to access the current element, {"val": [[1], "index"]} for the current index and {"val": [[1], "field"]} to read a field from the enclosing scope.',
       returnType: 'array',
       examples: [
         {
@@ -81,7 +81,7 @@ export const arrayIterationOperators: Record<string, Operator> = {
         '{"var": ""} = current element',
         '{"val": [[1], "index"]} = current index (0, 1, 2...); {"val": [[1], "key"]} = current key when mapping an object',
         '{"val": "index"} (plain string) is a normal key lookup and returns null',
-        '{"val": [[1], "field"]} = parent scope field',
+        '{"val": [[1], "field"]} = enclosing scope field (the root, from a single iterator; the outer element from a nested one)',
         'Returns a new array; original unchanged',
       ],
       seeAlso: ['filter', 'reduce', 'all', 'some', 'none'],

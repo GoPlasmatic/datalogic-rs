@@ -1,0 +1,506 @@
+[
+  "Data addressing by level. Frames are tagged A (outermost) .. D (innermost); the root is ROOT. A level lands on the frame ceil(N/2) climbs above the current one and clamps to the root beyond the outermost frame, so [[1]] and [[2]] name the same frame, as do [[3]] and [[4]]. The grid runs to level 9 at every depth because it is the record of a cell-by-cell cross-check against json-logic-engine; the rows past the first clamp are deliberately repetitive.",
+  {
+    "description": "Depth 1: [[0]] reads A",
+    "rule": {"map": [{"val": "a"}, {"val": [[0], "tag"]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A"}]},
+    "result": ["A"]
+  },
+  {
+    "description": "Depth 1: [[1]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"val": [[1], "tag"]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A"}]},
+    "result": ["ROOT"]
+  },
+  {
+    "description": "Depth 1: [[2]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"val": [[2], "tag"]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A"}]},
+    "result": ["ROOT"]
+  },
+  {
+    "description": "Depth 1: [[3]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"val": [[3], "tag"]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A"}]},
+    "result": ["ROOT"]
+  },
+  {
+    "description": "Depth 1: [[4]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"val": [[4], "tag"]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A"}]},
+    "result": ["ROOT"]
+  },
+  {
+    "description": "Depth 1: [[5]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"val": [[5], "tag"]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A"}]},
+    "result": ["ROOT"]
+  },
+  {
+    "description": "Depth 1: [[6]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"val": [[6], "tag"]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A"}]},
+    "result": ["ROOT"]
+  },
+  {
+    "description": "Depth 1: [[7]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"val": [[7], "tag"]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A"}]},
+    "result": ["ROOT"]
+  },
+  {
+    "description": "Depth 1: [[8]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"val": [[8], "tag"]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A"}]},
+    "result": ["ROOT"]
+  },
+  {
+    "description": "Depth 1: [[9]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"val": [[9], "tag"]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A"}]},
+    "result": ["ROOT"]
+  },
+  {
+    "description": "Depth 2: [[0]] reads B",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[0], "tag"]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B"}]}]},
+    "result": [["B"]]
+  },
+  {
+    "description": "Depth 2: [[1]] reads A",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[1], "tag"]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B"}]}]},
+    "result": [["A"]]
+  },
+  {
+    "description": "Depth 2: [[2]] reads A",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[2], "tag"]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B"}]}]},
+    "result": [["A"]]
+  },
+  {
+    "description": "Depth 2: [[3]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[3], "tag"]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B"}]}]},
+    "result": [["ROOT"]]
+  },
+  {
+    "description": "Depth 2: [[4]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[4], "tag"]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B"}]}]},
+    "result": [["ROOT"]]
+  },
+  {
+    "description": "Depth 2: [[5]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[5], "tag"]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B"}]}]},
+    "result": [["ROOT"]]
+  },
+  {
+    "description": "Depth 2: [[6]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[6], "tag"]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B"}]}]},
+    "result": [["ROOT"]]
+  },
+  {
+    "description": "Depth 2: [[7]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[7], "tag"]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B"}]}]},
+    "result": [["ROOT"]]
+  },
+  {
+    "description": "Depth 2: [[8]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[8], "tag"]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B"}]}]},
+    "result": [["ROOT"]]
+  },
+  {
+    "description": "Depth 2: [[9]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[9], "tag"]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B"}]}]},
+    "result": [["ROOT"]]
+  },
+  {
+    "description": "Depth 3: [[0]] reads C",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"val": [[0], "tag"]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B", "c": [{"tag": "C"}]}]}]},
+    "result": [[["C"]]]
+  },
+  {
+    "description": "Depth 3: [[1]] reads B",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"val": [[1], "tag"]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B", "c": [{"tag": "C"}]}]}]},
+    "result": [[["B"]]]
+  },
+  {
+    "description": "Depth 3: [[2]] reads B",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"val": [[2], "tag"]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B", "c": [{"tag": "C"}]}]}]},
+    "result": [[["B"]]]
+  },
+  {
+    "description": "Depth 3: [[3]] reads A",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"val": [[3], "tag"]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B", "c": [{"tag": "C"}]}]}]},
+    "result": [[["A"]]]
+  },
+  {
+    "description": "Depth 3: [[4]] reads A",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"val": [[4], "tag"]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B", "c": [{"tag": "C"}]}]}]},
+    "result": [[["A"]]]
+  },
+  {
+    "description": "Depth 3: [[5]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"val": [[5], "tag"]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B", "c": [{"tag": "C"}]}]}]},
+    "result": [[["ROOT"]]]
+  },
+  {
+    "description": "Depth 3: [[6]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"val": [[6], "tag"]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B", "c": [{"tag": "C"}]}]}]},
+    "result": [[["ROOT"]]]
+  },
+  {
+    "description": "Depth 3: [[7]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"val": [[7], "tag"]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B", "c": [{"tag": "C"}]}]}]},
+    "result": [[["ROOT"]]]
+  },
+  {
+    "description": "Depth 3: [[8]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"val": [[8], "tag"]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B", "c": [{"tag": "C"}]}]}]},
+    "result": [[["ROOT"]]]
+  },
+  {
+    "description": "Depth 3: [[9]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"val": [[9], "tag"]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B", "c": [{"tag": "C"}]}]}]},
+    "result": [[["ROOT"]]]
+  },
+  {
+    "description": "Depth 4: [[0]] reads D",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"map": [{"val": "d"}, {"val": [[0], "tag"]}]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B", "c": [{"tag": "C", "d": [{"tag": "D"}]}]}]}]},
+    "result": [[[["D"]]]]
+  },
+  {
+    "description": "Depth 4: [[1]] reads C",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"map": [{"val": "d"}, {"val": [[1], "tag"]}]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B", "c": [{"tag": "C", "d": [{"tag": "D"}]}]}]}]},
+    "result": [[[["C"]]]]
+  },
+  {
+    "description": "Depth 4: [[2]] reads C",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"map": [{"val": "d"}, {"val": [[2], "tag"]}]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B", "c": [{"tag": "C", "d": [{"tag": "D"}]}]}]}]},
+    "result": [[[["C"]]]]
+  },
+  {
+    "description": "Depth 4: [[3]] reads B",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"map": [{"val": "d"}, {"val": [[3], "tag"]}]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B", "c": [{"tag": "C", "d": [{"tag": "D"}]}]}]}]},
+    "result": [[[["B"]]]]
+  },
+  {
+    "description": "Depth 4: [[4]] reads B",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"map": [{"val": "d"}, {"val": [[4], "tag"]}]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B", "c": [{"tag": "C", "d": [{"tag": "D"}]}]}]}]},
+    "result": [[[["B"]]]]
+  },
+  {
+    "description": "Depth 4: [[5]] reads A",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"map": [{"val": "d"}, {"val": [[5], "tag"]}]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B", "c": [{"tag": "C", "d": [{"tag": "D"}]}]}]}]},
+    "result": [[[["A"]]]]
+  },
+  {
+    "description": "Depth 4: [[6]] reads A",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"map": [{"val": "d"}, {"val": [[6], "tag"]}]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B", "c": [{"tag": "C", "d": [{"tag": "D"}]}]}]}]},
+    "result": [[[["A"]]]]
+  },
+  {
+    "description": "Depth 4: [[7]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"map": [{"val": "d"}, {"val": [[7], "tag"]}]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B", "c": [{"tag": "C", "d": [{"tag": "D"}]}]}]}]},
+    "result": [[[["ROOT"]]]]
+  },
+  {
+    "description": "Depth 4: [[8]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"map": [{"val": "d"}, {"val": [[8], "tag"]}]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B", "c": [{"tag": "C", "d": [{"tag": "D"}]}]}]}]},
+    "result": [[[["ROOT"]]]]
+  },
+  {
+    "description": "Depth 4: [[9]] reads ROOT",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"map": [{"val": "d"}, {"val": [[9], "tag"]}]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B", "c": [{"tag": "C", "d": [{"tag": "D"}]}]}]}]},
+    "result": [[[["ROOT"]]]]
+  },
+  "Iteration metadata by level. An odd level (and [[0]]) names a metadata frame N//2 climbs up, so [[1]] is the innermost index and [[3]] the enclosing one; an even level names an element frame, where `index` is an ordinary field and reads null.",
+  {
+    "description": "Depth 2: [[0]] with `index`",
+    "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"val": [[0], "index"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"cols": [10, 20, 30]}, {"cols": [40, 50]}]},
+    "result": [[0, 1, 2], [0, 1]]
+  },
+  {
+    "description": "Depth 2: [[1]] with `index`",
+    "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"val": [[1], "index"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"cols": [10, 20, 30]}, {"cols": [40, 50]}]},
+    "result": [[0, 1, 2], [0, 1]]
+  },
+  {
+    "description": "Depth 2: [[2]] with `index`",
+    "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"val": [[2], "index"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"cols": [10, 20, 30]}, {"cols": [40, 50]}]},
+    "result": [[null, null, null], [null, null]]
+  },
+  {
+    "description": "Depth 2: [[3]] with `index`",
+    "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"val": [[3], "index"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"cols": [10, 20, 30]}, {"cols": [40, 50]}]},
+    "result": [[0, 0, 0], [1, 1]]
+  },
+  {
+    "description": "Depth 2: [[4]] with `index`",
+    "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"val": [[4], "index"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"cols": [10, 20, 30]}, {"cols": [40, 50]}]},
+    "result": [[null, null, null], [null, null]]
+  },
+  {
+    "description": "Depth 2: [[5]] with `index`",
+    "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"val": [[5], "index"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"cols": [10, 20, 30]}, {"cols": [40, 50]}]},
+    "result": [[null, null, null], [null, null]]
+  },
+  {
+    "description": "Depth 2 over objects: [[0]] with `key`",
+    "rule": {"map": [{"val": "o"}, {"map": [{"val": []}, {"val": [[0], "key"]}]}]},
+    "data": {"tag": "ROOT", "o": {"a": {"x": 1, "y": 2}, "b": {"x": 3, "y": 4}}},
+    "result": [["x", "y"], ["x", "y"]]
+  },
+  {
+    "description": "Depth 2 over objects: [[1]] with `key`",
+    "rule": {"map": [{"val": "o"}, {"map": [{"val": []}, {"val": [[1], "key"]}]}]},
+    "data": {"tag": "ROOT", "o": {"a": {"x": 1, "y": 2}, "b": {"x": 3, "y": 4}}},
+    "result": [["x", "y"], ["x", "y"]]
+  },
+  {
+    "description": "Depth 2 over objects: [[2]] with `key`",
+    "rule": {"map": [{"val": "o"}, {"map": [{"val": []}, {"val": [[2], "key"]}]}]},
+    "data": {"tag": "ROOT", "o": {"a": {"x": 1, "y": 2}, "b": {"x": 3, "y": 4}}},
+    "result": [[null, null], [null, null]]
+  },
+  {
+    "description": "Depth 2 over objects: [[3]] with `key`",
+    "rule": {"map": [{"val": "o"}, {"map": [{"val": []}, {"val": [[3], "key"]}]}]},
+    "data": {"tag": "ROOT", "o": {"a": {"x": 1, "y": 2}, "b": {"x": 3, "y": 4}}},
+    "result": [["a", "a"], ["b", "b"]]
+  },
+  {
+    "description": "Depth 2 over objects: [[4]] with `key`",
+    "rule": {"map": [{"val": "o"}, {"map": [{"val": []}, {"val": [[4], "key"]}]}]},
+    "data": {"tag": "ROOT", "o": {"a": {"x": 1, "y": 2}, "b": {"x": 3, "y": 4}}},
+    "result": [[null, null], [null, null]]
+  },
+  {
+    "description": "Depth 2 over objects: [[5]] with `key`",
+    "rule": {"map": [{"val": "o"}, {"map": [{"val": []}, {"val": [[5], "key"]}]}]},
+    "data": {"tag": "ROOT", "o": {"a": {"x": 1, "y": 2}, "b": {"x": 3, "y": 4}}},
+    "result": [[null, null], [null, null]]
+  },
+  "A bare level marker names the frame itself. `{\"val\": [[N]]}` is a level marker with no path, not a lookup of the key \"N\".",
+  {
+    "description": "Depth 1: bare [[0]]",
+    "rule": {"map": [{"val": "a"}, {"val": [[0]]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A"}]},
+    "result": [{"tag": "A"}]
+  },
+  {
+    "description": "Depth 1: bare [[1]]",
+    "rule": {"map": [{"val": "a"}, {"val": [[1]]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A"}]},
+    "result": [{"tag": "ROOT", "a": [{"tag": "A"}]}]
+  },
+  {
+    "description": "Depth 1: bare [[2]]",
+    "rule": {"map": [{"val": "a"}, {"val": [[2]]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A"}]},
+    "result": [{"tag": "ROOT", "a": [{"tag": "A"}]}]
+  },
+  {
+    "description": "Depth 1: bare [[3]]",
+    "rule": {"map": [{"val": "a"}, {"val": [[3]]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A"}]},
+    "result": [{"tag": "ROOT", "a": [{"tag": "A"}]}]
+  },
+  {
+    "description": "Depth 1: bare [[4]]",
+    "rule": {"map": [{"val": "a"}, {"val": [[4]]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A"}]},
+    "result": [{"tag": "ROOT", "a": [{"tag": "A"}]}]
+  },
+  {
+    "description": "Depth 2: bare [[0]]",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[0]]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B"}]}]},
+    "result": [[{"tag": "B"}]]
+  },
+  {
+    "description": "Depth 2: bare [[1]]",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[1]]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B"}]}]},
+    "result": [[{"tag": "A", "b": [{"tag": "B"}]}]]
+  },
+  {
+    "description": "Depth 2: bare [[2]]",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[2]]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B"}]}]},
+    "result": [[{"tag": "A", "b": [{"tag": "B"}]}]]
+  },
+  {
+    "description": "Depth 2: bare [[3]]",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[3]]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B"}]}]},
+    "result": [[{"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B"}]}]}]]
+  },
+  {
+    "description": "Depth 2: bare [[4]]",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[4]]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B"}]}]},
+    "result": [[{"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B"}]}]}]]
+  },
+  "Every frame-pushing operator consumes exactly one level, so from inside its body [[2]] is the enclosing `map` element. `reduce` and a `try` catch arm push frames that carry no iteration metadata, so `index` reads null there while an outer level still reaches the enclosing iterator's index.",
+  {
+    "description": "filter predicate reads the enclosing map element",
+    "rule": {"map": [{"val": "rows"}, {"filter": [{"val": "items"}, {"==": [{"val": [[2], "tag"]}, "R0"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "items": [1, 2]}, {"tag": "R1", "items": [3]}]},
+    "result": [[1, 2], []]
+  },
+  {
+    "description": "all predicate reads the enclosing map element",
+    "rule": {"map": [{"val": "rows"}, {"all": [{"val": "items"}, {"==": [{"val": [[2], "tag"]}, "R0"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "items": [1, 2]}, {"tag": "R1", "items": [3]}]},
+    "result": [true, false]
+  },
+  {
+    "description": "some predicate reads the enclosing map element",
+    "rule": {"map": [{"val": "rows"}, {"some": [{"val": "items"}, {"==": [{"val": [[2], "tag"]}, "R0"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "items": [1, 2]}, {"tag": "R1", "items": [3]}]},
+    "result": [true, false]
+  },
+  {
+    "description": "none predicate reads the enclosing map element",
+    "rule": {"map": [{"val": "rows"}, {"none": [{"val": "items"}, {"==": [{"val": [[2], "tag"]}, "R0"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "items": [1, 2]}, {"tag": "R1", "items": [3]}]},
+    "result": [false, true]
+  },
+  {
+    "description": "reduce body reads the enclosing map element",
+    "rule": {"map": [{"val": "rows"}, {"reduce": [{"val": "items"}, {"val": [[2], "tag"]}, 0]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "items": [1, 2]}, {"tag": "R1", "items": [3]}]},
+    "result": ["R0", "R1"]
+  },
+  {
+    "description": "a reduce frame carries no index, so [[1]] with `index` is null",
+    "rule": {"map": [{"val": "rows"}, {"reduce": [{"val": "items"}, {"val": [[1], "index"]}, 0]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "items": [1, 2]}, {"tag": "R1", "items": [3]}]},
+    "result": [null, null]
+  },
+  {
+    "description": "[[3]] with `index` reaches past the reduce frame to the map index",
+    "rule": {"map": [{"val": "rows"}, {"reduce": [{"val": "items"}, {"val": [[3], "index"]}, 0]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "items": [1, 2]}, {"tag": "R1", "items": [3]}]},
+    "result": [0, 1]
+  },
+  {
+    "description": "a catch arm reads the enclosing map element at [[2]]",
+    "rule": {"map": [{"val": "rows"}, {"try": [{"throw": "boom"}, {"val": [[2], "tag"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "items": [1, 2]}, {"tag": "R1", "items": [3]}]},
+    "result": ["R0", "R1"]
+  },
+  {
+    "description": "a catch arm frame carries no index, so [[1]] with `index` is null",
+    "rule": {"map": [{"val": "rows"}, {"try": [{"throw": "boom"}, {"val": [[1], "index"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "items": [1, 2]}, {"tag": "R1", "items": [3]}]},
+    "result": [null, null]
+  },
+  {
+    "description": "[[3]] with `index` reaches past the catch frame to the map index",
+    "rule": {"map": [{"val": "rows"}, {"try": [{"throw": "boom"}, {"val": [[3], "index"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "items": [1, 2]}, {"tag": "R1", "items": [3]}]},
+    "result": [0, 1]
+  },
+  {
+    "description": "a group_by key expression reads the enclosing map element",
+    "rule": {"map": [{"val": "rows"}, {"group_by": [{"val": "items"}, {"val": [[2], "tag"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "items": [1, 2]}, {"tag": "R1", "items": [3]}]},
+    "result": [[{"key": "R0", "items": [1, 2]}], [{"key": "R1", "items": [3]}]]
+  },
+  {
+    "description": "a sort extractor reads the enclosing map element",
+    "rule": {"map": [{"val": "rows"}, {"sort": [{"val": "items"}, true, {"*": [{"val": []}, {"if": [{"==": [{"val": [[2], "tag"]}, "R0"]}, -1, 1]}]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "items": [1, 2]}, {"tag": "R1", "items": [3]}]},
+    "result": [[2, 1], [3]]
+  },
+  {
+    "description": "a distinct key expression reads the enclosing map element",
+    "rule": {"map": [{"val": "rows"}, {"distinct": [{"val": "items"}, {"val": [[2], "tag"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "items": [1, 2]}, {"tag": "R1", "items": [3]}]},
+    "result": [[1], [3]]
+  },
+  "`var` compiles to `val`, so it reads the same level markers.",
+  {
+    "description": "var with a bare level marker names the enclosing frame",
+    "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"var": [[2]]}]}]},
+    "data": {"rows": [{"tag": "R", "cols": [1]}]},
+    "result": [[{"tag": "R", "cols": [1]}]]
+  },
+  {
+    "description": "var with a level marker and a path reads the enclosing frame",
+    "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"var": [[2], "tag"]}]}]},
+    "data": {"rows": [{"tag": "R", "cols": [1]}]},
+    "result": [["R"]]
+  },
+  {
+    "description": "var reads the enclosing index at an odd level",
+    "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"var": [[3], "index"]}]}]},
+    "data": {"rows": [{"cols": [1]}, {"cols": [2, 3]}]},
+    "result": [[0], [1, 1]]
+  },
+  "A computed path segment keeps the node off the compiled path, so these run the interpreted resolver over the same levels.",
+  {
+    "description": "interpreted: [[1]] with a computed `index` is the innermost index",
+    "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"val": [[1], {"cat": ["ind", "ex"]}]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "cols": [1, 2]}, {"tag": "R1", "cols": [3]}]},
+    "result": [[0, 1], [0]]
+  },
+  {
+    "description": "interpreted: [[3]] with a computed `index` is the enclosing index",
+    "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"val": [[3], {"cat": ["ind", "ex"]}]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "cols": [1, 2]}, {"tag": "R1", "cols": [3]}]},
+    "result": [[0, 0], [1]]
+  },
+  {
+    "description": "interpreted: [[2]] with a computed `index` is an ordinary field read",
+    "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"val": [[2], {"cat": ["ind", "ex"]}]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "cols": [1, 2]}, {"tag": "R1", "cols": [3]}]},
+    "result": [[null, null], [null]]
+  },
+  {
+    "description": "interpreted: [[2]] with a computed segment reads the enclosing element",
+    "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"val": [[2], {"cat": ["ta", "g"]}]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "cols": [1, 2]}, {"tag": "R1", "cols": [3]}]},
+    "result": [["R0", "R0"], ["R1"]]
+  },
+  {
+    "description": "interpreted: a level past both frames clamps to root",
+    "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"val": [[6], {"cat": ["ta", "g"]}]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "cols": [1, 2]}, {"tag": "R1", "cols": [3]}]},
+    "result": [["ROOT", "ROOT"], ["ROOT"]]
+  }
+]

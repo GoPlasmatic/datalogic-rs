@@ -62,8 +62,9 @@ pub struct Logic {
     /// interior mutability.
     pub(crate) cse_slot_count: u16,
     /// Whether evaluation must maintain the ancestor-frame list. `false` for
-    /// the overwhelming majority of rules — an ancestor frame is only
-    /// reachable from three levels of iterator nesting — which lets
+    /// the overwhelming majority of rules — reaching one takes both two
+    /// levels of iterator nesting and a level marker inside the inner one —
+    /// which lets
     /// `ContextStack` skip the list entirely. See
     /// [`crate::compile::scope::resolve`].
     pub(crate) needs_ancestor_frames: bool,

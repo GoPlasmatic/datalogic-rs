@@ -38,6 +38,11 @@ pub(crate) enum ReduceHint {
 }
 
 /// Hint for metadata access (index/key), detected at compile time.
+///
+/// Set only when the path is exactly `index` or `key` **and** the level names
+/// a metadata frame (`[[0]]` or an odd level — see
+/// [`crate::arena::metadata_climb`]). At an even, non-zero level `index` and
+/// `key` are ordinary field names and this stays [`MetadataHint::None`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum MetadataHint {
     /// Normal data access
@@ -46,6 +51,20 @@ pub(crate) enum MetadataHint {
     Index,
     /// Access frame key metadata
     Key,
+}
+
+impl MetadataHint {
+    /// The hint a path segment names, or [`MetadataHint::None`] for an
+    /// ordinary field. The recognised set lives here so the compiled and the
+    /// interpreted path cannot disagree about it.
+    #[inline]
+    pub(crate) fn from_path(path: &str) -> Self {
+        match path {
+            "index" => MetadataHint::Index,
+            "key" => MetadataHint::Key,
+            _ => MetadataHint::None,
+        }
+    }
 }
 
 /// Data for a custom operator (boxed inside CompiledNode to reduce enum size).
@@ -95,8 +114,12 @@ pub(crate) struct StructuredObjectData {
 /// [`crate::arena::frame_target`] for the arithmetic, so the pass decides
 /// whether the walk can be skipped, and [`Self::Ancestor`] hands the job
 /// back untouched. The mapping therefore matches the runtime exactly,
-/// **off-by-one included** — `L == 1` at `D >= 2` reads the *current*
-/// frame, not its parent.
+/// clamp included.
+///
+/// It describes the **data** read only. A node with a
+/// [`MetadataHint`] reads `index`/`key` from the frame
+/// [`crate::arena::metadata_climb`] names instead, which can be a different
+/// frame; [`metadata_reads_ancestor`] answers that question.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub(crate) enum ScopeBinding {
     /// The pass has not run on this node — it was built outside the compile
@@ -109,29 +132,54 @@ pub(crate) enum ScopeBinding {
     /// node must not silently claim to read the rule input.
     #[default]
     Unresolved,
-    /// Provably the rule's root input: `L == 0 && D == 0`, or `L >= D >= 1`
+    /// Provably the rule's root input: `D == 0`, or `data_climb(L) >= D`
     /// (the clamp). Reads `ctx.root_input()` with no stack access.
     Root,
     /// Provably the innermost pushed frame, which is guaranteed to exist:
-    /// `L == 0 && D > 0`, or `L == 1 && D >= 2` (the off-by-one).
-    /// Reads `ctx.current()` with no depth probe and no clamp test.
+    /// `L == 0 && D > 0`. Reads `ctx.current()` with no depth probe and no
+    /// clamp test.
     Current,
-    /// A strict ancestor frame (`2 <= L <= D - 1`, so `D >= 3`). The pass
-    /// proves only that the clamp cannot fire; the runtime still walks.
+    /// A strict ancestor frame (`1 <= data_climb(L) <= D - 1`, so `D >= 2`).
+    /// The pass proves only that the clamp cannot fire; the runtime still
+    /// walks.
     Ancestor,
 }
 
 impl ScopeBinding {
-    /// Resolve a `(static_depth, scope_level)` pair with the same
-    /// arithmetic the runtime walk uses.
+    /// Resolve a `(static_depth, scope_level)` pair for a **data** read with
+    /// the same arithmetic the runtime walk uses.
     pub(crate) fn resolve(static_depth: u32, scope_level: u32) -> Self {
-        use crate::arena::{FrameTarget, frame_target};
-        match frame_target(static_depth as usize, scope_level as usize) {
+        Self::from_target(crate::arena::frame_target(
+            static_depth as usize,
+            scope_level as usize,
+        ))
+    }
+
+    /// The binding a resolved [`FrameTarget`] stands for. The only place the
+    /// two enums are mapped onto each other.
+    #[inline]
+    pub(crate) fn from_target(target: crate::arena::FrameTarget) -> Self {
+        use crate::arena::FrameTarget;
+        match target {
             FrameTarget::Root => ScopeBinding::Root,
             FrameTarget::Top => ScopeBinding::Current,
             FrameTarget::Ancestor(_) => ScopeBinding::Ancestor,
         }
     }
+}
+
+/// Whether a metadata (`index` / `key`) read at this `(static_depth,
+/// scope_level)` pair lands on an ancestor frame, so
+/// `ContextStack::parents` has to be kept.
+///
+/// A metadata climb is one frame shorter than the data climb at the same
+/// odd level, so the two can disagree: at `D == 2`, `{"val": [[3], "index"]}`
+/// clamps to the root for data but reads the enclosing frame's index.
+pub(crate) fn metadata_reads_ancestor(static_depth: u32, scope_level: u32) -> bool {
+    use crate::arena::{frame_at_climb, metadata_climb};
+    metadata_climb(scope_level as usize)
+        .map(|c| ScopeBinding::from_target(frame_at_climb(static_depth as usize, c)))
+        == Some(ScopeBinding::Ancestor)
 }
 
 /// Data for a pre-compiled exists check (boxed inside CompiledNode to reduce enum size).

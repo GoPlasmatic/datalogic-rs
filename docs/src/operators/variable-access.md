@@ -138,34 +138,75 @@ Inside an iterator (`map`, `filter`, `all`, `some`, `none`, `group_by`, and
 the per-element expressions of `sort`, `distinct`, and `reduce`) the current
 element is the data context, so `{ "val": "field" }` reads the element. A
 leading `[N]` array selects a different frame. This is the only way to reach
-iteration metadata (the element's index or key).
+an enclosing iterator's element, or iteration metadata (the element's index
+or key).
 
 **Syntax:**
 ```json
 { "val": [] }
 { "val": [[1], "index"] }
 { "val": [[1], "key"] }
+{ "val": [[N]] }
 { "val": [[N], "segment1", "segment2", ...] }
 ```
 
+Levels come in pairs, because the reference implementation this form comes
+from keeps two entries per iterator — the iteration metadata, then the
+enclosing element. `[[1]]` and `[[2]]` therefore name the same frame, one
+iterator out; `[[3]]` and `[[4]]` name the one beyond it, and so on. Levels
+count **frames**, not iterators of a particular kind: a `reduce` body and a
+`try` catch arm each consume a level exactly like a `map` body.
+
 - `{ "val": [] }` returns the current element itself (same as `{ "var": "" }`).
+- `{ "val": [[N]] }` and `{ "val": [[N], "field", ...] }` read data from the
+  frame `ceil(N / 2)` iterators out: `[[1]]`/`[[2]]` is the enclosing element,
+  `[[3]]`/`[[4]]` the one outside that. A level that climbs past the outermost
+  frame resolves against the root data, so from inside a single iterator
+  `[[1], "field"]` and every higher level read the root.
 - `{ "val": [[1], "index"] }` returns the current element's zero-based position
   while iterating an array (or an object, in stored order); `{ "val": [[1], "key"] }`
-  returns its key while iterating an object. Both are `null` where no such
-  metadata exists: `key` over an array, and both inside `reduce`.
-- `{ "val": [[N], "field", ...] }` with `N` at or above the number of enclosing
-  iterators resolves against the root data. The conformance-suite convention is
-  `[[2], ...]` from inside one iterator; inside a single iterator `[[1], "field"]`
-  reaches the root as well, because there is only one frame to leave.
-- Inside nested iterators the enclosing iterator's element is not addressable in
-  the current engine: `[[1], "field"]` reads the current (innermost) element and
-  every higher level reads the root. Bind the outer value in your data, or
-  restructure the rule, when an inner iterator needs it.
-- The level form needs a segment after the level. `{ "val": [[1]] }` on its own
-  is the ordinary path form and looks up the key `"1"`.
+  returns its key while iterating an object. `[[3]]` reads the enclosing
+  iterator's index or key, `[[5]]` the one beyond it — odd levels only, since an
+  even level names an element rather than its metadata.
+- `index` and `key` are `null` wherever no such metadata exists: `key` over an
+  array, anything inside `reduce` or a `try` catch arm (those frames carry no
+  iteration metadata), and a level that climbs past the outermost frame. At an
+  even level they are ordinary field names, so `{ "val": [[2], "index"] }` reads
+  a *field* called `index` on the enclosing element.
+- The sign is ignored: `[[-2]]` and `[[2]]` are the same level.
 - Relative path syntax such as `"../field"` is not supported; it is treated as a
   literal key and resolves to `null`.
 - `var` accepts the same `[[N], ...]` form, because it compiles to `val`.
+
+**Reading an enclosing element from a nested iterator:**
+
+```json
+{
+  "map": [
+    { "val": "orders" },
+    { "map": [
+      { "val": "lines" },
+      { "*": [{ "val": "qty" }, { "val": [[2], "rate"] }] }
+    ]}
+  ]
+}
+```
+
+`[[2]]` leaves the inner `map` and reads `rate` from the order; `[[3], "index"]`
+would give the order's position, and `[[4], "field"]` the root data.
+
+**Differences from json-logic-engine.** datalogic follows that engine for every
+level it resolves, with three deliberate exceptions, all of which return
+something useful where it returns `null`:
+
+| case | json-logic-engine | datalogic |
+|------|-------------------|-----------|
+| odd level with a non-metadata path | the `{iterator, index}` object, or `null` | the same frame as `N + 1` |
+| a level past the outermost frame | `null` | the root data |
+| `{ "val": [[0], "index"] }` | the element's `index` *field* | the current index |
+
+It also stops resolving past the fourth chain entry, where datalogic keeps
+climbing.
 
 **Examples:**
 

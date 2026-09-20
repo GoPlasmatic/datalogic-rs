@@ -12,28 +12,31 @@ use std::ops::ControlFlow;
 /// of the iteration and evaluating it once yields what the per-item path
 /// would have produced. Used by the filter/quantifier fast paths.
 ///
-/// The subtlety is what "invariant" has to mean here. The fast path skips
-/// the per-item frame entirely and dispatches the hoisted operand one frame
-/// shallower than its static depth, so a reference is invariant exactly when
-/// it cannot observe the frame stack at all:
+/// The subtlety is what "invariant" has to mean here. The fast path skips the
+/// per-item frame entirely and dispatches the hoisted operand one frame
+/// shallower than its static depth, so an operand may be hoisted only when it
+/// resolves to the *same physical frame* at depth `D` and at `D - 1`. Since a
+/// level climbs `data_climb(level)` frames and that count does not depend on
+/// the depth, the only binding with that property is the root:
 ///
 /// - A literal takes the dispatcher's literal fast path.
 /// - [`ScopeBinding::Root`] reads the rule input straight from
-///   `ctx.root_input()`; and a level that clamps to the root at the
-///   predicate's static depth still clamps one frame shallower, so the
-///   debug oracle agrees with the hoisted evaluation.
+///   `ctx.root_input()`; a level whose climb clamps to the root at `D` still
+///   clamps at `D - 1`, so the debug oracle agrees with the hoisted
+///   evaluation.
 /// - [`ScopeBinding::Current`] *is* the per-item frame. Not invariant.
-/// - [`ScopeBinding::Ancestor`] indexes the stack relative to a frame that
-///   is not pushed on this path. Rare (depth >= 3) and left to the general
-///   path rather than resolved with a second copy of the level arithmetic.
+/// - [`ScopeBinding::Ancestor`] names a frame relative to one that is not
+///   pushed on this path, so at `D - 1` the same level lands one frame
+///   further out. Left to the general path rather than resolved with a second
+///   copy of the level arithmetic.
 /// - [`ScopeBinding::Unresolved`] means the scope pass never reached this
 ///   node, so nothing is proven. Treated as not invariant.
 ///
 /// A bare `scope_level > 0` test is **not** a substitute for the binding:
-/// `{"val": [[1], …]}` resolves to the current frame whenever the filter
-/// itself sits one or more frames deep, which is the shape that made this
-/// predicate wrong before. Metadata and reduce hints read `ctx.current()`
-/// regardless of level, so they are never invariant; and a `default_value`
+/// `{"val": [[1], …]}` names the *enclosing* element once the filter itself
+/// sits one or more frames deep, which is the shape that made this predicate
+/// wrong before. Metadata and reduce hints read a frame the level picks out
+/// rather than the root, so they are never invariant; and a `default_value`
 /// is an arbitrary subtree that could.
 #[inline]
 pub(super) fn is_filter_invariant(node: &CompiledNode) -> bool {
@@ -962,16 +965,24 @@ mod invariant_tests {
             );
         }
 
-        // Not hoistable: one frame deeper, `[[1]]` names the current item.
-        let nested = r#"{"map": [{"val": "g"}, {"filter": [{"val": "i"}, {"===": [{"var": "a"}, {"val": [[1], "a"]}]}]}]}"#;
-        let logic = engine.compile(nested).unwrap();
-        assert!(
-            !is_filter_invariant(nested_filter_rhs(&logic)),
-            "[[1]] inside a nested filter is the current item, not an outer frame"
-        );
+        // Not hoistable: one frame deeper, `[[1]]` and `[[2]]` both name the
+        // enclosing `map` element, which is indexed relative to the per-item
+        // frame this path never pushes.
+        for rule in [
+            r#"{"map": [{"val": "g"}, {"filter": [{"val": "i"}, {"===": [{"var": "a"}, {"val": [[1], "a"]}]}]}]}"#,
+            r#"{"map": [{"val": "g"}, {"filter": [{"val": "i"}, {"===": [{"var": "a"}, {"val": [[2], "a"]}]}]}]}"#,
+        ] {
+            let logic = engine.compile(rule).unwrap();
+            assert!(
+                !is_filter_invariant(nested_filter_rhs(&logic)),
+                "an enclosing-frame reference takes the general path: {rule}"
+            );
+        }
 
-        // Hoistable again at the same nesting once the level clamps to root.
-        let nested_root = r#"{"map": [{"val": "g"}, {"filter": [{"val": "i"}, {"===": [{"var": "a"}, {"val": [[2], "a"]}]}]}]}"#;
+        // Hoistable again at the same nesting once the level clamps to root:
+        // a climb of 2 passes both frames, and still passes both when the
+        // hoisted operand is dispatched one frame shallower.
+        let nested_root = r#"{"map": [{"val": "g"}, {"filter": [{"val": "i"}, {"===": [{"var": "a"}, {"val": [[4], "a"]}]}]}]}"#;
         let logic = engine.compile(nested_root).unwrap();
         assert!(
             is_filter_invariant(nested_filter_rhs(&logic)),

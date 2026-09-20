@@ -35,7 +35,7 @@ pub(crate) use payload::StructuredObjectData;
 pub(crate) use payload::{
     CompiledMissingArg, CompiledMissingData, CompiledMissingMin, CompiledMissingPaths,
     CompiledMissingSomeData, CseData, CustomOperatorData, MetadataHint, PathSegment, ReduceHint,
-    ScopeBinding,
+    ScopeBinding, metadata_reads_ancestor,
 };
 pub(crate) use populate::populate_lits;
 pub(crate) use prelit::PreLit;
@@ -127,7 +127,9 @@ pub(crate) enum CompiledNode {
 
     /// A pre-compiled variable access (unified var/val).
     ///
-    /// scope_level 0 = current context (var-style), N = go up N levels (val with [[N], ...]).
+    /// scope_level 0 = current context (var-style), N = a `val` level marker
+    /// (`[[N], ...]`), which climbs `crate::arena::data_climb(N)` frames for a
+    /// data read and `crate::arena::metadata_climb(N)` for `index` / `key`.
     /// Segments are pre-parsed at compile time to avoid runtime string splitting.
     ///
     /// `binding` is the compile-time frame resolution filled in by the
