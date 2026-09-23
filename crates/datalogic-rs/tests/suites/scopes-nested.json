@@ -502,5 +502,333 @@
     "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"val": [[6], {"cat": ["ta", "g"]}]}]}]},
     "data": {"tag": "ROOT", "rows": [{"tag": "R0", "cols": [1, 2]}, {"tag": "R1", "cols": [3]}]},
     "result": [["ROOT", "ROOT"], ["ROOT"]]
+  },
+  "Negative levels. A level is its magnitude: `[[-N]]` and `[[N]]` name the same frame, for data and for metadata alike. Nothing counts from the innermost frame downwards.",
+  {
+    "description": "Depth 2: [[-1]] reads A, like [[1]]",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[-1], "tag"]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B"}]}]},
+    "result": [["A"]]
+  },
+  {
+    "description": "Depth 2: [[-2]] reads A, like [[2]]",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[-2], "tag"]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B"}]}]},
+    "result": [["A"]]
+  },
+  {
+    "description": "Depth 2: [[-3]] clamps to ROOT, like [[3]]",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[-3], "tag"]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B"}]}]},
+    "result": [["ROOT"]]
+  },
+  {
+    "description": "Depth 2: [[-1]] with `index` is the innermost index",
+    "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"val": [[-1], "index"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"cols": [10, 20, 30]}, {"cols": [40, 50]}]},
+    "result": [[0, 1, 2], [0, 1]]
+  },
+  {
+    "description": "Depth 2: [[-3]] with `index` is the enclosing index",
+    "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"val": [[-3], "index"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"cols": [10, 20, 30]}, {"cols": [40, 50]}]},
+    "result": [[0, 0, 0], [1, 1]]
+  },
+  "At root depth nothing is pushed, so every level is the root and a metadata read names no frame at all. `index` is total there: null, never a fall-through to a field of that name; reach a field called `index` with a plain path instead.",
+  {
+    "description": "Root: [[0]] with a path is the root",
+    "rule": {"val": [[0], "tag"]},
+    "data": {"tag": "ROOT", "index": "field-index"},
+    "result": "ROOT"
+  },
+  {
+    "description": "Root: [[1]] with a path is the root",
+    "rule": {"val": [[1], "tag"]},
+    "data": {"tag": "ROOT", "index": "field-index"},
+    "result": "ROOT"
+  },
+  {
+    "description": "Root: [[9]] with a path is the root",
+    "rule": {"val": [[9], "tag"]},
+    "data": {"tag": "ROOT", "index": "field-index"},
+    "result": "ROOT"
+  },
+  {
+    "description": "Root: a bare [[0]] is the root itself",
+    "rule": {"val": [[0]]},
+    "data": {"tag": "ROOT", "index": "field-index"},
+    "result": {"tag": "ROOT", "index": "field-index"}
+  },
+  {
+    "description": "Root: a bare [[1]] is the root itself",
+    "rule": {"val": [[1]]},
+    "data": {"tag": "ROOT", "index": "field-index"},
+    "result": {"tag": "ROOT", "index": "field-index"}
+  },
+  {
+    "description": "Root: [[0]] with `index` names no metadata frame, so null",
+    "rule": {"val": [[0], "index"]},
+    "data": {"tag": "ROOT", "index": "field-index"},
+    "result": null
+  },
+  {
+    "description": "Root: [[1]] with `index` names no metadata frame, so null",
+    "rule": {"val": [[1], "index"]},
+    "data": {"tag": "ROOT", "index": "field-index"},
+    "result": null
+  },
+  {
+    "description": "Root: a plain path still reads a field called `index`",
+    "rule": {"val": "index"},
+    "data": {"tag": "ROOT", "index": "field-index"},
+    "result": "field-index"
+  },
+  "Iteration metadata at depths 1 and 3, filling in the grid either side of the depth-2 block above.",
+  {
+    "description": "Depth 1: [[0]] with `index` is the current index",
+    "rule": {"map": [{"val": "rows"}, {"val": [[0], "index"]}]},
+    "data": {"tag": "ROOT", "index": "root-index-field", "rows": [10, 20, 30]},
+    "result": [0, 1, 2]
+  },
+  {
+    "description": "Depth 1: [[1]] with `index` is the current index",
+    "rule": {"map": [{"val": "rows"}, {"val": [[1], "index"]}]},
+    "data": {"tag": "ROOT", "index": "root-index-field", "rows": [10, 20, 30]},
+    "result": [0, 1, 2]
+  },
+  {
+    "description": "Depth 1: [[2]] names the root element frame, where `index` is a field",
+    "rule": {"map": [{"val": "rows"}, {"val": [[2], "index"]}]},
+    "data": {"tag": "ROOT", "index": "root-index-field", "rows": [10, 20, 30]},
+    "result": ["root-index-field", "root-index-field", "root-index-field"]
+  },
+  {
+    "description": "Depth 1: [[3]] with `index` climbs past the only frame, so null",
+    "rule": {"map": [{"val": "rows"}, {"val": [[3], "index"]}]},
+    "data": {"tag": "ROOT", "index": "root-index-field", "rows": [10, 20, 30]},
+    "result": [null, null, null]
+  },
+  {
+    "description": "Depth 3: [[1]] with `index` is the innermost index",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"val": [[1], "index"]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"b": [{"c": [1, 2]}, {"c": [3]}]}]},
+    "result": [[[0, 1], [0]]]
+  },
+  {
+    "description": "Depth 3: [[3]] with `index` is the enclosing index",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"val": [[3], "index"]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"b": [{"c": [1, 2]}, {"c": [3]}]}]},
+    "result": [[[0, 0], [1]]]
+  },
+  {
+    "description": "Depth 3: [[5]] with `index` is the outermost index",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"val": [[5], "index"]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"b": [{"c": [1, 2]}, {"c": [3]}]}]},
+    "result": [[[0, 0], [0]]]
+  },
+  {
+    "description": "Depth 3: [[7]] with `index` climbs past every frame, so null",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"map": [{"val": "c"}, {"val": [[7], "index"]}]}]}]},
+    "data": {"tag": "ROOT", "a": [{"b": [{"c": [1, 2]}, {"c": [3]}]}]},
+    "result": [[[null, null], [null]]]
+  },
+  "`key` at depth 1 over an object, the shallow counterpart of the depth-2 object block.",
+  {
+    "description": "Depth 1 over objects: [[0]] with `key`",
+    "rule": {"map": [{"val": "o"}, {"val": [[0], "key"]}]},
+    "data": {"tag": "ROOT", "o": {"x": 1, "y": 2}},
+    "result": ["x", "y"]
+  },
+  {
+    "description": "Depth 1 over objects: [[1]] with `key`",
+    "rule": {"map": [{"val": "o"}, {"val": [[1], "key"]}]},
+    "data": {"tag": "ROOT", "o": {"x": 1, "y": 2}},
+    "result": ["x", "y"]
+  },
+  {
+    "description": "Depth 1 over objects: [[2]] names the root, where `key` is an ordinary field",
+    "rule": {"map": [{"val": "o"}, {"val": [[2], "key"]}]},
+    "data": {"tag": "ROOT", "o": {"x": 1, "y": 2}},
+    "result": [null, null]
+  },
+  {
+    "description": "Depth 1 over objects: [[3]] climbs past the only frame, so null",
+    "rule": {"map": [{"val": "o"}, {"val": [[3], "key"]}]},
+    "data": {"tag": "ROOT", "o": {"x": 1, "y": 2}},
+    "result": [null, null]
+  },
+  "A computed *level* keeps the node off the compiled path too, so these run the interpreted resolver over the level arithmetic itself rather than over the path.",
+  {
+    "description": "interpreted level: [[0]] is the current element",
+    "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"val": [{"merge": [0]}, "tag"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "cols": [1, 2]}, {"tag": "R1", "cols": [3]}]},
+    "result": [[null, null], [null]]
+  },
+  {
+    "description": "interpreted level: [[2]] is the enclosing element",
+    "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"val": [{"merge": [2]}, "tag"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "cols": [1, 2]}, {"tag": "R1", "cols": [3]}]},
+    "result": [["R0", "R0"], ["R1"]]
+  },
+  {
+    "description": "interpreted level: [[4]] clamps to the root",
+    "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"val": [{"merge": [4]}, "tag"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "cols": [1, 2]}, {"tag": "R1", "cols": [3]}]},
+    "result": [["ROOT", "ROOT"], ["ROOT"]]
+  },
+  {
+    "description": "interpreted level: [[1]] with `index` is the innermost index",
+    "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"val": [{"merge": [1]}, "index"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "cols": [1, 2]}, {"tag": "R1", "cols": [3]}]},
+    "result": [[0, 1], [0]]
+  },
+  {
+    "description": "interpreted level: [[3]] with `index` is the enclosing index",
+    "rule": {"map": [{"val": "rows"}, {"map": [{"val": "cols"}, {"val": [{"merge": [3]}, "index"]}]}]},
+    "data": {"tag": "ROOT", "rows": [{"tag": "R0", "cols": [1, 2]}, {"tag": "R1", "cols": [3]}]},
+    "result": [[0, 0], [1]]
+  },
+  "The reported case, verbatim (issue #74): two nested `map`s over the reporter's data, one case per row of the report's table. The shell is `{\"map\": [{\"var\": \"outer\"}, {\"map\": [{\"var\": \"items\"}, BODY]}]}` and only BODY varies, so a regression here reads exactly as the bug did.",
+  {
+    "description": "#74 control: the inner body sees the item",
+    "rule": {"map": [{"var": "outer"}, {"map": [{"var": "items"}, {"val": []}]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": [[10, 20], [30, 40]]
+  },
+  {
+    "description": "#74 the bug: [[1]] with a path reads the enclosing element, not the current one",
+    "rule": {"map": [{"var": "outer"}, {"map": [{"var": "items"}, {"val": [[1], "k"]}]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": [[1, 1], [2, 2]]
+  },
+  {
+    "description": "#74 [[2]] names the same frame as [[1]]: levels come in pairs",
+    "rule": {"map": [{"var": "outer"}, {"map": [{"var": "items"}, {"val": [[2], "k"]}]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": [[1, 1], [2, 2]]
+  },
+  {
+    "description": "#74 a bare [[1]] is the enclosing element itself",
+    "rule": {"map": [{"var": "outer"}, {"map": [{"var": "items"}, {"val": [[1]]}]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": [[{"k": 1, "items": [10, 20]}, {"k": 1, "items": [10, 20]}], [{"k": 2, "items": [30, 40]}, {"k": 2, "items": [30, 40]}]]
+  },
+  {
+    "description": "#74 a bare [[2]] names the same frame as a bare [[1]]",
+    "rule": {"map": [{"var": "outer"}, {"map": [{"var": "items"}, {"val": [[2]]}]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": [[{"k": 1, "items": [10, 20]}, {"k": 1, "items": [10, 20]}], [{"k": 2, "items": [30, 40]}, {"k": 2, "items": [30, 40]}]]
+  },
+  {
+    "description": "#74 [[1]] with `index` stays the innermost index at any depth",
+    "rule": {"map": [{"var": "outer"}, {"map": [{"var": "items"}, {"val": [[1], "index"]}]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": [[0, 1], [0, 1]]
+  },
+  {
+    "description": "#74 the enclosing index is [[3]], one pair further out than the enclosing element",
+    "rule": {"map": [{"var": "outer"}, {"map": [{"var": "items"}, {"val": [[3], "index"]}]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": [[0, 0], [1, 1]]
+  },
+  {
+    "description": "#74 an even level names an element frame, where `index` is an ordinary field name",
+    "rule": {"map": [{"var": "outer"}, {"map": [{"var": "items"}, {"val": [[4], "index"]}]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": [[null, null], [null, null]]
+  },
+  {
+    "description": "#74 breaking half: [[2]] no longer collapses to the root, so ROOT's `tag` is out of reach there",
+    "rule": {"map": [{"var": "outer"}, {"map": [{"var": "items"}, {"val": [[2], "tag"]}]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": [[null, null], [null, null]]
+  },
+  {
+    "description": "#74 the root is [[4]] at two frames deep",
+    "rule": {"map": [{"var": "outer"}, {"map": [{"var": "items"}, {"val": [[4], "tag"]}]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": [["ROOT", "ROOT"], ["ROOT", "ROOT"]]
+  },
+  {
+    "description": "#74 [[3]] with a data path climbs past the outermost frame and clamps to the root",
+    "rule": {"map": [{"var": "outer"}, {"map": [{"var": "items"}, {"val": [[3], "k"]}]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": [[null, null], [null, null]]
+  },
+  {
+    "description": "#74 a path walks on from the enclosing element",
+    "rule": {"map": [{"var": "outer"}, {"map": [{"var": "items"}, {"val": [[1], "items", 0]}]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": [[10, 10], [30, 30]]
+  },
+  "#74 negative levels. The report asked whether `[[-1]]` counts from the innermost frame; it does not. A level is its magnitude, so `[[-N]]` and `[[N]]` are the same address, on the reporter's data.",
+  {
+    "description": "#74 [[-1]] is the magnitude of the level: the enclosing element",
+    "rule": {"map": [{"var": "outer"}, {"map": [{"var": "items"}, {"val": [[-1], "k"]}]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": [[1, 1], [2, 2]]
+  },
+  {
+    "description": "#74 [[-2]] matches [[2]]",
+    "rule": {"map": [{"var": "outer"}, {"map": [{"var": "items"}, {"val": [[-2], "k"]}]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": [[1, 1], [2, 2]]
+  },
+  {
+    "description": "#74 [[-3]] with `index` matches [[3]]: the enclosing index",
+    "rule": {"map": [{"var": "outer"}, {"map": [{"var": "items"}, {"val": [[-3], "index"]}]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": [[0, 0], [1, 1]]
+  },
+  "#74 the same addresses through `var`, and through the interpreted resolver, which a computed level falls back to.",
+  {
+    "description": "#74 var reads the enclosing element at the same level",
+    "rule": {"map": [{"var": "outer"}, {"map": [{"var": "items"}, {"var": [[2], "k"]}]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": [[1, 1], [2, 2]]
+  },
+  {
+    "description": "#74 var reads the enclosing index at the same level",
+    "rule": {"map": [{"var": "outer"}, {"map": [{"var": "items"}, {"var": [[3], "index"]}]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": [[0, 0], [1, 1]]
+  },
+  {
+    "description": "#74 interpreted: a computed level reaches the enclosing element too",
+    "rule": {"map": [{"var": "outer"}, {"map": [{"var": "items"}, {"val": [{"merge": [2]}, "k"]}]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": [[1, 1], [2, 2]]
+  },
+  "#74 the use case behind the report: a cross product that needed a value from the enclosing element, which before 5.6.0 had to be threaded through a `reduce` accumulator.",
+  {
+    "description": "#74 cross product: each item scaled by its enclosing element's k",
+    "rule": {"map": [{"var": "outer"}, {"map": [{"var": "items"}, {"*": [{"val": []}, {"val": [[2], "k"]}]}]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": [[10, 20], [60, 80]]
+  },
+  {
+    "description": "#74 cross product keyed by the enclosing index instead",
+    "rule": {"map": [{"var": "outer"}, {"map": [{"var": "items"}, {"+": [{"val": []}, {"val": [[3], "index"]}]}]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": [[10, 20], [31, 41]]
+  },
+  "#74 the report's single-iterator controls, which 5.6.0 leaves untouched: at one frame deep every level from [[1]] up still reads the root, and [[1]] with `index` is the current index.",
+  {
+    "description": "#74 control: one iterator deep, [[1]] with a path is the root",
+    "rule": {"map": [{"var": "outer"}, {"val": [[1], "tag"]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": ["ROOT", "ROOT"]
+  },
+  {
+    "description": "#74 control: one iterator deep, [[1]] with `index` is the current index",
+    "rule": {"map": [{"var": "outer"}, {"val": [[1], "index"]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": [0, 1]
+  },
+  {
+    "description": "#74 control: one iterator deep, [[2]] with a path still reads the root",
+    "rule": {"map": [{"var": "outer"}, {"val": [[2], "tag"]}]},
+    "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
+    "result": ["ROOT", "ROOT"]
   }
 ]

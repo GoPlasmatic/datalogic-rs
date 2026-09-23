@@ -62,14 +62,17 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ### Changed
 
-- **83 conformance cases for the full level matrix** (`scopes-nested.json`):
-  levels 0-9 at nesting depths 1-4 for data, `index` and `key`, the bare
-  level form, and one case per frame-pushing operator — `filter`, `all`,
-  `some`, `none`, `reduce`, `try`, `group_by`, `sort`, `distinct` — since
-  their frame shapes differ, plus `var`/`val` parity on the level forms and
-  a computed-segment block that runs the same levels through the interpreted
-  resolver.
-  Expectations are derived from the model and
+- **136 conformance cases for the full level matrix** (`scopes-nested.json`):
+  levels 0-9 at nesting depths 1-4 for data, `index` and `key`, the bare level
+  form, negative levels, the root depth where no frame is pushed, and one case
+  per frame-pushing operator — `filter`, `all`, `some`, `none`, `reduce`,
+  `try`, `group_by`, `sort`, `distinct` — since their frame shapes differ, plus
+  `var`/`val` parity on the level forms and computed-segment and
+  computed-level blocks that run the same levels through the interpreted
+  resolver. The file closes with the reported case verbatim: 23 cases on the
+  reporter's own data and rule shell, one per row of the report's table, the
+  cross-product its `reduce` workaround existed for, and the single-iterator
+  controls the report used. Expectations are derived from the model and
   cross-checked cell by cell against json-logic-engine: the engine now agrees
   with it on all 160 cells of the matrix, where before it diverged on 75.
 
