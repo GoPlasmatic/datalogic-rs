@@ -124,7 +124,6 @@ pub(crate) fn compiled_var_to_json_string(
             .iter()
             .map(|seg| match seg {
                 PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => s.to_string(),
-                PathSegment::Index(i) => i.to_string(),
             })
             .collect::<Vec<_>>()
             .join(".");
@@ -139,7 +138,6 @@ pub(crate) fn compiled_var_to_json_string(
                 PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => {
                     parts.push(format!("\"{}\"", s))
                 }
-                PathSegment::Index(i) => parts.push(i.to_string()),
             }
         }
         format!("{{\"val\": [{}]}}", parts.join(", "))
@@ -153,14 +151,12 @@ pub(crate) fn compiled_exists_to_json_string(segments: &[PathSegment]) -> String
             PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => {
                 format!("{{\"exists\": \"{}\"}}", s)
             }
-            PathSegment::Index(i) => format!("{{\"exists\": {}}}", i),
         }
     } else {
         let parts: Vec<String> = segments
             .iter()
             .map(|seg| match seg {
                 PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => format!("\"{}\"", s),
-                PathSegment::Index(i) => i.to_string(),
             })
             .collect();
         format!("{{\"exists\": [{}]}}", parts.join(", "))

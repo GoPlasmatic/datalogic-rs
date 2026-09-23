@@ -139,7 +139,10 @@ pub(crate) struct CompiledVarSpec<'n> {
 #[inline]
 fn level_marker_from_array(av: &DataValue<'_>) -> Option<i64> {
     match av {
-        DataValue::Array(items) if !items.is_empty() => items[0].as_i64(),
+        // Exactly one element, matching `literal_level_marker` on the
+        // compiled path and the reference implementation: a longer array is
+        // a path chain, not a marker with a tail.
+        DataValue::Array(items) if items.len() == 1 => items[0].as_i64(),
         _ => None,
     }
 }

@@ -47,11 +47,15 @@ generated [`bindings/c/include/datalogic.h`](./bindings/c/include/datalogic.h).
 inside nested iterators, no `val` form could reach the enclosing iterator's
 element or its index. Fixing it changes what a level marker resolves to.
 
-**If every `val` level in your rules sits inside a single iterator, nothing
-changes** — `[[1], "field"]` and every higher level still read the root, and
-`[[1], "index"]` / `[[1], "key"]` are unchanged. Levels only move when a
-level marker of 1 or more sits inside **two or more nested frames**, where it
-used to collapse to the root.
+**If every `val` level in your rules sits inside a single iterator, data
+addressing does not move** — `[[1], "field"]` and every higher level still
+read the root, and `[[1], "index"]` / `[[1], "key"]` are unchanged. Levels
+only move when a level marker of 1 or more sits inside **two or more nested
+frames**, where it used to collapse to the root.
+
+Four *shapes* do change at any depth, single iterator and no iterator
+included; they are the last four rows of the table below. Check for them
+before you conclude a shallow rule is unaffected.
 
 Levels now come in pairs, matching the chain of the reference implementation:
 a data read climbs `ceil(N / 2)` frames, and `index` / `key` read the
@@ -64,7 +68,10 @@ metadata of the frame `N / 2` frames up (odd levels only).
 | `[[3], "index"]` in a nested iterator | innermost index | **enclosing** index |
 | `[[4], "f"]` two frames deep | root's `f` | root's `f` (unchanged) |
 | `[[2], "index"]` anywhere | innermost index | field named `index` on that frame |
-| `{"val": [[N]]}` (no path) | lookup of the key `"N"` | the frame itself |
+| `[[N], "index"]` where no frame is that far out | field named `index` | `null` |
+| `{"val": [[N]]}` (no path), `var` included | lookup of the key `"N"` | the frame itself |
+| `{"val": [[0, 1]]}`, any marker with a tail | level 0, tail dropped | a path chain: index 0, then 1 |
+| `{"val": ["a", 0]}` on an object | `null` | the key `"0"`, as `{"val": 0}` always did |
 
 **Read this one carefully: a `reduce` body and a `try` catch arm are frames
 too.** They consume a level exactly like a `map` body, so
@@ -85,6 +92,20 @@ whether it sits inside more than one frame:
 ```bash
 grep -rE '"(val|var)"\s*:\s*\[\s*\[\s*-?[1-9]' <your rules>
 ```
+
+Then grep for the shapes that move at any depth — a bare marker, a marker
+with a tail, and `index` / `key` at an even level:
+
+```bash
+grep -rE '"(val|var)"\s*:\s*\[\s*\[[^]]*\]\s*\]' <your rules>  # bare marker
+grep -rE '"(val|var)"\s*:\s*\[\s*\[[^]]*,' <your rules>          # marker with a tail
+grep -rE '\[\s*\[\s*-?[02468]\s*\]\s*,\s*"(index|key)"' <your rules>  # even level
+```
+
+One thing did *not* change, and is worth stating because the level rules
+changed around it: a level is its **magnitude**. `[[-N]]` and `[[N]]` name
+the same frame; negative levels have never counted from the innermost frame
+outwards.
 
 ## v4 → v5 in 60 seconds
 

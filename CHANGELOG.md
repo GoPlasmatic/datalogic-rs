@@ -44,11 +44,16 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   | `{"val": [[4], "tag"]}` | root | root |
   | `{"val": [[9], "tag"]}` | root | root |
 
-  **Nothing changes for a rule with a single iterator**, which is the
-  overwhelming majority: at one frame deep every level from `[[1]]` up still
-  resolves to the root, and `[[1], "index"]` / `[[1], "key"]` are unchanged.
-  What changes is a level of `2` or more *inside nested frames*, which
-  previously collapsed to the root. Note a `reduce` body and a `try` catch
+  **Data addressing is unchanged for a rule with a single iterator**, which
+  is the overwhelming majority: at one frame deep every level from `[[1]]` up
+  still resolves to the root, and `[[1], "index"]` / `[[1], "key"]` are
+  unchanged. What moves is a level of `2` or more *inside nested frames*,
+  which previously collapsed to the root. Three shapes do change at any
+  depth, including at one frame and at no frame at all: a bare
+  `{"val": [[N]]}`, an *even* level with `index` / `key` (now an ordinary
+  field name, where it used to be the innermost index), and `index` / `key`
+  at a level that names no metadata frame (now `null`, including at root
+  depth where 5.5.0 fell through to a data field of that name). Note a `reduce` body and a `try` catch
   arm are frames too, so `{"try": [risky, {"val": [[2], "fallback"]}]}` nested
   inside an iterator now reads that iterator's element rather than the root —
   see [MIGRATION.md](./MIGRATION.md).
@@ -60,9 +65,31 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   none (`reduce`, a catch arm, `key` over an array), it returns `null` instead
   of falling through to a data field of that name.
 
+- **A bare `{"val": [[N]]}` meant different things on different compile
+  paths.** The marker was only recognised where the compiler had already
+  folded `[N]` into a literal value. A compile that skips folding — every
+  `Engine::trace()` run, so the UI debugger and the bindings' trace APIs, and
+  any engine built `with_constant_folding(false)` — left it an unfolded array
+  node, fell through to the runtime resolver, and read the key `"N"` instead.
+  Both paths now read it as a level marker.
+
+- **A level marker is an array of exactly one number.** The arity was never
+  checked, so `{"val": [[0, 1]]}` was read as level 0 with the `1` silently
+  dropped, where it had been (and is again) a path chain walking index 0 then
+  index 1. `{"val": [[N, junk], "path"]}` is no longer level `N` either; 5.5.0
+  accepted that shape and the reference implementation never has.
+
+- **A numeric path segment reads an object's numeric key.** `{"val": ["a", 0]}`
+  reached the key `"0"` through the interpreted resolver and through
+  `{"val": 0}`, but compiled to an array-only segment that returned `null` on
+  an object. It now compiles to the same segment the string `"0"` does, which
+  also settles `{"val": [[0], 0]}`, where the two paths disagreed outright.
+  Present since v5; unrelated to #74, fixed here because the compile-path
+  audit that found the two above turned it up as well.
+
 ### Changed
 
-- **136 conformance cases for the full level matrix** (`scopes-nested.json`):
+- **145 conformance cases for the full level matrix** (`scopes-nested.json`):
   levels 0-9 at nesting depths 1-4 for data, `index` and `key`, the bare level
   form, negative levels, the root depth where no frame is pushed, and one case
   per frame-pushing operator — `filter`, `all`, `some`, `none`, `reduce`,
@@ -84,6 +111,14 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   `{"val": [[0], "index"]}` stays the current index. Parity is also limited
   to iterator nesting: a `reduce` or `try` frame consumes one level here and
   two there.
+
+- **The suite runner evaluates every case on every compile path.** Each of
+  the 1,953 cases now runs three times — the default engine, one built
+  `with_constant_folding(false)`, and `Engine::trace()` — and a disagreement
+  between them fails the case ahead of its own `result` / `error`
+  expectation. The suites ran the default path alone before, which is how all
+  three compile-path defects above stayed invisible: each of them produced a
+  defensible answer on the path the suites exercised.
 
 - **The filter fast path keeps a narrower set of hoistable operands.** A
   `[[2]]` reference inside a nested `filter` used to clamp to the root, which

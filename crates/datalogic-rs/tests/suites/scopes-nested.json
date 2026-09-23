@@ -830,5 +830,61 @@
     "rule": {"map": [{"var": "outer"}, {"val": [[2], "tag"]}]},
     "data": {"tag": "ROOT", "outer": [{"k": 1, "items": [10, 20]}, {"k": 2, "items": [30, 40]}]},
     "result": ["ROOT", "ROOT"]
+  },
+  "Marker arity. A level marker is an array of exactly one number. A longer array is a path chain, so `{\"val\": [[0, 1]]}` walks index 0 then 1, and `{\"val\": [[N, junk], \"path\"]}` is not level N. This matches the reference implementation, which tests the marker's length before reading it.",
+  {
+    "description": "A two-element array is a path chain, not level 0 with a tail",
+    "rule": {"val": [[0, 1]]},
+    "data": [["a", "b"], ["c", "d"]],
+    "result": "b"
+  },
+  {
+    "description": "A path chain whose first element is a number still walks",
+    "rule": {"val": [[1, "name"]]},
+    "data": [{"name": "x"}, {"name": "y"}],
+    "result": "y"
+  },
+  {
+    "description": "var reads the same two-element array as a path chain",
+    "rule": {"var": [[0, 1]]},
+    "data": [["a", "b"], ["c", "d"]],
+    "result": "b"
+  },
+  {
+    "description": "A marker with a tail is not a level, so its path finds nothing",
+    "rule": {"map": [{"val": "a"}, {"map": [{"val": "b"}, {"val": [[2, 9], "tag"]}]}]},
+    "data": {"tag": "ROOT", "a": [{"tag": "A", "b": [{"tag": "B"}]}]},
+    "result": [[null]]
+  },
+  "Numeric path segments after a level marker. A number names the key `\"0\"` on an object and the element 0 on an array, exactly as the string `\"0\"` does, so the compiled and the interpreted resolver agree on it.",
+  {
+    "description": "A numeric segment reads an object's numeric key",
+    "rule": {"val": [[0], 0]},
+    "data": {"0": "obj-zero"},
+    "result": "obj-zero"
+  },
+  {
+    "description": "A numeric segment reads an array element",
+    "rule": {"val": [[0], 0]},
+    "data": ["arr-zero"],
+    "result": "arr-zero"
+  },
+  {
+    "description": "A numeric segment matches the string segment that names the same key",
+    "rule": {"val": [[0], "0"]},
+    "data": {"0": "obj-zero"},
+    "result": "obj-zero"
+  },
+  {
+    "description": "Depth 1: a numeric segment on the frame a level names",
+    "rule": {"map": [{"val": "rows"}, {"val": [[1], 0]}]},
+    "data": {"0": "root-zero", "rows": [1, 2]},
+    "result": ["root-zero", "root-zero"]
+  },
+  {
+    "description": "Depth 1: the same segment at the level that names the same frame",
+    "rule": {"map": [{"val": "rows"}, {"val": [[2], 0]}]},
+    "data": {"0": "root-zero", "rows": [1, 2]},
+    "result": ["root-zero", "root-zero"]
   }
 ]

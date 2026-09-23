@@ -225,6 +225,7 @@ export const variableOperators: Record<string, Operator> = {
         'Iteration metadata: {"val": [[1], "index"]} and {"val": [[1], "key"]} (the string form {"val": "index"} looks up a key named "index")',
         'Outer metadata is odd-numbered: [[3], "index"] is the enclosing iterator\'s index; an even level reads a field of that name instead',
         'A bare {"val": [[N]]} is the frame itself, not a lookup of the key "N"',
+        'A marker holds exactly one number: {"val": [[0, 1]]} is a path chain, not level 0',
         'No default argument: use var\'s second argument or ?? for fallbacks',
       ],
       seeAlso: ['var', 'exists'],

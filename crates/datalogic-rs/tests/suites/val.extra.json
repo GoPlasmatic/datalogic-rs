@@ -149,5 +149,24 @@
             }
         },
         "result": 20
+    },
+    "Numeric path segments. A number names the key \"0\" on an object and the element 0 on an array, the same as the string \"0\": `{\"val\": 0}` always did, and a segment inside a chain now agrees with it.",
+    {
+        "description": "A numeric segment inside a chain reads an object's numeric key",
+        "rule": {"val": ["a", 0]},
+        "data": {"a": {"0": "nested-zero"}},
+        "result": "nested-zero"
+    },
+    {
+        "description": "A numeric segment inside a chain indexes an array",
+        "rule": {"val": ["a", 0]},
+        "data": {"a": ["first", "second"]},
+        "result": "first"
+    },
+    {
+        "description": "A single numeric path reads an object's numeric key",
+        "rule": {"val": 0},
+        "data": {"0": "obj-zero"},
+        "result": "obj-zero"
     }
 ]

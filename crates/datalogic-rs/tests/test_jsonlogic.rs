@@ -15,8 +15,9 @@ use std::fs;
 use std::path::Path;
 
 /// The engine flavours the suites exercise, keyed by the knobs a test case
-/// can ask for: its `templating` flag and its optional
-/// `template_key_escape` char. Engines are stateless across evaluations, so
+/// can ask for — its `templating` flag and its optional
+/// `template_key_escape` char — plus the constant-folding switch the
+/// [`Mode`] axis drives. Engines are stateless across evaluations, so
 /// each distinct flavour is built once on first use and shared by every
 /// case that asks for it.
 ///
@@ -26,7 +27,7 @@ use std::path::Path;
 /// know the list up front.
 #[derive(Default)]
 struct Engines {
-    by_flavour: std::collections::HashMap<(bool, Option<char>), Engine>,
+    by_flavour: std::collections::HashMap<(bool, Option<char>, bool), Engine>,
 }
 
 impl Engines {
@@ -34,16 +35,121 @@ impl Engines {
         Self::default()
     }
 
-    fn select(&mut self, templating: bool, key_escape: Option<char>) -> &Engine {
+    fn select(&mut self, templating: bool, key_escape: Option<char>, folding: bool) -> &Engine {
         self.by_flavour
-            .entry((templating, key_escape))
+            .entry((templating, key_escape, folding))
             .or_insert_with(|| {
-                let mut builder = Engine::builder().with_templating(templating);
+                let mut builder = Engine::builder()
+                    .with_templating(templating)
+                    .with_constant_folding(folding);
                 if let Some(c) = key_escape {
                     builder = builder.with_template_key_escape(c);
                 }
                 builder.build()
             })
+    }
+}
+
+/// The compile paths a rule can reach the evaluator through. They differ in
+/// what the compiler has already resolved by the time a node runs: a folded
+/// literal is a `Value` node, an unfolded one is still an `Array` node, and
+/// the traced path compiles from source with the optimizer off so every
+/// operator surfaces a step.
+///
+/// Every case runs on all of them and they must agree. The suites used to
+/// run the default path alone, which let three defects ship unseen: a bare
+/// `{"val": [[N]]}` was a level marker only where the literal had been
+/// folded, a numeric path segment resolved on one path and not the other,
+/// and `{"val": [[0, 1]]}` meant different things on each. A split is a bug
+/// in the engine even when both answers look reasonable, because the same
+/// rule is supposed to mean one thing.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Mode {
+    /// `Engine::compile`, the path production rules take.
+    Default,
+    /// `with_constant_folding(false)` — literals reach the evaluator
+    /// unfolded.
+    NoFold,
+    /// `Engine::trace`, which the UI debugger and the bindings' trace APIs
+    /// use. Compiles from source with the optimizer disabled.
+    #[cfg(feature = "trace")]
+    Traced,
+}
+
+impl Mode {
+    fn label(self) -> &'static str {
+        match self {
+            Mode::Default => "default",
+            Mode::NoFold => "no-fold",
+            #[cfg(feature = "trace")]
+            Mode::Traced => "traced",
+        }
+    }
+}
+
+/// [`Mode::Default`] first: it is the one whose outcome the case's `result` /
+/// `error` expectation is checked against, and the one the others are
+/// compared to.
+fn modes() -> Vec<Mode> {
+    let mut modes = vec![Mode::Default, Mode::NoFold];
+    #[cfg(feature = "trace")]
+    modes.push(Mode::Traced);
+    modes
+}
+
+/// Where a failing case failed, which the `error` expectation reporting
+/// distinguishes (the traced path compiles lazily inside its eval, so the
+/// stage is not comparable across modes and never enters an outcome key).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Stage {
+    Compile,
+    Eval,
+}
+
+enum Outcome {
+    Value(Value),
+    Failure(datalogic_rs::Error, Stage),
+}
+
+/// The comparable identity of an outcome. A value compares as itself; a
+/// failure compares as the JSON shape the suites' `error` expectations use,
+/// falling back to the error kind for kinds the suites don't encode. Compile
+/// and evaluation failures share a tag on purpose — which of the two a rule
+/// hits is a property of the compile path, not of the rule's meaning.
+fn outcome_key(outcome: &Outcome) -> (u8, Value) {
+    match outcome {
+        Outcome::Value(value) => (0, value.clone()),
+        Outcome::Failure(error, _) => (
+            1,
+            error_expectation_json(error)
+                .unwrap_or_else(|| Value::String(format!("{:?}", error.kind))),
+        ),
+    }
+}
+
+fn evaluate(
+    engines: &mut Engines,
+    mode: Mode,
+    templating: bool,
+    key_escape: Option<char>,
+    rule: &Value,
+    data: &Value,
+) -> Outcome {
+    #[cfg(feature = "trace")]
+    if mode == Mode::Traced {
+        let engine = engines.select(templating, key_escape, true);
+        return match engine.trace().eval_into::<Value, _, _>(rule, data).result {
+            Ok(value) => Outcome::Value(value),
+            Err(error) => Outcome::Failure(error, Stage::Eval),
+        };
+    }
+    let engine = engines.select(templating, key_escape, mode == Mode::Default);
+    match engine.compile(rule) {
+        Ok(compiled) => match engine.session().eval_into::<Value, _>(&compiled, data) {
+            Ok(value) => Outcome::Value(value),
+            Err(error) => Outcome::Failure(error, Stage::Eval),
+        },
+        Err(error) => Outcome::Failure(error, Stage::Compile),
     }
 }
 
@@ -454,8 +560,6 @@ fn run_test_file(test_file: &str, engines: &mut Engines) -> (usize, usize, usize
                 ),
             }
         });
-        let engine = engines.select(templating, key_escape);
-
         // Each case asserts either a `result` or an `error` expectation.
         let expected_error = test_obj.get("error");
         let expected_result = test_obj.get("result");
@@ -464,42 +568,67 @@ fn run_test_file(test_file: &str, engines: &mut Engines) -> (usize, usize, usize
             panic!("Test case {index} missing 'result' or 'error'");
         }
 
-        // Compile and evaluate
-        match engine.compile(rule) {
-            Ok(compiled) => match engine
-                .session()
-                .eval_into::<serde_json::Value, _>(&compiled, &data)
-            {
-                Ok(result) => {
-                    if expected_error.is_some() {
+        // Every compile path, default first. A disagreement between them is
+        // reported instead of the expectation check: whatever the case
+        // expects, a rule that means two things is already wrong.
+        let outcome = evaluate(engines, Mode::Default, templating, key_escape, rule, &data);
+        let key = outcome_key(&outcome);
+        let split = modes().into_iter().skip(1).find_map(|mode| {
+            let other = outcome_key(&evaluate(
+                engines, mode, templating, key_escape, rule, &data,
+            ));
+            (other != key).then_some((mode, other))
+        });
+        if let Some((mode, other)) = split {
+            rec.fail(
+                index,
+                description,
+                &[
+                    format!(
+                        "Compile-path split: `default` and `{}` disagree on the same rule",
+                        mode.label()
+                    ),
+                    format!("default: {:?}", key.1),
+                    format!("{:>7}: {:?}", mode.label(), other.1),
+                ],
+            );
+            continue;
+        }
+
+        match outcome {
+            Outcome::Value(result) => {
+                if expected_error.is_some() {
+                    rec.fail(
+                        index,
+                        description,
+                        &[
+                            format!("Expected error: {expected_error:?}"),
+                            format!("Got result:     {result:?}"),
+                        ],
+                    );
+                } else if let Some(expected) = expected_result {
+                    if &result == expected {
+                        rec.pass(index, description, None);
+                    } else {
                         rec.fail(
                             index,
                             description,
                             &[
-                                format!("Expected error: {expected_error:?}"),
-                                format!("Got result:     {result:?}"),
+                                format!("Expected: {expected:?}"),
+                                format!("Got:      {result:?}"),
                             ],
                         );
-                    } else if let Some(expected) = expected_result {
-                        if &result == expected {
-                            rec.pass(index, description, None);
-                        } else {
-                            rec.fail(
-                                index,
-                                description,
-                                &[
-                                    format!("Expected: {expected:?}"),
-                                    format!("Got:      {result:?}"),
-                                ],
-                            );
-                        }
                     }
                 }
-                Err(e) => {
-                    record_error_case(&mut rec, index, description, &e, expected_error, false);
-                }
-            },
-            Err(e) => record_error_case(&mut rec, index, description, &e, expected_error, true),
+            }
+            Outcome::Failure(e, stage) => record_error_case(
+                &mut rec,
+                index,
+                description,
+                &e,
+                expected_error,
+                stage == Stage::Compile,
+            ),
         }
     }
 

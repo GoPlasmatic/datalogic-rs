@@ -174,6 +174,9 @@ count **frames**, not iterators of a particular kind: a `reduce` body and a
   even level they are ordinary field names, so `{ "val": [[2], "index"] }` reads
   a *field* called `index` on the enclosing element.
 - The sign is ignored: `[[-2]]` and `[[2]]` are the same level.
+- A marker is an array of **exactly one** number. `{ "val": [[0, 1]] }` is a
+  path chain walking index 0 then index 1, not level 0 with a stray tail, and
+  `{ "val": [[2, 9], "field"] }` is not level 2.
 - Relative path syntax such as `"../field"` is not supported; it is treated as a
   literal key and resolves to `null`.
 - `var` accepts the same `[[N], ...]` form, because it compiles to `val`.

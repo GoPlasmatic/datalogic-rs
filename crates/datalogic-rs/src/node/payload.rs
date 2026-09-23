@@ -15,10 +15,12 @@ use datavalue::OwnedDataValue;
 pub(crate) enum PathSegment {
     /// Object field access by key
     Field(Box<str>),
-    /// Array element access by index
-    Index(usize),
-    /// Try as object key first, then as array index (for segments that could be either).
-    /// Pre-parses the index at compile time to avoid runtime parsing.
+    /// Try as object key first, then as array index (for segments that could
+    /// be either). Pre-parses the index at compile time to avoid runtime
+    /// parsing. A numeric segment is always this, never array-only: a JSON
+    /// object may carry the key `"0"`, and the interpreted resolver
+    /// (`apply_path_element`) has always read it, so an array-only segment
+    /// made the compiled path disagree with it.
     FieldOrIndex(Box<str>, usize),
 }
 

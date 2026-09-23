@@ -19,7 +19,6 @@ fn step_segment<'a>(cur: &'a DataValue<'a>, seg: &PathSegment) -> Option<&'a Dat
         (&DataValue::Object(pairs), PathSegment::Field(key)) => {
             object_lookup_field(pairs, key.as_ref())
         }
-        (&DataValue::Array(items), PathSegment::Index(idx)) => items.get(*idx),
         (&DataValue::Object(pairs), PathSegment::FieldOrIndex(key, _)) => {
             object_lookup_field(pairs, key.as_ref())
         }

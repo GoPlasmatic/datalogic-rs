@@ -158,18 +158,45 @@ fn try_compile_val_single_arg(arg: &CompiledNode, ctx: &mut CompileCtx) -> Optio
 /// The level a literal `[N]` marker names, magnitude only, saturating rather
 /// than truncating so a level past `u32::MAX` cannot wrap to 0 and silently
 /// read the current frame.
+///
+/// A marker is an array of **exactly one** number, which is the reference
+/// implementation's rule as well: `{"val": [[0, 1]]}` is a path chain, not
+/// level 0 with a stray tail, and `{"val": [[1, 9], "x"]}` is not level 1.
+///
+/// Both literal shapes are accepted, because one rule compiles to two
+/// different nodes: a folding compile turns `[1]` into a `Value`, while a
+/// `skip_fold` compile — every `Engine::trace()` run, and any engine built
+/// `with_constant_folding(false)` — leaves it a one-element `Array` node.
+/// Matching only the folded shape made a bare `{"val": [[N]]}` a level marker
+/// on one path and a lookup of the key `"N"` on the other.
 fn literal_level_marker(arg: &CompiledNode) -> Option<u32> {
-    let CompiledNode::Value {
-        value: datavalue::OwnedDataValue::Array(level_arr),
-        ..
-    } = arg
-    else {
-        return None;
+    let level = match arg {
+        CompiledNode::Value {
+            value: datavalue::OwnedDataValue::Array(level_arr),
+            ..
+        } => {
+            if level_arr.len() != 1 {
+                return None;
+            }
+            match level_arr.first()? {
+                datavalue::OwnedDataValue::Number(n) => n.as_i64()?,
+                _ => return None,
+            }
+        }
+        CompiledNode::Array { nodes, .. } => {
+            if nodes.len() != 1 {
+                return None;
+            }
+            match nodes.first()? {
+                CompiledNode::Value {
+                    value: datavalue::OwnedDataValue::Number(n),
+                    ..
+                } => n.as_i64()?,
+                _ => return None,
+            }
+        }
+        _ => return None,
     };
-    let Some(datavalue::OwnedDataValue::Number(level_num)) = level_arr.first() else {
-        return None;
-    };
-    let level = level_num.as_i64()?;
     Some(level.unsigned_abs().min(u32::MAX as u64) as u32)
 }
 
@@ -197,13 +224,17 @@ fn val_arg_to_segment(arg: &CompiledNode) -> Option<PathSegment> {
             value: datavalue::OwnedDataValue::String(s),
             ..
         } => Some(str_to_segment(s)),
+        // A numeric arg takes the same segment shape a numeric *string*
+        // gets from `str_to_segment`, so `{"val": ["a", 0]}` and
+        // `{"val": ["a", "0"]}` resolve alike and both reach the key `"0"`
+        // on an object, as the interpreted resolver already did.
         CompiledNode::Value {
             value: datavalue::OwnedDataValue::Number(n),
             ..
         } => n
             .as_i64()
             .filter(|i| *i >= 0)
-            .map(|i| PathSegment::Index(i as usize)),
+            .map(|i| PathSegment::FieldOrIndex(itoa::Buffer::new().format(i).into(), i as usize)),
         _ => None,
     }
 }
