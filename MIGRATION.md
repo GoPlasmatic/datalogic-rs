@@ -1,7 +1,7 @@
 # Migrating to datalogic-rs v5
 
 v5 is a clean break from v4. There is **no `compat` feature**, no
-`LegacyApi` trait, and no deprecated method shims inside the v5 crate —
+`LegacyApi` trait, and no deprecated method shims inside the v5 crate;
 v4 callers rewrite their call sites following this guide. The
 rewrites are mechanical and 1:1; this document is the authoritative
 cookbook.
@@ -11,7 +11,7 @@ If you are still on v4 and not ready to migrate, stay on the latest
 
 ## 5.0.0 → 5.0.1: C ABI v2 (bindings-internal)
 
-5.0.1 replaces the C ABI (`bindings/c`) wholesale — ABI v2. If you use
+5.0.1 replaces the C ABI (`bindings/c`) wholesale with ABI v2. If you use
 any language binding through its package manager (npm, PyPI, NuGet, Go
 modules, Maven, Packagist), **nothing changes for you**: the wrapper
 APIs are source-compatible and only gain new surface (parse-once data
@@ -34,9 +34,9 @@ published as a standalone artifact), the v1 symbols are gone. Assert
 | NUL-terminated `char*` inputs | `(const uint8_t *, size_t)` UTF-8 byte ranges |
 | `char*` returns + `datalogic_string_free` | sessions return borrowed `(ptr, len)` valid until the next call on that session; one-shots fill an owned `datalogic_buf`, released via `datalogic_buf_free` |
 | `NULL` return + thread-local `datalogic_last_error_*` block | `datalogic_status` return + optional `datalogic_error **` out-param; read `datalogic_error_status/_message/_tag/_operator/_path_json`, then `datalogic_error_free` |
-| `datalogic_last_error_clear` | deleted — there is no thread-local state |
-| operator callback returns a `malloc`'d string the binding frees | callback writes via `datalogic_op_result_set_json` / `_set_error` and returns `0`/non-zero — no allocator crosses the boundary |
-| — | new surface: `datalogic_abi_version`, `datalogic_data_parse/_free/_allocated_bytes`, `datalogic_rule_evaluate_data`, `datalogic_session_evaluate_data/_bool/_i64/_f64/_truthy/_batch/_many` |
+| `datalogic_last_error_clear` | deleted; there is no thread-local state |
+| operator callback returns a `malloc`'d string the binding frees | callback writes via `datalogic_op_result_set_json` / `_set_error` and returns `0`/non-zero; no allocator crosses the boundary |
+| (none) | new surface: `datalogic_abi_version`, `datalogic_data_parse/_free/_allocated_bytes`, `datalogic_rule_evaluate_data`, `datalogic_session_evaluate_data/_bool/_i64/_f64/_truthy/_batch/_many` |
 
 Full contract: [`bindings/c/README.md`](./bindings/c/README.md) and the
 generated [`bindings/c/include/datalogic.h`](./bindings/c/include/datalogic.h).
@@ -48,7 +48,7 @@ inside nested iterators, no `val` form could reach the enclosing iterator's
 element or its index. Fixing it changes what a level marker resolves to.
 
 **If every `val` level in your rules sits inside a single iterator, data
-addressing does not move** — `[[1], "field"]` and every higher level still
+addressing does not move**: `[[1], "field"]` and every higher level still
 read the root, and `[[1], "index"]` / `[[1], "key"]` are unchanged. Levels
 only move when a level marker of 1 or more sits inside **two or more nested
 frames**, where it used to collapse to the root.
@@ -83,7 +83,7 @@ too.** They consume a level exactly like a `map` body, so
 
 now reads `fallback` from the **row**, not from the root. The same rule
 outside any iterator is unaffected. To reach the root regardless of nesting,
-count the frames — `[[2 * frames]]` — or use a level well past them, which
+count the frames (`[[2 * frames]]`) or use a level well past them, which
 still clamps to the root.
 
 To find affected rules, grep for a level marker of 1 or more and check
@@ -93,7 +93,7 @@ whether it sits inside more than one frame:
 grep -rE '"(val|var)"\s*:\s*\[\s*\[\s*-?[1-9]' <your rules>
 ```
 
-Then grep for the shapes that move at any depth — a bare marker, a marker
+Then grep for the shapes that move at any depth: a bare marker, a marker
 with a tail, and `index` / `key` at an even level:
 
 ```bash
@@ -102,8 +102,8 @@ grep -rE '"(val|var)"\s*:\s*\[\s*\[[^]]*,' <your rules>          # marker with a
 grep -rE '\[\s*\[\s*-?[02468]\s*\]\s*,\s*"(index|key)"' <your rules>  # even level
 ```
 
-One thing did *not* change, and is worth stating because the level rules
-changed around it: a level is its **magnitude**. `[[-N]]` and `[[N]]` name
+One thing did *not* change, even though the level rules changed around
+it: a level is its **magnitude**. `[[-N]]` and `[[N]]` name
 the same frame; negative levels have never counted from the innermost frame
 outwards.
 
@@ -140,7 +140,7 @@ below; this checklist covers the 90% case.
   `@goplasmatic/datalogic-wasm` (browser/edge) or
   `@goplasmatic/datalogic-node` (new in v5, Node-native via napi-rs)
   ([details](#npm-package-rename-jsts-consumers-only))
-- Templating flag rename: `preserve_structure` → `templating` — same
+- Templating flag rename: `preserve_structure` → `templating`, same
   semantics ([details](#javascript--npm-consumers))
 
 If a v4 surface isn't covered here, search this document or
@@ -167,13 +167,13 @@ If a v4 surface isn't covered here, search this document or
 
 ## npm package rename (JS/TS consumers only)
 
-The WASM npm package was renamed to align with the `datalogic-<lang>`
+We renamed the WASM npm package to align with the `datalogic-<lang>`
 convention used by every other binding:
 
 | v4 | v5 |
 |---|---|
 | `@goplasmatic/datalogic` (WASM) | **`@goplasmatic/datalogic-wasm`** |
-| _(new in v5)_ | **`@goplasmatic/datalogic-node`** — native Node.js binding via napi-rs |
+| _(new in v5)_ | **`@goplasmatic/datalogic-node`**: native Node.js binding via napi-rs |
 | `@goplasmatic/datalogic-ui` | `@goplasmatic/datalogic-ui` (unchanged) |
 
 If you are a JS consumer:
@@ -182,7 +182,7 @@ If you are a JS consumer:
   `npm install @goplasmatic/datalogic` to `npm install @goplasmatic/datalogic-wasm`.
 - **Node.js services** → install `@goplasmatic/datalogic-node` instead;
   it's the new native build (per-platform `.node` prebuild) and is
-  materially faster than the WASM path for Node. The WASM package
+  faster than the WASM path for Node. The WASM package
   still works under Node if you'd rather have a single artifact across
   Node + browser.
 - **React UI consumers** → no change. `@goplasmatic/datalogic-ui`
@@ -286,7 +286,7 @@ turbofish placeholders: `engine.eval_into::<T, _, _>(rule, data)` and
 
 | v4                                                            | v5                                                              |
 |---------------------------------------------------------------|-----------------------------------------------------------------|
-| `engine.evaluate_json_with_trace(rule, data) -> TracedResult` | `engine.trace().eval_str(rule, data) -> TracedRun<String>` — the outer Result collapses into `TracedRun.result` |
+| `engine.evaluate_json_with_trace(rule, data) -> TracedResult` | `engine.trace().eval_str(rule, data) -> TracedRun<String>`; the outer Result collapses into `TracedRun.result` |
 
 `TracedResult` is gone. `TracedRun<R>` shape:
 
@@ -306,15 +306,15 @@ let result = engine.evaluate_json_with_trace(rule, data).unwrap();
 assert!(result.error.is_none());
 assert_eq!(result.result, json!(true));
 
-// v5 — string result
+// v5: string result
 let run = engine.trace().eval_str(rule, data);
 assert_eq!(run.result.unwrap(), "true");
 
-// v5 — typed value result
+// v5: typed value result
 let run: TracedRun<serde_json::Value> = engine.trace().eval_into(rule, data);
 assert_eq!(run.result.unwrap(), json!(true));
 
-// v5 — error case
+// v5: error case
 let run = engine.trace().eval_str(bad_rule, data);
 let err = run.result.unwrap_err();
 assert_eq!(err.operator(), Some("throw"));
@@ -322,8 +322,9 @@ assert_eq!(err.operator(), Some("throw"));
 
 ### Custom operators
 
-The trait stays — the **method body** is unchanged; only the context
-parameter type changes:
+The **method body** is unchanged. `ArenaOperator` becomes `CustomOperator`,
+`evaluate_arena` becomes `evaluate`, and the context parameter type
+changes to `EvalContext`:
 
 ```rust
 // v4
@@ -360,7 +361,7 @@ impl CustomOperator for Double {
 `EvalContext` exposes the same observations that were public on
 `ContextStack` (`root_input`, `depth`). Code that reached into
 `ContextStack`'s private internals was already unsupported and has no
-v5 path — open an issue if you have a use case.
+v5 path; open an issue if you have a use case.
 
 Registration is unchanged: `Engine::builder().add_operator("double", Double).build()`.
 
@@ -393,10 +394,10 @@ You don't need these to migrate, but they're worth knowing:
 let engine = Engine::new();
 let result: serde_json::Value = engine.evaluate_json(rule, data)?;
 
-// v5 — JSON in/out
+// v5: JSON in/out
 let result: String = datalogic_rs::eval_str(rule, data)?;
 
-// v5 — typed in/out
+// v5: typed in/out
 #[derive(Deserialize)]
 struct Decision { passed: bool }
 let result: Decision = datalogic_rs::eval_into(rule, data)?;
@@ -444,7 +445,7 @@ std::thread::spawn(move || { /* use c2 */ });
 ### Hot loop with zero-copy results
 
 ```rust
-// v5 only — v4 had no exposed arena tier
+// v5 only; v4 had no exposed arena tier
 use bumpalo::Bump;
 
 let engine = Engine::new();
@@ -492,7 +493,7 @@ Rust core:
 | `<DataLogicEditor preserveStructure={…} />`  | `<DataLogicEditor templating={…} />`         |
 | `onPreserveStructureChange={…}`              | `onTemplatingChange={…}`                     |
 
-The semantic of the flag is unchanged — `true` enables templating mode
+The flag's semantics are unchanged: `true` enables templating mode,
 where multi-key objects compile to output-shaping templates with
 embedded JSONLogic.
 
@@ -509,9 +510,9 @@ embedded JSONLogic.
 
 ## If you get stuck
 
-- The renames are 1:1 — search-and-replace covers ~90% of call sites.
+- The renames are 1:1; search-and-replace covers ~90% of call sites.
 - For typed `eval_into`, prefer annotating the result binding
   (`let result: MyType = engine.eval_into(rule, data)?`) over
   turbofishing all three generic parameters.
-- If a v4 method shape has no listed translation, file an issue —
+- If a v4 method shape has no listed translation, file an issue and
   we'll add it here.

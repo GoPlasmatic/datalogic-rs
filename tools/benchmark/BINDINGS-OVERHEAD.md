@@ -2,7 +2,7 @@
 
 What each language binding costs per evaluation on top of the Rust
 core, per API tier, and why. This is the canonical **boundary-cost
-reference** — the complement to [BENCHMARK.md](./BENCHMARK.md), which
+reference**, the complement to [BENCHMARK.md](./BENCHMARK.md), which
 measures engine cost with pre-parsed inputs and no API-shape cost.
 Link here from other docs rather than re-quoting numbers inline.
 
@@ -17,7 +17,7 @@ Every number is reproducible in-tree with the boundary harness:
 > Same three workloads in every runtime; every runtime produced
 > byte-identical results before timing started. One
 > `tools/benchmark/boundary/run.sh all` run produced every current
-> table. A pre-5.0.1 baseline is preserved at the end of the appendix.
+> table. The end of the appendix keeps a pre-5.0.1 baseline.
 
 ## Workloads
 
@@ -50,22 +50,22 @@ Reading it:
 
 - **Parsing the data JSON dominates the string contract**: the parse
   step alone is 58% / 76% / 90% of the parse-eval-serialize total
-  across the three workloads. The parser itself is excellent
-  (single-pass SWAR, zero-copy strings); the cost is architectural —
+  across the three workloads. The parser itself is fast
+  (single-pass SWAR, zero-copy strings); the cost is architectural:
   any tier that receives JSON text per call must pay it per call.
-  This is exactly what the **data-handle tier removes**: parse once
+  The **data-handle tier removes** this cost: parse once
   into a `ParsedData`, and per-call cost drops to the eval-only row
-  (the handle passthrough is free — first two rows are equal within
+  (the handle passthrough is free; the first two rows are equal within
   noise).
 - **Result serialization is comparatively cheap** here because these
   results are small. It scales with result size, not input size.
-- **A fresh arena per call costs 20-450 ns** versus arena reuse —
-  real, but an order of magnitude smaller than the parse, which is why
-  session tiers alone barely move the needle.
+- **A fresh arena per call costs 20-450 ns** versus arena reuse:
+  real, but an order of magnitude smaller than the parse, so session
+  tiers alone barely move the needle.
 
 The "parse-eval-serialize" row (140 / 1,013 / 12,017) is the
-**string-contract floor**: the reference every binding's string tier
-is judged against below.
+**string-contract floor**: the tables below judge every binding's
+string tier against it.
 
 ## 2. Hot path per binding
 
@@ -83,8 +83,8 @@ Compile-once + session, JSON string in/out:
 | WASM (session)              |  594.5 |     3,535.3 | 33,358.6 | +454 |
 | PHP (FFI)                   |  666.5 |     1,535.4 | 12,746.7 | +526 |
 
-And all nine bindings on the structural tier — parse the payload once
-(`datalogic_data_parse` / `DataHandle`), then evaluate:
+And all nine bindings on the structural tier, which parses the payload
+once (`datalogic_data_parse` / `DataHandle`), then evaluates:
 
 | Binding (data handle) | simple | eligibility | array100 | 100 rules × 1 payload (per eval, simple) |
 |-----------------------|-------:|------------:|---------:|------------------------------------------:|
@@ -105,13 +105,13 @@ shapes.)
 (Cross-process run-to-run variance is roughly ±5%; treat single-digit
 percent differences between adjacent rows as noise. On the string tier
 at 8 KB the shared parse dominates and the native bindings converge to
-~12-13 µs — which is exactly the cost the data-handle tier removes: at
+~12-13 µs, the cost the data-handle tier removes: at
 8 KB it runs ~12x faster across C, .NET, Go, and JVM, and 8-9x for
 Python, Node, WASM, and PHP.)
 
 Takeaways, per binding:
 
-- **C, .NET, and Go sit within ~65 ns of the floor** — and the raw C
+- **C, .NET, and Go sit within ~65 ns of the floor**, and the raw C
   session path is *below* it, because the borrowed-result contract
   skips the result-`String` allocation the floor row includes. What
   remains is UTF-8 marshalling and call dispatch.
@@ -122,7 +122,7 @@ Takeaways, per binding:
 - **Python and Node** bind the Rust core directly (napi-rs / pyo3),
   not the C ABI. Their string tiers pay one host-string extraction in
   and one result copy out. Object inputs: see section 3.
-- **WASM's string tier scales with payload** — the JS→WASM copy plus
+- **WASM's string tier scales with payload**: the JS→WASM copy plus
   the in-module parse make it 2.8x the floor at 8 KB. A resident
   `DataHandle` removes both per-call costs (33,359 → 4,041 ns at
   8 KB). The remaining gap to native handles is eval speed inside the
@@ -140,7 +140,7 @@ Takeaways, per binding:
 One-shot convenience tiers (compile per call: `apply`, `engine.eval`,
 free-function `evaluate`) cost 5 to 15x the hot path at small payloads
 (e.g. Node 4,912 ns vs 341 ns on `simple`). That is per-call rule
-compilation, by design — the docs steer users to compile-once.
+compilation, by design; the docs steer users to compile-once.
 
 ## 3. The object paths (Node and Python)
 
@@ -159,14 +159,14 @@ the same object through the string path:
   intermediate tree; `pythonize` retained only as the exotic-shape
   fallback, with the semantics pinned by a 549-case equivalence
   corpus). It beats the `json.dumps` round-trip at every payload size,
-  so dicts are simply the natural input shape in Python.
+  so dicts are the natural input shape in Python.
 - **Node's object path remains the napi serde bridge**, and the JSON
   text round-trip beats it at every size (2.5-6x): V8's own
   `JSON.stringify` plus one string crossing plus the SWAR parser is
   structurally cheaper than a per-property N-API walk. A direct
-  converter was built to full behavioral parity and measured 23-31%
-  faster than the bridge — still not enough, so it was not shipped;
-  the equivalence corpus (`__test__/object-bridge.test.mjs`) remains
+  converter reached full behavioral parity and measured 23-31%
+  faster than the bridge; that was still not enough, so it did not ship.
+  The equivalence corpus (`__test__/object-bridge.test.mjs`) remains
   in-tree as the gate for future attempts. **If your Node data is
   already a JS object and the call is hot, stringify it yourself and
   call `evaluateStr`, or better, parse it once into a `DataHandle`.**
@@ -174,12 +174,12 @@ the same object through the string path:
   bindings** (from the pre-5.0.1 capture; unchanged code path): when
   the data is already a JS object and rules are small, a JIT-compiled
   JS engine with zero boundary beats every native option by an order
-  of magnitude — that microbenchmark flatters it with perfectly warm
+  of magnitude. That microbenchmark flatters it with perfectly warm
   inline caches, but the repo's cross-library matrix agrees
   directionally. The native bindings win on: string payloads,
   parse-once/batch shapes, large or complex rules, spec conformance,
   deterministic latency, bounded memory, and worker/thread
-  parallelism. The Node and WASM READMEs say this plainly.
+  parallelism. The Node and WASM READMEs state this.
 
 ## 4. Where the nanoseconds go
 
@@ -213,8 +213,8 @@ lockstep, the JVM binding rewritten on FFM, and the same tiers
 mirrored natively into Node, Python, and WASM. Headline effect on
 `simple` (string tier, v1 → v2): C 186 → 123, .NET 217 → 157, Go
 359 → 205, **JVM 3,269 → 261**, PHP 559 → 667 (the one string-path
-regression — per-argument FFI dispatch meets the added length/out
-params — traded for its 8.3x handle tier and 4x batch tier). Wrapper
+regression, where per-argument FFI dispatch meets the added length/out
+params, traded for its 8.3x handle tier and 4x batch tier). Wrapper
 public APIs stayed source-compatible; the migration table for direct
 C-ABI consumers is in [`MIGRATION.md`](../../MIGRATION.md), and the
 change-by-change record is in the repo
@@ -222,7 +222,7 @@ change-by-change record is in the repo
 
 ## Appendix: full result tables
 
-Current capture (2026-07-03), ns/op, median of 5 — reproduce with
+Current capture (2026-07-03), ns/op, median of 5. Reproduce with
 `tools/benchmark/boundary/run.sh all` (the
 `dumps-str-loads-roundtrip`/`array100` cell was re-measured once after
 a transient outlier in the batch run; every other cell is the single
@@ -284,7 +284,7 @@ wasm       oneshot-evaluate                    3,378.5     18,865.8    76,235.1
 ```
 
 Historical baseline (pre-5.0.1, captured 2026-07-03 before the
-overhaul — JVM rows are the JNA binding, PHP rows are PHP 8.4, Python
+overhaul; JVM rows are the JNA binding, PHP rows are PHP 8.4, Python
 object rows are the pythonize bridge, and no data-handle/batch/typed
 tiers existed):
 

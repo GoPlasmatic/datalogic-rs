@@ -39,7 +39,7 @@ declares its own `[workspace]` table; the `exclude` comment in the root
 The root `Makefile` fans those commands out over every manifest:
 
 ```bash
-make lint        # fmt-check + clippy, all six manifests — run before a PR
+make lint        # fmt-check + clippy, all six manifests; run before a PR
 make fmt         # format everything
 make fmt-check   # check formatting without writing (what CI gates on)
 make clippy      # clippy everything, every crate's failures in one pass
@@ -51,12 +51,12 @@ make help        # list all targets
 Two crates need more than the stable host toolchain, and `make` degrades
 rather than failing if you don't have it:
 
-- **`bindings/wasm`** — `rustup target add wasm32-unknown-unknown`. Its
+- **`bindings/wasm`**: `rustup target add wasm32-unknown-unknown`. Its
   `tests/web.rs` is `#![cfg(target_arch = "wasm32")]`, so a host-target lint
   compiles it to an empty file and checks nothing. Without the target, `make
   clippy` warns and falls back to a host lint (in CI, where `CI` is set, it
   fails instead so lost coverage can't hide).
-- **`crates/datalogic-rs/fuzz`** — `rustup toolchain install nightly`.
+- **`crates/datalogic-rs/fuzz`**: `rustup toolchain install nightly`.
   `#![no_main]` + `libfuzzer_sys` don't build on stable. Without nightly,
   `make clippy` prints a SKIP; `make fmt` covers it either way.
 
@@ -67,15 +67,15 @@ Individual crates are reachable as `make clippy-c`, `make clippy-wasm`, etc.
 The packages have a strict build order. From a fresh clone:
 
 ```bash
-# 1. Rust workspace — runs core unit/integration tests and the bench crate's checks.
+# 1. Rust workspace: runs core unit/integration tests and the bench crate's checks.
 # Most integration tests are gated behind feature = "serde_json"; the JSONLogic
 # runner additionally needs feature = "templating". --all-features unlocks both.
 cargo test --workspace --all-features
 
-# 2. WASM bindings — produces bindings/wasm/pkg/{web,bundler,nodejs}.
+# 2. WASM bindings: produces bindings/wasm/pkg/{web,bundler,nodejs}.
 cd bindings/wasm && ./build.sh && cd ../..
 
-# 3. Node native binding — produces bindings/node/datalogic-node.<triple>.node
+# 3. Node native binding: produces bindings/node/datalogic-node.<triple>.node
 #    plus the index.js/index.d.ts loaders. Skip if you're only touching the
 #    WASM or browser side.
 cd bindings/node && npm install && npx napi build --platform --release && cd ../..
@@ -88,16 +88,16 @@ npm run dev   # or: npm run build:lib for the publishable bundle
 The UI does not resolve `@goplasmatic/datalogic-wasm` from the registry:
 its Vite and TypeScript configs alias the package to `ui/vendor/datalogic`,
 and the `predev` / `prebuild*` lifecycle hooks copy `../bindings/wasm/pkg`
-there (`npm run sync-wasm`). Rebuild WASM first, then start the UI, and the
-fresh build is what you are testing; see [`ui` below](#ui--react-component).
+there (`npm run sync-wasm`). Rebuild WASM first, then start the UI, and you
+test the fresh build; see [`ui` below](#ui-react-component).
 
-## `crates/datalogic-rs` — Rust library
+## `crates/datalogic-rs`: Rust library
 
 ```bash
 cargo check -p datalogic-rs
 cargo test  -p datalogic-rs                        # default features
 cargo test  -p datalogic-rs --all-features         # everything
-make lint      # fmt + clippy, every manifest — what CI gates on
+make lint      # fmt + clippy, every manifest (what CI gates on)
 ```
 
 Run a single JSONLogic suite (the `test_jsonlogic` harness picks the file
@@ -143,7 +143,7 @@ Crashing inputs land in `fuzz/artifacts/`; minimize with
 `cargo +nightly fuzz tmin eval_str <artifact>` and turn the minimized case
 into a regression test before fixing.
 
-## `bindings/wasm` — WebAssembly bindings (browser / Deno / Bun / Workers)
+## `bindings/wasm`: WebAssembly bindings (browser / Deno / Bun / Workers)
 
 ```bash
 cd bindings/wasm
@@ -155,12 +155,11 @@ The crate is its own Cargo workspace (see ARCHITECTURE.md for why), so
 `cargo test` from inside that directory if you need to test the FFI.
 End-user API and install instructions: [bindings/wasm/README.md](./bindings/wasm/README.md).
 
-The WASM build still ships a `nodejs` target — it's the right pick when
-a consumer wants one artifact across Node + browser. **For production
-Node workloads, prefer the native binding below**; it's noticeably
-faster.
+The WASM build still ships a `nodejs` target, which suits a consumer
+that wants one artifact across Node + browser. **For production Node
+workloads, prefer the native binding below**; it's faster.
 
-## `bindings/node` — Node native binding (napi-rs)
+## `bindings/node`: Node native binding (napi-rs)
 
 ```bash
 cd bindings/node
@@ -169,18 +168,18 @@ npx napi build --platform --release           # emits datalogic-node.<triple>.no
 npm test                                      # node --test '__test__/*.test.mjs'
 ```
 
-This is the **first-class Node target** — published as
+This is the **primary Node target**, published as
 `@goplasmatic/datalogic-node` with per-platform `.node` prebuilds
-distributed as npm `optionalDependencies`. The `.node` artifact,
-`index.js`, and `index.d.ts` are generated by `napi build` and
-gitignored; rerun the build after any Rust-side change.
+distributed as npm `optionalDependencies`. `napi build` generates the
+`.node` artifact, `index.js`, and `index.d.ts`, all gitignored; rerun
+the build after any Rust-side change.
 
 The crate is its own Cargo workspace (matches the wasm/python/c
-pattern) — `cargo` commands inside `bindings/node/` don't touch the
+pattern), so `cargo` commands inside `bindings/node/` don't touch the
 root workspace. End-user API and install instructions:
 [bindings/node/README.md](./bindings/node/README.md).
 
-## `bindings/python` — Python bindings (pyo3)
+## `bindings/python`: Python bindings (pyo3)
 
 ```bash
 cd bindings/python
@@ -193,7 +192,7 @@ Like `bindings/wasm`, this crate is its own Cargo workspace (keeps the
 pyo3 build deps out of the core `cargo test --workspace` path). End-user
 API and install instructions: [bindings/python/README.md](./bindings/python/README.md).
 
-## `bindings/c` — shared C ABI (cbindgen)
+## `bindings/c`: shared C ABI (cbindgen)
 
 ```bash
 cd bindings/c
@@ -201,8 +200,8 @@ cargo build --release             # produces libdatalogic_c.{so,dylib,a}
 cargo test                        # smoke-tests the extern "C" surface
 ```
 
-The C header `include/datalogic.h` is regenerated by cbindgen on every
-build. Don't edit by hand — edit `src/` and rebuild. Consumers can set
+cbindgen regenerates the C header `include/datalogic.h` on every
+build. Don't edit it by hand; edit `src/` and rebuild. Consumers can set
 `DATALOGIC_C_SKIP_CBINDGEN=1` to suppress regeneration.
 
 This crate is **not user-facing**; it's the FFI boundary the Go, JVM,
@@ -210,7 +209,7 @@ This crate is **not user-facing**; it's the FFI boundary the Go, JVM,
 [bindings/c/README.md](./bindings/c/README.md) for the API surface and
 memory / threading rules.
 
-## `bindings/go` — Go binding (cgo over C ABI)
+## `bindings/go`: Go binding (cgo over C ABI)
 
 ```bash
 cd bindings/go
@@ -220,13 +219,13 @@ make print-platform               # prints the host's lib/ subdirectory name
 ```
 
 The Makefile auto-detects host OS/arch and stages into
-`lib/<host_os>_<host_arch>/` — only the matching `cgo_*_*.go` file
+`lib/<host_os>_<host_arch>/`; only the matching `cgo_*_*.go` file
 needs that subdirectory populated locally. Re-run `make build` after
 any change to the C ABI's Rust source. End-user API, install
 instructions, and prebuilt-library platform matrix:
 [bindings/go/README.md](./bindings/go/README.md).
 
-## `bindings/dotnet` — .NET binding (P/Invoke over C ABI)
+## `bindings/dotnet`: .NET binding (P/Invoke over C ABI)
 
 ```bash
 cd ../c && cargo build --release   # produce libdatalogic_c.{so,dylib,dll}
@@ -236,13 +235,13 @@ dotnet test
 ```
 
 P/Invoke stubs are hand-written with `LibraryImport` (source-generated,
-NativeAOT-ready). The native library is resolved at runtime via a
-`DllImportResolver` that falls through:
+NativeAOT-ready). A `DllImportResolver` resolves the native library at
+runtime, falling through:
 `DATALOGIC_NATIVE_LIB` env → NuGet's `runtimes/<rid>/native/` →
 `bindings/c/target/release/`. Publish target: NuGet `Goplasmatic.Datalogic`.
 End-user API: [bindings/dotnet/README.md](./bindings/dotnet/README.md).
 
-## `bindings/jvm` — JVM binding (FFM over C ABI)
+## `bindings/jvm`: JVM binding (FFM over C ABI)
 
 ```bash
 cd ../c && cargo build --release
@@ -262,7 +261,7 @@ extracts and links at runtime. Target: Maven
 Central as `io.github.goplasmatic:datalogic`. End-user API:
 [bindings/jvm/README.md](./bindings/jvm/README.md).
 
-## `bindings/php` — PHP binding (PHP FFI over C ABI)
+## `bindings/php`: PHP binding (PHP FFI over C ABI)
 
 ```bash
 cd ../c && cargo build --release
@@ -279,7 +278,7 @@ Loads `libdatalogic_c.{so,dylib,dll}` at runtime via
 target: Packagist `goplasmatic/datalogic`. End-user API:
 [bindings/php/README.md](./bindings/php/README.md).
 
-## `ui` — React component
+## `ui`: React component
 
 ```bash
 cd ui
@@ -305,17 +304,17 @@ when the UI's picture of the engine drifts:
 | App surface | `ui/tests/` | Samples evaluate to their stored results, share URLs round trip, every operator is reachable from the menus, evaluator/config helpers |
 
 Adding an operator, a help example, or a sample means giving it the result the
-engine actually produces: the suites compare against a live evaluation.
+engine produces: the suites compare against a live evaluation.
 
 Three Vite configs power the three build modes:
 
-- `vite.config.ts` — playground SPA
-- `vite.lib.config.ts` — `@goplasmatic/datalogic-ui` library bundle
-- `vite.embed.config.ts` — embeddable widget for docs
+- `vite.config.ts`: playground SPA
+- `vite.lib.config.ts`: `@goplasmatic/datalogic-ui` library bundle
+- `vite.embed.config.ts`: embeddable widget for docs
 
 The WASM dep is vendored under `ui/vendor/datalogic/` (gitignored),
 synced from `bindings/wasm/pkg/` by `sync-wasm`. The `predev` and `prebuild*`
-hooks run it automatically, so the typical loop is just:
+hooks run it automatically, so the typical loop is:
 
 ```bash
 cd bindings/wasm && ./build.sh    # rebuild after Rust changes
@@ -373,7 +372,7 @@ the root README's Maven row now carries the shields.io maven-central
 badge. Done: Discussions categories created (Announcements, Q&A, Ideas,
 Show and tell). Done on 2026-07-15: the stale v4 npm package
 `@goplasmatic/datalogic` was deprecated and removed from the registry
-(`npm view` now 404s); do **not** re-register or republish that name —
+(`npm view` now 404s); do **not** re-register or republish that name;
 any new publish would resurrect its search-rank signal and split the
 lineup three ways again. Still open:
 
@@ -381,13 +380,13 @@ lineup three ways again. Still open:
   Show and tell Discussions category (the categories themselves exist;
   `.github/ISSUE_TEMPLATE/config.yml` already links to Q&A).
 - **FUNDING.yml is intentionally absent**: add it only after enrolling
-  the org (or a maintainer account) in GitHub Sponsors — a Sponsor
+  the org (or a maintainer account) in GitHub Sponsors. A Sponsor
   button that 404s is worse than none.
 
 Promotion sequencing, launch checklists, and adoption metrics live in
 [.github/LAUNCH-PLAYBOOK.md](./.github/LAUNCH-PLAYBOOK.md).
 
-## `tools/benchmark` — performance harness
+## `tools/benchmark`: performance harness
 
 Dev-only, never published. Four binaries share `src/lib.rs`: `self`
 (regression baseline), `compare` (cross-library matrix), `boundary_core`
@@ -426,7 +425,7 @@ short form of this list; this is the full one.
    aliases; `FromStr` is a scan over this table, so there is no separate
    parse arm to write), and an `as_str()` arm. The opcode unit tests
    enforce that every name round-trips. `Engine::builtin_operator_names()`
-   is derived from the same table, so the new name is reported
+   is derived from the same table, so it reports the new name
    automatically.
 2. **Implementation.** Add `evaluate_<op>` under
    `crates/datalogic-rs/src/operators/<category>/` following the
@@ -476,10 +475,10 @@ short form of this list; this is the full one.
 
 ## Adding a custom operator (your own application)
 
-Custom operators (extending the engine from your application code) are
-covered in the
+The
 [Custom Operators guide](https://goplasmatic.github.io/datalogic-rs/advanced/custom-operators.html)
-on the docs site, with a runnable
+on the docs site covers custom operators (extending the engine from your
+application code), with a runnable
 [`custom_operator` example](./crates/datalogic-rs/examples/custom_operator.rs)
 in the core crate.
 
@@ -490,7 +489,7 @@ mdbook serve docs       # live preview at http://localhost:3000
 mdbook build docs       # produces docs/book/
 ```
 
-The published site at https://goplasmatic.github.io/datalogic-rs/ is built
-by `.github/workflows/docs.yml` on every push to `main` that touches docs,
+`.github/workflows/docs.yml` builds the published site at
+https://goplasmatic.github.io/datalogic-rs/ on every push to `main` that touches docs,
 WASM, or UI. The workflow also bundles the UI playground and the embed
 widget into the rendered book.

@@ -6,9 +6,9 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 A fast, type-safe Rust implementation of [JSONLogic](http://jsonlogic.com)
-for evaluating logical rules as JSON. Compile a rule once, evaluate it
-millions of times across threads with zero overhead — same engine powers
-a **rule engine**, a **JSON template engine**, or a **safe expression
+for evaluating logical rules as JSON. Compile a rule once, then evaluate
+it millions of times across threads. The same engine serves as a **rule
+engine**, a **JSON template engine**, or a **safe expression
 evaluator**.
 
 This is the **Rust core** of the
@@ -28,7 +28,7 @@ cargo add datalogic-rs
 ```
 
 The default build is `serde_json`-free and ships only the JSONLogic
-baseline operators. Opt in to feature flags as needed — see the
+baseline operators. Opt in to feature flags as needed; see the
 [feature flag reference](#feature-flags) below.
 
 ## Hello, JSONLogic
@@ -38,17 +38,17 @@ let result = datalogic_rs::eval_str(r#"{"+": [1, 2, 3]}"#, r#"{}"#).unwrap();
 assert_eq!(result, "6");
 ```
 
-That's it. `eval_str` parses the rule, parses the data, evaluates, and
-hands you back a JSON string. The free functions on the crate root
-wrap a shared default `Engine` — explicit construction lets you add
-custom operators, change config, or amortise compilation. The rest of
-this README walks through **when to use which API**.
+`eval_str` parses the rule, parses the data, evaluates, and hands you
+back a JSON string. The free functions on the crate root wrap a shared
+default `Engine`; construct one explicitly to add custom operators,
+change config, or amortise compilation. The rest of this README covers
+**when to use which API**.
 
 ## Choosing your API: five tiers, one engine
 
 The crate exposes five evaluation tiers in increasing order of control.
-Pick by use case, not by curiosity — most callers want **Tier 0** for
-ad-hoc work or **Tier 2** for repeated evaluation.
+Pick by use case: most callers want **Tier 0** for ad-hoc work or
+**Tier 2** for repeated evaluation.
 
 | Tier | Entry point                                              | Arena owner             | Returns                              | Use when                                              |
 |------|----------------------------------------------------------|-------------------------|--------------------------------------|-------------------------------------------------------|
@@ -58,7 +58,7 @@ ad-hoc work or **Tier 2** for repeated evaluation.
 | **3** | `Engine::evaluate(&Logic, data, &Bump)`                   | caller-owned `Bump`     | `&'a DataValue<'a>`                  | Zero-copy result pipelines, custom pool strategies    |
 | **4** | `Engine::trace()` → `TracedSession::*`                    | session-owned + buffer  | `TracedRun<R>` (result + steps)      | Debugging, visualisation, instrumentation             |
 
-### Tier 0 — Module-level one-shot
+### Tier 0: Module-level one-shot
 
 The free functions wrap a static default `Engine`. No construction,
 no configuration. Three result shapes:
@@ -87,7 +87,7 @@ let n: i64 = datalogic_rs::eval_into(r#"{"+": [1, 2, 3]}"#, r#"{}"#).unwrap();
 assert_eq!(n, 6);
 ```
 
-### Tier 1 — Engine one-shot
+### Tier 1: Engine one-shot
 
 Construct an `Engine` when you need anything beyond defaults: custom
 operators, a non-default `EvaluationConfig`, or templating mode.
@@ -115,7 +115,7 @@ let engine = Engine::builder()
     .build();
 ```
 
-### Tier 2 — Session (the right default for repeated evaluation)
+### Tier 2: Session (the right default for repeated evaluation)
 
 `Session` owns a reusable `bumpalo::Bump`; call `reset()` between
 iterations so peak memory tracks the largest single evaluation, not
@@ -137,8 +137,8 @@ for x in 0..1_000 {
 ```
 
 `Session::eval_borrowed` returns a `&'a DataValue<'a>` borrow into the
-session's own arena — skips the owned deep-clone when the result is
-consumed before the next session call. For pre-sizing the arena after
+session's own arena, which skips the owned deep-clone when you consume
+the result before the next session call. For pre-sizing the arena after
 a warm-up pass, use `session.allocated_bytes()` +
 `session.reset_with_capacity(bytes)`.
 
@@ -148,7 +148,7 @@ with the task across `.await` points).
 
 Full pattern: [`examples/compile_once_evaluate_many.rs`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/examples/compile_once_evaluate_many.rs).
 
-### Tier 3 — Zero-copy `evaluate(&Bump)`
+### Tier 3: Zero-copy `evaluate(&Bump)`
 
 When the result borrow can stay scoped to a caller-managed arena,
 skip the owned deep-clone and use `Engine::evaluate` directly. The
@@ -168,9 +168,9 @@ assert_eq!(result.as_bool(), Some(true));
 
 Reach for this tier when you have a pool-managed arena, are
 pipelining values across stages without crossing the value boundary,
-or want maximum control over when memory is reclaimed.
+or want to decide exactly when memory is reclaimed.
 
-### Tier 4 — Traced evaluation (`trace` feature)
+### Tier 4: Traced evaluation (`trace` feature)
 
 Enable the `trace` feature, then ask the engine for a `TracedSession`.
 Each call records the expression tree + per-node execution steps.
@@ -203,15 +203,15 @@ Per-call cost differs:
 | `&serde_json::Value` (`serde_json` feature) | deep-convert into the arena       |
 | `&OwnedDataValue`                         | deep-borrow into the arena          |
 | `DataValue<'a>` (by value)                | one arena alloc for the top node    |
-| `&'a DataValue<'a>` (by reference)        | **zero** — pass-through             |
+| `&'a DataValue<'a>` (by reference)        | **zero**: pass-through              |
 | `&ParsedData` (parse once via `ParsedData::from_json`) | **zero**: same as the pre-parsed row |
 
 For the same-input-many-rules case, or when upstream stages already
-produced an arena value, prefer the `&'a DataValue<'a>` path — it's
-genuinely allocation-free. `ParsedData` is the owned form of that
-pattern: it parses a JSON payload once into its own arena and hands out
-`&DataValue` borrows for as long as the handle lives, which is what the
-bindings expose as their `DataHandle` tier.
+produced an arena value, prefer the `&'a DataValue<'a>` path, which
+allocates nothing. `ParsedData` is the owned form of that pattern: it
+parses a JSON payload once into its own arena and hands out
+`&DataValue` borrows for as long as the handle lives. The bindings
+expose it as their `DataHandle` tier.
 
 The Tier 0 / Tier 1 one-shot methods (`eval`, `eval_str`,
 `eval_into`) accept a similar set via the [`OwnedInput`] trait, which
@@ -224,7 +224,7 @@ Runnable example: [`examples/zero_copy_input.rs`](https://github.com/GoPlasmatic
 
 ## Working with `DataValue`
 
-Evaluation returns `&'a DataValue<'a>` — an arena-allocated, borrowed
+Evaluation returns `&'a DataValue<'a>`, an arena-allocated, borrowed
 JSON-shaped value tree. The type lives in the sibling `datavalue`
 crate (re-exported at the root and as `datalogic_rs::datavalue`).
 Most callers only need a handful of accessors:
@@ -243,8 +243,8 @@ assert_eq!(result.as_i64(), Some(42));
 
 Conversion to other shapes:
 
-- **To a JSON string:** `value.to_string()` — `DataValue` and
-  `OwnedDataValue` both implement `Display`.
+- **To a JSON string:** `value.to_string()` (`DataValue` and
+  `OwnedDataValue` both implement `Display`).
 - **To `serde_json::Value`** (requires `serde_json`): use
   `eval_into::<serde_json::Value>(...)`.
 - **To a typed Rust struct** (requires `serde_json`): use
@@ -287,7 +287,7 @@ Conversion to other shapes:
 ## Custom operators
 
 Register custom operators on `Engine::builder()` and call them from
-rules just like the built-ins. Args arrive **pre-evaluated** as
+rules the same way as the built-ins. Args arrive **pre-evaluated** as
 arena-resident `&DataValue<'a>` borrows; you allocate the result back
 into the arena.
 
@@ -316,8 +316,8 @@ assert_eq!(result, "42");
 Runnable example: [`examples/custom_operator.rs`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/examples/custom_operator.rs).
 Full guide: [Custom Operators](https://goplasmatic.github.io/datalogic-rs/advanced/custom-operators.html).
 
-The `CustomOperator` trait is the headline extension point and is
-**stable for the 5.x series** — no required-method additions, no
+The `CustomOperator` trait is the main extension point and is
+**stable for the 5.x series**: no required-method additions, no
 signature changes.
 
 ### Introspection
@@ -346,14 +346,14 @@ assert_eq!(engine.custom_operator_names().count(), 0);
 
 `EvaluationConfig` controls edge-case behaviour:
 
-- **NaN handling** (`NanHandling`) — what happens when arithmetic
+- **NaN handling** (`NanHandling`): what happens when arithmetic
   receives a non-number
 - **Division by zero** (`DivisionByZeroHandling`)
-- **Truthiness** (`TruthyEvaluator`) — JavaScript, Python, strict
+- **Truthiness** (`TruthyEvaluator`): JavaScript, Python, strict
   boolean, or a custom closure
-- **Numeric coercion** (`NumericCoercionConfig`) — null-to-zero,
+- **Numeric coercion** (`NumericCoercionConfig`): null-to-zero,
   bool-to-number, empty-string-to-zero, etc.
-- **Recursion depth** — guards against pathological inputs
+- **Recursion depth**: guards against pathological inputs
 
 Presets like `EvaluationConfig::safe_arithmetic()` and
 `EvaluationConfig::strict()` cover common postures. See the
@@ -364,7 +364,7 @@ and the runnable [`examples/configuration.rs`](https://github.com/GoPlasmatic/da
 
 With `Engine::builder().with_templating(true)` (requires the
 `templating` feature), multi-key objects in a compiled rule become
-output-shaping templates — keys flow through to the output and
+output-shaping templates: keys flow through to the output and
 operator values become computed fields.
 
 ```rust
@@ -439,20 +439,20 @@ Runnable example: [`examples/error_handling.rs`](https://github.com/GoPlasmatic/
 
 ## Thread safety
 
-`Engine`, `Logic`, and your `CustomOperator` types are all `Send + Sync`
-— construct the `Engine` once, compile the rule once, share both via
+`Engine`, `Logic`, and your `CustomOperator` types are all `Send + Sync`:
+construct the `Engine` once, compile the rule once, and share both via
 `Arc` across as many threads or tokio tasks as you want. `Session` is
 the per-task workhorse: each task opens its own. It owns a
 `bumpalo::Bump` that can't be shared across threads (the same way a
 database connection is per-task in a connection-pool model), and Rust
-enforces this at compile time — there's no runtime hazard.
+enforces this at compile time, so there's no runtime hazard.
 
 | Type                           | Pattern                                                                        |
 |--------------------------------|--------------------------------------------------------------------------------|
 | `Engine`                       | One per process; share via `Arc`                                               |
 | `Logic`                        | Compile once; share via `Arc` (or use `Engine::compile_arc`)                   |
 | `CustomOperator` implementors  | Register on the builder; live inside the shared `Engine` (`Send + Sync` bound) |
-| `Session`                      | One per task / per goroutine — the per-task workhorse                          |
+| `Session`                      | One per task / per thread (the per-task workhorse)                             |
 
 Runnable example: [`examples/thread_safety.rs`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/examples/thread_safety.rs).
 
@@ -470,12 +470,12 @@ Runnable example: [`examples/thread_safety.rs`](https://github.com/GoPlasmatic/d
 | `wasm-clock`      | JS-host clock for `now` on `wasm32-unknown-unknown` (`chrono/wasmbind`). Enable only when a JS host runs the module; never for wasmtime / wazero / Chicory (issue #47). Without it `now` traps on that target |
 | `tensor`          | The `Tensor` value plus 20 marshalling-only operators over it (JSON to a model's inputs and back). No new dependency |
 | `tensor-half`     | Lifts the `f16` / `bf16` restriction on the element-wise tensor operators; pulls in `half` through datavalue |
-| `budget`          | Per-evaluation operation counter with a hard abort — `EvaluationConfig::ops_budget`, `Engine::evaluate_metered`, `EvalContext::charge`, `ErrorKind::BudgetExceeded` |
+| `budget`          | Per-evaluation operation counter with a hard abort: `EvaluationConfig::ops_budget`, `Engine::evaluate_metered`, `EvalContext::charge`, `ErrorKind::BudgetExceeded` |
 
 The default build is `serde_json`-free; opt in via
 `features = ["serde_json"]` when you need the value boundary.
 
-### `flagd` — OpenFeature flagd-compatible operators
+### `flagd`: OpenFeature flagd-compatible operators
 
 Enables two operators specified by the
 [OpenFeature flagd in-process provider](https://flagd.dev/reference/custom-operations/),
@@ -483,21 +483,21 @@ implemented to match the canonical
 [Go evaluator](https://github.com/open-feature/flagd/tree/main/core/pkg/evaluator)
 byte-for-byte:
 
-- **[`fractional`](https://flagd.dev/reference/custom-operations/fractional-operation/)** —
+- **[`fractional`](https://flagd.dev/reference/custom-operations/fractional-operation/)**:
   deterministic percentage bucketing for A/B tests and rollouts. Uses
   MurmurHash3 x86-32 of a bucketing key (explicit string, or implicit
   `flagKey + targetingKey` from the root `$flagd` envelope) plus
   `(hash * total_weight) >> 32` integer distribution, identical to the
-  Go evaluator's algorithm. The hash is vendored inline (~30 LOC, no
-  external dep) for portability across every target.
-- **[`sem_ver`](https://flagd.dev/reference/custom-operations/semver-operation/)** —
+  Go evaluator's algorithm. The crate vendors the hash inline (~30 LOC,
+  no external dep) for portability across every target.
+- **[`sem_ver`](https://flagd.dev/reference/custom-operations/semver-operation/)**:
   semantic-version comparison with the spec's four input normalizations:
   strip leading `v`/`V`, pad partial versions (`1.0` → `1.0.0`), coerce
   numeric input to string, and drop SemVer build metadata. Backed by
   the [`semver`](https://docs.rs/semver) crate (optional dep). Operators:
   `=`, `!=`, `<`, `<=`, `>`, `>=`, `^` (same major), `~` (same major+minor).
 
-Both operators return `null` on malformed input rather than raising — the
+Both operators return `null` on malformed input rather than raising. The
 flagd evaluator observes the `null` and falls back to the flag's default
 variant; non-flagd callers can compose with `??` or `if` for the same
 effect.
@@ -519,7 +519,7 @@ let result: String = engine.eval_str(
     }"#,
     r#"{"email": "alice@example.com", "$flagd": {"flagKey": "header-color"}}"#,
 )?;
-// result is one of "\"new-ui\"" or "\"old-ui\"" — sticky per email.
+// result is one of "\"new-ui\"" or "\"old-ui\"", sticky per email.
 # Ok::<(), datalogic_rs::Error>(())
 ```
 
@@ -528,7 +528,7 @@ Conformance test suites under
 files in `open-feature/flagd` so every release is checked against the
 upstream behaviour.
 
-### `budget` — bounding the work a rule does
+### `budget`: bounding the work a rule does
 
 Untrusted rules need a bound that is not a wall-clock timeout: one that
 is the same on every machine, and that refuses the work rather than
@@ -554,7 +554,7 @@ let Metered { value, ops } =
 ```
 
 One operation is one dispatched node, one item an iterator examines, or
-whatever an operator charges for the data it moves — the tensor family
+whatever an operator charges for the data it moves. The tensor family
 prices itself in elements, and a `CustomOperator` can do the same through
 `EvalContext::charge`. Literals and constant-folded subtrees cost nothing.
 Crossing the ceiling raises `ErrorKind::BudgetExceeded { budget, spent }`
@@ -571,12 +571,12 @@ Compiled rules dispatch through a single `OpCode` enum (no string
 lookups), values live in a `bumpalo::Bump` arena (no per-result heap
 allocation), and read-through operators like `var` borrow zero-copy
 from the caller's input. Geomean 10.3 ns/op across 51 operator suites
-on Apple M2 Pro — see the cross-library comparison in
+on Apple M2 Pro; see the cross-library comparison in
 [`tools/benchmark/BENCHMARK.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/tools/benchmark/BENCHMARK.md).
 
 ## Migrating from v4
 
-v5 is a breaking release with a hard cliff — no `compat` feature, no
+v5 is a breaking release with a hard cliff: no `compat` feature, no
 deprecated method shims. Headline renames: `DataLogic` → `Engine`,
 `evaluate_json` → `eval_str` / `eval_into::<T>`, `Operator` →
 `CustomOperator`, `with_config(...)` →
@@ -586,13 +586,13 @@ deprecated method shims. Headline renames: `DataLogic` → `Engine`,
 
 ## Learn more
 
-- [Repo README](https://github.com/GoPlasmatic/datalogic-rs#readme) — cross-runtime overview, per-binding READMEs
-- [Documentation site](https://goplasmatic.github.io/datalogic-rs/) — long-form guide, operator reference, advanced topics
-- [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/) — try rules live in the visual debugger
-- [`docs.rs/datalogic-rs`](https://docs.rs/datalogic-rs) — Rust API reference
-- [`examples/README.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/examples/README.md) — index of runnable examples
-- [`tests/README.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/tests/README.md) — JSONLogic suite format
+- [Repo README](https://github.com/GoPlasmatic/datalogic-rs#readme): cross-runtime overview, per-binding READMEs
+- [Documentation site](https://goplasmatic.github.io/datalogic-rs/): long-form guide, operator reference, advanced topics
+- [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/): try rules live in the visual debugger
+- [`docs.rs/datalogic-rs`](https://docs.rs/datalogic-rs): Rust API reference
+- [`examples/README.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/examples/README.md): index of runnable examples
+- [`tests/README.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/tests/README.md): JSONLogic suite format
 
 ## License
 
-Apache 2.0 — see [LICENSE](https://github.com/GoPlasmatic/datalogic-rs/blob/main/LICENSE).
+Apache 2.0. See [LICENSE](https://github.com/GoPlasmatic/datalogic-rs/blob/main/LICENSE).

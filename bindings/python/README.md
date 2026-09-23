@@ -4,12 +4,12 @@
 [![CI](https://github.com/GoPlasmatic/datalogic-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/GoPlasmatic/datalogic-rs/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Part of [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs) — one engine, every runtime.
+Part of [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs): one engine, every runtime.
 
 Python bindings for [`datalogic-rs`](https://github.com/GoPlasmatic/datalogic-rs),
 a fast Rust implementation of [JSONLogic](http://jsonlogic.com). Same
 rules, same semantics as the Rust crate, with the **compile-once /
-evaluate-many** pattern exposed natively — compile a rule once and
+evaluate-many** pattern exposed natively: compile a rule once and
 evaluate it against thousands of data inputs without re-parsing. Every
 binding runs the same core and passes the same 1,953-case conformance
 battery (64 suites).
@@ -18,10 +18,11 @@ For the cross-runtime overview and the API-tier model every binding
 implements, see the
 [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
-> **New in v5.** `datalogic-py` is new — there is no v4 Python package.
+> **New in v5.** `datalogic-py` is new: there is no v4 Python package.
 > If you were calling the v4 Rust crate or the v4 `@goplasmatic/datalogic`
-> WASM package, the engine's v4 → v5 changes are catalogued in
-> [MIGRATION.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md).
+> WASM package, see
+> [MIGRATION.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md)
+> for the engine's v4 → v5 changes.
 
 ## Install
 
@@ -29,7 +30,7 @@ implements, see the
 pip install datalogic-py
 ```
 
-Pre-built wheels are published for:
+PyPI carries pre-built wheels for:
 
 | Platform           | Architectures   |
 |--------------------|-----------------|
@@ -38,13 +39,13 @@ Pre-built wheels are published for:
 | macOS              | x86_64, arm64   |
 | Windows            | x86_64, arm64   |
 
-Python 3.10 and newer are supported via
-[PEP 384 stable ABI (`abi3`)](https://peps.python.org/pep-0384/) — one
+The package supports Python 3.10 and newer via the
+[PEP 384 stable ABI (`abi3`)](https://peps.python.org/pep-0384/): one
 wheel per platform covers every CPython 3.10+ release.
 
 The package is fully typed ([PEP 561](https://peps.python.org/pep-0561/)):
 every wheel ships type stubs and a `py.typed` marker, so mypy, pyright,
-and IDE autocomplete see the complete API surface out of the box.
+and IDE autocomplete see the complete API surface.
 
 > **Naming:** `pip install datalogic-py` (PyPI distribution name) →
 > `import datalogic_py` (Python module name). Python modules can't
@@ -72,13 +73,13 @@ The Python binding mirrors the Rust engine's
 | One-shot     | `apply(rule, data)`                      | Ad-hoc evaluation, one rule + one data shape                  |
 | Engine       | `Engine().eval(rule, data)`              | Custom configuration (templating, custom operators, config)   |
 | Compile once | `Engine().compile(rule).evaluate(data)`  | Same rule evaluated against many data inputs                  |
-| Session      | `with engine.session() as sess: …`       | Hot loops — amortise arena reset across iterations            |
+| Session      | `with engine.session() as sess: …`       | Hot loops: amortise arena reset across iterations             |
 | Data handle  | `DataHandle(json)` → `sess.evaluate_data(rule, data)` | Same payload evaluated many times: parse once, zero parse work per call |
 | Typed        | `sess.evaluate_bool/int/float/truthy(rule, data)` | Predicates and scalar results, no JSON decode on the way out |
 | Batch        | `sess.evaluate_batch(rule, datas)` / `sess.evaluate_many(rules, data)` | Many evaluations per native call, per-item errors |
 | Traced       | `engine.evaluate_with_trace(logic_json, data_json)` | Step-by-step debugging; feeds the React debugger |
 
-### One-shot — `apply(rule, data)`
+### One-shot: `apply(rule, data)`
 
 ```python
 from datalogic_py import apply
@@ -90,7 +91,7 @@ apply({"and": [{">": [{"var": "x"}, 0]}, True]}, {"x": 5}) # True
 
 Both arguments accept Python `dict` / `list` values, converted by a
 direct walk between Python objects and the engine's arena values (no
-JSON text, no intermediate tree — 2.5-3.5× faster than the
+JSON text, no intermediate tree; 2.5-3.5× faster than the
 pythonize-based conversion earlier builds used, and faster than a
 `json.dumps` → `evaluate_str` → `json.loads` round-trip at every
 payload size we measure). Payload size still matters: conversion work
@@ -102,7 +103,7 @@ into a [`DataHandle`](#data-handles-typed-results-and-batch-evaluation)
 and skip the per-call cost entirely. For payloads with types the walk
 doesn't cover, see [Type conversion](#type-conversion) below.
 
-### Engine — `Engine().eval(rule, data)`
+### Engine: `Engine().eval(rule, data)`
 
 Construct an `Engine` when you need templating mode or any non-default
 configuration:
@@ -113,7 +114,7 @@ from datalogic_py import Engine
 engine = Engine()                          # default config
 engine.eval({"==": [1, 1]}, {})            # True
 
-# Templating mode — multi-key objects become output templates
+# Templating mode: multi-key objects become output templates
 templating_engine = Engine(templating=True)
 templating_engine.eval(
     {"name": {"var": "user.name"}, "ok": {">": [{"var": "score"}, 50]}},
@@ -122,7 +123,7 @@ templating_engine.eval(
 # {"name": "Ada", "ok": True}
 ```
 
-### Compile once — `Engine().compile(rule)` → `Rule.evaluate(data)`
+### Compile once: `Engine().compile(rule)` → `Rule.evaluate(data)`
 
 Compile the rule once when you'll evaluate it against many data inputs.
 
@@ -137,14 +138,14 @@ for payload in batch:
     fast   = rule.evaluate_str(json_text)   # accepts a JSON string (skips dict conversion)
 ```
 
-`Rule` is **thread-safe** — clone the reference into worker threads and
+`Rule` is **thread-safe**: clone the reference into worker threads and
 evaluate concurrently. The Rust eval call releases the GIL, so a
 multi-threaded server gains real parallelism.
 
-### Session — hot loops
+### Session: hot loops
 
 For batches where you want to amortise arena reset across iterations,
-open a `Session`. The arena is reset between iterations automatically.
+open a `Session`. The session resets the arena between iterations automatically.
 
 ```python
 from datalogic_py import Engine
@@ -157,8 +158,8 @@ with engine.session() as sess:
         result = sess.evaluate(rule, payload)
 ```
 
-`Session` is the per-thread workhorse — open one per worker thread.
-The arena that makes it fast can't be shared across threads (the same
+`Session` is the per-thread workhorse: open one per worker thread.
+You can't share the arena that makes it fast across threads (the same
 way a database connection is per-task in a connection-pool model);
 `Engine` and `Rule` are both thread-safe, so share those.
 
@@ -169,8 +170,8 @@ document: parse a payload once and every evaluation against it skips
 JSON parsing (and dict conversion) entirely. Handles are
 engine-independent (one handle can feed rules compiled by different
 engines), safe to share across threads for reads, and not consumed by
-evaluation — the native memory is released when the handle is
-garbage-collected.
+evaluation; the binding frees the native memory when Python
+garbage-collects the handle.
 
 ```python
 from datalogic_py import DataHandle
@@ -213,7 +214,7 @@ results = sess.evaluate_batch(rule, [d0, d1, d2])
 results = sess.evaluate_many([r0, r1], data)
 
 for i, r in enumerate(results):
-    if isinstance(r, BatchItemError):   # not raised — a result object
+    if isinstance(r, BatchItemError):   # not raised; a result object
         print(f"item {i} failed: {r.message} ({r.tag}, operator={r.operator})")
     else:
         print(f"item {i}: {r}")         # the item's JSON string
@@ -271,19 +272,19 @@ lenient.eval({"/": [1.5, 0]}, {})     # None
 | `truthy_evaluator` | `"javascript"`, `"python"`, `"strict_boolean"` |
 | `numeric_coercion` | object of bools: `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
 | `max_recursion_depth` | integer >= 1 |
-| `ops_budget` | integer >= 1, or `null` for unbounded — caps the work one evaluation may do; crossing it raises `BudgetExceeded` |
+| `ops_budget` | integer >= 1, or `null` for unbounded (caps the work one evaluation may do; crossing it raises `BudgetExceeded`) |
 
 The `preset` applies first; the remaining keys override individual fields
 on top of it. Every binding shares this JSON schema and parses it with
 the same core code, so a config that works here works in the WASM and
-Node bindings too. The full semantics of each knob are documented on the
-Rust crate's
-[`EvaluationConfig`](https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.EvaluationConfig.html).
+Node bindings too. The Rust crate's
+[`EvaluationConfig`](https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.EvaluationConfig.html)
+documents the full semantics of each knob.
 
 ### Metering: what a rule costs
 
-`eval_metered` returns `(result_json, ops)` — the result as a JSON `str`
-and the operations the evaluation charged — so you can see what a rule
+`eval_metered` returns `(result_json, ops)` (the result as a JSON `str`
+and the operations the evaluation charged), so you can see what a rule
 costs whether or not a budget is set. `Rule.evaluate_metered(data,
 budget=None)` is the same thing on an already-compiled rule.
 
@@ -301,9 +302,9 @@ One operation is one node the engine dispatches, one item an iterator
 walks, or whatever an operator charges for the data it moves (the tensor
 family prices itself in elements). Literals and constant-folded subtrees
 cost nothing. Exceeding the budget raises `EvaluateError` with
-`.error_type == "BudgetExceeded"`, carrying `.budget` and `.spent` — the
-evaluation is refused before the work, and a `try` in the rule cannot
-recover from it.
+`.error_type == "BudgetExceeded"`, carrying `.budget` and `.spent`. The
+engine refuses the evaluation before doing the work, and a `try` in the
+rule cannot recover from it.
 
 ## Error handling
 
@@ -312,13 +313,13 @@ All exceptions descend from `DataLogicError`:
 | Exception        | When                                                              |
 |------------------|-------------------------------------------------------------------|
 | `ParseError`     | Malformed rule or data JSON, or an unsupported Python type in the input |
-| `EvaluateError`  | Operator failure at runtime (including unknown operators, tag `InvalidOperator`) — carries `.error_type`, `.operator`, `.path` |
+| `EvaluateError`  | Operator failure at runtime (including unknown operators, tag `InvalidOperator`); carries `.error_type`, `.operator`, `.path` |
 
 Two `error_type` tags come from the binding itself rather than the
 engine, mirroring the C ABI: `"TypeMismatch"` (a typed evaluation whose
 result has the wrong type) and `"InvalidArgument"` (e.g. a rule
 compiled by a different engine passed to a session's handle-based entry
-points). Per-item batch failures don't raise at all — they surface as
+points). Per-item batch failures don't raise at all; they surface as
 `BatchItemError` values (`.tag`, `.message`, `.operator`) in the result
 list.
 
@@ -339,15 +340,15 @@ except EvaluateError as e:
 | Type         | Pattern                                                                          |
 |--------------|----------------------------------------------------------------------------------|
 | `Engine`     | Build once; share across threads                                                 |
-| `Rule`       | Compile once; share across threads — `evaluate` releases the GIL for parallelism |
-| `Session`    | One per worker thread — the per-task workhorse                                   |
+| `Rule`       | Compile once; share across threads: `evaluate` releases the GIL for parallelism  |
+| `Session`    | One per worker thread: the per-task workhorse                                    |
 | `DataHandle` | Parse once; immutable, share across threads for reads (evaluation never mutates it) |
 
 ## Type conversion
 
 The dict-input path walks Python objects directly into the engine's
 arena representation (with a [`pythonize`](https://crates.io/crates/pythonize)
-fallback for the long tail — behaviour is identical either way, only
+fallback for the long tail; behaviour is identical either way, only
 speed differs):
 
 **Fast direct walk:** `dict`, `list`, `tuple`, `str`, `int`, `float`,
@@ -368,11 +369,11 @@ iteration order), container/scalar subclasses (`IntEnum`,
   object-iteration results are deterministic
 - result dicts also come back key-sorted
 
-**Not supported** — these raise `ParseError` with a clear message:
+**Not supported.** These raise `ParseError` with a clear message:
 
-- `datetime.datetime`, `datetime.date` — convert to ISO string at the
+- `datetime.datetime`, `datetime.date`: convert to ISO string at the
   Python edge
-- `decimal.Decimal` — convert to `float` or `str`
+- `decimal.Decimal`: convert to `float` or `str`
 - `bytes`, `bytearray`
 
 For payloads with exotic types, use `rule.evaluate_str(json_text)` and
@@ -427,7 +428,7 @@ The pyo3 boundary adds a small per-call marshalling cost on top of the
 core numbers; the dict paths use direct Python ↔ arena walks, so that
 cost scales with payload node count, not with a JSON round-trip. Use
 `rule.evaluate_str(json_text)` when you already have a JSON string, and
-a `DataHandle` when the same payload is evaluated repeatedly — on the
+a `DataHandle` when the same payload is evaluated repeatedly. On the
 boundary harness's 8 KB workload, `session.evaluate_data_str` measures
 ~1.3 µs/op against ~12 µs for `session.evaluate_str` (the per-call JSON
 parse) and ~24 µs for the dict path (the per-call conversion walk).
@@ -454,7 +455,7 @@ pytest                      # run the test suite
 
 - [datalogic-rs repository](https://github.com/GoPlasmatic/datalogic-rs#readme)
 - [Rust crate deep-dive](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs#readme)
-- [Documentation — Python](https://goplasmatic.github.io/datalogic-rs/python/installation.html)
+- [Documentation: Python](https://goplasmatic.github.io/datalogic-rs/python/installation.html)
 - [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/)
 - [JSONLogic specification](https://jsonlogic.com)
 

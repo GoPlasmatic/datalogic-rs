@@ -10,7 +10,7 @@ This is the **React surface** of the
 [`datalogic-rs`](https://github.com/GoPlasmatic/datalogic-rs) monorepo.
 It consumes the WASM binding
 ([`@goplasmatic/datalogic-wasm`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/wasm/README.md)) for evaluation
-and tracing — for the engine itself and the cross-runtime overview,
+and tracing. For the engine itself and the cross-runtime overview,
 see the [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
 ## Features
@@ -58,11 +58,11 @@ function App() {
 
 ## Usage Modes
 
-The editor behavior is controlled by props rather than a mode enum. Different combinations of props enable different functionality:
+Props control the editor's behavior; there is no mode enum. Each combination of props enables a different mode:
 
 ### Read-only (default)
 
-Simply render a JSONLogic expression as a flow diagram:
+Render a JSONLogic expression as a flow diagram:
 
 ```tsx
 <DataLogicEditor value={expression} />
@@ -72,8 +72,8 @@ Simply render a JSONLogic expression as a flow diagram:
 
 Provide `data` to enable the debugger toolbar (play/pause, step, jump, and a
 step timeline). As you step, the current node shows its context and result in
-a bubble, executed and on-path nodes are highlighted, and a node on the
-engine's failure breadcrumb is marked with its error. Nodes do not show
+a bubble, the editor highlights executed and on-path nodes, and it marks a
+node on the engine's failure breadcrumb with its error. Nodes do not show
 results at rest; step through the trace to see values:
 
 ```tsx
@@ -172,7 +172,7 @@ import { OPERATORS, CATEGORY_COLORS } from '@goplasmatic/datalogic-ui';
 panel configuration, and help (summary, return type, notes, and examples that
 are checked against the engine in this package's test suite). `CATEGORY_COLORS`
 is a per-category palette for consumer-side legends and custom renderers; the
-shipped nodes are coloured by the value type they produce, through the
+shipped nodes take their colour from the value type they produce, through the
 `--sig-*` tokens (see Styling).
 
 ### Utilities and hooks (for advanced use)
@@ -219,7 +219,7 @@ import {
 optional and omitted keys keep the engine default. Changing `config` or
 `customOperators` rebuilds the engine, so selection and undo history reset.
 
-`ops_budget` caps the work one evaluation may do — one operation per node
+`ops_budget` caps the work one evaluation may do: one operation per node
 the engine dispatches, one per item an iterator walks, plus what tensor
 operators charge per element. Crossing it raises a `BudgetExceeded` error
 carrying `budget` and `spent`, which `try` cannot catch. The
@@ -234,7 +234,7 @@ becomes a runtime evaluation error.
 
 ## Styling
 
-One CSS import is all you need. React Flow's base styles are bundled into
+You need one CSS import. React Flow's base styles are bundled into
 `styles.css`, so there is no separate `@xyflow/react/dist/style.css` import
 and no import-order requirement:
 
@@ -317,7 +317,7 @@ evaluations rather than fixtures:
   reachable from the menus.
 
 When you add an operator config example or a sample, give it the result the
-engine actually produces; the suites will tell you if it drifts.
+engine produces; the suites will tell you if it drifts.
 
 ## Architecture
 
@@ -352,8 +352,8 @@ The main component is `DataLogicEditor` which:
 - @goplasmatic/datalogic-wasm (bundled into the library output)
 
 The dev playground additionally uses @msgpack/msgpack and fflate for share
-links and @fontsource for its fonts; those are devDependencies and are not
-installed by consumers.
+links and @fontsource for its fonts; those are devDependencies, so consumers
+do not install them.
 
 ## Documentation
 
@@ -361,9 +361,9 @@ For complete documentation including all props, customization options, and advan
 
 ## Learn more
 
-- [Repo README](https://github.com/GoPlasmatic/datalogic-rs#readme) — cross-runtime overview, all binding READMEs
-- [WASM binding README](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/wasm/README.md) — `@goplasmatic/datalogic-wasm`, the JS/TS engine this UI consumes
-- [Rust crate README](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/README.md) — engine design, the 5-tier API model
+- [Repo README](https://github.com/GoPlasmatic/datalogic-rs#readme): cross-runtime overview, all binding READMEs
+- [WASM binding README](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/wasm/README.md): `@goplasmatic/datalogic-wasm`, the JS/TS engine this UI consumes
+- [Rust crate README](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/README.md): engine design, the 5-tier API model
 - [Full documentation](https://goplasmatic.github.io/datalogic-rs/)
 - [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/)
 

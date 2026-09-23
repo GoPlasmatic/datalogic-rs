@@ -15,7 +15,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 - **`val` scope levels could not reach an enclosing iterator's element
   (#74).** Inside two nested iterators no form reached the outer element:
   `[[0]]` and `[[1]]` both read the current one, and `[[2]]` and every higher
-  level read the root. `{"val": [[N], "index"]}` was worse — it ignored `N`
+  level read the root. `{"val": [[N], "index"]}` was worse: it ignored `N`
   entirely and always returned the innermost index, at any nesting. Rules
   that needed a value from the enclosing element had to thread it through a
   `reduce` accumulator.
@@ -23,7 +23,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   Two defects combined in the frame arithmetic. `levels_up == 1` returned the
   *top* frame, so `[[1]]` aliased `[[0]]` and one level of addressing was
   wasted; and the clamp to the root fired one frame early, so the outermost
-  frame was never addressable — at two levels of nesting that frame *is* the
+  frame was never addressable; at two levels of nesting that frame *is* the
   parent, which is why exactly that case was dead. A third, separate defect
   made metadata level-independent.
 
@@ -53,9 +53,9 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   `{"val": [[N]]}`, an *even* level with `index` / `key` (now an ordinary
   field name, where it used to be the innermost index), and `index` / `key`
   at a level that names no metadata frame (now `null`, including at root
-  depth where 5.5.0 fell through to a data field of that name). Note a `reduce` body and a `try` catch
+  depth where 5.5.0 fell through to a data field of that name). A `reduce` body and a `try` catch
   arm are frames too, so `{"try": [risky, {"val": [[2], "fallback"]}]}` nested
-  inside an iterator now reads that iterator's element rather than the root —
+  inside an iterator now reads that iterator's element rather than the root;
   see [MIGRATION.md](./MIGRATION.md).
 
   Two further changes fall out of the model. A bare `{"val": [[N]]}` is now a
@@ -67,9 +67,9 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 - **A bare `{"val": [[N]]}` meant different things on different compile
   paths.** The marker was only recognised where the compiler had already
-  folded `[N]` into a literal value. A compile that skips folding — every
+  folded `[N]` into a literal value. A compile that skips folding (every
   `Engine::trace()` run, so the UI debugger and the bindings' trace APIs, and
-  any engine built `with_constant_folding(false)` — left it an unfolded array
+  any engine built `with_constant_folding(false)`) left it an unfolded array
   node, fell through to the runtime resolver, and read the key `"N"` instead.
   Both paths now read it as a level marker.
 
@@ -92,8 +92,8 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 - **145 conformance cases for the full level matrix** (`scopes-nested.json`):
   levels 0-9 at nesting depths 1-4 for data, `index` and `key`, the bare level
   form, negative levels, the root depth where no frame is pushed, and one case
-  per frame-pushing operator — `filter`, `all`, `some`, `none`, `reduce`,
-  `try`, `group_by`, `sort`, `distinct` — since their frame shapes differ, plus
+  per frame-pushing operator (`filter`, `all`, `some`, `none`, `reduce`,
+  `try`, `group_by`, `sort`, `distinct`) since their frame shapes differ, plus
   `var`/`val` parity on the level forms and computed-segment and
   computed-level blocks that run the same levels through the interpreted
   resolver. The file closes with the reported case verbatim: 23 cases on the
@@ -113,8 +113,8 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   two there.
 
 - **The suite runner evaluates every case on every compile path.** Each of
-  the 1,953 cases now runs three times — the default engine, one built
-  `with_constant_folding(false)`, and `Engine::trace()` — and a disagreement
+  the 1,953 cases now runs three times (the default engine, one built
+  `with_constant_folding(false)`, and `Engine::trace()`), and a disagreement
   between them fails the case ahead of its own `result` / `error`
   expectation. The suites ran the default path alone before, which is how all
   three compile-path defects above stayed invisible: each of them produced a
@@ -123,7 +123,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 - **The filter fast path keeps a narrower set of hoistable operands.** A
   `[[2]]` reference inside a nested `filter` used to clamp to the root, which
   made it loop-invariant; it now names the enclosing element, so it takes the
-  general path. Hoisting itself is unchanged — only a root-bound operand
+  general path. Hoisting itself is unchanged: only a root-bound operand
   resolves to the same frame when it is dispatched one frame shallower, which
   is what `is_filter_invariant` already required.
 
@@ -142,7 +142,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   deterministic (the same rule over the same data charges the same number
   on every machine, so a rule accepted in staging is accepted in
   production), it is charged *before* the work rather than measured after
-  it, and the failure is attributable — `BudgetExceeded` carries the node
+  it, and the failure is attributable: `BudgetExceeded` carries the node
   breadcrumb like every other engine error.
 
   One operation is one dispatched node, one item an iterator examines, or
@@ -163,7 +163,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   unbounded" precedence every binding's optional-budget form goes
   through), `EvalContext::charge` for custom operators, and
   `ErrorKind::BudgetExceeded { budget, spent }`.
-  `charge` is always present — a no-op when the feature is off — so a
+  `charge` is always present (a no-op when the feature is off), so a
   custom operator can call it without a `cfg` of its own.
 
   `try` observes `BudgetExceeded` but cannot recover from it: the counter
@@ -190,8 +190,8 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   / `Rule.evaluateMetered` / `Session.evaluateMetered` (WASM),
   `Engine.evalMetered` / `Rule.evaluateMetered` (Node), and
   `Engine.eval_metered` / `Rule.evaluate_metered` (Python) evaluate under a
-  budget and report what was spent. The C ABI — and the Go, JVM, .NET and
-  PHP bindings built on it — carry the engine-wide `ops_budget` config key
+  budget and report what was spent. The C ABI (and the Go, JVM, .NET and
+  PHP bindings built on it) carry the engine-wide `ops_budget` config key
   only; a per-call entry point there can follow.
 
 - **`budget` and `spent` on binding errors.** The Node and Python error
@@ -205,12 +205,12 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   field (blank means unlimited), and the `useWasmEvaluator` hook gains
   `evaluateMetered(logic, data)` returning `{ value, ops }`. The Studio
   reports what every evaluation spent as an *N ops* badge on the Result
-  panel — visible on success, not only when a rule trips a ceiling — and
+  panel (visible on success, not only when a rule trips a ceiling) and
   renders `BudgetExceeded` with its `budget` / `spent` chips and the usual
   node highlight. The budget rides along in share links like every other
   engine setting.
 
-- **Three tensor examples in the Studio's Examples menu** — "Model Input
+- **Three tensor examples in the Studio's Examples menu**: "Model Input
   Batch" (normalize and stack a request batch), "Model Output Labels"
   (`argmax` a logits tensor and label the winners), and "One-Hot Encode".
   The tensor operators had been in the UI's registry and insert palette
@@ -227,7 +227,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   an FFI change.
 
 - **Tensor operators (`tensor` feature, off by default).** A marshalling
-  family over datavalue 0.3's `Tensor` variant — a dtype, a shape, and one
+  family over datavalue 0.3's `Tensor` variant: a dtype, a shape, and one
   row-major contiguous byte buffer that travels through a rule without
   expanding into `Array` nodes. JSON has no tensor, and anything that
   marshals JSON into a model's inputs and its outputs back into JSON needs
@@ -270,14 +270,14 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 - **90 conformance cases across four tensor suites** (`tensor/construct`,
   `tensor/shape`, `tensor/read`, `tensor/value`), now 1,804 cases across 63
   suites. Expected base64 is computed independently of datavalue's encoder,
-  so the wire format is genuinely checked rather than asserted against
+  so the wire format is checked rather than asserted against
   itself.
 
 - **16 conformance cases for scope resolution and filter hoisting**
   (`scopes.json` and `iterators.extra.json`). The battery
   previously had no rule nested deeply enough to distinguish a correct
-  interior-frame resolver from a broken one — every existing leveled `val`
-  resolved either to the current frame or, via the clamp, to the root — and
+  interior-frame resolver from a broken one (every existing leveled `val`
+  resolved either to the current frame or, via the clamp, to the root), and
   nothing exercised the filter hoisting rule at all.
 
 ### Changed
@@ -285,13 +285,13 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 - **The trace collector is boxed inside `ContextStack`.** 56 bytes of
   per-evaluation stack traffic that every evaluation in a trace-enabled
   build paid whether or not it traced; the one allocation now lands only on
-  the traced path. This is what paid for the budget counters — the stack
+  the traced path. This is what paid for the budget counters: the stack
   stays under its 256-byte bound, at 224 bytes.
 
 - **`datavalue-rs` 0.2.3 → 0.3, which raises this crate's MSRV to 1.98.**
   The floor is inherited rather than chosen: the dependency is not
   optional, so every build needs 1.98 whether or not `tensor` is enabled.
-  Nothing in this crate uses a 1.98 language feature — its own floor is
+  Nothing in this crate uses a 1.98 language feature; its own floor is
   still 1.85. Downstream consumers pinning an older toolchain must either
   stay on 5.4.x or move to 1.98.
 - **Nested `if` statements collapsed into let-chains.** Mechanical, no
@@ -300,7 +300,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 - **Compile-time scope resolution.** Variable references now carry the
   frame they resolve against, computed once at compile time by a new
   `compile/scope.rs` pass, instead of the engine probing `ctx.depth()` on
-  every evaluation. Purely internal — every rule evaluates to exactly what
+  every evaluation. Purely internal: every rule evaluates to exactly what
   it did before, clamp and level semantics untouched. Rules that read an
   outer scope from inside an iterator benefit most: the `scopes` suite
   drops 21.7% (73.4 ns to 57.5 ns per evaluation) and `val.extra` 13.4%,
@@ -317,11 +317,11 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   never use.** `ContextStack` is rebuilt on every evaluation, and more than
   half of it was a four-slot inline buffer for ancestor frames. A census of
   the conformance corpus found 86.3% of rules never push a context frame at
-  all and 99.1% never populate that buffer — an ancestor frame is not even
+  all and 99.1% never populate that buffer; an ancestor frame is not even
   addressable until three levels of iterator nesting. The compiler now
   reports whether a rule can read one, frames are restored from a token
   handed back by the pusher rather than from the ancestor list, and the list
-  itself is maintained only when it can actually be read. `compatible`
+  itself is maintained only when it can be read. `compatible`
   improves 15.2% (10.09 to 8.56 ns per evaluation) and
   `comparison/lessThan` 6.9%, with no cost to deeply nested rules.
 
@@ -333,13 +333,13 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 - **The conformance harness can now run under partial feature sets.** The
   suite index lists every suite, but a build without `ext-control` cannot
-  evaluate `switch` — so the battery failed with "Unknown Operator" on any
+  evaluate `switch`, so the battery failed with "Unknown Operator" on any
   configuration between `--all-features` and `--no-default-features`. That is
   why CI's feature matrix only *built* its legs. The runner now skips a case
   whose operators this build did not compile in, reporting the count, and a
   case may declare `"requires": ["datetime"]` for the residual class where a
   feature changes value semantics rather than adding an operator. Six
-  under-gated integration tests were fixed alongside — two now use a baseline
+  under-gated integration tests were fixed alongside: two now use a baseline
   operator so they run everywhere, four gained the `#[cfg]` they were missing.
   Under `--all-features` nothing is skipped, so existing coverage is
   unchanged. A new `feature-combos` CI job runs the battery across six
@@ -347,12 +347,12 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 - **Filter fast path hoisted operands it could not safely hoist.** The
   strict-equality filter fast path evaluates a "loop-invariant" predicate
-  operand once, without the per-item frame — but it classified *any*
+  operand once, without the per-item frame, but it classified *any*
   `{"val": [[N], …]}` as invariant. Two shapes therefore disagreed with
   the general path: a predicate reading `index` or `key`, which resolve
   against the current frame whatever the level, and a `[[1]]` reference
   inside a filter that is itself nested one or more frames deep, where
-  `[[1]]` names the current item. Both silently returned wrong rows — e.g.
+  `[[1]]` names the current item. Both silently returned wrong rows. For example,
   `{"filter": [{"var":"xs"}, {"===": [{"var":"a"}, {"val":[[1],"index"]}]}]}`
   over `[{"a":0},{"a":1},{"a":2}]` matched nothing instead of everything.
   Hoisting is now gated on the compile-time scope binding: only a literal
@@ -376,7 +376,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 - **Templating: opt-in `$`-prefix escape for object keys.**
   `Engine::builder().with_template_key_escape('$')` makes exactly one
   leading prefix strip from every template key, and stops an escaped key
-  from resolving as an operator — so `{"$type": ...}` emits the key `type`
+  from resolving as an operator, so `{"$type": ...}` emits the key `type`
   instead of running the `type` operator, and `$$type` emits a literal
   `$type`. Recovers the ~60 built-in names (plus any registered custom
   operator) as output keys. The prefix is a `char` rather than a fixed `$`,
@@ -419,7 +419,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   0.5.0 is its own latest release, so there is no upgrade path.
 - **.NET builds on the 10.0.x SDK.** `dotnet-version` moves from `8.0.x`
   to `10.0.x` in CI and both release workflows, which the .NET 10-wave
-  test toolchain needs. `TargetFramework` stays `net8.0` — only the build
+  test toolchain needs. `TargetFramework` stays `net8.0`; only the build
   SDK moved, so consumers on .NET 8 are unaffected.
 - **TypeScript held at `~6.0.3`.** TypeScript 7.0.2 is npm `latest`, but
   typescript-eslint 8.68.0 still declares `typescript >=4.8.4 <6.1.0`, so
@@ -438,7 +438,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   back: in templating mode it re-parsed as an ordinary output field, so
   an erroring rule round-tripped into a *successful* one returning
   `{"<invalid args>": null}` as data; outside templating it re-parsed as
-  an unknown operator, losing which op actually failed. The marker now
+  an unknown operator, losing which op failed. The marker now
   serialises as the offending rule verbatim, `{"<op>":
   <args>}`, which recompiles to the same node and raises the same error.
   The marker retains its raw arguments to make that possible, which also
@@ -578,7 +578,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   `{key, items}` rows on a per-element key expression, insertion-ordered
   by first key occurrence; keys keep their evaluated type and group by
   strict deep equality. `{"distinct": [array]}` dedups by value,
-  `{"distinct": [array, key_expr]}` by computed key — first occurrence
+  `{"distinct": [array, key_expr]}` by computed key; first occurrence
   wins in both forms. `group_by` and keyed `distinct` join the
   iteration class (never constant-folded, key expressions excluded from
   CSE); unkeyed `distinct` is pure and fold-eligible.
@@ -597,7 +597,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   naive input as zone wall-clock and resolves it to the UTC instant.
   DST policy: ambiguous local times resolve to the earlier instant,
   nonexistent ones (spring-forward gap) error. Zone offsets come from
-  chrono-tz's compiled-in table — no tzdata I/O, so `format_date` with
+  chrono-tz's compiled-in table (no tzdata I/O), so `format_date` with
   a literal zone stays fold-eligible, and a literal *unknown* zone
   name is rejected at compile time through the operator-specialisation
   stage. Two-argument behavior is byte-for-byte unchanged.
@@ -620,11 +620,11 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 - **Root `Makefile` with repo-wide targets.** `make lint`, `make fmt`,
   `make clippy`, `make clean` and `make clean-all` fan out over every
-  Cargo manifest in the tree — root-level `cargo fmt --all` / `cargo
+  Cargo manifest in the tree; root-level `cargo fmt --all` / `cargo
   clippy --workspace` / `cargo clean` silently skip the four bindings
   and the fuzz crate, which are excluded workspaces. `make clippy`
   lints `bindings/wasm` against `wasm32-unknown-unknown` (so its
-  `#![cfg(target_arch = "wasm32")]` test module is actually checked)
+  `#![cfg(target_arch = "wasm32")]` test module is checked)
   and reports every crate's failures in one pass. See
   [DEVELOPMENT.md](./DEVELOPMENT.md#repo-wide-commands).
 
@@ -644,7 +644,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 - **Three high-severity dev-dependency advisories patched.** In the UI
   package: `brace-expansion` 5.0.8 → 5.0.9
   ([GHSA-rgw5-rvv9-x895](https://github.com/advisories/GHSA-rgw5-rvv9-x895),
-  DoS via unbounded intermediate arrays — the 5.0.8 that 5.1.1 landed as
+  DoS via unbounded intermediate arrays; the 5.0.8 that 5.1.1 landed as
   a fix turned out to be inside this advisory's range) and `nanoid`
   3.3.16 → 3.3.18
   ([GHSA-2v37-7h3g-55p8](https://github.com/advisories/GHSA-2v37-7h3g-55p8),
@@ -680,7 +680,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   dispatch sites matched `JavaScript | Python` and routed to the same
   implementation, so the variant was an alias rather than a distinct
   mode; the only test covering it asserted its `Debug` string. The one
-  place the two languages genuinely differ is `NaN`, which Python
+  place the two languages differ is `NaN`, which Python
   treats as truthy and JavaScript treats as falsy. Both the evaluation
   path and the constant-folding path now implement that, and a test
   pins them in lockstep by running the same rule with folding on and
@@ -718,7 +718,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   ([GHSA-mh99-v99m-4gvg](https://github.com/advisories/GHSA-mh99-v99m-4gvg),
   DoS via unbounded expansion). Both are transitive and build-time only
   (via `vite` and `eslint` respectively), so neither ships to consumers
-  of `@goplasmatic/datalogic-ui`. Note the `brace-expansion` advisory
+  of `@goplasmatic/datalogic-ui`. The `brace-expansion` advisory
   covers `<= 5.0.7`, so the earlier 5.0.6 → 5.0.7 bump had landed inside
   the vulnerable range; only `npm audit` surfaced it, not the Dependabot
   alert list. `npm audit` now reports zero vulnerabilities.
@@ -750,8 +750,8 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   new whole-tree compile pass detects structurally identical pure
   subtrees and shares one memoized evaluation per rule execution
   instead of recomputing each occurrence. The pass is invisible in
-  every public observable — `to_json()`, trace trees, and error
-  breadcrumbs are byte-identical to a non-CSE compile — and subtrees
+  every public observable (`to_json()`, trace trees, and error
+  breadcrumbs are byte-identical to a non-CSE compile), and subtrees
   containing custom operators, `throw`/`try`, `now`, `fractional`, or
   `sem_ver` are never memoized. `Logic` gains a public
   `cse_slot_count()` accessor reporting how many memo slots the
@@ -785,7 +785,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 ### Fixed
 
 - Whole floats outside i64's exactly-representable range stringify via
-  shortest round-trip formatting — `1e300` now prints as `"1e300"`
+  shortest round-trip formatting: `1e300` now prints as `"1e300"`
   instead of a saturated `"9223372036854775807.0"` (matching
   serde_json). The `datavalue` dependency floor moves to 0.2.3.
 - Removed the unsound numeric-string precoercion optimizer pass:
@@ -793,7 +793,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   over numeric strings with values beyond 2^53 (a string operand keeps
   arithmetic in f64 space while a rewritten number literal takes the
   exact-integer paths). Rules with fully-static numeric-string
-  arithmetic still constant-fold — through the real engine evaluator.
+  arithmetic still constant-fold, through the real engine evaluator.
 - `reduce` arithmetic fast path honors operand order: fold bodies of
   the form `{"-": [current, accumulator]}` returned sign-flipped
   results versus the general path (add/multiply were unaffected by
@@ -804,7 +804,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ### Changed
 
-- **BREAKING (C ABI — in-tree consumers only): ABI v2.** `bindings/c`
+- **BREAKING (C ABI, in-tree consumers only): ABI v2.** `bindings/c`
   replaces the v1 contract wholesale: `(pointer, length)` UTF-8 inputs
   (no NUL terminators anywhere), status-code returns with an optional
   `datalogic_error **` out-param (the thread-local last-error block is
@@ -837,7 +837,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 ### Performance
 
 - C-family bindings: session results serialize into a reusable
-  session-owned buffer and cross the boundary as borrowed bytes — the
+  session-owned buffer and cross the boundary as borrowed bytes; the
   per-result malloc and the `datalogic_string_free` crossing are gone;
   session-less one-shots run over a pooled thread-local arena, so naive
   callers get session-grade allocation behaviour.
@@ -845,7 +845,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   now route JSON-string data straight into the arena parser instead of
   building an intermediate `serde_json::Value` tree (mirroring what
   `evaluateStr` and the Session methods already did).
-- Python: wheels now build with fat LTO + a single codegen unit — the
+- Python: wheels now build with fat LTO + a single codegen unit; the
   binding's standalone workspace previously shipped with no release
   profile at all, losing cross-crate inlining into the core.
 - Python: dict inputs and results convert via a direct walk between
@@ -853,7 +853,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   (pythonize retained only as the exotic-shape fallback), with the
   pre-change semantics pinned by a 549-case equivalence corpus:
   2.5-3.4x faster at every payload size, and the 8 KB dict path drops
-  from ~82 µs to ~24 µs — now ~3x faster than a `json.dumps` /
+  from ~82 µs to ~24 µs, now ~3x faster than a `json.dumps` /
   `json.loads` round-trip. (The same direct-converter approach was
   built, measured, and deliberately reverted for Node: 23-31% faster
   than its serde bridge but still structurally slower than V8's
@@ -896,7 +896,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ### Added
 
-- **`ParsedData` (core)** — self-contained parse-once data handle,
+- **`ParsedData` (core)**: self-contained parse-once data handle,
   accepted by every arena-lifetime evaluation entry point at zero
   per-call conversion cost. Parsing dominates the string contract
   (70-90% of a parse-eval-serialize round trip), and this factors it
@@ -906,21 +906,21 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   C-family bindings** (C, Go, JVM, .NET, PHP): parse a payload once
   (`datalogic_data_parse` / `DataHandle`) and evaluate many rules
   against it; typed scalar evaluations (`bool` / `i64` / `f64` /
-  truthiness); and one-crossing batch shapes — one rule × N payloads
+  truthiness); and one-crossing batch shapes: one rule × N payloads
   (`evaluate_batch`) and N rules × one payload (`evaluate_many`, the
-  rule-set/feature-flag shape) — with per-item error reporting that
+  rule-set/feature-flag shape), with per-item error reporting that
   never fails the whole call.
-- **PHP FFI preload support** — an `FFI::load`-compatible header and
+- **PHP FFI preload support**: an `FFI::load`-compatible header and
   `preload.php` for `opcache.preload` + `ffi.enable=preload`
   deployments; `FFI::cdef` remains the zero-config fallback.
 - **In-tree boundary benchmark harness**
-  (`tools/benchmark/boundary/`) — one runner per runtime (Rust core, C,
+  (`tools/benchmark/boundary/`): one runner per runtime (Rust core, C,
   Go, JVM, .NET, PHP, Python, Node, WASM) reproducing the
   BINDINGS-OVERHEAD methodology with byte-stable checked-in workloads,
   a driver script, and a table renderer, so the per-binding overhead
   numbers are reproducible with one command instead of living outside
   the repo.
-- **ABI v2 mirrors for Node, Python, and WASM** — the direct-core
+- **ABI v2 mirrors for Node, Python, and WASM**: the direct-core
   bindings gain the same tiers natively: `DataHandle` parse-once
   handles, typed session evaluations (`evaluateBool` / number / truthy;
   Python adds `evaluate_int`), and `Promise.allSettled`-shaped
@@ -928,29 +928,29 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   the call. The WASM handle keeps the payload resident in linear
   memory, so the per-call JS↔WASM copy + parse disappears (the 8 KB
   session path drops ~7.7x).
-- **Node async tier** — `Rule.evaluateStrAsync(dataJson)` evaluates on
+- **Node async tier**: `Rule.evaluateStrAsync(dataJson)` evaluates on
   the libuv thread pool and returns a `Promise<string>`; rejections
   carry the same structured fields as synchronous throws. Not faster
-  per call — it exists for event-loop hygiene on large payloads.
-- **WASM speed-profile opt-in** — `WASM_PROFILE=speed ./build.sh`
+  per call; it exists for event-loop hygiene on large payloads.
+- **WASM speed-profile opt-in**: `WASM_PROFILE=speed ./build.sh`
   builds `opt-level = 3` + `wasm-opt -O3`: measured 1.13-1.85x faster
   across tiers at +8.1% raw size and 1.4% *smaller* gzipped. The
   published default stays the size-optimized build.
-- **`wasm-clock` feature** — opt-in JS-host clock for the `now` operator
+- **`wasm-clock` feature**: opt-in JS-host clock for the `now` operator
   on `wasm32-unknown-unknown` (forwards to `chrono/wasmbind`; successor
   to the v4 `wasm` feature). Off by default so non-JS wasm runtimes
-  (wasmtime, wazero, Chicory) keep loading the module — the constraint
-  from [#47](https://github.com/GoPlasmatic/datalogic-rs/issues/47) —
+  (wasmtime, wazero, Chicory) keep loading the module (the constraint
+  from [#47](https://github.com/GoPlasmatic/datalogic-rs/issues/47)),
   with a CI guard asserting the default wasm32 dependency graph stays
   free of `wasm-bindgen`/`js-sys`.
-- **`Logic::is_constant`** — reports whether compilation constant-folded
+- **`Logic::is_constant`**: reports whether compilation constant-folded
   the entire rule to a literal. Complements `Logic::is_static`
   (`is_static` asks whether a rule *could* be evaluated without a data
-  context; `is_constant` reports whether the compiler actually *did*
-  reduce it — folding can fail, e.g. `{"/": [1, 0]}` stays an operator
+  context; `is_constant` reports whether the compiler *did*
+  reduce it; folding can fail, e.g. `{"/": [1, 0]}` stays an operator
   node so the error surfaces at evaluation time). The benchmark harness
   uses it to time folded and non-folded rules separately.
-- **`EvaluationConfig::from_json_str`** (requires `serde_json`) — build a
+- **`EvaluationConfig::from_json_str`** (requires `serde_json`): build a
   configuration from a JSON object: an optional `"preset"` key
   (`"default"` / `"safe_arithmetic"` / `"strict"`) plus per-field
   overrides. This is the wire format the language bindings use to pass
@@ -962,10 +962,10 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 - Release platform matrix evened out: Intel-mac Python wheels and Node
   prebuilds, aarch64-musl Node prebuilds.
 - Runnable `examples/` for every language binding (C, Node, WASM,
-  Python, Go, JVM, .NET, PHP): the same three programs — `getting-started`,
-  `compile-once-evaluate-many`, `custom-operator` — with the same rule
+  Python, Go, JVM, .NET, PHP): the same three programs (`getting-started`,
+  `compile-once-evaluate-many`, `custom-operator`) with the same rule
   and data in each language, executed in CI so they cannot rot.
-- `scripts/conformance-count.sh` — generates the canonical
+- `scripts/conformance-count.sh`: generates the canonical
   "N suites / M cases" statistic quoted in READMEs and release notes.
 - **Signal Board redesign of the React visual debugger**
   (`@goplasmatic/datalogic-ui`): nodes are typed and coloured by the
@@ -985,12 +985,12 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   an explicit `null`, and a missing var already coerces to `0` under the
   default `null_to_zero = true`. Removing an inert public field is
   technically breaking for code that merely named it; delete the field
-  access or setter call — nothing changes behaviourally.
+  access or setter call; nothing changes behaviourally.
 
 ## [5.0.0] - 2026-05-14
 
 v5 is a coordinated major release across the Rust core crate and every
-language binding — WASM, Node, Python, C, Go, JVM, .NET, and PHP. For
+language binding: WASM, Node, Python, C, Go, JVM, .NET, and PHP. For
 step-by-step v4→v5 migration, see [MIGRATION.md](./MIGRATION.md).
 
 ### Added
@@ -1006,7 +1006,7 @@ step-by-step v4→v5 migration, see [MIGRATION.md](./MIGRATION.md).
   `bindings/go/v*` tag published by the release pipeline.
 - **JVM binding** (`io.github.goplasmatic:datalogic`) via JNA over the
   shared C cdylib, packaged for Maven Central. *(Correction 2026-07-03:
-  the Maven Central publish leg did not run for 5.0.0 — the group had no
+  the Maven Central publish leg did not run for 5.0.0; the group had no
   published artifacts. The first Maven Central release ships with the
   next tag; until then, build from source per `bindings/jvm/README.md`.)*
 - **.NET binding** (`Goplasmatic.Datalogic`) via P/Invoke over the
@@ -1016,13 +1016,13 @@ step-by-step v4→v5 migration, see [MIGRATION.md](./MIGRATION.md).
   (Packagist resolves from tags). *(Correction 2026-07-03: the subtree
   split ran, but the package was not registered on packagist.org until
   2026-07-03, so `composer require` did not resolve before that date.)*
-- **`flagd` Cargo feature** — opt-in OpenFeature flagd-compatible operators
+- **`flagd` Cargo feature**: opt-in OpenFeature flagd-compatible operators
   ([spec](https://flagd.dev/reference/custom-operations/)):
-  - `fractional` — deterministic murmurhash3-x86-32 percentage bucketing,
+  - `fractional`: deterministic murmurhash3-x86-32 percentage bucketing,
     matching the canonical Go evaluator's `(hash * total_weight) >> 32`
     integer distribution. Hash implementation vendored inline (~30 LOC,
     no external dep) for portability across every target.
-  - `sem_ver` — semantic-version comparison with the spec's four input
+  - `sem_ver`: semantic-version comparison with the spec's four input
     normalizations (strip `v`/`V` prefix, pad partial versions, coerce
     numeric input, drop build metadata). Backed by the optional
     [`semver`](https://docs.rs/semver) crate.
@@ -1031,18 +1031,18 @@ step-by-step v4→v5 migration, see [MIGRATION.md](./MIGRATION.md).
   `crates/datalogic-rs/tests/suites/flagd/` mirror the upstream
   [`fractional_test.go`](https://github.com/open-feature/flagd/blob/main/core/pkg/evaluator/fractional_test.go)
   and [`semver_test.go`](https://github.com/open-feature/flagd/blob/main/core/pkg/evaluator/semver_test.go).
-- **Custom operator registration across every language binding** — WASM,
+- **Custom operator registration across every language binding**: WASM,
   Node, Python, C ABI, Go, JVM, .NET, and PHP now expose a way to
   register host-language callbacks as JSONLogic operators, with a
   uniform JSON-string in/out contract. See
   [`bindings/BINDINGS.md`](./bindings/BINDINGS.md#custom-operator-support).
 - **Module-level helpers**: `datalogic_rs::eval`, `eval_str`, `eval_into`,
-  and `compile` — backed by a default engine, no construction required.
+  and `compile`, backed by a default engine, no construction required.
 - **`engine.eval_into::<T>(...)`** for typed deserialization of results.
 - **`engine.compile_arc(...)`** for the cross-thread sharing pattern.
 - **`with_constant_folding(false)`** builder flag for tree walkers
   (debuggers, alternate evaluators).
-- **`TracedSession`** mirrors `Session` 1:1 — every `eval*` returns
+- **`TracedSession`** mirrors `Session` 1:1; every `eval*` returns
   `TracedRun<R>`. The C ABI surfaces a parallel
   `datalogic_traced_session_*` family so JVM / .NET / PHP / Go share
   the same session-with-trace contract.
@@ -1059,26 +1059,26 @@ step-by-step v4→v5 migration, see [MIGRATION.md](./MIGRATION.md).
 
 ### Changed
 
-- **Breaking — Cargo feature rename**: `compat` → `serde_json`.
-- **Breaking — Engine construction is builder-only.** Replace
+- **Breaking: Cargo feature rename.** `compat` → `serde_json`.
+- **Breaking: Engine construction is builder-only.** Replace
   `Engine::with_config(c)` with `Engine::builder().with_config(c).build()`,
   and `Engine::with_preserve_structure()` with
   `Engine::builder().with_templating(true).build()`.
-- **Breaking — feature rename**: `preserve_structure` →
+- **Breaking: feature rename.** `preserve_structure` →
   `templating` (semantics unchanged).
-- **Breaking — one-shot evaluation API.** `engine.evaluate_json(rule, data) -> Value`
+- **Breaking: one-shot evaluation API.** `engine.evaluate_json(rule, data) -> Value`
   is replaced by `engine.eval_str(rule, data) -> String` (JSON in/out)
   or `engine.eval_into::<T>(rule, data)` (typed).
-- **Breaking — value-boundary evaluation.** `engine.evaluate_owned(&logic, value)` →
+- **Breaking: value-boundary evaluation.** `engine.evaluate_owned(&logic, value)` →
   `engine.eval_into::<serde_json::Value, _, _>(rule, &value)`.
-- **Breaking — compile from `&Value`.** `engine.compile_serde_value(&v)` →
+- **Breaking: compile from `&Value`.** `engine.compile_serde_value(&v)` →
   `engine.compile(&v)` via the `IntoLogic` trait (requires `serde_json` feature).
-- **Breaking — trace API.** `engine.evaluate_json_with_trace(...)` →
+- **Breaking: trace API.** `engine.evaluate_json_with_trace(...)` →
   `engine.trace().eval_str(...)`, returning `TracedRun<R>`.
-- **Breaking — custom operator surface.** `ArenaOperator` →
+- **Breaking: custom operator surface.** `ArenaOperator` →
   `CustomOperator`; context type `&mut ContextStack<'a>` →
   `&mut EvalContext<'_, 'a>`.
-- **Breaking — npm package rename**: WASM is now published as
+- **Breaking: npm package rename.** WASM is now published as
   `@goplasmatic/datalogic-wasm` (was `@goplasmatic/datalogic`). Node
   consumers should switch to `@goplasmatic/datalogic-node`.
 - Errors surface structured `operator` / `node_ids` / `kind` getters;
@@ -1095,12 +1095,12 @@ step-by-step v4→v5 migration, see [MIGRATION.md](./MIGRATION.md).
 
 ### Removed
 
-- **Breaking — `compat` feature and the `LegacyApi` trait.** No
+- **Breaking: `compat` feature and the `LegacyApi` trait.** No
   deprecated v4 shims remain in the v5 crate; rewrites are mechanical
   per [MIGRATION.md](./MIGRATION.md).
-- **Breaking — `data_to_json_string` helper.** Use `datavalue::Display`
+- **Breaking: `data_to_json_string` helper.** Use `datavalue::Display`
   (`.to_string()`) instead.
-- **Breaking — `EvaluationConfig::new()`** constructor (use the fluent
+- **Breaking: `EvaluationConfig::new()`** constructor (use the fluent
   setters / `Default`).
 
 ### Migration
@@ -1205,7 +1205,7 @@ side-by-side patterns, and structural-error consumer recipes.
   `Cow`-based intermediate values.
 - Replaced the `BTreeMap`-backed reduce context frame with explicit
   fields (`accumulator`, `current`).
-- Removed the `SmallVec` dependency — array nodes use `Vec` directly.
+- Removed the `SmallVec` dependency; array nodes use `Vec` directly.
 - Operator modules consolidated; duplicated comparison logic
   deduplicated.
 - Moved `val` datetime / duration property access out of the val
@@ -1290,7 +1290,7 @@ side-by-side patterns, and structural-error consumer recipes.
 
 ### Added
 
-- **Execution tracing** for step-by-step debugging — exposed both in
+- **Execution tracing** for step-by-step debugging, exposed both in
   the Rust API and the WASM surface.
 - WASM published to **npm** with CDN-friendly loading paths.
 - WASM `preserve_structure` parameter on the JS entry points.
@@ -1316,7 +1316,7 @@ side-by-side patterns, and structural-error consumer recipes.
   `preserve_structure` mode (PR
   [#44](https://github.com/GoPlasmatic/datalogic-rs/pull/44),
   thanks @ngerakines).
-- Comprehensive documentation set + worked examples.
+- Documentation set + worked examples.
 
 ### Changed
 
@@ -1327,7 +1327,7 @@ side-by-side patterns, and structural-error consumer recipes.
 
 ### Added
 
-- **Comprehensive `EvaluationConfig`** for tuning evaluator behaviour
+- **`EvaluationConfig`** for tuning evaluator behaviour
   (numeric coercion, undefined handling, etc.).
 
 ### Changed
@@ -1369,21 +1369,21 @@ section for the subsequent migration).
 - **Pre-compilation pipeline**: `OpCode` enum + `CompiledNode` IR,
   static logic pre-compilation, and an inline-function dispatch
   layer.
-- **Operator surface — comparison, arithmetic, type, string,
-  datetime, duration, control-flow** all rebuilt on the new IR with
-  comprehensive coverage and overflow-safe semantics.
+- **Operator surface (comparison, arithmetic, type, string,
+  datetime, duration, control-flow)** all rebuilt on the new IR with
+  overflow-safe semantics.
 - **`exists` operator** plus fixes to `array` / `val` operators
   around it.
 - **`length` operator** for strings and arrays.
 - **`sort` and `slice` operators**.
 - **`try` / `throw` operators** for error handling.
 - **`now` operator** returning the current datetime.
-- **Comprehensive thread-safety story** with `Arc`-backed root data
+- **Thread safety** with `Arc`-backed root data
   on the context stack.
 
 ### Changed
 
-- Eliminated `node_to_value` conversions — everything operates on
+- Eliminated `node_to_value` conversions; everything operates on
   `CompiledNode` end-to-end.
 - Consolidated common operator logic into shared helper modules and
   deduplicated comparison code.

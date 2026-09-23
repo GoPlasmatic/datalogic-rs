@@ -4,14 +4,14 @@
 [![CI](https://github.com/GoPlasmatic/datalogic-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/GoPlasmatic/datalogic-rs/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Part of [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs) — one engine, every runtime.
+Part of [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs): one engine, every runtime.
 
 PHP bindings for [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs),
 the JSONLogic rules engine with one Rust core and official bindings for
-Rust, Node.js, the browser (WASM), Python, Go, Java, .NET, and PHP. Same
+Rust, Node.js, the browser (WASM), Python, Go, Java, .NET, and PHP.
+Compile a rule once and evaluate it many times, natively in PHP. Same
 rules, same semantics: every binding runs the same core and passes the
-same 1,953-case conformance battery (64 suites). Compile once, evaluate
-many, natively in PHP.
+same 1,953-case conformance battery (64 suites).
 
 For the cross-runtime overview and the API-tier model every binding
 implements, see the
@@ -19,9 +19,9 @@ implements, see the
 
 > **New in v5.** This package is new: there is no v4 PHP artifact. If
 > you are coming from the v4 Rust crate or the v4
-> `@goplasmatic/datalogic` WASM package, the engine's v4 → v5 changes
-> are catalogued in
-> [MIGRATION.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md).
+> `@goplasmatic/datalogic` WASM package, see
+> [MIGRATION.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md)
+> for the engine's v4 → v5 changes.
 
 ## Install
 
@@ -71,8 +71,8 @@ compile once per process and reuse them across requests. Sessions
 ## Data handles (parse once, evaluate many)
 
 When one payload feeds many evaluations, parse it once into a
-`DataHandle` and pass the handle wherever a JSON string is accepted —
-the per-call JSON parse disappears entirely:
+`DataHandle` and pass the handle wherever the binding accepts a JSON
+string; the per-call JSON parse disappears entirely:
 
 ```php
 use Goplasmatic\Datalogic\DataHandle;
@@ -82,24 +82,24 @@ $rule->evaluate($data);              // same result as the string overload
 $session->evaluate($rule, $data);    // hot path: zero parse work per call
 ```
 
-Handles are immutable and engine-independent — one handle can feed
+Handles are immutable and engine-independent: one handle can feed
 rules compiled by different engines, any number of times (evaluation
-never consumes it). The native memory is released when the object is
-GC'd, or eagerly via `close()`; `allocatedBytes()` reports the handle's
-resident size.
+never consumes it). The binding releases the native memory when PHP
+collects the object, or eagerly when you call `close()`;
+`allocatedBytes()` reports the handle's resident size.
 
 ## Typed evaluations
 
-Sessions can return native PHP scalars instead of JSON strings —
-handy for predicates (feature flags, routing) where decoding JSON per
-call is pure overhead. All four take a compiled `Rule` and a
+Sessions can return native PHP scalars instead of JSON strings, which
+suits predicates (feature flags, routing) where decoding JSON per call
+is pure overhead. All four take a compiled `Rule` and a
 `DataHandle`:
 
 ```php
-$session->evaluateBool($rule, $data);    // bool   — strict: JSON true/false only
-$session->evaluateInt($rule, $data);     // int    — exact integers only
-$session->evaluateFloat($rule, $data);   // float  — any JSON number
-$session->evaluateTruthy($rule, $data);  // bool   — JSONLogic truthiness, never mismatches
+$session->evaluateBool($rule, $data);    // bool  (strict: JSON true/false only)
+$session->evaluateInt($rule, $data);     // int   (exact integers only)
+$session->evaluateFloat($rule, $data);   // float (any JSON number)
+$session->evaluateTruthy($rule, $data);  // bool  (JSONLogic truthiness, never mismatches)
 ```
 
 The strict variants throw `EvaluateException` with
@@ -113,7 +113,7 @@ Evaluate one rule against many payloads (`evaluateBatch`) or many
 rules against one payload (`evaluateMany`, the rule-set / feature-flag
 shape) in a single native call. Results come back in input order; a
 failed item puts a `BatchItemError` in its slot instead of aborting
-the other N-1 — item failures never throw:
+the other N-1; item failures never throw:
 
 ```php
 use Goplasmatic\Datalogic\BatchItemError;
@@ -146,8 +146,8 @@ foreach ($inputs as $data) {
 }
 ```
 
-Native handles are released by PHP's destructor when the wrapper object
-goes out of scope; every wrapper type also exposes an explicit
+PHP's destructor releases native handles when the wrapper object goes
+out of scope; every wrapper type also exposes an explicit
 `close()` for early release.
 
 ## API surface
@@ -219,14 +219,14 @@ $strict->apply('{"+":["",1]}', '{}');         // throws: strict rejects non-nume
 | `truthy_evaluator` | `"javascript"`, `"python"`, `"strict_boolean"` |
 | `numeric_coercion` | object of bools: `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
 | `max_recursion_depth` | integer >= 1 |
-| `ops_budget` | integer >= 1, or `null` for unbounded — caps the work one evaluation may do; crossing it raises `BudgetExceeded` |
+| `ops_budget` | integer >= 1, or `null` for unbounded (caps the work one evaluation may do; crossing it raises `BudgetExceeded`) |
 
 The `preset` applies first; the remaining keys override individual
 fields on top of it. Every binding shares this JSON schema and parses it
 with the same core code, so a config that works here works in the
-Python, Node, and WASM bindings too. The full semantics of each knob are
-documented on the Rust crate's
-[`EvaluationConfig`](https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.EvaluationConfig.html).
+Python, Node, and WASM bindings too. The Rust crate's
+[`EvaluationConfig`](https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.EvaluationConfig.html)
+documents the full semantics of each knob.
 
 ## Error handling
 
@@ -260,10 +260,10 @@ try {
 }
 ```
 
-Under the hood the binding targets the engine's C ABI **v2**: every
-fallible native call returns a status code plus an owned error handle,
-and the binding asserts `datalogic_abi_version() == 2` the first time
-the library is loaded — a stale native library fails loudly at startup
+The binding targets the engine's C ABI **v2**: every fallible native
+call returns a status code plus an owned error handle, and the binding
+asserts `datalogic_abi_version() == 2` the first time it loads the
+library, so a stale native library fails loudly at startup
 (`RuntimeException`), never mid-request.
 
 ## Threading
@@ -310,7 +310,7 @@ the core numbers.
 ## Preloading (opcache.preload + FFI)
 
 By default the binding lazily calls `FFI::cdef` on first use, which
-works out of the box on the CLI. Production FPM/web SAPIs should use
+works on the CLI with no extra configuration. Production FPM/web SAPIs should use
 [FFI preloading](https://www.php.net/manual/en/ffi.configuration.php)
 instead: PHP's default `ffi.enable=preload` forbids runtime `FFI::cdef`
 outside the CLI, and preloading also moves all header parsing to server
@@ -336,9 +336,9 @@ binding finds the scope through `FFI::scope("datalogic")` and skips
 If your application already has a preload script, `require` the
 package's `preload.php` from it (it is idempotent), or call
 `\Goplasmatic\Datalogic\Internal\Native::preload()` directly.
-Power users who manage their own headers can copy `src/datalogic-ffi.h`,
-hard-code `FFI_LIB` to their library path, and `FFI::load` it
-themselves — the committed default (`libdatalogic_c.so`) resolves via
+If you manage your own headers, you can copy `src/datalogic-ffi.h`,
+hard-code `FFI_LIB` to your library path, and `FFI::load` it
+yourself; the committed default (`libdatalogic_c.so`) resolves via
 the OS loader path. The header is also the single source of the cdef
 declarations (Native.php reads it with the `#define` lines stripped),
 so the two load paths cannot drift apart.

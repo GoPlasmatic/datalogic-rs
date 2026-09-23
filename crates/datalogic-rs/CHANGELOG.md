@@ -1,7 +1,7 @@
 # Changelog
 
-All notable changes to `datalogic-rs` — the core crate and every language
-binding — are documented in the repository-root
+All notable changes to `datalogic-rs` (the core crate and every language
+binding) are documented in the repository-root
 [CHANGELOG.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/CHANGELOG.md),
 which is the single canonical changelog. Release automation validates
 that file (and only that file) before a tag can ship, so it is always
@@ -29,7 +29,7 @@ files cannot drift.
 - **Templating: opt-in `$`-prefix escape for object keys.**
   `Engine::builder().with_template_key_escape('$')` makes exactly one
   leading prefix strip from every template key, and stops an escaped key
-  from resolving as an operator — so `{"$type": ...}` emits the key `type`
+  from resolving as an operator, so `{"$type": ...}` emits the key `type`
   instead of running the `type` operator, and `$$type` emits a literal
   `$type`. Recovers the ~60 built-in names (plus any registered custom
   operator) as output keys. The prefix is a `char` rather than a fixed `$`,
@@ -67,7 +67,7 @@ files cannot drift.
   back: in templating mode it re-parsed as an ordinary output field, so
   an erroring rule round-tripped into a *successful* one returning
   `{"<invalid args>": null}` as data; outside templating it re-parsed as
-  an unknown operator, losing which op actually failed. The marker now
+  an unknown operator, losing which op failed. The marker now
   serialises as the offending rule verbatim, `{"<op>":
   <args>}`, which recompiles to the same node and raises the same error.
   The marker retains its raw arguments to make that possible, which also

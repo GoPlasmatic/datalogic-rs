@@ -2,10 +2,10 @@
 
 Two layers:
 
-- **Rust unit tests** (`*.rs` in this directory) — exercise specific
+- **Rust unit tests** (`*.rs` in this directory): exercise specific
   modules (compile, evaluate, arena, custom operators, threading, etc.).
-- **JSONLogic compatibility suite** (`suites/`) — large data-driven
-  battery driven by `test_jsonlogic.rs`.
+- **JSONLogic compatibility suite** (`suites/`): a large data-driven
+  battery that `test_jsonlogic.rs` runs.
 
 ## Running
 
@@ -21,7 +21,7 @@ cargo test -p datalogic-rs --all-features
 # Single Rust file (most files require at least --features serde_json)
 cargo test -p datalogic-rs --all-features --test basic_test
 
-# Just the JSONLogic suite (reads suites/index.json — needs templating + serde_json)
+# Only the JSONLogic suite (reads suites/index.json; needs templating + serde_json)
 cargo test -p datalogic-rs --all-features --test test_jsonlogic
 
 # A specific JSON suite, with output. Path is relative to crates/datalogic-rs
@@ -32,9 +32,9 @@ JSONLOGIC_TEST_FILE=tests/suites/arithmetic/plus.json \
 
 ## Suite format
 
-Each file in `suites/` is a JSON array of test-case objects. Strings
-inside the array are skipped — used as section headers in the test
-output:
+Each file in `suites/` is a JSON array of test-case objects. The runner
+skips strings inside the array and uses them as section headers in the
+test output:
 
 ```json
 [
@@ -46,7 +46,7 @@ output:
     "result": 3
   },
   {
-    "description": "Error case — NaN from string",
+    "description": "Error case: NaN from string",
     "rule": { "+": ["text", 1] },
     "data": null,
     "error": { "type": "NaN" }
@@ -68,28 +68,28 @@ Test case fields:
 | `requires`           | no       | Array of cargo feature names the case needs beyond its operators, e.g. `["datetime"]` for a rule whose *data* only carries meaning under a feature. Skipped when absent. |
 
 The runner builds one engine per distinct `(templating, template_key_escape)`
-pair on first use, so a suite can mix flavours freely — including setting
+pair on first use, so a suite can mix flavours freely, including setting
 `template_key_escape` with `templating` absent, to pin that the escape is
 inert outside templating mode.
 
-`suites/index.json` lists every file the harness should run; new
-suites must be added there.
+`suites/index.json` lists every file the harness should run; add new
+suites there.
 
 ## Reduced-feature builds
 
-The index is feature-agnostic — it lists every suite — but a build without,
+The index is feature-agnostic (it lists every suite), but a build without,
 say, `ext-control` cannot evaluate `switch`. The runner therefore skips a case
-when it invokes an operator this build did not compile in, reporting the count
-so a run stays honest about its coverage:
+when it invokes an operator this build did not compile in, and reports the
+skip count so a run shows its real coverage:
 
 ```
 TOTAL RESULTS: 1142 passed, 0 failed, 572 skipped
 ```
 
-Detection walks the rule for single-key objects — how an operator call is
-spelled — and matches them against `GATED_OPERATORS` in the runner. That table
-is checked against `Engine::builtin_operator_names()` by
-`gated_operator_table_matches_engine`, so it cannot silently drift. A
+Detection walks the rule for single-key objects (how an operator call is
+spelled) and matches them against `GATED_OPERATORS` in the runner.
+`gated_operator_table_matches_engine` checks that table against
+`Engine::builtin_operator_names()`, so it cannot silently drift. A
 misspelled operator is deliberately *not* in the table, so unknown-operator
 cases still assert rather than being skipped.
 

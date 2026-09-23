@@ -1,13 +1,13 @@
 # Adding a language binding
 
 Each language binding lives as a sibling crate under `bindings/<lang>/` and
-follows the same conventions, so a new binding can be added without
+follows the same conventions, so you can add a new binding without
 re-deriving the layout.
 
 ## Naming
 
 Every binding's published artifact follows the **`datalogic-<lang>`** pattern.
-`<lang>` is the short, established suffix for the target language — `rs` for
+`<lang>` is the short, established suffix for the target language: `rs` for
 Rust, `py` for Python, `wasm` for WebAssembly, `rb` for Ruby, `go` for Go,
 `java` / `kt` / `swift` for the JVM/mobile family.
 
@@ -15,17 +15,17 @@ Rust, `py` for Python, `wasm` for WebAssembly, `rb` for Ruby, `go` for Go,
 |---|---|---|---|
 | Rust | `datalogic-rs` | `datalogic-rs` | crates.io |
 | WebAssembly | `datalogic-wasm` | **`@goplasmatic/datalogic-wasm`** | npm |
-| Node native | `datalogic-node` | `@goplasmatic/datalogic-node` (first-class Node target — WASM `@goplasmatic/datalogic-wasm` ships alongside for browsers / Deno / Bun / Workers) | npm |
+| Node native | `datalogic-node` | `@goplasmatic/datalogic-node` (recommended for Node; the WASM `@goplasmatic/datalogic-wasm` ships alongside for browsers / Deno / Bun / Workers) | npm |
 | Python | `datalogic-py` | `datalogic-py` (PyPI) → `import datalogic_py` | PyPI |
-| C ABI | `datalogic-c` | shared `cdylib`/`staticlib` + header (consumed by Go/JVM/.NET/PHP in-tree, not separately published) | — |
+| C ABI | `datalogic-c` | shared `cdylib`/`staticlib` + header (consumed by Go/JVM/.NET/PHP in-tree, not separately published) | none |
 | Go | `datalogic-go` | `github.com/GoPlasmatic/datalogic-rs/bindings/go/v5` (in-tree module; `/v5` major-version suffix required by Go modules) | Go modules |
-| JVM | (no Cargo crate — Maven module) | `io.github.goplasmatic:datalogic` | Maven Central |
-| .NET | (no Cargo crate — .NET project) | `Goplasmatic.Datalogic` | NuGet |
-| PHP | (no Cargo crate — Composer package) | `goplasmatic/datalogic` | Packagist |
+| JVM | (no Cargo crate; Maven module) | `io.github.goplasmatic:datalogic` | Maven Central |
+| .NET | (no Cargo crate; .NET project) | `Goplasmatic.Datalogic` | NuGet |
+| PHP | (no Cargo crate; Composer package) | `goplasmatic/datalogic` | Packagist |
 | _future_ Ruby | `datalogic-rb` | `datalogic-rb` | RubyGems |
 
 For Python the PyPI distribution name is `datalogic-py` but the Python
-**module** name is `datalogic_py` — Python doesn't allow hyphens in
+**module** name is `datalogic_py`: Python doesn't allow hyphens in
 import paths, and PyPI's normalisation already treats hyphens and
 underscores as equivalent for installation.
 
@@ -44,17 +44,17 @@ a deprecation notice on `npm install` pointing them at the new name.
 | Dep on core | `datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features = [...explicit list...] }`: the `version` is the semver-compatible floor (every binding pins `"5.0"`), and the binding inlines the feature set it wants |
 | Core feature | **No umbrella feature in core.** The binding owns its operator surface; `crates/datalogic-rs/Cargo.toml` stays free of binding-specific bundling so the published crate is binding-agnostic |
 | Tests | The binding's native layout and runner: `tests/` + pytest (Python), `__test__/` + `node --test` (Node), root-level `*_test.go` + `go test` (Go), `src/test/` + JUnit (JVM), xunit (.NET), PHPUnit (PHP), `wasm-pack test` (WASM) |
-| CI | A pair of jobs added to `.github/workflows/release.yml` — `<lang>-build-*` (one or more, possibly a matrix) followed by `publish-<lang>` (`needs: publish-crate` so a binding never ships ahead of core) |
-| Release tags | `v*` (e.g. `v5.1.0`) — single unified trigger. One tag push runs validate + tests, publishes core, then fans out every binding in parallel. |
+| CI | A pair of jobs added to `.github/workflows/release.yml`: `<lang>-build-*` (one or more, possibly a matrix) followed by `publish-<lang>` (`needs: publish-crate` so a binding never ships ahead of core) |
+| Release tags | `v*` (e.g. `v5.1.0`), a single unified trigger. One tag push runs validate + tests, publishes core, then fans out every binding in parallel. |
 | Versioning | Bindings track the core version exactly (5.3.0 → 5.3.0). `validate` fails if any binding's `Cargo.toml` / `pyproject.toml` / `package.json` / `Datalogic.csproj` / `pom.xml` drifts from core (`composer.json` carries no version: Packagist resolves it from the tag, and the Go module version lives in the `bindings/go/vX.Y.Z` tag). |
 
 ## Why these conventions
 
 - **Excluded from root workspace.** Bindings pull in language-specific
   build deps (pyo3, napi, jni, …) that bloat the default `cargo test
-  --workspace --all-features` and require contributors to install
-  language toolchains (Python interpreter, Node.js, JDK) just to run
-  Rust tests. Excluding keeps the core's dev loop fast.
+  --workspace --all-features` and would force contributors who only
+  want to run Rust tests to install language toolchains (Python
+  interpreter, Node.js, JDK). Excluding keeps the core's dev loop fast.
 
 - **`cdylib` + `rlib`.** `cdylib` is the importable artifact every
   binding needs (`.so`/`.pyd`/`.dll`). `rlib` lets a downstream Rust
@@ -64,7 +64,7 @@ a deprecation notice on `npm install` pointing them at the new name.
 - **No umbrella feature in core.** Each binding inlines the explicit
   feature list it wants in its `datalogic-rs` dep stanza
   (`features = ["serde_json", "templating", "datetime", …]`). The core
-  crate stays binding-agnostic — adding or removing a binding never
+  crate stays binding-agnostic: adding or removing a binding never
   touches `crates/datalogic-rs/Cargo.toml`. The trade-off is that bumping a
   shared operator family across all bindings is a multi-file edit, but
   that's a rare event and explicit listing makes each binding's surface
@@ -73,11 +73,11 @@ a deprecation notice on `npm install` pointing them at the new name.
 - **Single unified release workflow.** Every binding's release jobs
   live in `.github/workflows/release.yml`. The flow is: validate +
   tests → publish core → fan out bindings in parallel
-  (wasm → ui chain alongside python wheels → publish-python). One
-  tag push, one workflow run, one set of status checks. The trade-off
-  is that a Python wheel-build failure shows up in the same run as
-  core/wasm — but the bindings are independent jobs, so a failure in
-  one doesn't roll back the others.
+  (wasm → ui chain alongside python wheels → publish-python). A
+  single tag push produces one workflow run with one set of status
+  checks. The trade-off is that a Python wheel-build failure shows up
+  in the same run as core/wasm. The bindings are independent jobs,
+  though, so a failure in one doesn't roll back the others.
 
 ## Existing bindings
 
@@ -86,7 +86,7 @@ a deprecation notice on `npm install` pointing them at the new name.
 | WebAssembly | `bindings/wasm/` | wasm-bindgen + wasm-pack | npm: `@goplasmatic/datalogic-wasm` |
 | Node native | `bindings/node/` | napi-rs + napi-cli (per-platform `.node` prebuilds with `optionalDependencies`) | npm: `@goplasmatic/datalogic-node` |
 | Python | `bindings/python/` | pyo3 + maturin (abi3-py310) | PyPI: `datalogic-py` |
-| C ABI | `bindings/c/` | `extern "C"` + cbindgen-generated header | (not separately published — consumed in-tree by Go/JVM/.NET/PHP) |
+| C ABI | `bindings/c/` | `extern "C"` + cbindgen-generated header | (not separately published; consumed in-tree by Go/JVM/.NET/PHP) |
 | Go | `bindings/go/` | cgo over `bindings/c/` (static link to `libdatalogic_c.a`) | Go modules: `github.com/GoPlasmatic/datalogic-rs/bindings/go/v5` |
 | JVM | `bindings/jvm/` | FFM over `bindings/c/` cdylib | Maven Central: `io.github.goplasmatic:datalogic` |
 | .NET | `bindings/dotnet/` | P/Invoke (`LibraryImport`) over `bindings/c/` cdylib | NuGet: `Goplasmatic.Datalogic` |
@@ -113,29 +113,28 @@ in how the registration is plumbed into their constructor surface:
 
 **Built-ins win** on every binding: registering a name that collides
 with a built-in JSONLogic operator (`+`, `if`, `var`, …) has no effect
-at evaluation time — the built-in dispatches first.
+at evaluation time: the built-in dispatches first.
 
 ### Two npm packages, one engine
 
-The JS-side surface is intentionally split into two packages that share
-the Rust core:
+The JS side ships as two packages that share the Rust core:
 
-- **`@goplasmatic/datalogic-node`** is the first-class Node target.
+- **`@goplasmatic/datalogic-node`** is the native Node target.
   napi-rs gives the binding direct access to V8 types and per-platform
-  native code — the same Rust engine, just behind a thin FFI layer.
+  native code: the same Rust engine behind a thin FFI layer.
   Node services should pick this by default.
 - **`@goplasmatic/datalogic-wasm`** is the WebAssembly build. Run it in
   browsers, Deno, Bun, Cloudflare Workers, or any other runtime where a
   single artifact across platforms beats per-platform native prebuilds.
   Node consumers who want one artifact shared with a browser frontend
-  can still use it — but the native package is faster.
+  can still use it, but the native package is faster.
 
 Both packages track the same version and ship from the same release
 workflow; pick the one that matches the runtime, not the language.
 
 ## Shared C ABI (`bindings/c/`)
 
-The C ABI is **not a publishable binding by itself** — it's the canonical
+The C ABI is **not a publishable binding by itself**: it is the canonical
 FFI boundary that lower-level language packages consume. Languages whose
 Rust binding tools (pyo3, napi-rs, magnus, wasm-bindgen) provide a more
 ergonomic surface skip the C ABI and target their runtime directly.
@@ -144,16 +143,16 @@ consume the C ABI's cdylib + generated header.
 
 | Binding route | Goes through `bindings/c/`? | Why |
 |---|---|---|
-| Python (pyo3) | No | pyo3 gives ergonomic dict/list marshalling — better than JSON-string FFI |
-| WASM (wasm-bindgen) | No | The browser doesn't have a C ABI — wasm-bindgen is the only path |
+| Python (pyo3) | No | pyo3 gives ergonomic dict/list marshalling; better than JSON-string FFI |
+| WASM (wasm-bindgen) | No | The browser doesn't have a C ABI; wasm-bindgen is the only path |
 | Node native (napi-rs) | No | napi-rs exposes V8 types directly; cheaper than JSON-roundtrip |
-| Ruby (magnus) | No | magnus mirrors pyo3 — direct Ruby type marshalling |
-| Go (cgo) | **Yes** | No first-class Rust↔Go binding tool |
+| Ruby (magnus) | No | magnus mirrors pyo3: direct Ruby type marshalling |
+| Go (cgo) | **Yes** | No mature Rust↔Go binding tool |
 | JVM (FFM) | **Yes** | Avoids hand-writing JNI per platform |
 | .NET (P/Invoke / `LibraryImport`) | **Yes** | NativeAOT-ready source-gen P/Invoke over the cdylib |
 | PHP (FFI) | **Yes** | PHP's FFI extension consumes any cdylib + curated header |
 
-The C ABI's surface is JSON-in/JSON-out throughout — no struct
+The C ABI's surface is JSON-in/JSON-out throughout, with no struct
 marshalling at the boundary. Languages that want native-type fast paths
 either go around the C ABI (rows above) or add a thin native shim on top.
 
@@ -211,11 +210,11 @@ exclusively through it, and `main` stays binary-free.
 
 Bindings that haven't landed yet:
 
-- **Ruby** — `bindings/ruby/` via `magnus` (PR registry: RubyGems)
-- **Swift** — `swift-bridge` or UniFFI (also covers Kotlin natively)
-- **Elixir** — `rustler` NIFs
+- **Ruby**: `bindings/ruby/` via `magnus` (PR registry: RubyGems)
+- **Swift**: `swift-bridge` or UniFFI (also covers Kotlin natively)
+- **Elixir**: `rustler` NIFs
 
-The core engine is `Send + Sync` and exposes a clean compile-once /
+The core engine is `Send + Sync` and exposes a compile-once /
 evaluate-many surface (`Engine`, `Logic`, `Session`), so the same
 binding shape transfers to any language with a Rust FFI story.
 
@@ -227,7 +226,7 @@ New bindings follow this section order:
 
 1. H1: the published package name, no links
 2. Badge row (registry version, CI, license) plus the line
-   `Part of [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs) — one engine, every runtime.`
+   `Part of [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs): one engine, every runtime.`
 3. Three-sentence pitch ending with the conformance stat: every binding
    runs the same core and passes the same 1,953-case conformance
    battery (64 suites)

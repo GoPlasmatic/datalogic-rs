@@ -7,10 +7,10 @@ Drafted launch content (blog posts, channel posts, listing PR texts) and
 the external-action runbook live in `.github/launch/`, which is
 deliberately untracked (gitignored): maintainer-local reference only.
 
-## Gates — do not promote before these are true
+## Gates: do not promote before these are true
 
-1. ✅ (2026-07-15) Maven Central and Packagist actually serve the
-   packages — verified: `io.github.goplasmatic:datalogic` 5.0.1 on
+1. ✅ (2026-07-15) Maven Central and Packagist serve the packages.
+   Verified: `io.github.goplasmatic:datalogic` 5.0.1 on
    Central since 2026-07-07, `goplasmatic/datalogic` resolving on
    Packagist. Two of eight advertised install commands failing is a
    launch-killing HN comment.
@@ -23,10 +23,10 @@ deliberately untracked (gitignored): maintainer-local reference only.
    (Announcements, Q&A, Ideas, Show and tell; the issue-template
    contact link points at Q&A).
 5. ✅ (2026-07-15) `scripts/conformance-count.sh` output matches every
-   quoted stat — a stale pre-refresh geomean in the crate README was
-   fixed; `scripts/check-stats.sh` now guards this in CI.
+   quoted stat (this fixed a stale pre-refresh geomean in the crate
+   README); `scripts/check-stats.sh` now guards this in CI.
 
-## External listings (start first — longest latency)
+## External listings (start first; longest latency)
 
 - [ ] **jsonlogic.com implementations list**: PR against jwadhams'
   json-logic site repo (find via the site footer's GitHub link) adding
@@ -41,7 +41,7 @@ deliberately untracked (gitignored): maintainer-local reference only.
   `sem_ver` with byte-compatible murmur3 bucketing across 8 runtimes
   (including PHP/.NET/Java where in-process options are thin). Ask how
   compatible evaluation engines get listed. Longer-term unlock: shipping
-  actual OpenFeature *provider* packages per language.
+  OpenFeature *provider* packages per language.
 - [ ] **Awesome lists** (one PR each, after badges/examples are live):
   - Now: awesome-rust, awesome-dotnet, awesome-php,
     awesome-react-components (`datalogic-ui`), awesome-wasm.
@@ -53,9 +53,9 @@ deliberately untracked (gitignored): maintainer-local reference only.
 
 ## Launch wave (order matters)
 
-Week 1 — Rust channel:
+Week 1 (Rust channel):
 - [ ] Blog post (a) or (d) published (see titles below).
-- [ ] r/rust text post: "datalogic-rs v5 — JSONLogic engine, 10.3 ns geomean,
+- [ ] r/rust text post: "datalogic-rs v5: JSONLogic engine, 10.3 ns geomean,
   8 language bindings from one core". Lead with the one-core-many-registries
   architecture; r/rust loves release-engineering detail. Maintainer in
   comments all day.
@@ -64,7 +64,7 @@ Week 1 — Rust channel:
 - [ ] users.rust-lang.org: reply on the two existing datalogic threads with
   the v5 update; one new announcement topic.
 
-Week 2 — Show HN (the anchor):
+Week 2 (Show HN, the anchor):
 - [ ] Submit **the playground URL** (Show HN guidelines favor something
   people can try): title
   `Show HN: One JSONLogic engine for 8 languages (Rust core, ~10 ns/eval)`.
@@ -79,7 +79,7 @@ Week 2 — Show HN (the anchor):
   own products).
 - [ ] Tue–Thu, 8–10 AM ET; maintainer available 6+ hours.
 
-Week 3+ — per-ecosystem:
+Week 3+ (per-ecosystem):
 - [ ] r/node post + blog (e): the safe-eval / json-logic-js-perf angle.
 - [ ] Blog (c) + OpenFeature follow-through.
 - [ ] r/golang, r/dotnet, r/PHP, r/java staggered weekly as each
@@ -88,18 +88,18 @@ Week 3+ — per-ecosystem:
 
 ## Blog titles (map to searcher intent; publish on dev.to or a Plasmatic blog, cross-post excerpts)
 
-- (a) "json-logic-js is 80× slower than it needs to be" — perf/alternative
+- (a) "json-logic-js is 80× slower than it needs to be": perf/alternative
   intent. Respectful of the reference impl; methodology + repro mandatory.
   (Pairwise 83.6× over 24 shared suites per BENCHMARK.md 2026-07-17;
   re-verify before publishing.)
 - (b) "Same rule, eight runtimes: one JSONLogic engine across your whole
-  stack" — the positioning anchor; links the parallel examples/ folders.
+  stack": the positioning anchor; links the parallel examples/ folders.
 - (c) "Feature flags without a flag service: flagd-compatible evaluation
-  in-process" — openfeature/flagd intent.
-- (d) "Shipping one Rust core to nine registries in a single CI run" —
+  in-process": openfeature/flagd intent.
+- (d) "Shipping one Rust core to nine registries in a single CI run":
   release-engineering trust piece; r/rust + HN material.
 - (e) "Let users write formulas without eval(): sandboxed expressions in
-  Node and Python" — high-volume "safe eval alternative" searches.
+  Node and Python": high-volume "safe eval alternative" searches.
 
 ## Ongoing
 
@@ -111,7 +111,7 @@ Week 3+ — per-ecosystem:
 - Refresh BENCHMARK.md quarterly; never quote numbers older than the last
   refresh in new posts.
 
-## Metrics — snapshot fortnightly as comments on a pinned "Adoption metrics" issue
+## Metrics: snapshot fortnightly as comments on a pinned "Adoption metrics" issue
 
 GitHub traffic has a 14-day retention window; capture on schedule:
 `gh api repos/GoPlasmatic/datalogic-rs/traffic/views` and `/traffic/popular/referrers`.
@@ -121,7 +121,7 @@ GitHub traffic has a 14-day retention window; capture on schedule:
 | 1 | npm weekly: -wasm / -node / -ui | ~52 / ~5 / ~77 | 500 / 120 / 200 |
 | 2 | crates.io 90-day downloads | 24.2k | 35k |
 | 3 | npm search rank "json-logic" & "jsonlogic" | absent / wasm #12, ui #3, node absent | node+wasm top-10 both |
-| 4 | GitHub stars / referrers | 71 / — | 300 / jsonlogic.com appears |
+| 4 | GitHub stars / referrers | 71 / none | 300 / jsonlogic.com appears |
 | 5 | PyPI monthly downloads | establish at next snapshot | 10x baseline |
 | 6 | Maven + NuGet + Packagist installs | 0 / unverified / 0 | nonzero + first external issue each |
 | 7 | Docs/playground analytics | none (GitHub Pages has no analytics; consider GoatCounter, free for OSS, no cookies) | instrumented, trending up |

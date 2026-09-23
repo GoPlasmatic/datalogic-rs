@@ -4,14 +4,14 @@
 [![CI](https://github.com/GoPlasmatic/datalogic-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/GoPlasmatic/datalogic-rs/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Part of [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs) — one engine, every runtime.
+Part of [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs): one engine, every runtime.
 
 .NET bindings for [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs),
 the JSONLogic rules engine with one Rust core and official bindings for
-Rust, Node.js, the browser (WASM), Python, Go, Java, .NET, and PHP. Same
+Rust, Node.js, the browser (WASM), Python, Go, Java, .NET, and PHP.
+Compile a rule once and evaluate it many times, natively in .NET. Same
 rules, same semantics: every binding runs the same core and passes the
-same 1,953-case conformance battery (64 suites). Compile once, evaluate
-many, natively in .NET.
+same 1,953-case conformance battery (64 suites).
 
 For the cross-runtime overview and the API-tier model every binding
 implements, see the
@@ -19,9 +19,9 @@ implements, see the
 
 > **New in v5.** This package is new: there is no v4 .NET artifact. If
 > you are coming from the v4 Rust crate or the v4
-> `@goplasmatic/datalogic` WASM package, the engine's v4 → v5 changes
-> are catalogued in
-> [MIGRATION.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md).
+> `@goplasmatic/datalogic` WASM package, see
+> [MIGRATION.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md)
+> for the engine's v4 → v5 changes.
 
 ## Install
 
@@ -31,7 +31,7 @@ dotnet add package Goplasmatic.Datalogic
 
 The binding is a P/Invoke wrapper over the engine's C ABI, built on
 `LibraryImport` source-generated stubs, so the assembly is
-NativeAOT-ready out of the box. The NuGet package ships the native
+NativeAOT-ready. The NuGet package ships the native
 library under `runtimes/<rid>/native/` for every supported platform;
 `dotnet publish` picks the right one for the target RID automatically.
 No Rust toolchain needed.
@@ -101,7 +101,7 @@ var a = rule.Evaluate(data);            // thread-safe one-shot
 var b = session.Evaluate(rule, data);   // session hot path
 ```
 
-A `DataHandle` is immutable, thread-safe, and engine-independent — one
+A `DataHandle` is immutable, thread-safe, and engine-independent: one
 handle can feed rules compiled by different engines, and evaluation
 never consumes it. Dispose it after the last evaluation that uses it.
 
@@ -122,8 +122,8 @@ bool   t   = session.EvaluateTruthy(rule, data);  // JSONLogic truthiness
 `EvaluateBool` / `EvaluateInt64` / `EvaluateDouble` throw
 `EvaluateException` with `Status == EvaluationStatus.TypeMismatch`
 (error type `"TypeMismatch"`) when the rule evaluates fine but the
-result is not of the requested type. `EvaluateTruthy` never mismatches
-— it collapses any result through the engine's configured truthiness
+result is not of the requested type. `EvaluateTruthy` never mismatches:
+it collapses any result through the engine's configured truthiness
 rules (the same coercion `if` / `and` / `or` apply).
 
 ## Batch evaluation
@@ -214,14 +214,14 @@ strict.Apply("""{"+":["",1]}""", "{}");    // throws: strict rejects non-numeric
 | `truthy_evaluator` | `"javascript"`, `"python"`, `"strict_boolean"` |
 | `numeric_coercion` | object of bools: `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
 | `max_recursion_depth` | integer >= 1 |
-| `ops_budget` | integer >= 1, or `null` for unbounded — caps the work one evaluation may do; crossing it raises `BudgetExceeded` |
+| `ops_budget` | integer >= 1, or `null` for unbounded (caps the work one evaluation may do; crossing it raises `BudgetExceeded`) |
 
 The `preset` applies first; the remaining keys override individual
 fields on top of it. Every binding shares this JSON schema and parses it
 with the same core code, so a config that works here works in the
-Python, Node, and WASM bindings too. The full semantics of each knob are
-documented on the Rust crate's
-[`EvaluationConfig`](https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.EvaluationConfig.html).
+Python, Node, and WASM bindings too. The Rust crate's
+[`EvaluationConfig`](https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.EvaluationConfig.html)
+documents the full semantics of each knob.
 
 ## Error handling
 
@@ -303,7 +303,7 @@ At runtime the native library resolves in order: the
 `runtimes/<rid>/native/` layout, then the in-tree C ABI target dir. On
 first use the binding asserts the resolved library speaks C ABI v2
 (`datalogic_abi_version() == 2`) and fails loudly with a rebuild hint
-if a stale library is picked up. So a fresh clone needs the C ABI built
+if it picks up a stale library. So a fresh clone needs the C ABI built
 once:
 
 ```bash

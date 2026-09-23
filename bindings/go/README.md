@@ -4,14 +4,14 @@
 [![CI](https://github.com/GoPlasmatic/datalogic-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/GoPlasmatic/datalogic-rs/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Part of [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs) — one engine, every runtime.
+Part of [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs): one engine, every runtime.
 
 Go binding for the
 [`datalogic-rs`](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs)
 JSONLogic engine. Routes through the shared C ABI at
 [`bindings/c/`](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/c)
-via cgo, linking `libdatalogic_c.a` statically — no runtime
-shared-library dependency for end-user binaries.
+via cgo, linking `libdatalogic_c.a` statically, so end-user binaries
+carry no runtime shared-library dependency.
 
 Same rules, same semantics as the Rust crate: every binding runs the
 same core and passes the same 1,953-case conformance battery
@@ -19,10 +19,11 @@ same core and passes the same 1,953-case conformance battery
 every binding implements, see the
 [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
-> **New in v5.** This Go binding is new — there is no v4 Go package. If
+> **New in v5.** This Go binding is new: there is no v4 Go package. If
 > you were calling the v4 Rust crate or the v4 `@goplasmatic/datalogic`
-> WASM package, the engine's v4 → v5 changes are catalogued in
-> [MIGRATION.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md).
+> WASM package, see
+> [MIGRATION.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md)
+> for the engine's v4 → v5 changes.
 
 ## Install
 
@@ -30,8 +31,8 @@ every binding implements, see the
 go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5@latest
 ```
 
-The `/v5` suffix is required by Go modules for any major version ≥ 2
-(see [Go modules ref — major version
+Go modules require the `/v5` suffix for any major version ≥ 2
+(see [Go modules ref: major version
 suffixes](https://go.dev/ref/mod#major-version-suffixes)); the
 binding's own version tracks the core crate's, so `v5.x.y` lives at
 `/v5`, `v6.x.y` will live at `/v6`, etc.
@@ -48,7 +49,7 @@ Released tags ship prebuilt static libraries for:
 | Windows ARM64 | `windows_arm64/` | `aarch64-pc-windows-gnullvm` (llvm-mingw) |
 
 cgo build tags in `cgo_<os>_<arch>.go` pick the right one at build time.
-You only need a C compiler to link — no Rust toolchain required.
+You only need a C compiler to link; no Rust toolchain required.
 
 ## Module path
 
@@ -123,7 +124,7 @@ The Go binding mirrors the Rust engine's
 | One-shot     | `datalogic.Apply(rule, data)`                | Ad-hoc evaluation, one rule + one data shape            |
 | Engine       | `datalogic.NewEngine().Apply(rule, data)`    | Engine reuse without compile-once                       |
 | Compile once | `engine.Compile(rule)` → `rule.Evaluate(data)` | Same rule evaluated against many data inputs          |
-| Session      | `engine.Session()` → `session.Evaluate(rule, data)` | Hot loops — arena reuse per goroutine            |
+| Session      | `engine.Session()` → `session.Evaluate(rule, data)` | Hot loops: arena reuse per goroutine             |
 | Data handle  | `datalogic.ParseData(json)` → `session.EvaluateData(rule, data)` | Same payload evaluated many times: parse once, zero parse work per call |
 | Typed        | `session.EvaluateBool/Int64/Float64/Truthy(rule, data)` | Predicates and scalar results, no JSON decode on the way out |
 | Batch        | `session.EvaluateBatch(rule, datas)` / `session.EvaluateMany(rules, data)` | Many evaluations per native call, per-item errors |
@@ -216,10 +217,10 @@ out, _ := engine.Apply(`{"double":[21]}`, `{}`) // "42"
 
 ## Engine configuration
 
-Non-default evaluation behavior (strict arithmetic, division-by-zero
-policy, truthiness flavor, recursion limits) is set on the builder as a
-JSON object string, parsed by the same shared config parser every
-binding uses:
+Set non-default evaluation behavior (strict arithmetic, division-by-zero
+policy, truthiness flavor, recursion limits) on the builder as a JSON
+object string; the same shared config parser every binding uses reads
+it:
 
 ```go
 b := datalogic.NewEngineBuilder()
@@ -237,19 +238,19 @@ All keys are optional. `preset` (`"default"`, `"safe_arithmetic"`, or
 `"strict"`) picks the starting point; the remaining keys override
 individual fields on top of it: `arithmetic_nan_handling`,
 `division_by_zero`, `loose_equality_errors`, `truthy_evaluator`,
-`numeric_coercion`, `max_recursion_depth`, and `ops_budget`. The accepted
-values for each key are listed on the `SetConfigJSON` doc comment; the
-underlying knobs are described in the
-[Rust crate README](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs#readme).
+`numeric_coercion`, `max_recursion_depth`, and `ops_budget`. The
+`SetConfigJSON` doc comment lists the accepted values for each key; the
+[Rust crate README](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs#readme)
+describes the underlying knobs.
 
-`ops_budget` is the one worth knowing about for untrusted rules: an
-integer ceiling on the operations one evaluation may charge — one per
-node the engine dispatches, one per item an iterator walks, plus what
-operators charge for the data they move — or `null` for unbounded (the
-default). Crossing it fails with `Error.Type == "BudgetExceeded"` before
-the work is done, and a `try` in the rule cannot recover from it. Unlike a
-wall-clock timeout the count is deterministic, so the same rule and data
-are refused on every machine.
+`ops_budget` matters most for untrusted rules: an integer ceiling on
+the operations one evaluation may charge (one per node the engine
+dispatches, one per item an iterator walks, plus what operators charge
+for the data they move), or `null` for unbounded (the default). Crossing
+it fails with `Error.Type == "BudgetExceeded"` before the engine does the
+work, and a `try` in the rule cannot recover from it. Unlike a
+wall-clock timeout the count is deterministic, so every machine refuses
+the same rule and data.
 
 ```go
 b := datalogic.NewEngineBuilder()
@@ -308,9 +309,9 @@ if err != nil {
 | Type      | Pattern                                                                            |
 |-----------|------------------------------------------------------------------------------------|
 | `Engine`  | Construct once; share across goroutines                                            |
-| `Rule`    | Compile once; share across goroutines — `Evaluate` is safe to call from many       |
+| `Rule`    | Compile once; share across goroutines: `Evaluate` is safe to call from many        |
 | `DataHandle` | Parse once; immutable, share across goroutines and engines                      |
-| `Session` | One per goroutine — the per-task workhorse                                         |
+| `Session` | One per goroutine: the per-task workhorse                                          |
 | `TracedSession` | Share across goroutines; every `Evaluate` uses a fresh internal arena        |
 
 ## Performance
@@ -345,7 +346,7 @@ loudly at init instead of corrupting at call time.
 
 - [datalogic-rs repository](https://github.com/GoPlasmatic/datalogic-rs#readme)
 - [Rust crate deep-dive](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs#readme)
-- [Documentation — Go](https://goplasmatic.github.io/datalogic-rs/go/installation.html)
+- [Documentation: Go](https://goplasmatic.github.io/datalogic-rs/go/installation.html)
 - [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/)
 - [JSONLogic specification](https://jsonlogic.com)
 - [C ABI internals](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/c#readme)

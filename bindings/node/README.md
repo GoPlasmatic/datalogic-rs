@@ -7,7 +7,7 @@ Native Node.js bindings for
 [`datalogic-rs`](https://github.com/GoPlasmatic/datalogic-rs), a fast
 Rust implementation of [JSONLogic](http://jsonlogic.com). Same rules,
 same semantics as the Rust crate, with the **compile-once /
-evaluate-many** pattern exposed natively — compile a rule once and
+evaluate-many** pattern exposed natively: compile a rule once and
 evaluate it against thousands of data inputs without re-parsing. Every
 binding runs the same core and passes the same 1,953-case conformance
 battery (64 suites).
@@ -16,7 +16,7 @@ For the cross-runtime overview and the API-tier model every binding
 implements, see the
 [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
-> **New in v5.** This native Node binding is new — there is no v4 Node
+> **New in v5.** This native Node binding is new: there is no v4 Node
 > package. If you were running JSONLogic under Node via v4's
 > `@goplasmatic/datalogic` (WASM), the v5 upgrade path for production
 > Node services is to install **this** package. See
@@ -24,12 +24,12 @@ implements, see the
 > for the full cookbook.
 
 > **Two npm packages, one engine.** `@goplasmatic/datalogic-wasm` is the
-> WebAssembly build — runs in browsers, Node, Deno, Bun. This package
+> WebAssembly build and runs in browsers, Node, Deno, and Bun. This package
 > (`@goplasmatic/datalogic-node`) is the **native** Node build via
 > [napi-rs](https://napi.rs/), pulling in the same Rust engine through a
-> per-platform prebuilt `.node` artifact. Pick this one when you're on
-> Node and want maximum throughput; pick the WASM package when you need
-> to run in the browser or want a single artifact across runtimes.
+> per-platform prebuilt `.node` artifact. Pick this one on Node when
+> throughput matters; pick the WASM package when you need to run in the
+> browser or want a single artifact across runtimes.
 
 ## Install
 
@@ -37,8 +37,8 @@ implements, see the
 npm install @goplasmatic/datalogic-node
 ```
 
-Prebuilt platform binaries are published as `optionalDependencies`, so
-npm pulls only the `.node` file matching the consumer's platform:
+Prebuilt platform binaries ship as `optionalDependencies`, so npm pulls
+only the `.node` file matching the consumer's platform:
 
 | Platform | Architectures |
 |---|---|
@@ -47,7 +47,7 @@ npm pulls only the `.node` file matching the consumer's platform:
 | macOS         | x64, arm64 |
 | Windows       | x64, arm64 |
 
-Node 18 and newer are supported.
+The package supports Node 18 and newer.
 
 ## Quick start
 
@@ -62,8 +62,8 @@ const result = apply(
 ```
 
 Rules and data are plain JS values, and both arguments also accept JSON
-text: a JS string passed as `rule` or `data` is parsed as JSON rather
-than treated as a string value. To evaluate against a data document
+text: the binding parses a JS string passed as `rule` or `data` as JSON
+rather than treating it as a string value. To evaluate against a data document
 that *is* a JSON string, pass it encoded
 (`rule.evaluate(JSON.stringify('hello'))`), or use the string-in
 methods (`evaluateStr`) or a `DataHandle`.
@@ -104,8 +104,8 @@ for (const payload of inputs) {
 }
 ```
 
-Sessions hold non-`Sync` state and must not be shared between worker
-threads — open one per worker.
+Sessions hold non-`Sync` state, so don't share them between worker
+threads; open one per worker.
 
 ## Data handles, typed results, and batch evaluation
 
@@ -113,10 +113,10 @@ New in 5.0.1, mirroring the C ABI v2 tiers. A `DataHandle` is an
 immutable, pre-parsed JSON document: parse a payload once with
 `new DataHandle(json)` and every evaluation against it skips JSON
 parsing entirely. Handles are engine-independent (one handle can feed
-rules compiled by different engines) and are never consumed or mutated
-by evaluation. They are per-JS-thread — the underlying parsed tree is
-`Send` but not `Sync`, which matches JS single-threaded semantics: a
-handle cannot be shared across worker threads, so parse one per worker.
+rules compiled by different engines), and evaluation never consumes or
+mutates them. They are per-JS-thread: the underlying parsed tree is
+`Send` but not `Sync`, which matches JS single-threaded semantics. You
+cannot share a handle across worker threads, so parse one per worker.
 
 ```js
 import { Engine, DataHandle } from '@goplasmatic/datalogic-node';
@@ -166,14 +166,14 @@ for (const [i, o] of outcomes.entries()) {
 
 Item failures land in `{ status: 'rejected', reason: { tag, message,
 operator? } }` and never throw; argument errors (a non-handle in the
-array, a null rule, ...) do throw. The session arena is reset between
+array, a null rule, ...) do throw. The session resets its arena between
 items.
 
 One Node-specific note on engines: a `Rule` carries a reference to the
 engine that compiled it, but every `Session` method evaluates the rule's
-compiled logic with the **session's** engine — its configuration and
-custom operators apply, and (unlike the C ABI) no engine-identity check
-is performed. Compile rules and open sessions on the same engine unless
+compiled logic with the **session's** engine: its configuration and
+custom operators apply, and (unlike the C ABI) the binding performs no
+engine-identity check. Compile rules and open sessions on the same engine unless
 you specifically want that substitution.
 
 ## Async evaluation
@@ -185,7 +185,7 @@ returns a `Promise<string>`:
 const result = await rule.evaluateStrAsync('{"age": 25}');
 ```
 
-It is **not** faster per operation than `evaluateStr` — the win is
+It is **not** faster per operation than `evaluateStr`. The gain is
 event-loop hygiene: a large payload's parse + evaluate + serialize runs
 off the JS thread, so reach for it when payloads are big enough to
 cause noticeable event-loop stalls or to overlap evaluation with other
@@ -193,7 +193,7 @@ work. String input only (a `DataHandle` is pinned to the JS thread and
 cannot cross to the pool). Rejections carry the same structured fields
 as synchronous throws (`name`, `errorType`, `operator`, `nodeIds`,
 `path`). Rules from engines with custom operators reject if evaluation
-reaches a JS-backed operator — the callback is pinned to the JS thread.
+reaches a JS-backed operator, because the callback is pinned to the JS thread.
 
 ## Errors
 
@@ -238,7 +238,7 @@ try {
 | `Session.evaluate(rule, data)` | Evaluate with arena reuse |
 | `Session.evaluateStr(rule, data)` | Same, returns JSON string |
 | `Session.evaluateData(rule, handle)` | Handle in, JS value out, arena reuse |
-| `Session.evaluateDataStr(rule, handle)` | Handle in, JSON string out — fastest path |
+| `Session.evaluateDataStr(rule, handle)` | Handle in, JSON string out; fastest path |
 | `Session.evaluateBool(rule, handle)` | Strict boolean result (`TypeMismatch` otherwise) |
 | `Session.evaluateNumber(rule, handle)` | Any JSON number result (`TypeMismatch` otherwise) |
 | `Session.evaluateTruthy(rule, handle)` | Engine-truthiness boolean; never mismatches |
@@ -253,7 +253,7 @@ Constructor options:
 new Engine({ templating: true, templateKeyEscape: '$', config: { preset: 'strict' } })
 ```
 
-`templating: true` enables the engine's output-shaping templating mode —
+`templating: true` enables the engine's output-shaping templating mode:
 multi-key objects in a rule compile to templates with embedded JSONLogic.
 `templateKeyEscape` is an optional single-character prefix (see below).
 `config` sets the engine's evaluation configuration; see
@@ -264,7 +264,7 @@ multi-key objects in a rule compile to templates with embedded JSONLogic.
 A single-key object is an operator invocation, so in templating mode a key
 naming a built-in (`type`, `map`, `if`, `length`, …) or a registered custom
 operator runs the operator instead of becoming an output field. There is no
-error, just the wrong result. Set `templateKeyEscape` to a single-character
+error, only the wrong result. Set `templateKeyEscape` to a single-character
 prefix to recover those keys: exactly one leading prefix is stripped from
 every template key, and an escaped key is never resolved as an operator.
 
@@ -298,7 +298,7 @@ All keys are optional:
 | `truthy_evaluator` | `'javascript'`, `'python'`, `'strict_boolean'` |
 | `numeric_coercion` | object of booleans: `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
 | `max_recursion_depth` | integer >= 1 |
-| `ops_budget` | integer >= 1, or `null` for unbounded — caps the work one evaluation may do; crossing it raises `BudgetExceeded` |
+| `ops_budget` | integer >= 1, or `null` for unbounded (caps the work one evaluation may do; crossing it raises `BudgetExceeded`) |
 
 `preset` selects the starting point and the remaining keys override
 individual fields on top of it:
@@ -317,8 +317,8 @@ silently ignored.
 
 ### Metering: what a rule costs
 
-`evalMetered` returns `{ result, ops }` — the result as a JSON string and
-the operations the evaluation charged — so you can see what a rule costs
+`evalMetered` returns `{ result, ops }` (the result as a JSON string and
+the operations the evaluation charged), so you can see what a rule costs
 whether or not a budget is set. `Rule.evaluateMetered(data, budget?)` is
 the same thing on an already-compiled rule.
 
@@ -336,9 +336,9 @@ One operation is one node the engine dispatches, one item an iterator
 walks, or whatever an operator charges for the data it moves (the tensor
 family prices itself in elements). Literals and constant-folded subtrees
 cost nothing. Exceeding the budget throws an `EvaluateError` with
-`errorType: 'BudgetExceeded'`, carrying `budget` and `spent` — the
-evaluation is refused before the work, and a `try` in the rule cannot
-recover from it.
+`errorType: 'BudgetExceeded'`, carrying `budget` and `spent`. The
+engine refuses the evaluation before doing the work, and a `try` in the
+rule cannot recover from it.
 
 ## Custom operators
 
@@ -414,9 +414,9 @@ run.expression_tree; // compile-time tree: { id, expression, children }
 ```
 
 Failures do not throw. Instead `result` is `null`, `error` carries the
-message, and `structured_error` the structured form. The rule is
-compiled with optimization disabled so every operator surfaces a step;
-expect it to be slower than `evalStr`. Use it for debugging, not hot
+message, and `structured_error` the structured form. The binding
+compiles the rule with optimization disabled so every operator surfaces a
+step; expect it to be slower than `evalStr`. Use it for debugging, not hot
 paths.
 
 ## Performance
@@ -431,19 +431,18 @@ binding, per API tier, lives in
 
 **Pick the path by your data's shape.** Three rules of thumb: compile
 once and reuse the `Rule`; when your data is already a JSON string, call
-`evaluateStr` — the string path parses directly into the engine and is
-the fastest way across the boundary at every payload size; and when the
+`evaluateStr` (the string path parses directly into the engine and is
+the fastest way across the boundary at every payload size); and when the
 same payload feeds multiple evaluations, parse it once into a
-`DataHandle` — the handle paths skip the per-call parse entirely and are
-the fastest tier of all. If your data
-lives as plain JS objects and your rules are small, be aware that a
-well-optimized pure-JS engine (e.g. `json-logic-engine`'s compiled mode)
-runs with zero boundary cost and can beat any native binding on raw
-ns/op for that shape. Reach for this package when you need string
-payloads straight from the wire, full conformance including the
-extension operators, deterministic latency and bounded memory, parallel
-evaluation across worker threads, or the same engine behaving
-identically across languages.
+`DataHandle` (the handle paths skip the per-call parse entirely and are
+the fastest tier of all). If your data lives as plain JS objects and
+your rules are small, a well-optimized pure-JS engine (e.g.
+`json-logic-engine`'s compiled mode) runs with zero boundary cost and
+can beat any native binding on raw ns/op for that shape. Reach for this
+package when you need string payloads straight from the wire, full
+conformance including the extension operators, deterministic latency and
+bounded memory, parallel evaluation across worker threads, or the same
+engine behaving identically across languages.
 
 ## Building from source
 
@@ -456,12 +455,12 @@ npm test
 
 This produces a local `datalogic-node.<platform-triple>.node`, plus
 `index.js` and `index.d.ts` loaders. The `.node`, `index.js`, and
-`index.d.ts` files are gitignored — `napi build` regenerates them.
+`index.d.ts` files are gitignored; `napi build` regenerates them.
 
 ## Learn more
 
 - [datalogic-rs repository](https://github.com/GoPlasmatic/datalogic-rs#readme)
 - [Rust crate deep-dive](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs#readme)
-- [Documentation — Node.js](https://goplasmatic.github.io/datalogic-rs/nodejs/overview.html)
+- [Documentation: Node.js](https://goplasmatic.github.io/datalogic-rs/nodejs/overview.html)
 - [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/)
 - [JSONLogic specification](https://jsonlogic.com)

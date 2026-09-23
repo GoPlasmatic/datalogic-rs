@@ -8,13 +8,13 @@ Cargo workspace + npm monorepo organized into four areas: **`crates/`**
 (Rust core), **`bindings/`** (one folder per language wrapper),
 **`ui/`** (React debugger), and **`tools/`** (dev-only).
 
-**Core** — `crates/`
+**Core**: `crates/`
 
 | Path                  | Package               | Publishes to |
 |-----------------------|-----------------------|--------------|
 | `crates/datalogic-rs` | `datalogic-rs` (Rust) | crates.io    |
 
-**Language bindings** — `bindings/`
+**Language bindings**: `bindings/`
 
 | Path              | Package                                   | Publishes to                         |
 |-------------------|-------------------------------------------|--------------------------------------|
@@ -27,17 +27,17 @@ Cargo workspace + npm monorepo organized into four areas: **`crates/`**
 | `bindings/dotnet` | `Goplasmatic.Datalogic` (P/Invoke)        | NuGet                                |
 | `bindings/php`    | `goplasmatic/datalogic` (PHP FFI)         | Packagist                            |
 
-**UI** — `ui/`
+**UI**: `ui/`
 
 | Path | Package                                        | Publishes to |
 |------|------------------------------------------------|--------------|
 | `ui` | `@goplasmatic/datalogic-ui` (React component)  | npm          |
 
-**Tools** — `tools/`
+**Tools**: `tools/`
 
-| Path              | Package                      | Publishes to |
-|-------------------|------------------------------|--------------|
-| `tools/benchmark` | `datalogic-bench` (dev-only) | —            |
+| Path              | Package                      | Publishes to  |
+|-------------------|------------------------------|---------------|
+| `tools/benchmark` | `datalogic-bench` (dev-only) | not published |
 
 ## Where to read first
 
@@ -47,7 +47,7 @@ Cargo workspace + npm monorepo organized into four areas: **`crates/`**
 - **JSONLogic test-suite schema:** [`crates/datalogic-rs/tests/README.md`](./crates/datalogic-rs/tests/README.md)
 - **v4 → v5 migration cookbook:** [`MIGRATION.md`](./MIGRATION.md)
 
-Don't re-explain the architecture or build pipeline here — those documents
+Don't re-explain the architecture or build pipeline here. Those documents
 are authoritative; link to them.
 
 ## Project-specific conventions
@@ -61,7 +61,7 @@ are authoritative; link to them.
   are gated behind `feature = "serde_json"` and the JSONLogic suite runner
   also needs `feature = "templating"`. Without `--all-features`, tests
   silently skip and you'll think they passed.
-- **Run a single JSONLogic suite** via the env-var harness — path is
+- **Run a single JSONLogic suite** via the env-var harness. The path is
   relative to `crates/datalogic-rs/` (the test binary's cwd):
   ```bash
   JSONLOGIC_TEST_FILE=tests/suites/arithmetic/plus.json \
@@ -77,7 +77,7 @@ are authoritative; link to them.
   `description`, `rule`, `data`, and either `result` or `error`. Strings
   in the array are skipped (used as section headers). Full schema in
   [`crates/datalogic-rs/tests/README.md`](./crates/datalogic-rs/tests/README.md).
-- **WASM is its own Cargo workspace** for release-profile isolation —
+- **WASM is its own Cargo workspace** for release-profile isolation:
   `cargo` commands inside `bindings/wasm/` operate on it standalone and do
   not touch the root workspace. The Python, C, and Node bindings follow
   the same pattern.

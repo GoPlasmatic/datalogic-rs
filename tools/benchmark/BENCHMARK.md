@@ -2,7 +2,7 @@
 
 Cross-library JSONLogic matrix produced by
 `tools/benchmark/src/bin/compare.rs`. This file is the canonical
-performance reference — link to it from other docs (README, blog posts,
+performance reference: link to it from other docs (README, blog posts,
 changelog) rather than re-quoting numbers inline, so updates only need
 one place.
 
@@ -20,10 +20,10 @@ subjects). For the per-call **boundary cost of each language binding**
 > **nanoseconds per evaluation** (lower is better).
 
 The matrix shows one column per **library / API tier that takes a
-precompile-once approach** — apples-to-apples cells. Convenience-API
-tiers (parsing on every call, per-call session reset, raw one-shot WASM
-string-string) are intentionally not in this matrix because their
-numbers measure API-shape costs, not engine cost. For datalogic-rs's
+precompile-once approach**, so cells compare like with like. The matrix
+leaves out convenience-API tiers (parsing on every call, per-call session
+reset, raw one-shot WASM string-string) because their numbers measure
+API-shape costs rather than engine cost. For datalogic-rs's
 own tier-by-tier numbers, see `bin/self.rs`.
 
 ## Subject reference
@@ -32,9 +32,9 @@ own tier-by-tier numbers, see `bin/self.rs`.
 |------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `dlrs:engine`                | datalogic-rs native: pre-compiled `Logic` + caller-owned `Bump`, `Engine::evaluate(...)` per call                                                                            |
 | `dlrs:wasm:compiled`         | `@goplasmatic/datalogic-wasm` (this repo, via Node): `new CompiledRule(ruleStr, false)` once + `.evaluate(dataStr)` per call                                                 |
-| `jsonlogic-rs`               | [bestowinc/json-logic-rs] 0.5 (Rust): `apply(&Value, &Value)` — no compile API, pre-parsed in setup                                                                          |
-| `json-logic-js`              | [json-logic-js] (jwadhams, JS via Node): `apply(rule, data)` — interpreted, no compile API                                                                                   |
-| `json-logic-engine`          | [json-logic-engine] (TotalTechGeek, JS via Node): `engine.run(rule, data)` — interpreted                                                                                     |
+| `jsonlogic-rs`               | [bestowinc/json-logic-rs] 0.5 (Rust): `apply(&Value, &Value)`; no compile API, pre-parsed in setup                                                                           |
+| `json-logic-js`              | [json-logic-js] (jwadhams, JS via Node): `apply(rule, data)`; interpreted, no compile API                                                                                    |
+| `json-logic-engine`          | [json-logic-engine] (TotalTechGeek, JS via Node): `engine.run(rule, data)`; interpreted                                                                                      |
 | `json-logic-engine:compiled` | [json-logic-engine] (JS via Node): `engine.build(rule)` once + `fn(data)` per call (the "12.5–20× hot path" mode advertised by the library's README)                         |
 
 [bestowinc/json-logic-rs]: https://crates.io/crates/jsonlogic-rs
@@ -45,7 +45,7 @@ own tier-by-tier numbers, see `bin/self.rs`.
 
 - **Cell value**: median of 3 timed samples. The samples themselves run
   N iterations chosen by a per-subject pilot pass to land near the
-  ~200 ms target — large N for the fast subjects, small N for the slow
+  ~200 ms target: large N for the fast subjects, small N for the slow
   ones. ns/op normalises across iteration counts so cells stay
   comparable.
 - **Self benchmark (`bin/self.rs`)**: same median-of-3 discipline, with
@@ -75,20 +75,20 @@ own tier-by-tier numbers, see `bin/self.rs`.
   step do it in setup (outside the timed loop). The cells measure
   per-call evaluation work, not per-call API shape.
 - **Aggregation rows**: arithmetic mean and **geometric mean** over the
-  finite cells in each column. Geomean is the right average for
-  cross-library comparison — one slow suite doesn't dominate the way
-  it does with arithmetic mean.
+  finite cells in each column. Use the geomean for cross-library
+  comparison: one slow suite doesn't dominate it the way it dominates
+  the arithmetic mean.
 - **Negative-test cases dropped**: suites include cases like
-  `{ "rule": ..., "error": { "type": "NaN" } }`. These are filtered out
-  for the cross-library run (`load_suite_for_compare`) because libraries
-  disagree on what "errors" and on how expensive their error path is —
+  `{ "rule": ..., "error": { "type": "NaN" } }`. The cross-library run
+  filters these out (`load_suite_for_compare`) because libraries
+  disagree on what "errors" and on how expensive their error path is;
   including them would penalise verbose-error subjects.
 - **Cell markers**:
-  - **`<n>`** — median ns/op
-  - **`<n>*`** — partial coverage; subject errored on some cases in this
+  - **`<n>`**: median ns/op
+  - **`<n>*`**: partial coverage; subject errored on some cases in this
     suite (ns/op averages over total evals, including errored ones)
-  - **`ERR`** — subject errored on >50% of cases in the suite
-  - **`—`** — subject couldn't run the suite at all (precompile failed,
+  - **`ERR`**: subject errored on >50% of cases in the suite
+  - **`—`**: subject couldn't run the suite at all (precompile failed,
     runtime missing, or operator unsupported)
 
 ## Matrix
@@ -153,7 +153,7 @@ own tier-by-tier numbers, see `bin/self.rs`.
 | geometric mean                    |        10.3 |        264.2 |              900.5 |         465.1 |             234.8 |                       63.3 |
 ```
 
-`*` partial coverage — subject errored on some cases in this suite.
+`*` partial coverage: subject errored on some cases in this suite.
 
 ### Pairwise shared-suite ratios
 
@@ -199,24 +199,24 @@ files. Lower is better:
 The geomean column aggregates whatever suites each subject completed, so
 those numbers cover different suite subsets. The pairwise column (from
 the ratio table under the matrix) compares only suites both subjects
-ran; quote it when the ratio is the claim. `json-logic-js` shares just
-the 24 spec-only suites, which is why its pairwise ratio lands above its
-geomean quotient.
+ran; quote it when the ratio is the claim. `json-logic-js` shares only
+the 24 spec-only suites, so its pairwise ratio lands above its geomean
+quotient.
 
 Headline takeaways:
 
-- **`dlrs:engine` is the fastest cell on every suite it runs** — single-digit
+- **`dlrs:engine` is the fastest cell on every suite it runs**: single-digit
   ns/op on basic arithmetic, comparison, and control-flow; double-digit on
   heavier `try` / `chained` / `scopes` patterns.
 - **`json-logic-engine:compiled` (~63 ns) is the strongest non-dlrs
-  contender** — a real, modern competitor and the only JS library in the
-  same order of magnitude. Still ~7× behind `dlrs:engine` but far
-  ahead of the reference `json-logic-js`.
-- **`dlrs:wasm:compiled` (87.5× pairwise)** — the cost is
+  contender**: a modern competitor and the only JS library in the same
+  order of magnitude. Still ~7× behind `dlrs:engine` but far ahead of
+  the reference `json-logic-js`.
+- **`dlrs:wasm:compiled` (87.5× pairwise)**: the cost is
   the V8↔WASM boundary on every call (data marshall + JSON parse + eval +
   result stringify + result marshall). Eval itself is fast; the
-  per-call string contract is what hurts — which is why the binding
-  also ships a parse-once `DataHandle` tier that removes the payload
+  per-call string contract accounts for the gap, so the binding also
+  ships a parse-once `DataHandle` tier that removes the payload
   copy + parse per call (8.3x at 8 KB; measured per tier in
   [BINDINGS-OVERHEAD.md](./BINDINGS-OVERHEAD.md)). This matrix
   deliberately keeps the string tier as the wasm column: it is the
@@ -227,7 +227,7 @@ Headline takeaways:
     validates operator names and ERRs on unknown ones; the interpreted
     mode is more lenient and runs more suites.
   - `jsonlogic-rs` ERRs on a handful of arithmetic and val-compat
-    cases — small subset of the spec it doesn't model the same way.
+    cases, a small subset of the spec it models differently.
   - History: the 2026-05-10 capture showed 12 `dlrs:wasm:compiled` ERR
     cells. Eleven were a stale artifact of the curated feature set the
     WASM package shipped back then (every operator family is compiled in
@@ -280,7 +280,7 @@ macro tier fills that gap with suites **synthesized in code**
 | `macro/deep-48`       | 48 levels of nesting; one 49-segment dotted `var` path                                     |
 | `macro/string-10kb`   | Two ~10 KB strings; `cat`, `substr` (middle and negative-start), substring `in`            |
 | `macro/eligibility`   | Realistic eligibility rule: and/or/comparisons/`missing`/`reduce` over a medium object     |
-| `macro/checkout-40`   | Realistic 40-item checkout decision (4.7 KB rule, ~26 distinct operators, 6 KB payload): completeness, risk screen, cart validation, promo pricing with cap, weight-based shipping, loyalty adjustment — **spec-compatible operators only**, so every subject runs 100% of it; the fair cross-engine row |
+| `macro/checkout-40`   | Realistic 40-item checkout decision (4.7 KB rule, ~26 distinct operators, 6 KB payload): completeness, risk screen, cart validation, promo pricing with cap, weight-based shipping, loyalty adjustment; **spec-compatible operators only**, so every subject runs 100% of it; the fair cross-engine row  |
 
 Run it against datalogic-rs alone with:
 
@@ -358,7 +358,7 @@ suite subsets when a subject errors; these ratios never mix subsets.
   json-logic-engine               4.8x slower than json-logic-engine:compiled over  7 shared suites
 ```
 
-Reading the macro matrix honestly:
+Reading the macro matrix:
 
 - `dlrs:engine` matches its self-benchmark macro numbers within a few
   percent (e.g. `macro/array-10k` at about 67 microseconds per op,
@@ -367,32 +367,31 @@ Reading the macro matrix honestly:
   built only from spec-compatible operators, byte-identical results
   verified across engines, and full coverage in every column. On it,
   `dlrs:engine` (3.3 µs) leads `json-logic-engine:compiled` (27.8 to
-  41.3 µs across captures — its macro cells jitter with V8
+  41.3 µs across captures; its macro cells jitter with V8
   inline-cache state) by 8.3x or better, with every other subject an
   order of magnitude behind. Earlier captures had this row as a
   statistical tie (28.8 vs 27.7 µs); the gap opened in two waves. First
-  the per-row iteration overhead was attacked directly: a var⊗var
+  three changes cut the per-row iteration overhead: a var⊗var
   arithmetic map fast path (the `{"*": [unit_price, qty]}` line-total
   shape), compile-time-detected predicate trees for
   `and`/`or`/`!`/`in`/truthy-var filter and quantifier bodies, and a
   remembered-index field lookup for homogeneous rows (the arena analog
-  of V8's monomorphic inline caches) — taking the row to 9.5 µs. Then
-  the 5.1.0 compile passes attacked the rule's *shape*: the checkout
+  of V8's monomorphic inline caches), taking the row to 9.5 µs. Then
+  the 5.1.0 compile passes targeted the rule's *shape*: the checkout
   rule recomputes its subtotal map+reduce in 8 places, so
   common-subexpression elimination memoizes the repeated pure aggregate
   once per evaluation, and reduce(map(...)) fusion folds the surviving
-  pipeline without materializing the intermediate array — another 2.8x,
+  pipeline without materializing the intermediate array: another 2.8x,
   to 3.3 µs.
 - **Partial cells skip real work.** None of the JS subjects implement
   the non-spec `sort` operator, so their `*` cells on the two array
   suites replace the most expensive case with a cheap throw (~1.6 µs)
-  while `dlrs:engine` actually sorts (a numeric-key
+  while `dlrs:engine` sorts (a numeric-key
   `sort_unstable` fast path keeps that case cheap now). Even with the
   sort case *included*, dlrs's array-10k cell (67.2 µs) sits at
   parity with jle:compiled's sort-free cell (65.0 µs), and its
   array-1k cell (5.3 µs) beats the corresponding sort-free 7.0 µs
-  outright — the asymmetry now biases *against* dlrs and it wins
-  anyway.
+  outright. The asymmetry now biases *against* dlrs.
 - `jsonlogic-rs` shows full coverage on the array suites but does no
   sorting either: it treats an object whose key is not a known
   operation as a raw literal and returns it unchanged, so the `sort`
@@ -408,11 +407,12 @@ Reading the macro matrix honestly:
   flag on the string object. Closing that would need a
   representation-level change (a cached ASCII bit or rope strings in
   `DataValue`).
-- With all seven suites included — sort asymmetry, string-10kb outlier
-  and all — the pairwise geomean now has `json-logic-engine:compiled`
-  1.5x slower than `dlrs:engine`. The honest label for per-row
-  iteration went from "tied with the best JS engine" to "ahead of the
-  best JS engine on every row shape except large-string slicing".
+- With all seven suites included (sort asymmetry and string-10kb
+  outlier among them), the pairwise geomean now has
+  `json-logic-engine:compiled` 1.5x slower than `dlrs:engine`. For
+  per-row iteration, dlrs went from "tied with the best JS engine" to
+  "ahead of the best JS engine on every row shape except large-string
+  slicing".
 - `dlrs:wasm:compiled` pays the V8-to-WASM string marshalling per call,
   and that cost scales with payload size: ~37 microseconds per op on
   `string-10kb` and ~2.3 ms per op on `array-10k` are boundary cost,
@@ -423,8 +423,8 @@ Reading the macro matrix honestly:
 ## Caveats
 
 - Numbers are macOS / Apple Silicon. Linux x86_64 will produce a
-  different distribution — wasm-bindgen, V8, and chrono all behave
-  somewhat differently across hosts. **Don't quote absolute numbers
+  different distribution: wasm-bindgen, V8, and chrono all behave
+  differently across hosts. **Don't quote absolute numbers
   across machines; quote ratios.**
 - Timing is wall-clock. There is no GC pause / thermal throttle
   detection. The 3-sample median rejects single-event outliers but
@@ -433,7 +433,7 @@ Reading the macro matrix honestly:
 - **The benchmark build is not the published-artifact build.** The Rust
   rows compile with the root workspace's `lto = "fat"`,
   `codegen-units = 1` release profile on the host CPU; published wheels,
-  prebuilds, and the WASM package are built by the release matrix with
+  prebuilds, and the WASM package come from the release matrix with
   their own profiles (the WASM workspace optimises for size). Treat the
   matrix as engine-vs-engine on equal footing, not as a promise for a
   specific packaged binary.
@@ -441,9 +441,9 @@ Reading the macro matrix honestly:
   above says nothing about 1k+-element arrays, 100+-key objects, or
   deep nesting; those are covered by the [macro tier](#macro-tier),
   both self-only (`self --macro`) and cross-engine (`compare --macro`).
-  The honest micro headline: single-digit nanoseconds for folded/scalar
+  The micro headline: single-digit nanoseconds for folded/scalar
   rules, 10-120 ns for context-dependent rules.
-- Local-only by design — never run in CI.
+- Local-only by design: never run in CI.
 
 ## Optimization provenance
 
@@ -468,7 +468,7 @@ filter/quantifier bodies with an indeterminate-shape fallback that
 also fixed the fast-path/general-path coercion divergences
 (`"9" >= 2`, `"5" == 5`, `true == 1` inside `filter` previously
 evaluated uncoerced), and an `Error` layout shrunk 80 -> 40 bytes. Guardrails
-that keep future optimization honest: the conformance suite, the
+that check future optimizations: the conformance suite, the
 optimized-vs-traced differential property test,
 `tests/layout_test.rs`, and the folded / non-folded split above (quote
 the non-folded geomean when the claim is about data-dependent rules).

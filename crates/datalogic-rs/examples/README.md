@@ -1,13 +1,13 @@
 # Examples
 
 Runnable demos for the Rust crate. Each one opens with a doc comment
-stating its goal; this README is the index. Examples that depend on
-opt-in features must be invoked with the matching `--features` flag (the
+stating its goal; this README is the index. To run an example that
+depends on opt-in features, pass the matching `--features` flag (the
 `required-features` block in `crates/datalogic-rs/Cargo.toml` enforces this).
 
 | Example                    | What it shows                                                                    | Required features    |
 |----------------------------|----------------------------------------------------------------------------------|----------------------|
-| `getting_started`          | The three pillars in one file — start here                                       | `templating`         |
+| `getting_started`          | The three pillars in one file; start here                                        | `templating`         |
 | `compile_once_evaluate_many` | Throughput patterns: shared `Logic` + reusable `Session`                       | _(none)_             |
 | `configuration`            | `EvaluationConfig` presets and per-field knobs                                   | _(none)_             |
 | `custom_operator`          | Implementing `CustomOperator` and registering it on the builder                  | _(none)_             |
@@ -36,6 +36,6 @@ To run *all* examples (useful before publishing), build with every feature:
 cargo build -p datalogic-rs --examples --all-features
 ```
 
-If you're unsure where to start, open `getting_started.rs` first — it
+If you're unsure where to start, open `getting_started.rs` first. It
 walks through `Engine::new`, `eval_str`, and `Session` in under a
 hundred lines.

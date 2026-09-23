@@ -3,9 +3,9 @@
 [![npm](https://img.shields.io/npm/v/@goplasmatic/datalogic-wasm)](https://www.npmjs.com/package/@goplasmatic/datalogic-wasm)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-High-performance [JSONLogic](https://jsonlogic.com/) engine for
-**browsers, Deno, Bun, Cloudflare Workers, and other edge / non-Node JS
-runtimes** — powered by WebAssembly. WASM bindings for
+[JSONLogic](https://jsonlogic.com/) engine for **browsers, Deno, Bun,
+Cloudflare Workers, and other edge / non-Node JS runtimes**, compiled to
+WebAssembly. WASM bindings for
 [`datalogic-rs`](https://github.com/GoPlasmatic/datalogic-rs).
 
 Same rules, same semantics as the Rust crate: every binding runs the
@@ -14,13 +14,13 @@ same core and passes the same 1,953-case conformance battery
 that every binding implements, see the
 [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
-> **On Node.js? Use
-> [`@goplasmatic/datalogic-node`](https://www.npmjs.com/package/@goplasmatic/datalogic-node)**
-> — a native per-platform build that is materially faster than WASM
-> under Node; this package is the right pick for browsers, edge, Deno,
-> Bun, or a single artifact across Node + browser. Coming from
-> `@goplasmatic/datalogic` (v4)? This package is the v5 rename: one
-> flag changed (`preserve_structure` → `templating`), see
+> **On Node.js, use
+> [`@goplasmatic/datalogic-node`](https://www.npmjs.com/package/@goplasmatic/datalogic-node)**,
+> a native per-platform build that is materially faster than WASM
+> under Node. This package fits browsers, edge, Deno, Bun, or a single
+> artifact across Node + browser. If you are coming from
+> `@goplasmatic/datalogic` (v4), this package is the v5 rename: one
+> flag changed (`preserve_structure` → `templating`); see
 > [MIGRATION.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md#javascript--npm-consumers).
 
 ## Install
@@ -29,8 +29,8 @@ that every binding implements, see the
 npm install @goplasmatic/datalogic-wasm
 ```
 
-The published package is **pre-built** — no Rust or WASM toolchain
-required to consume it. If you want to build from source instead, see
+The published package is **pre-built**, so you need no Rust or WASM
+toolchain to consume it. If you want to build from source instead, see
 [Building from source](#building-from-source).
 
 ## Quick start
@@ -51,7 +51,7 @@ console.log(result); // "true"
 const score = evaluate('{"var": "user.age"}', '{"user": {"age": 25}}', false);
 console.log(score); // "25"
 
-// Compile once, evaluate many — faster for repeated calls
+// Compile once, evaluate many: faster for repeated calls
 const rule = new CompiledRule('{"+": [{"var": "a"}, {"var": "b"}]}', false);
 console.log(rule.evaluate('{"a": 1,  "b": 2}'));  // "3"
 console.log(rule.evaluate('{"a": 10, "b": 20}')); // "30"
@@ -73,7 +73,7 @@ console.log(rule.evaluate('{"a": 10, "b": 20}')); // "30"
 
 ### Node.js (WASM path)
 
-For most Node workloads you should prefer the native binding —
+For most Node workloads, prefer the native binding,
 [`@goplasmatic/datalogic-node`](https://www.npmjs.com/package/@goplasmatic/datalogic-node).
 The WASM path below is supported and works fine; reach for it when you
 want a single artifact shared between a Node backend and a browser
@@ -134,17 +134,17 @@ The WASM binding mirrors the Rust engine's
 
 ### `evaluate(logic, data, templating)`
 
-One-shot evaluation. Parses the rule each call — fine for ad-hoc use,
-but reach for `CompiledRule` if you call this in a loop.
+One-shot evaluation. Parses the rule on each call, which is fine for
+ad-hoc use; reach for `CompiledRule` if you call this in a loop.
 
 **Parameters**
 
-- `logic` *(string)* — JSON string containing the JSONLogic expression.
-- `data` *(string)* — JSON string containing the data to evaluate against.
-- `templating` *(boolean)* — If `true`, enables templating mode: multi-key
+- `logic` *(string)*: JSON string containing the JSONLogic expression.
+- `data` *(string)*: JSON string containing the data to evaluate against.
+- `templating` *(boolean)*: If `true`, enables templating mode: multi-key
   objects compile to output-shaping templates with embedded JSONLogic.
 
-**Returns** — JSON string with the result.
+**Returns:** JSON string with the result.
 
 **Throws:** a real `Error` object on invalid JSON or evaluation
 failure; see [Error handling](#error-handling) for the shape.
@@ -154,7 +154,7 @@ evaluate('{"==": [{"var": "x"}, 5]}', '{"x": 5}', false);             // "true"
 evaluate('{"+": [1, 2, 3]}', '{}', false);                            // "6"
 evaluate('{"map": [[1,2,3], {"+": [{"var": ""}, 1]}]}', '{}', false); // "[2,3,4]"
 
-// Templating mode — multi-key object becomes a response template
+// Templating mode: multi-key object becomes a response template
 evaluate('{"name": {"var": "user"}, "active": true}',
          '{"user": "Alice"}', true);
 // '{"name":"Alice","active":true}'
@@ -174,8 +174,8 @@ rule.evaluate('{"age": 16}'); // "false"
 
 **Constructor:** `new CompiledRule(logic, templating, config?, templateKeyEscape?)`
 
-- `logic` *(string)* — JSON string containing the JSONLogic expression.
-- `templating` *(boolean)* — Enable templating mode.
+- `logic` *(string)*: JSON string containing the JSONLogic expression.
+- `templating` *(boolean)*: Enable templating mode.
 - `config` *(string | object, optional)*: Evaluation config for this
   rule's internal engine, as a JSON string or a plain object. Same keys
   as the engine-level config; see
@@ -190,20 +190,20 @@ rule.evaluate('{"age": 16}'); // "false"
 
 **Methods**
 
-- `evaluate(data: string): string` — evaluate the compiled rule against
+- `evaluate(data: string): string`: evaluate the compiled rule against
   a JSON data string. Returns a JSON string.
-- `evaluateData(data: DataHandle): string` — evaluate against a
+- `evaluateData(data: DataHandle): string`: evaluate against a
   [parse-once data handle](#datahandle-parse-once-data) instead of a
   string: no data copy or parse per call.
 
 ### `evaluateWithTrace(logic, data, templating)`
 
 Evaluate and return a step-by-step execution trace. Useful for
-inspector UIs and debugging — the React debugger
+inspector UIs and debugging; the React debugger
 ([`@goplasmatic/datalogic-ui`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/ui/README.md)) consumes this shape
 directly.
 
-**Returns** — JSON string containing a `TracedResult`:
+**Returns:** JSON string containing a `TracedResult`:
 
 ```javascript
 const trace = evaluateWithTrace('{"and": [true, {"var": "x"}]}',
@@ -272,7 +272,7 @@ See [Engine configuration](#engine-configuration) for `config`.
 A single-key object is an operator invocation, so in templating mode a key
 naming a built-in (`type`, `map`, `if`, `length`, ...) or a registered
 custom operator runs the operator instead of becoming an output field.
-There is no error, just the wrong result. Set `templateKeyEscape` to a
+There is no error, only the wrong result. Set `templateKeyEscape` to a
 single-character prefix to recover those keys: exactly one leading prefix
 is stripped from every template key, and an escaped key is never resolved
 as an operator.
@@ -354,9 +354,9 @@ session within the Worker that created it, never across Workers.
 ## DataHandle: parse-once data
 
 Every string-taking evaluation above copies the data JSON across the
-JS↔WASM boundary and re-parses it inside the module **on every call**
-— on kilobyte payloads that copy + parse dominates the round trip. A
-`DataHandle` removes it: the payload is parsed once and stays resident
+JS↔WASM boundary and re-parses it inside the module **on every call**.
+On kilobyte payloads that copy + parse dominates the round trip. A
+`DataHandle` removes it: you parse the payload once and it stays resident
 in WASM linear memory, so per call only the rule dispatch and the
 (usually small) result string cross the boundary. Measured on the
 repo's [boundary harness](https://github.com/GoPlasmatic/datalogic-rs/tree/main/tools/benchmark/boundary)
@@ -384,7 +384,7 @@ session.evaluateBool(rule, handle);   // true    (real boolean, no JSON at all)
 handle.free(); // release the resident copy after the last evaluation
 ```
 
-**`new DataHandle(json: string)`** — parses `json` into a resident
+**`new DataHandle(json: string)`**: parses `json` into a resident
 document; throws an `Error` named `ParseError` on malformed input.
 Handles are **immutable**, never consumed by evaluation, and
 independent of any `Engine`: one handle can feed rules and sessions of
@@ -393,17 +393,17 @@ instance (WASM modules are isolated per Worker). Call `free()` after
 the last evaluation to release the linear memory eagerly; if you
 don't, the same `FinalizationRegistry` glue that backs every class in
 this package reclaims it when the JS object is collected
-(best-effort — `free()` is the deterministic option).
+(best-effort; `free()` is the deterministic option).
 
-- `allocatedBytes` *(getter)* — bytes held by the handle's backing
+- `allocatedBytes` *(getter)*: bytes held by the handle's backing
   arena (input copy + parsed tree). Sizing and diagnostics.
 
 **Handle-taking evaluations** (string result out, same errors as the
 string path):
 
-- `compiledRule.evaluateData(handle)` / `rule.evaluateData(handle)` —
+- `compiledRule.evaluateData(handle)` / `rule.evaluateData(handle)`:
   fresh arena per call.
-- `session.evaluateData(rule, handle)` — the hot path: session arena
+- `session.evaluateData(rule, handle)`: the hot path, with session arena
   reuse *and* no per-call data work.
 
 ### Typed results
@@ -412,12 +412,12 @@ Predicate-heavy flows (feature flags, eligibility checks) usually want
 a boolean or a number, not a JSON string. The session exposes typed
 evaluations over data handles that skip result serialization entirely:
 
-- `session.evaluateBool(rule, handle): boolean` — result must be a
+- `session.evaluateBool(rule, handle): boolean`: result must be a
   strict JSON boolean; any other type throws an `Error` named
   `TypeMismatch` (e.g. `"result is not a boolean (got number)"`).
-- `session.evaluateNumber(rule, handle): number` — accepts any JSON
+- `session.evaluateNumber(rule, handle): number`: accepts any JSON
   number (JS has one number type); otherwise throws `TypeMismatch`.
-- `session.evaluateTruthy(rule, handle): boolean` — collapses **any**
+- `session.evaluateTruthy(rule, handle): boolean`: collapses **any**
   result through the engine's configured truthiness rules (the same
   coercion `if` / `and` / `or` apply). Never type-mismatches.
 
@@ -443,7 +443,7 @@ for (const outcome of flags) {
   if (outcome.status === 'fulfilled') {
     console.log(outcome.value);        // the item's result as a JSON string
   } else {
-    // {tag, message, operator?} — same item-error shape as every binding
+    // {tag, message, operator?}: same item-error shape as every binding
     console.warn(outcome.reason.tag, outcome.reason.message);
   }
 }
@@ -457,7 +457,7 @@ Each element of the returned array is one of:
 | `{ status: "rejected", reason: { tag, message, operator? } }` | Item failed; `tag` is the stable error-kind tag (`"Thrown"`, `"InvalidArgument"`, …), `operator` the outermost failing operator when known |
 
 Per-item failures include evaluation errors *and* invalid elements (a
-non-`DataHandle` in `handles`, a non-`Rule` in `rules` — tag
+non-`DataHandle` in `handles`, a non-`Rule` in `rules`; tag
 `"InvalidArgument"`). The call itself only throws for argument-level
 problems, e.g. passing something that isn't an array. Inputs are
 borrowed, never consumed: the same rules/handles arrays can be reused
@@ -480,7 +480,7 @@ values throw a `ConfigurationError`:
 | `truthy_evaluator` | `"javascript"` \| `"python"` \| `"strict_boolean"` |
 | `numeric_coercion` | object of booleans: `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
 | `max_recursion_depth` | integer >= 1 |
-| `ops_budget` | integer >= 1, or `null` for unbounded — caps the work one evaluation may do; crossing it raises `BudgetExceeded` |
+| `ops_budget` | integer >= 1, or `null` for unbounded (caps the work one evaluation may do; crossing it raises `BudgetExceeded`) |
 
 `preset` applies first; the remaining keys override it individually.
 
@@ -517,15 +517,17 @@ One operation is one node the engine dispatches, one item an iterator
 walks, or whatever an operator charges for the data it moves (the tensor
 family prices itself in elements). Literals and constant-folded subtrees
 cost nothing. Exceeding the budget throws an `Error` named
-`BudgetExceeded` carrying `budget` and `spent` — the evaluation is refused
-before the work, and a `try` in the rule cannot recover from it.
+`BudgetExceeded` carrying `budget` and `spent`. The engine refuses the
+evaluation before doing the work, and a `try` in the rule cannot recover
+from it.
 
 ## Error handling
 
 Every API throws a real `Error` object. This behavior ships in 5.0.1
 (5.0.0 rejected with a plain JSON string, so `e instanceof Error` was
-`false`) and is tracked in the
-[changelog](https://github.com/GoPlasmatic/datalogic-rs/blob/main/CHANGELOG.md).
+`false`); the
+[changelog](https://github.com/GoPlasmatic/datalogic-rs/blob/main/CHANGELOG.md)
+records the change.
 The thrown object carries:
 
 | Property | Contents |
@@ -589,7 +591,7 @@ try {
 The WASM module is **isolated per Web Worker**: each Worker loads its
 own copy of the module, so a `CompiledRule` created in one Worker
 cannot be transferred to another. Within a single Worker, evaluation
-is synchronous and single-threaded — share a `CompiledRule` across
+is synchronous and single-threaded; share a `CompiledRule` across
 calls in the same context, not across Workers.
 
 If you need true parallelism, spawn N Workers and compile the rule N
@@ -600,23 +602,23 @@ isolation benefit.
 
 This binding exposes all 84 built-in operators from the Rust engine:
 
-**Logical** — `and`, `or`, `!`, `!!`
-**Comparison** — `==`, `===`, `!=`, `!==`, `<`, `<=`, `>`, `>=`
-**Arithmetic** — `+`, `-`, `*`, `/`, `%`, `min`, `max`, `abs`, `ceil`, `floor`
-**Control flow** — `if`, `?:`, `??` (coalesce), `switch` / `match`
-**Array** — `map`, `filter`, `reduce`, `all`, `some`, `none`, `merge`, `in`, `sort`, `slice`, `group_by`, `distinct`
-**Object** — `keys`, `values`, `entries`
-**String** — `cat`, `substr`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `split`, `length`
-**Data access** — `var`, `val`, `exists`, `missing`, `missing_some`
-**Date/time** — `now`, `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`
-**Error handling** — `try`, `throw`
-**Type** — `type`
-**Feature flags (flagd)** — `fractional`, `sem_ver`
-**Tensor** — `tensor`, `zeros`, `full`, `scatter`, `rle_expand`, `one_hot`, `stack`, `concat`, `unstack`, `reshape`, `transpose`, `pad`, `crop`, `gather`, `cast`, `normalize`, `argmax`, `to_list`, `shape`, `dtype`
+**Logical**: `and`, `or`, `!`, `!!`
+**Comparison**: `==`, `===`, `!=`, `!==`, `<`, `<=`, `>`, `>=`
+**Arithmetic**: `+`, `-`, `*`, `/`, `%`, `min`, `max`, `abs`, `ceil`, `floor`
+**Control flow**: `if`, `?:`, `??` (coalesce), `switch` / `match`
+**Array**: `map`, `filter`, `reduce`, `all`, `some`, `none`, `merge`, `in`, `sort`, `slice`, `group_by`, `distinct`
+**Object**: `keys`, `values`, `entries`
+**String**: `cat`, `substr`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, `split`, `length`
+**Data access**: `var`, `val`, `exists`, `missing`, `missing_some`
+**Date/time**: `now`, `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`
+**Error handling**: `try`, `throw`
+**Type**: `type`
+**Feature flags (flagd)**: `fractional`, `sem_ver`
+**Tensor**: `tensor`, `zeros`, `full`, `scatter`, `rle_expand`, `one_hot`, `stack`, `concat`, `unstack`, `reshape`, `transpose`, `pad`, `crop`, `gather`, `cast`, `normalize`, `argmax`, `to_list`, `shape`, `dtype`
 
 > **Tensors on the wire:** a tensor crosses the JSON boundary as the
 > tagged `{"tensor": {"dtype", "shape", "data"}}` form, with `data`
-> little-endian base64 — and that same form is accepted back as a rule,
+> little-endian base64, and the engine accepts that same form back as a rule,
 > so a result pasted into a new rule evaluates to the tensor it came
 > from. The family is marshalling-only (no arithmetic): it moves JSON
 > into a model's inputs and its outputs back into JSON.
@@ -636,16 +638,16 @@ Geomean across 51 operator benchmark suites (Apple M2 Pro, median of 3 runs; pai
 
 WASM-specific notes:
 
-- **Compiled rules** are significantly faster for repeated evaluations
+- **Compiled rules** are faster for repeated evaluations
 - **Strings are copied across the JS↔WASM boundary in both directions**
   (encode in, decode out), so per-call overhead scales with payload
-  size — budget for that on large data. **`DataHandle` removes the
+  size; budget for that on large data. **`DataHandle` removes the
   input half of that cost** when the same payload is evaluated more
   than once: on the boundary harness the hot session loop over an 8 KB
   payload measures ~30.6 µs/op via strings vs ~3.97 µs/op via a handle
   (7.7×), ~1 KB payloads gain 4.4×, tiny ones ~1.6×. Parsing the
   handle costs about one string-path evaluation, so it pays for itself
-  from the second evaluation onward — for one-off payloads, stay on
+  from the second evaluation onward. For one-off payloads, stay on
   the string path.
 - **Self-contained module**: approximately 2.84 MB uncompressed, around
   600 KB gzipped (5.3.0 release build). Most of the growth since 5.1 is
@@ -690,8 +692,8 @@ The published package is built without a filter so every zone resolves.
 
 The published package (and a plain `./build.sh`) uses the
 size-optimized **release** profile: `opt-level = "z"` plus
-`wasm-opt -Oz`. If module size matters less to you than ns/op — e.g. a
-server-side WASM deployment where the artifact is fetched once — an
+`wasm-opt -Oz`. If module size matters less to you than ns/op (e.g. a
+server-side WASM deployment that fetches the artifact once), an
 opt-in **speed** profile builds the same code with `opt-level = 3` and
 `wasm-opt -O3`:
 
@@ -719,8 +721,8 @@ are kept for the relative +8% raw / -1% gzipped tradeoff:
 profile; the raw-size cost shows up in instantiation memory and
 uncompressed serving.)
 
-The default build is unchanged by the existence of this profile — the
-speed variant only ships if you build it yourself.
+This profile does not change the default build; the speed variant only
+exists if you build it yourself.
 
 ### Tests
 
@@ -737,7 +739,7 @@ runner skip every test.
 
 - [datalogic-rs repository](https://github.com/GoPlasmatic/datalogic-rs#readme)
 - [Rust crate deep-dive](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs#readme)
-- [Documentation — JavaScript](https://goplasmatic.github.io/datalogic-rs/javascript/installation.html)
+- [Documentation: JavaScript](https://goplasmatic.github.io/datalogic-rs/javascript/installation.html)
 - [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/)
 - [JSONLogic specification](https://jsonlogic.com)
 

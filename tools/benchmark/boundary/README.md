@@ -1,10 +1,10 @@
 # Boundary benchmark harness
 
 In-tree reproduction of the per-binding boundary measurements in
-[`BINDINGS-OVERHEAD.md`](../BINDINGS-OVERHEAD.md) — the full cost a real
+[`BINDINGS-OVERHEAD.md`](../BINDINGS-OVERHEAD.md): the full cost a real
 caller pays per evaluation through each language binding, as opposed to
-the engine-only numbers in [`BENCHMARK.md`](../BENCHMARK.md). It is also the
-harness the 5.0.1 boundary overhaul was measured with (see
+the engine-only numbers in [`BENCHMARK.md`](../BENCHMARK.md). The 5.0.1
+boundary overhaul used this harness for its measurements too (see
 BINDINGS-OVERHEAD.md's "History" section).
 
 ## Quick start
@@ -35,7 +35,7 @@ in under [`workloads/`](./workloads) so runs are byte-stable:
 
 `workloads/generate.py` regenerates them (and `--check` verifies the
 checked-in bytes, which `run.sh` does before every run). Don't edit the
-JSON files by hand — change the generator, rerun it, and expect the
+JSON files by hand: change the generator, rerun it, and expect the
 documented sizes to still hold (the generator refuses to emit drift).
 
 ## Methodology
@@ -123,5 +123,5 @@ new v2 tiers are additive:
   differences between adjacent rows are noise.
 - Builds are portable (run.sh invokes cargo from the repo root, so the
   benchmark crate's cwd-scoped `-C target-cpu=native` config does not
-  apply). Numbers are still machine-specific — compare runs from the
+  apply). Numbers are still machine-specific, so compare runs from the
   same machine.

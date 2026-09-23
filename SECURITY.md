@@ -2,14 +2,14 @@
 
 ## Supported versions
 
-Security fixes are provided for the latest release line. The project
+We provide security fixes for the latest release line. The project
 ships a single coordinated version across the Rust core and every
 language binding (see [CHANGELOG.md](./CHANGELOG.md)).
 
 | Version         | Status                                                            |
 |-----------------|-------------------------------------------------------------------|
-| 5.x             | Supported — receives fixes                                        |
-| 4.x and earlier | End-of-life — please migrate ([MIGRATION.md](./MIGRATION.md))     |
+| 5.x             | Supported: receives fixes                                         |
+| 4.x and earlier | End-of-life: please migrate ([MIGRATION.md](./MIGRATION.md))      |
 
 This applies uniformly to every package shipped from this repository:
 
@@ -25,7 +25,7 @@ This applies uniformly to every package shipped from this repository:
 
 ## Reporting a vulnerability
 
-Please report suspected vulnerabilities **privately** — not in a public
+Please report suspected vulnerabilities **privately**, not in a public
 issue or pull request.
 
 - Preferred: open a private report via GitHub's
@@ -41,8 +41,8 @@ impact you observed (for example a panic, a stack overflow, or an
 unexpectedly unbounded run).
 
 You should expect an initial acknowledgement within **5 business days**.
-We'll keep you updated as the report is triaged, a fix is developed, and
-a coordinated release is prepared. We don't currently run a bug bounty.
+We'll keep you updated as we triage the report, develop a fix, and
+prepare a coordinated release. We don't currently run a bug bounty.
 
 ## Scope
 

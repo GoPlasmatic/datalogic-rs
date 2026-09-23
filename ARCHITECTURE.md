@@ -1,6 +1,6 @@
 # Architecture
 
-This monorepo ships one logical product — a JSONLogic engine — across
+This monorepo ships one logical product, a JSONLogic engine, across
 multiple runtime targets that all wrap the same Rust core:
 
 ```mermaid
@@ -74,17 +74,18 @@ statically via `.a`; JVM/.NET/PHP dynamically via `.so` / `.dylib` /
 `ui/vendor/datalogic`) and adds editing, visualisation, and trace
 inspection on top.
 
-Two JS-side packages, one engine: **`@goplasmatic/datalogic-node`**
-(napi-rs, per-platform `.node` prebuilds) is the first-class target for
-Node services. **`@goplasmatic/datalogic-wasm`** (WASM) is the right pick
-for browsers, Deno, Bun, Cloudflare Workers, and any context where one
-artifact across runtimes beats per-platform prebuilds.
+The repo ships two JS-side packages over the same engine.
+**`@goplasmatic/datalogic-node`** (napi-rs, per-platform `.node`
+prebuilds) is the primary target for Node services.
+**`@goplasmatic/datalogic-wasm`** (WASM) targets browsers, Deno, Bun,
+Cloudflare Workers, and any context where one artifact across runtimes
+beats per-platform prebuilds.
 
 ## Cargo workspace layout
 
 The repo root holds a Cargo workspace with two members:
 
-- `crates/datalogic-rs` — the published crate, `datalogic-rs`.
+- `crates/datalogic-rs`: the published crate, `datalogic-rs`.
 - `tools/benchmark` (dev-only, `publish = false`): `self`
   (single-engine regression baseline), `compare` (cross-library matrix),
   `boundary_core` (rust-core runner for the per-binding boundary
@@ -94,36 +95,36 @@ Each Rust-side binding (`bindings/wasm`, `bindings/node`,
 `bindings/python`, `bindings/c`) declares its own `[workspace]` table
 and is excluded from the parent workspace. The non-Rust bindings
 (`bindings/jvm`, `bindings/dotnet`, `bindings/php`, `bindings/go`) are
-not Cargo crates at all — they're Maven / .NET / Composer / Go modules
+not Cargo crates; they're Maven / .NET / Composer / Go modules
 that consume the artifacts from `bindings/c`. This is deliberate:
 
-- **`bindings/wasm`** — `wasm-pack` needs the WASM-specific release
+- **`bindings/wasm`**: `wasm-pack` needs the WASM-specific release
   profile (`opt-level = "z"`, `lto = true`, `panic = "abort"`,
   `strip = true`), and Cargo only honours `[profile.*]` at a workspace
   root.
-- **`bindings/node`** — keeps the napi-rs build deps + `cdylib` codegen
+- **`bindings/node`**: keeps the napi-rs build deps + `cdylib` codegen
   out of the default `cargo test --workspace --all-features` path so
   contributors don't need Node toolchain to run core tests.
-- **`bindings/python`** — keeps the pyo3 build deps + `cdylib` codegen
+- **`bindings/python`**: keeps the pyo3 build deps + `cdylib` codegen
   out of the default `cargo test --workspace --all-features` path so
   contributors don't need a Python interpreter to run core tests.
-- **`bindings/c`** — same reasoning: keeps cbindgen + `cdylib`/`staticlib`
+- **`bindings/c`**: same reasoning; keeps cbindgen + `cdylib`/`staticlib`
   outputs separate from the core test loop.
 
 `bindings/go` is a Go module (no Cargo manifest); it links the static
 library produced by `bindings/c`. `bindings/jvm`, `bindings/dotnet`,
 and `bindings/php` are Maven / .NET / Composer packages that load the
-**dynamic** library produced by `bindings/c` at runtime — they don't
-participate in the Rust build graph at all. `ui` is a Node package.
+**dynamic** library produced by `bindings/c` at runtime; they don't
+participate in the Rust build graph. `ui` is a Node package.
 Cargo ignores them all.
 
 ## Two-phase evaluation (in `crates/datalogic-rs`)
 
-1. **Compile** — `Engine::compile` parses JSON logic into a `Logic` tree.
-   String operator names are resolved to an `OpCode` enum so dispatch at
-   eval time is a `match` on a `u8`-sized discriminant. Constant
-   sub-expressions are folded; dead branches are elided.
-2. **Evaluate** — `Engine::evaluate` walks the compiled tree against an
+1. **Compile**: `Engine::compile` parses JSON logic into a `Logic` tree.
+   It resolves string operator names to an `OpCode` enum so dispatch at
+   eval time is a `match` on a `u8`-sized discriminant, folds constant
+   sub-expressions, and elides dead branches.
+2. **Evaluate**: `Engine::evaluate` walks the compiled tree against an
    input `&DataValue`. Results are `&'a DataValue<'a>` allocated in a
    caller-supplied `bumpalo::Bump` arena. Read-through ops like `var`
    borrow zero-copy directly from the input; arithmetic and reductions
@@ -134,8 +135,8 @@ owns a reusable arena; the caller calls `Session::reset()` (O(1)) between
 iterations so peak memory tracks the largest single evaluation, not the
 sum. The session never resets on its own.
 
-`Logic` is `Send + Sync` and wrapped in `Arc` internally, so a compiled
-rule can be shared across threads with no extra setup.
+`Logic` is `Send + Sync` and wrapped in `Arc` internally, so you can
+share a compiled rule across threads with no extra setup.
 
 ## Feature flags and where they apply
 
@@ -151,13 +152,13 @@ opt in via their dependency line.
 | `error-handling`  | `try` / `throw` operators                                         | WASM, Node, Python, C, `error_handling` example |
 | `ext-string`, `ext-array`, `ext-object`, `ext-control`, `ext-math` | Optional operator families | WASM, Node, Python, C; opt-in per Rust consumer |
 | `flagd`           | `fractional` + `sem_ver` operators (OpenFeature flagd spec); pulls in `semver` | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit). See [flagd docs](https://flagd.dev/reference/custom-operations/) |
-| `wasm-clock`      | JS-host clock for `now` on `wasm32-unknown-unknown` (forwards to `chrono/wasmbind`). Deliberately opt-in: it links JS imports that non-JS wasm runtimes (wasmtime, wazero, Chicory) cannot satisfy — issue #47 | WASM only. Never enable when the module runs outside a JS host |
+| `wasm-clock`      | JS-host clock for `now` on `wasm32-unknown-unknown` (forwards to `chrono/wasmbind`). Deliberately opt-in: it links JS imports that non-JS wasm runtimes (wasmtime, wazero, Chicory) cannot satisfy (issue #47) | WASM only. Never enable when the module runs outside a JS host |
 | `tensor`          | datavalue's `Tensor` value (dtype + shape + row-major byte buffer) and 20 marshalling-only operators over it. Arithmetic-free by design: every operator's cost is proportional to the data it moves, which is what lets `budget` price it honestly. No new dependency; crosses JSON as the tagged `{"tensor": {..}}` form, so the text-returning bindings carry it with no FFI change | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit), `benchmark` |
 | `tensor-half`     | Lifts the `f16` / `bf16` restriction on the element-wise tensor operators (the byte-moving ones already work on every dtype). Pulls in `half` through datavalue | Opt-in per Rust consumer; not enabled in any binding |
 | `budget`          | Per-evaluation operation counter with a hard abort: `EvaluationConfig::ops_budget`, `Engine::evaluate_metered` / `Session::eval_metered`, `EvalContext::charge`, and `ErrorKind::BudgetExceeded`. Costs ~3.6% geomean when compiled in and unset (22.75 -> 23.56 ns/op on the self benchmark), which is why it is a flag | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit) |
 
 The non-Rust bindings (Go, JVM, .NET, PHP) inherit whatever feature set
-`bindings/c` is compiled with — they don't have their own Cargo
+`bindings/c` is compiled with, since they don't have their own Cargo
 manifest. To turn an operator family on or off for those bindings, edit
 `bindings/c/Cargo.toml` and rebuild the cdylib.
 
@@ -200,8 +201,8 @@ folding, strength reduction; each iteration ends with a second dead-code
 sweep so shapes exposed by strength reduction are cleaned up in the same
 round), then one whole-tree common-subexpression-elimination pass over
 the finished tree. Each pass is a pure tree transform with its own test
-suite, and adding another is a matter of dropping a file in the
-directory and registering it from `optimize/mod.rs`.
+suite; to add another, drop a file in the directory and register it
+from `optimize/mod.rs`.
 
 ### What runs today
 
@@ -212,7 +213,7 @@ directory and registering it from `optimize/mod.rs`.
 | `strength`       | Strength reduction (`{"+": [x]}` → `x`, `{"*": [x]}` → `x`)           | `optimize/strength.rs`      |
 | `cse`            | Memoizes structurally identical pure subtrees into per-evaluation slots (`Logic::cse_slot_count()`); never memoizes custom operators, `try` / `throw`, `now`, `fractional`, `sem_ver`, or the per-item bodies of iterating operators. Runs once after the fixpoint loop. | `optimize/cse.rs`           |
 | `scope`          | Resolves every `var` / `val` / `exists` reference to a compile-time `ScopeBinding` (`Root` / `Current` / `Ancestor`), so the runtime reads a precomputed frame target instead of probing `ctx.depth()`. Runs once after CSE; unconditional, so no-fold and traced compiles get the same resolution. | `compile/scope.rs`          |
-| `scope` (cont.)  | The same pass reports `Logic::needs_ancestor_frames` — whether any reference can reach past the innermost frame. When false (the overwhelming majority: reaching an ancestor takes both two levels of iterator nesting and a level marker inside the inner one) evaluation skips maintaining the ancestor-frame list entirely. | `compile/scope.rs`          |
+| `scope` (cont.)  | The same pass reports `Logic::needs_ancestor_frames`: whether any reference can reach past the innermost frame. When false (the common case: reaching an ancestor takes both two levels of iterator nesting and a level marker inside the inner one) evaluation skips maintaining the ancestor-frame list entirely. | `compile/scope.rs`          |
 
 `compile/scope.rs` also owns `frames_pushed_for_child`, the single source
 of truth for which argument positions execute under a pushed context frame
@@ -224,8 +225,8 @@ frame; a debug-only oracle in `operators::variable` cross-checks every
 resolution against the runtime walk and fires on the first test that
 exercises an omission.
 
-The runtime side has its own fast paths that don't need a compile-time
-pass to fire — notably:
+The runtime side has its own fast paths that fire without a compile-time
+pass, including:
 
 - `FastPredicate::from_node` in array operators detects predicate
   shapes that can run without pushing a context frame per item.
@@ -245,8 +246,8 @@ pass to fire — notably:
 
 ### Deferred work
 
-Optimizations the team has discussed but not built. Captured here so
-future contributors don't redo the analysis.
+The team has discussed these optimizations but not built them. They are
+recorded here so future contributors don't redo the analysis.
 
 #### Compile-time predicate hoisting in filter / map / reduce
 
@@ -286,26 +287,26 @@ Postponed until a workload shows the dispatch overhead matters.
 #### Reduce-output sizing hints
 
 `reduce` allocates a `bumpalo::Vec` for each accumulator-typed result.
-For numeric / bool accumulators the vec capacity isn't useful — but
+For numeric / bool accumulators the vec capacity isn't useful, but
 for array-output reductions the input length is a known upper bound
 on the output. A `metadata_hint` on the compiled `Reduce` node could
 carry this and let the runtime pre-size.
 
-**Why deferred.** Speculative — no benchmark currently shows reduce
+**Why deferred.** Speculative: no benchmark currently shows reduce
 allocation as a hotspot, and the wins compound only for accumulators
 that build composite values. Picked as the third item only because it
 came up in design discussion; deprioritise unless evidence appears.
 
 ## Memory Boundaries & Data Serialization
 
-Since `datalogic-rs` utilizes `bumpalo` for arena allocation and outputs zero-copy borrowed `&DataValue<'a>` values, crossing language FFI boundaries requires clear memory and serialization strategies:
+Since `datalogic-rs` uses `bumpalo` for arena allocation and outputs zero-copy borrowed `&DataValue<'a>` values, crossing language FFI boundaries requires clear memory and serialization strategies:
 
 ### 1. The JavaScript/WASM Boundary (`@goplasmatic/datalogic-wasm`)
 - **Lifecycle:** Three tiers. The string tier serializes JavaScript objects into JSON text, copies it into module memory, evaluates, and serializes the result back to a JSON string on every call. The `DataHandle` tier parses a payload once into module memory and evaluates many rules against it with no per-call copy or parse (`evaluateData`). The typed (`evaluateBool` / `evaluateNumber` / `evaluateTruthy`) and batch (`evaluateBatch` / `evaluateMany`) entry points also skip the result stringify, returning primitives or one result array per call.
 - **Memory:** Memory allocated in WebAssembly is isolated. The string tier copies bytes across the boundary in both directions; a `DataHandle` keeps its parsed tree resident until `free()`.
 
 ### 2. The Node Native Boundary (`@goplasmatic/datalogic-node`)
-- **Lifecycle:** Reaches native C-like speed via N-API, with the same three tiers as WASM: string in / string out through napi strings, a `DataHandle` that parses once and stays resident in native memory (`evaluateData` / `evaluateDataStr`), and typed (`evaluateBool` / `evaluateNumber`) and batch (`evaluateBatch` / `evaluateMany`) entry points that return primitives or arrays without a result stringify.
+- **Lifecycle:** Runs native code via N-API, with the same three tiers as WASM: string in / string out through napi strings, a `DataHandle` that parses once and stays resident in native memory (`evaluateData` / `evaluateDataStr`), and typed (`evaluateBool` / `evaluateNumber`) and batch (`evaluateBatch` / `evaluateMany`) entry points that return primitives or arrays without a result stringify.
 
 ### 3. The C ABI Boundary (`bindings/c`)
 - **Lifecycle:** ABI v2 (`DATALOGIC_ABI_VERSION == 2`; consumers call `datalogic_abi_version()` once at load and abort on a mismatch). Every byte input is a `(pointer, length)` UTF-8 slice, never NUL-terminated. Fallible calls return a `datalogic_status` code and take a trailing `datalogic_error **` out-parameter: pass `NULL` to skip capture, otherwise read the fine-grained engine tag via `datalogic_error_tag` and release the handle with `datalogic_error_free`.
@@ -317,7 +318,7 @@ Since `datalogic-rs` utilizes `bumpalo` for arena allocation and outputs zero-co
 
 ## AST Compilation Flow
 
-A simple diagram mapping a JSONLogic rule to the internal `CompiledNode` tree helps contributors understand how the compilation phase optimizes dispatch:
+The diagram below maps a JSONLogic rule to the internal `CompiledNode` tree and shows how the compilation phase optimizes dispatch:
 
 ### Compilation Transformation
 
@@ -349,7 +350,7 @@ graph TD
     Left --> Const18
 ```
 
-- String lookups (like `"and"` and `">="`) are resolved into `OpCode` variants during compilation, allowing evaluation to use `O(1)` enum dispatch rather than string hashing.
+- The compiler resolves string lookups (like `"and"` and `">="`) into `OpCode` variants, so evaluation uses `O(1)` enum dispatch rather than string hashing.
 - `var` / `val` with a literal path compiles to a dedicated `CompiledNode::Var` node (`try_compile_var`) whose path segments are pre-split; it is not an operator node with a string-literal child.
 - Constant folding only collapses subtrees with no data dependency: `{"and": [true, true]}` becomes a single `Value` before evaluation starts, while the tree above keeps its `Var` and stays dynamic because `age` is only known at evaluation time.
 

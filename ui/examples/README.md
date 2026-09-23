@@ -8,14 +8,14 @@ focused shapes you can lift straight into your own app.
 
 | Example                       | Mode                  | What it shows                                                |
 |-------------------------------|-----------------------|--------------------------------------------------------------|
-| `01-readonly-viewer.tsx`      | Read-only             | Render an expression as a flow diagram — no `data`, no edits |
+| `01-readonly-viewer.tsx`      | Read-only             | Render an expression as a flow diagram (no `data`, no edits) |
 | `02-debugger.tsx`             | Debugger              | Add a `data` prop to enable step-through trace inspection    |
 | `03-editable.tsx`             | Editable + onChange   | Full visual editing with controlled state and persistence    |
 
 ## Running
 
-These files aren't wired into a build target — they're reference
-snippets. Drop one into a Vite/Next/CRA project that has the peer
+These files are reference snippets and no build target includes
+them. Drop one into a Vite/Next/CRA project that has the peer
 dependencies installed:
 
 ```bash

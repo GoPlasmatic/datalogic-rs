@@ -8,12 +8,12 @@ Each `*.json` file in this tree is a list of test cases consumed by
 
 | Naming | What it covers |
 |---|---|
-| `compatible.json` | The shared JSONLogic baseline — every conforming engine should pass these. The reference cases come from <https://jsonlogic.com/tests.json>. |
+| `compatible.json` | The shared JSONLogic baseline: every conforming engine should pass these. The reference cases come from <https://jsonlogic.com/tests.json>. |
 | `*.extra.json` (e.g. `try.extra.json`, `val.extra.json`, `iterators.extra.json`) | v5-only extensions to the baseline operator (extra error cases, extra arg shapes, etc.). Other JSONLogic engines won't run these. |
 | `structured-objects.json` | Cases for templating mode (object templating); each case carries `templating: true` so the runner switches the engine into that mode for it. |
 | `unknown-operators.json` | Behaviour when a rule uses an operator name the engine doesn't know. |
 | `additional.json` / `chained.json` / `coalesce.json` / `truthiness.json` / `scopes.json` / `empty-objects.json` / `type.json` | Catch-alls for cross-cutting behaviour that doesn't belong to one operator. |
-| `val.json` / `val-compat.json` / `val.extra.json` / `exists.json` | The `val` / `var` / `exists` family — path-resolution semantics, scope walking, reduce shortcuts. |
+| `val.json` / `val-compat.json` / `val.extra.json` / `exists.json` | The `val` / `var` / `exists` family: path-resolution semantics, scope walking, reduce shortcuts. |
 | `length.json` / `slice.json` / `sort.json` | Array helpers (`length`, `slice`, `sort`). |
 | `throw.json` / `try.json` / `try.extra.json` | The `throw` / `try` error-handling pair (`error-handling` feature). |
 | `group_by.json` / `distinct.json` | The collection operators added in 5.2.0 (`ext-array` feature): keyed grouping, value and keyed dedup, iteration-scope isolation. |
@@ -26,8 +26,8 @@ Each `*.json` file in this tree is a list of test cases consumed by
 The runner (`tests/test_jsonlogic.rs`) is compiled only under
 `feature = "templating"` plus `feature = "serde_json"`; without both it
 contains no tests and reports success. The only per-suite skip is
-`flagd/`, which is bypassed with a warning when the `flagd` feature is
-off. Every other suite assumes its operator family is compiled in and
+`flagd/`, which the runner bypasses with a warning when the `flagd`
+feature is off. Every other suite assumes its operator family is compiled in and
 fails otherwise, so run the suites with `--all-features`.
 
 ## Test case shape
@@ -42,7 +42,7 @@ fails otherwise, so run the suites with `--all-features`.
     "result": 3
   },
   {
-    "description": "Error case — NaN from string",
+    "description": "Error case: NaN from string",
     "rule":   { "+": [ "text", 1 ] },
     "data":   null,
     "error":  { "type": "NaN" }
@@ -52,14 +52,14 @@ fails otherwise, so run the suites with `--all-features`.
 
 Required fields:
 
-- `description` — test name surfaced in the runner output.
-- `rule` — the JSONLogic expression to evaluate.
-- `data` — input data (`null` or object).
-- One of `result` (expected output) or `error` (expected error object) — they are mutually exclusive.
+- `description`: test name surfaced in the runner output.
+- `rule`: the JSONLogic expression to evaluate.
+- `data`: input data (`null` or object).
+- One of `result` (expected output) or `error` (expected error object); they are mutually exclusive.
 
 Optional fields:
 
-- `templating` — set to `true` for cases that need templating mode (the runner enables it on the engine for that case only).
+- `templating`: set to `true` for cases that need templating mode (the runner enables it on the engine for that case only).
 
 ## Running
 
@@ -67,7 +67,7 @@ Optional fields:
 # Whole suite (driven by index.json):
 cargo test -p datalogic-rs --all-features --test test_jsonlogic
 
-# One suite — path is relative to crates/datalogic-rs/ (the test binary's cwd):
+# One suite; path is relative to crates/datalogic-rs/ (the test binary's cwd):
 JSONLOGIC_TEST_FILE=tests/suites/arithmetic/plus.json \
     cargo test -p datalogic-rs --all-features --test test_jsonlogic -- --nocapture
 ```

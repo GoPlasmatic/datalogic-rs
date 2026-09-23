@@ -4,14 +4,14 @@
 [![CI](https://github.com/GoPlasmatic/datalogic-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/GoPlasmatic/datalogic-rs/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Part of [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs) — one engine, every runtime.
+Part of [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs): one engine, every runtime.
 
 Java bindings for [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs),
 the JSONLogic rules engine with one Rust core and official bindings for
-Rust, Node.js, the browser (WASM), Python, Go, Java, .NET, and PHP. Same
+Rust, Node.js, the browser (WASM), Python, Go, Java, .NET, and PHP.
+Compile a rule once and evaluate it many times, natively in Java. Same
 rules, same semantics: every binding runs the same core and passes the
-same 1,953-case conformance battery (64 suites). Compile once, evaluate
-many, natively in Java.
+same 1,953-case conformance battery (64 suites).
 
 For the cross-runtime overview and the API-tier model every binding
 implements, see the
@@ -19,9 +19,9 @@ implements, see the
 
 > **New in v5.** This package is new: there is no v4 Java artifact. If
 > you are coming from the v4 Rust crate or the v4
-> `@goplasmatic/datalogic` WASM package, the engine's v4 → v5 changes
-> are catalogued in
-> [MIGRATION.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md).
+> `@goplasmatic/datalogic` WASM package, see
+> [MIGRATION.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md)
+> for the engine's v4 → v5 changes.
 
 ## Install
 
@@ -36,7 +36,7 @@ implements, see the
 Gradle: `implementation("io.github.goplasmatic:datalogic:5.3.0")`
 
 The binding speaks to the engine's C ABI directly through the Java FFM
-API (`java.lang.foreign`) — no JNA, no JNI glue, zero runtime
+API (`java.lang.foreign`), with no JNA, no JNI glue, and no runtime
 dependencies beyond Jackson. The JAR ships the native library for every
 supported platform at the classpath root under `<os-arch>/`
 (`darwin-aarch64/`, `linux-x86-64/`, …); the binding extracts and loads
@@ -62,21 +62,21 @@ java --enable-native-access=ALL-UNNAMED ...
 consumed; if you place it on the module path instead, grant native
 access to its module name.)
 
-The native library is resolved in this order:
+The binding resolves the native library in this order:
 
-1. `-Ddatalogic.library.path=<dir>` — a directory containing
+1. `-Ddatalogic.library.path=<dir>`: a directory containing
    `libdatalogic_c.dylib` / `libdatalogic_c.so` / `datalogic_c.dll`
    (useful for in-tree builds and overrides),
 2. the JAR's bundled `<os-arch>/` classpath resource (extracted to a
-   temp file), which is how the published artifact works out of the box,
-3. `System.loadLibrary("datalogic_c")` — `java.library.path` and the
+   temp file), which is the default path for the published artifact,
+3. `System.loadLibrary("datalogic_c")`: `java.library.path` and the
    OS loader paths.
 
 > **Naming:** the Maven `groupId` is `io.github.goplasmatic` (the
 > auto-verified Sonatype namespace tied to the GitHub org), but the Java
 > *package* is `com.goplasmatic.datalogic`, matching the npm
 > `@goplasmatic/` and Composer `goplasmatic/` scopes. Maven permits
-> groupId / package divergence; consumers just need both lines correct.
+> groupId / package divergence; consumers need both lines correct.
 
 ## Quick start
 
@@ -139,7 +139,7 @@ try (DataHandle data = DataHandle.parse("{\"price\": 100, \"discount\": 0.2}")) 
 }
 ```
 
-A `DataHandle` is immutable, thread-safe, and engine-independent — one
+A `DataHandle` is immutable, thread-safe, and engine-independent: one
 handle can feed rules compiled by different engines, from any number of
 threads. It is not consumed by evaluation; close it after the last use.
 
@@ -163,7 +163,7 @@ A result of the wrong type throws `EvaluateException` with error type
 ## Batch evaluation
 
 Cross the native boundary once for a whole workload. Item failures
-never throw — each item of the returned list carries either the result
+never throw: each item of the returned list carries either the result
 JSON or its own error info:
 
 ```java
@@ -261,14 +261,14 @@ try (Engine strict = Engine.builder()
 | `truthy_evaluator` | `"javascript"`, `"python"`, `"strict_boolean"` |
 | `numeric_coercion` | object of bools: `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
 | `max_recursion_depth` | integer >= 1 |
-| `ops_budget` | integer >= 1, or `null` for unbounded — caps the work one evaluation may do; crossing it raises `BudgetExceeded` |
+| `ops_budget` | integer >= 1, or `null` for unbounded (caps the work one evaluation may do; crossing it raises `BudgetExceeded`) |
 
 The `preset` applies first; the remaining keys override individual
 fields on top of it. Every binding shares this JSON schema and parses it
 with the same core code, so a config that works here works in the
-Python, Node, and WASM bindings too. The full semantics of each knob are
-documented on the Rust crate's
-[`EvaluationConfig`](https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.EvaluationConfig.html).
+Python, Node, and WASM bindings too. The Rust crate's
+[`EvaluationConfig`](https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.EvaluationConfig.html)
+documents the full semantics of each knob.
 
 ## Error handling
 

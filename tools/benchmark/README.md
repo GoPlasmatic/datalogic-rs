@@ -1,7 +1,7 @@
 # datalogic-bench
 
 Dev-only benchmark harness for `datalogic-rs`. **For the latest captured
-matrix and headline numbers, see [`BENCHMARK.md`](./BENCHMARK.md)** — link
+matrix and headline numbers, see [`BENCHMARK.md`](./BENCHMARK.md)**. Link
 to that file from other docs rather than re-quoting cells inline.
 
 Four binaries share a common suite loader and reporter (`src/lib.rs`):
@@ -13,8 +13,8 @@ Four binaries share a common suite loader and reporter (`src/lib.rs`):
 | `boundary_core` | The rust-core runner for the per-binding boundary benchmark under [`boundary/`](./boundary); emits the same JSON-lines schema as the other runtimes' runners. |
 | `profile_macro` | Sampling-profiler feeder (samply / Instruments): hammers one macro suite in a hot loop so the profile shows only that suite's evaluation path. |
 
-A third area, [`boundary/`](./boundary), measures the opposite of the
-matrix: **per-binding boundary cost** — what a real caller pays per
+A separate area, [`boundary/`](./boundary), measures the opposite of the
+matrix: **per-binding boundary cost**, what a real caller pays per
 evaluation through each language binding (C ABI, Node, Python, WASM,
 Go, JVM, .NET, PHP) on the three workloads from
 [`BINDINGS-OVERHEAD.md`](./BINDINGS-OVERHEAD.md). One runner per
@@ -37,7 +37,7 @@ Both write JSON reports to `tools/benchmark/output/` (gitignored):
 `report-self-*.json` for `--all` runs of `self`, `report-compare-*.json`
 for `compare`, `report-compare-macro-*.json` for `compare --macro`.
 
-## `self` — regression baseline
+## `self`: regression baseline
 
 ```bash
 # Single suite (compatible.json by default)
@@ -56,7 +56,7 @@ cargo run --release -p datalogic-bench --bin self -- --macro
 
 Each suite is timed three ways with the same discipline (median of 3
 reps, `black_box`, session reset per iteration, pre-sized arena): the
-whole suite (the headline, comparable with older reports), just the
+whole suite (the headline, comparable with older reports), only the
 rules the compiler constant-folded to a literal (`Logic::is_constant`),
 and the rest. The per-suite line shows the split
 (`folded 23/32 @ 2.94 ns, rest @ 75.75 ns`) and the summary reports
@@ -66,21 +66,21 @@ its per-suite iteration count from a pilot pass so one timed rep lands
 near ~250 ms; see [`BENCHMARK.md`](./BENCHMARK.md#macro-tier) for the
 suite list.
 
-## `compare` — cross-library matrix
+## `compare`: cross-library matrix
 
 The matrix has one row per suite and one column per subject. Cells are
 the median ns/op of three timed samples, each sized to hit a ~200ms wall
 budget. Two aggregation rows at the bottom show the arithmetic mean
-(familiar) and geometric mean (the right average for cross-library
-comparison — one slow suite doesn't dominate).
+(familiar) and geometric mean (the one to use for cross-library
+comparison, since one slow suite doesn't dominate it).
 
 ### Subjects
 
 The matrix shows one column per **library / API tier that takes a
-precompile-once approach** — apples-to-apples cells. Convenience-API
-tiers (`Engine::eval_str`, `Session::eval_borrowed`, raw
-`evaluate(ruleStr, dataStr, false)` on the WASM) are intentionally not
-in the matrix because their numbers measure API-shape costs (parse cost,
+precompile-once approach**, so cells compare like with like. The matrix
+leaves out convenience-API tiers (`Engine::eval_str`,
+`Session::eval_borrowed`, raw `evaluate(ruleStr, dataStr, false)` on the
+WASM) because their numbers measure API-shape costs (parse cost,
 session reset cost, WASM string marshalling) rather than engine cost.
 For per-API-tier numbers on datalogic-rs alone, see `bin/self.rs`.
 
@@ -94,7 +94,7 @@ Behind a Cargo feature:
 
 | Column         | Feature flag           | Crate                              |
 |----------------|------------------------|------------------------------------|
-| `jsonlogic-rs` | `subject-jsonlogic-rs` | [bestowinc/json-logic-rs] 0.5 — `apply(&Value, &Value)`, no compile API |
+| `jsonlogic-rs` | `subject-jsonlogic-rs` | [bestowinc/json-logic-rs] 0.5: `apply(&Value, &Value)`, no compile API |
 
 [bestowinc/json-logic-rs]: https://crates.io/crates/jsonlogic-rs
 
@@ -103,9 +103,9 @@ Auto-detected at runtime (require Node + an `npm install` in `runners/`):
 | Column                       | API exercised                                                              |
 |------------------------------|----------------------------------------------------------------------------|
 | `dlrs:wasm:compiled`         | `@goplasmatic/datalogic-wasm` `new CompiledRule(ruleStr, false)` once per rule, then `.evaluate(dataStr)` per call. WASM analog of `dlrs:engine`; remaining per-call cost is data marshall + parse + result stringify across the V8↔WASM boundary. |
-| `json-logic-js`              | `json-logic-js` (jwadhams) — `apply(rule, data)`, interpreted, no compile API. |
-| `json-logic-engine`          | `json-logic-engine` (TotalTechGeek) — interpreted (`engine.run(rule, data)`). |
-| `json-logic-engine:compiled` | `json-logic-engine` — pre-compiled (`engine.build(rule)`, "12.5–20× hot path" per the library's README). |
+| `json-logic-js`              | `json-logic-js` (jwadhams): `apply(rule, data)`, interpreted, no compile API. |
+| `json-logic-engine`          | `json-logic-engine` (TotalTechGeek): interpreted (`engine.run(rule, data)`). |
+| `json-logic-engine:compiled` | `json-logic-engine`: pre-compiled (`engine.build(rule)`, "12.5–20× hot path" per the library's README). |
 
 `json-logic-engine` and `json-logic-engine:compiled` share their npm
 package but exercise different APIs (interpreter vs build-then-call).
@@ -171,12 +171,12 @@ cargo run --release -p datalogic-bench --bin compare -- --all --allow-missing-su
 - `ERR` = subject ran but errored on >50% of cases in the suite.
 - A trailing `*` on a number = subject errored on some cases in the suite
   but completed enough that ns/op is still meaningful.
-- Negative-test cases (entries with `error: {...}` instead of `result`) are
-  filtered out of compare runs — engines disagree on what "errors"
+- Compare runs filter out negative-test cases (entries with
+  `error: {...}` instead of `result`): engines disagree on what "errors"
   and how expensive their error path is, so including them would
   unfairly penalise verbose-error subjects.
 
-After the matrix, a pairwise ratio table is printed:
+After the matrix, the runner prints a pairwise ratio table:
 
 ```
 === Pairwise shared-suite ratios ===
@@ -190,7 +190,7 @@ suites where **both** subjects have finite cells. The per-column mean
 rows in the matrix cover different suite subsets when subjects `ERR` on
 different suites, so quotients of column geomeans mix incomparable
 sets; the pairwise ratios never do. Matrix cells, per-column means, and
-these ratios are also written to `output/report-compare-<timestamp>.json`
+these ratios also go to `output/report-compare-<timestamp>.json`
 (`output/report-compare-macro-<timestamp>.json` for `--macro` runs).
 
 ### Native-CPU build (optional, host-only numbers)
@@ -204,7 +204,7 @@ cd tools/benchmark
 cargo run --release --bin compare -- --all
 ```
 
-Numbers from a native build are not portable across machines — keep them as
+Numbers from a native build are not portable across machines: keep them as
 a relative baseline, not an absolute publishable figure. Builds invoked
 from the repo root remain portable.
 
@@ -222,20 +222,20 @@ from the repo root remain portable.
    ```
 2. Add a `Subject` impl inside `bin/compare.rs`, gated by
    `#[cfg(feature = "subject-my-jsonlogic")]`. Mirror the pattern of
-   `JsonLogicRs` — pre-parse rule and data once, time `apply()` only.
+   `JsonLogicRs`: pre-parse rule and data once, time `apply()` only.
 3. Push the subject into `build_subjects()` (also gated).
 4. Run with `--features subject-my-jsonlogic`.
 
 ### JS / WASM library (via Node subprocess)
 
 1. `cd tools/benchmark/runners && npm install <pkg>`.
-2. Add a `LIBS` entry in `runners/node-runner.js` — one async `setup`
+2. Add a `LIBS` entry in `runners/node-runner.js`: one async `setup`
    that returns a callable `apply(case)`.
 3. In `build_subjects()` inside `bin/compare.rs`, push a new
    `NodeSubject::new("display-name", "<npm-pkg>")` (gated on
    `node_dep_installed("<npm-pkg>")`).
 
-That's the entire recipe — three files each, no harness changes.
+Each recipe touches three files and needs no harness changes.
 
 ## Platform support
 
@@ -247,5 +247,5 @@ shell-coded; Windows isn't tested.
 
 Don't run `compare` in CI. WASM build + npm install + 3+ minutes of
 matrix work makes for flaky CI runs. `self` is the regression-tracking
-target — keep CI on `cargo test --workspace --all-features` plus a
+target: keep CI on `cargo test --workspace --all-features` plus a
 single-suite `self` invocation if you want a perf signal.
