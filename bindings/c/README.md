@@ -1,6 +1,6 @@
 # datalogic-c
 
-C ABI for the [`datalogic-rs`](../../crates/datalogic-rs) JSONLogic engine. This crate is
+C ABI for the [`datalogic-rs`](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs) JSONLogic engine. This crate is
 the canonical FFI boundary the language bindings under `bindings/go`,
 `bindings/php`, `bindings/jvm`, etc. consume.
 
@@ -41,7 +41,7 @@ compile + data-handle + session hot path.
 
 ## API surface
 
-See [`include/datalogic.h`](include/datalogic.h). High-level shape (ABI **v2**):
+See [`include/datalogic.h`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/c/include/datalogic.h). High-level shape (ABI **v2**):
 
 | Group | Functions |
 |---|---|
@@ -80,7 +80,7 @@ See [`include/datalogic.h`](include/datalogic.h). High-level shape (ABI **v2**):
 
 v2 replaced v1 (NUL-terminated strings, `datalogic_string_free`, the
 thread-local `datalogic_last_error_*` block) wholesale in 5.0.1; see
-the C ABI section of [`MIGRATION.md`](../../MIGRATION.md).
+the C ABI section of [`MIGRATION.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md).
 
 ## Consumers
 

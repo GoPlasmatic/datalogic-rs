@@ -1,7 +1,10 @@
 # @goplasmatic/datalogic-node
 
 [![npm](https://img.shields.io/npm/v/@goplasmatic/datalogic-node.svg)](https://www.npmjs.com/package/@goplasmatic/datalogic-node)
+[![CI](https://github.com/GoPlasmatic/datalogic-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/GoPlasmatic/datalogic-rs/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
+Part of [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs): one engine, every runtime.
 
 Native Node.js bindings for
 [`datalogic-rs`](https://github.com/GoPlasmatic/datalogic-rs), a fast
@@ -464,3 +467,9 @@ This produces a local `datalogic-node.<platform-triple>.node`, plus
 - [Documentation: Node.js](https://goplasmatic.github.io/datalogic-rs/nodejs/overview.html)
 - [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/)
 - [JSONLogic specification](https://jsonlogic.com)
+
+## License
+
+Apache-2.0. See the
+[main repository](https://github.com/GoPlasmatic/datalogic-rs) for
+source and contribution guidelines.

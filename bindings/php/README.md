@@ -154,7 +154,9 @@ out of scope; every wrapper type also exposes an explicit
 
 The binding mirrors the Rust engine's
 [API tier model](https://github.com/GoPlasmatic/datalogic-rs#one-api-shape-every-binding).
-Every method takes and returns JSON strings.
+Rules and results cross the boundary as JSON strings, except where a
+tier says otherwise: data can be a `DataHandle`, typed evaluations
+return native PHP scalars, and batch calls return a list.
 
 | Tier            | Entry point                                                    | Use when                                              |
 |-----------------|----------------------------------------------------------------|-------------------------------------------------------|

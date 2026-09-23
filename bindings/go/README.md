@@ -350,3 +350,9 @@ loudly at init instead of corrupting at call time.
 - [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/)
 - [JSONLogic specification](https://jsonlogic.com)
 - [C ABI internals](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/c#readme)
+
+## License
+
+Apache-2.0. See the
+[main repository](https://github.com/GoPlasmatic/datalogic-rs) for
+source and contribution guidelines.

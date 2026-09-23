@@ -1,7 +1,10 @@
 # @goplasmatic/datalogic-wasm
 
 [![npm](https://img.shields.io/npm/v/@goplasmatic/datalogic-wasm)](https://www.npmjs.com/package/@goplasmatic/datalogic-wasm)
+[![CI](https://github.com/GoPlasmatic/datalogic-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/GoPlasmatic/datalogic-rs/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
+Part of [datalogic-rs](https://github.com/GoPlasmatic/datalogic-rs): one engine, every runtime.
 
 [JSONLogic](https://jsonlogic.com/) engine for **browsers, Deno, Bun,
 Cloudflare Workers, and other edge / non-Node JS runtimes**, compiled to
@@ -745,4 +748,6 @@ runner skip every test.
 
 ## License
 
-Apache-2.0
+Apache-2.0. See the
+[main repository](https://github.com/GoPlasmatic/datalogic-rs) for
+source and contribution guidelines.
