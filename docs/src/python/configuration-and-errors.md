@@ -9,7 +9,7 @@ failures through the binding's exception hierarchy.
 JSON string) with an optional `"preset"` key plus per-field overrides.
 The preset applies first; the remaining keys override individual fields
 on top of it. Unknown keys or values raise `EvaluateError`, so typos
-fail loudly instead of being silently ignored.
+fail loudly.
 
 | Key | Values |
 |-----|--------|
@@ -48,10 +48,10 @@ except EvaluateError as e:
     print(e.error_type)                 # "Thrown"
 ```
 
-Two details worth knowing: `division_by_zero` governs the float path
-only, so `{"/": [1, 0]}` (integer / integer) raises under every setting;
-and the strict preset rejects non-numeric strings, `None`, and `""` in
-arithmetic, while numeric strings such as `"1"` are still coerced
+Two details: `division_by_zero` governs the float path only, so
+`{"/": [1, 0]}` (integer / integer) raises under every setting; and the
+strict preset rejects non-numeric strings, `None`, and `""` in
+arithmetic, while it still coerces numeric strings such as `"1"`
 (`{"+": ["1", 2]}` returns `3`).
 
 A JSON string works anywhere the dict does:
@@ -106,14 +106,14 @@ exception message as `Thrown: <payload JSON>`.
 ## Type Conversion
 
 The dict-input path (`apply`, `Engine.eval`, `Rule.evaluate`) walks
-Python objects straight into the engine's arena representation;
-[`pythonize`](https://crates.io/crates/pythonize) is used only as a
-fallback for unusual shapes (subclasses, sets, mappings, out-of-range
-ints), with identical results either way.
+Python objects straight into the engine's arena representation; it
+falls back to [`pythonize`](https://crates.io/crates/pythonize) only
+for unusual shapes (subclasses, sets, mappings, out-of-range ints),
+with identical results either way.
 
 **Supported:** `dict`, `list`, `tuple`, `str`, `int`, `float`, `bool`,
-`None`. Tuples and sets (`set`, `frozenset`) are converted to JSON
-arrays (set order is unspecified).
+`None`. The binding converts tuples and sets (`set`, `frozenset`) to
+JSON arrays (set order is unspecified).
 
 **Non-finite floats:** `float('nan')` and `float('inf')` have no JSON
 encoding, so they become `null` on input and come back as `None` in
@@ -123,7 +123,7 @@ returns `None`, indistinguishable from `"return_null"`, and the JSON
 string entry points (`eval_str`, `evaluate_str`) serialize it as
 `null` too.
 
-**Not supported**, these raise `ParseError` with a clear message:
+**Not supported** (these raise `ParseError`):
 
 *   `datetime.datetime`, `datetime.date`: convert to an ISO string at the Python edge
 *   `decimal.Decimal`: convert to `float` or `str`

@@ -1,13 +1,13 @@
 # Thread Safety
 
-datalogic-rs is designed for thread-safe, concurrent evaluation.
+datalogic-rs supports thread-safe, concurrent evaluation.
 
 ## Thread-Safe Design
 
 ### Logic is Send + Sync
 
 `Logic` (the v5 name for `CompiledLogic`) is `Send + Sync`. v5 does **not**
-auto-wrap it in `Arc` — wrap it yourself when you want cheap cross-thread
+auto-wrap it in `Arc`. Wrap it yourself when you want cheap cross-thread
 sharing, or use `Engine::compile_arc` to do it in one step:
 
 ```rust
@@ -24,7 +24,7 @@ let compiled = Arc::new(
 // Or in one step (equivalent to `Arc::new(engine.compile(rule)?)`):
 let compiled = engine.compile_arc(r#"{">": [{"var": "x"}, 10]}"#).unwrap();
 
-// Cloning the Arc is cheap — just bumps the refcount.
+// Cloning the Arc is cheap: it bumps the refcount.
 let compiled_clone = Arc::clone(&compiled);
 ```
 
@@ -62,7 +62,7 @@ for handle in handles {
 
 ### With Tokio
 
-Evaluation is CPU-bound — use `spawn_blocking` to keep async runtimes
+Evaluation is CPU-bound, so use `spawn_blocking` to keep async runtimes
 responsive:
 
 ```rust
@@ -94,8 +94,8 @@ async fn main() {
 
 ## Thread Pool Pattern
 
-For high-throughput scenarios, use a thread pool — each worker keeps its own
-`Session` so the arena is reused across calls without contention:
+For high-throughput workloads, use a thread pool. Each worker keeps its own
+`Session`, so it reuses one arena across calls without contention:
 
 ```rust
 use datalogic_rs::Engine;
@@ -155,7 +155,7 @@ for _ in 0..4 {
 
 ### Per-Thread Engine
 
-Use when you genuinely need thread-local engine state:
+Use this when you need thread-local engine state:
 
 ```rust
 thread_local! {
@@ -214,7 +214,7 @@ for data in datasets {
     session.reset();
 }
 
-// Bad — recompiles every iteration
+// Bad: recompiles every iteration
 for data in datasets {
     let compiled = engine.compile(rule).unwrap();
     engine.eval_str(rule, data)?;
@@ -223,7 +223,7 @@ for data in datasets {
 
 ### Reuse the Arena
 
-`Session` reuses one `bumpalo::Bump` across calls; the caller calls
+`Session` reuses one `bumpalo::Bump` across calls; you call
 `session.reset()` between batches so peak memory tracks the largest
 single evaluation rather than the sum. For zero-copy `&DataValue<'a>`
 results, manage the `bumpalo::Bump` yourself and call `Engine::evaluate`

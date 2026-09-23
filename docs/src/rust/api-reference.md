@@ -4,9 +4,9 @@ Core types and methods in datalogic-rs v5.
 
 ## Public surface at a glance
 
-v5 exposes five evaluation tiers, in order of caller control. Pick by
-use case, not by curiosity — most callers want **Tier 0** for ad-hoc
-work or **Tier 2** for repeated evaluation.
+v5 exposes five evaluation tiers, in order of caller control. Most
+callers want **Tier 0** for ad-hoc work or **Tier 2** for repeated
+evaluation.
 
 | Tier | Entry point | Arena owner | Returns | Use when |
 |------|-------------|-------------|---------|----------|
@@ -16,8 +16,8 @@ work or **Tier 2** for repeated evaluation.
 | **3** | `Engine::evaluate(&Logic, data, &Bump)` | caller-owned `Bump` | `&'a DataValue<'a>` | Zero-copy result pipelines, custom pool strategies |
 | **4** | `Engine::trace()` → `TracedSession::*` | per-call `Bump` (caller-owned for `eval_borrowed`) + trace buffer | `TracedRun<R>` | Debugging, visualisation, instrumentation |
 
-The same tier model is exposed in every binding — see each binding's
-README for the language-idiomatic entry points.
+Every binding exposes the same tier model; see each binding's README
+for the language-idiomatic entry points.
 
 ## Module-level helpers
 
@@ -56,7 +56,7 @@ use datalogic_rs::{Engine, EvaluationConfig};
 // Default engine.
 let engine = Engine::new();
 
-// Builder — set config, enable templating, register custom operators.
+// Builder: set config, enable templating, register custom operators.
 let engine = Engine::builder()
     .with_config(EvaluationConfig::strict())
     .with_templating(true)           // requires feature = "templating"
@@ -88,8 +88,7 @@ cross-thread sharing pattern (equivalent to
 
 #### `eval` / `eval_str` / `eval_into` (one-shot)
 
-Engine-owned arena per call. The differences are only in the result
-type:
+Engine-owned arena per call. They differ only in the result type:
 
 ```rust
 pub fn eval<R, D>(&self, rule: R, data: D) -> Result<OwnedDataValue>;
@@ -221,9 +220,9 @@ EngineBuilder::new()
     .build();
 ```
 
-`with_template_key_escape(prefix)` is unset by default. With it, exactly
-one leading `prefix` is stripped from every template key and an escaped
-key is never resolved as an operator, so `{"$type": ...}` emits the key
+`with_template_key_escape(prefix)` is unset by default. With it, the
+engine strips exactly one leading `prefix` from every template key and
+never resolves an escaped key as an operator, so `{"$type": ...}` emits the key
 `type` instead of running the `type` operator, and `{"$$type": ...}`
 emits a literal `$type`. It recovers the ~60 built-in names (and any
 registered custom operator) as output keys. Only meaningful in templating
@@ -241,10 +240,10 @@ regardless of this setting.
 
 The compiled, reusable rule tree. Output of `Engine::compile`.
 
-- `Send + Sync` — wrap in `Arc` to share across threads (or use
+- `Send + Sync`: wrap in `Arc` to share across threads (or use
   `Engine::compile_arc` to do it in one step).
 - Immutable after construction.
-- `resolve_node_ids(&self, ids: &[u32]) -> Vec<PathStep>` — translate
+- `resolve_node_ids(&self, ids: &[u32]) -> Vec<PathStep>`: translate
   the breadcrumb of a structured `Error` into the source path of the
   failing node.
 
@@ -253,7 +252,7 @@ The compiled, reusable rule tree. Output of `Engine::compile`.
 ## Session
 
 Reusable evaluation handle that owns a `bumpalo::Bump`. The session
-**never** auto-resets — the caller decides when to release arena memory
+**never** auto-resets: the caller decides when to release arena memory
 back to the start-of-chunk position. Construct via `Engine::session()`.
 
 ```rust
@@ -275,7 +274,7 @@ let bytes = session.allocated_bytes();
 
 `Session::eval` / `eval_str` / `eval_into` accept any `EvalInput<'_>`.
 `eval_borrowed` returns a `&'a DataValue<'a>` that borrows from the
-session's arena — Rust's borrow checker enforces that the next
+session's arena; Rust's borrow checker enforces that the next
 `&mut self` call invalidates it.
 
 ---
@@ -381,7 +380,7 @@ heap-allocated owned tree (e.g. as the return of `Engine::eval` /
 ## EvaluationConfig
 
 Configuration for evaluation behavior. The struct is `#[non_exhaustive]`,
-so it cannot be built with a struct literal from outside the crate.
+so you cannot build it with a struct literal from outside the crate.
 Construct it via `default()` (or a preset) and chain the `with_*` setters:
 
 ```rust

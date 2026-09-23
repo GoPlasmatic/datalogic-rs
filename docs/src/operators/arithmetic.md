@@ -55,7 +55,7 @@ Add numbers together (numeric strings are coerced).
 </div>
 
 **Notes:**
-- Numeric strings are converted to numbers
+- `+` converts numeric strings to numbers
 - `+` never concatenates: a non-numeric string throws a `NaN` error under the default `EvaluationConfig::arithmetic_nan_handling`, so `{ "+": ["hello", " world"] }` is an error. Use `cat` to join strings
 - Single argument converts value to number
 - `{ "+": [] }` returns `0`
@@ -220,7 +220,7 @@ Divide numbers.
 **Notes:**
 - If both operands are integral-valued numbers and the divisor is zero (`{ "/": [10, 0] }`, and also `{ "/": [10, 0.0] }`, since `0.0` is integral-valued), the engine always throws an error (error type "NaN"), regardless of config
 - Otherwise a zero divisor follows `EvaluationConfig::division_by_zero`: a non-integral dividend (`{ "/": [10.5, 0] }`) or a divisor coerced from `null`, a boolean, or a string (`{ "/": [10, null] }`, `{ "/": [10, "0"] }`). The default is `DivisionByZeroHandling::ReturnSaturated`, which returns `f64::MAX` (or `f64::MIN` for a negative dividend), not `Infinity`
-- Other modes (`ReturnInfinity`, `ReturnNull`, `ThrowError`) are selectable via `EvaluationConfig`. Choose `ThrowError` if a `try` fallback should cover every zero-like divisor
+- You can select the other modes (`ReturnInfinity`, `ReturnNull`, `ThrowError`) through `EvaluationConfig`. Choose `ThrowError` if a `try` fallback should cover every zero-like divisor
 
 ---
 
@@ -309,7 +309,7 @@ Find the maximum value.
 </div>
 
 **Notes:**
-- Operands must be numbers. Strings (even numeric ones such as `"1"`), booleans, and `null` are not coerced and throw Invalid Arguments. This differs from json-logic-js, which coerces `{ "max": ["1", 5, "3"] }` to `5`
+- Operands must be numbers. `max` does not coerce strings (even numeric ones such as `"1"`), booleans, or `null`; they throw Invalid Arguments. This differs from json-logic-js, which coerces `{ "max": ["1", 5, "3"] }` to `5`
 - An empty argument list, or a single value that resolves to an empty array, throws Invalid Arguments
 
 ---
@@ -353,7 +353,7 @@ Find the minimum value.
 </div>
 
 **Notes:**
-- Operands must be numbers. Strings (even numeric ones), booleans, and `null` are not coerced and throw Invalid Arguments
+- Operands must be numbers. `min` does not coerce strings (even numeric ones), booleans, or `null`; they throw Invalid Arguments
 - An empty argument list, or a single value that resolves to an empty array, throws Invalid Arguments
 
 ---
@@ -411,7 +411,7 @@ Get the absolute value.
 **Notes (abs, ceil, floor):**
 - Numeric strings are coerced; `null`, booleans, and non-numeric strings throw Invalid Arguments
 - Two or more arguments return an array of per-element results
-- Unlike `max`/`min`, a single value that resolves to an array is rejected with Invalid Arguments: `{ "abs": { "var": "a" } }` with `{ "a": [-1] }` is an error. Use `map` to apply these to a data-driven array
+- Unlike `max`/`min`, a single value that resolves to an array throws Invalid Arguments: `{ "abs": { "var": "a" } }` with `{ "a": [-1] }` is an error. Use `map` to apply these to a data-driven array
 
 ---
 

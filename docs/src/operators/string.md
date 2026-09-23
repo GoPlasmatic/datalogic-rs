@@ -152,7 +152,7 @@ Check if a value is contained in a string or array.
 </div>
 
 **Notes:**
-- A string haystack requires a string needle: `{ "in": [2, "123"] }` is `false`, numbers are never stringified for substring search
+- A string haystack requires a string needle: `{ "in": [2, "123"] }` is `false`; the engine never stringifies numbers for substring search
 - Array membership uses strict deep equality (the same predicate as `distinct`): `{ "in": ["2", [1, 2, 3]] }` is `false`, while `{ "in": [1, [1.0, 2]] }` is `true` and nested arrays/objects compare structurally
 - Any other haystack (an object, `null`, a missing variable) yields `false`, as does a missing haystack argument
 
@@ -205,8 +205,8 @@ Get the length of a string or array.
 ```
 
 **Notes:**
-- `length` takes exactly one argument. A literal array such as `{ "length": [1, 2, 3] }` is parsed as a multi-argument call and throws Invalid Arguments. Pass a single value that resolves to an array (for example `{ "length": { "var": "items" } }`).
-- Only strings and arrays are accepted: `null` (including a missing `var`), numbers, booleans, and objects throw Invalid Arguments. Guard optional fields with `??`, for example `{ "length": { "??": [{ "var": "items" }, []] } }`, which is `0` when `items` is absent.
+- `length` takes exactly one argument. The engine parses a literal array such as `{ "length": [1, 2, 3] }` as a multi-argument call, which throws Invalid Arguments. Pass a single value that resolves to an array (for example `{ "length": { "var": "items" } }`).
+- `length` accepts only strings and arrays: `null` (including a missing `var`), numbers, booleans, and objects throw Invalid Arguments. Guard optional fields with `??`, for example `{ "length": { "??": [{ "var": "items" }, []] } }`, which is `0` when `items` is absent.
 - String length counts Unicode characters, not bytes (`{ "length": "héllo" }` is `5`).
 
 **Try it:**
@@ -450,7 +450,7 @@ Split a string into an array.
 // To select a specific element, index into that array in a later step (for
 // example bind the result in your data, or use it inside an array operator).
 // The snippet { "var": "0" } is illustrative of selecting the first element
-// ("user") from the split result; it is not a standalone rule on its own.
+// ("user") from the split result; it is not a standalone rule.
 ```
 
 **Try it:**
@@ -459,5 +459,5 @@ Split a string into an array.
 </div>
 
 **Notes:**
-- Exactly two arguments are used. There is no limit argument: `{ "split": ["a,b,c,d", ",", 2] }` still returns all four parts, and a single argument is Invalid Arguments
-- Non-string input is converted to a string first (`{ "split": [123, ","] }` is `["123"]`)
+- `split` uses exactly two arguments. There is no limit argument: `{ "split": ["a,b,c,d", ",", 2] }` still returns all four parts, and a single argument is Invalid Arguments
+- `split` converts non-string input to a string first (`{ "split": [123, ","] }` is `["123"]`)

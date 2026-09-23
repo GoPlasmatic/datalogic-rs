@@ -1,12 +1,12 @@
 # Starter Boilerplates
 
-Ready-to-run microservice integration templates for major frameworks. These patterns demonstrate clean route protection, dynamic calculations, and in-memory feature-flag evaluations using `datalogic`.
+Ready-to-run microservice integration templates for Express, FastAPI, and Axum. They show route protection, dynamic calculations, and in-memory feature-flag evaluation with `datalogic`.
 
 ---
 
 ## 🟢 Node.js + Express (`node-express-rules`)
 
-Protect routes dynamically using `@goplasmatic/datalogic-node` middleware. This pattern compiles your rule sets and matches incoming request properties (path, headers, user roles) against them.
+Protect routes with `@goplasmatic/datalogic-node` middleware. The middleware compiles your rule sets and matches incoming request properties (path, headers, user roles) against them.
 
 ### Middleware Implementation
 
@@ -23,7 +23,7 @@ const rules = {
   "/billing": { "in": [{ "var": "user.role" }, ["admin", "billing_manager"]] }
 };
 
-// Compile rules for O(1) matching speed
+// Compile each rule once at startup, keyed by route
 const compiledRules = {};
 for (const [route, rule] of Object.entries(rules)) {
   compiledRules[route] = engine.compile(JSON.stringify(rule));
@@ -63,7 +63,7 @@ app.get('/billing', (req, res) => res.send('Billing dashboard'));
 
 ## 🐍 Python + FastAPI (`python-fastapi-pricing`)
 
-Perform fast calculations for dynamic discounts, sales tax, or shipping fees at the API boundary using `datalogic-py`.
+Calculate dynamic discounts, sales tax, or shipping fees at the API boundary with `datalogic-py`.
 
 ### Pricing Endpoint
 
@@ -107,7 +107,7 @@ async def get_discount(context: CartContext):
 
 ## 🦀 Rust + Axum (`rust-axum-feature-flags`)
 
-A high-performance feature-flag evaluator that uses transient session recycling to achieve sub-microsecond latency.
+A feature-flag evaluator that recycles a transient session per request to keep rule evaluation at sub-microsecond latency.
 
 > **Cargo note:** `session.eval_into::<T, _>(...)` is gated behind the
 > `serde_json` feature. Add it in `Cargo.toml`:

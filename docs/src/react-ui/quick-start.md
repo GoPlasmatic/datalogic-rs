@@ -1,6 +1,6 @@
 # Quick Start
 
-This guide covers essential patterns for using the DataLogicEditor component.
+The examples below cover common patterns for the DataLogicEditor component.
 
 ## Basic Visualization
 
@@ -58,7 +58,7 @@ function DebugExample() {
 }
 ```
 
-As you step, the current node shows its context and result in a bubble, and executed nodes stay highlighted so the taken path is visible. If evaluation fails, the node on the engine's failure breadcrumb is marked with the error (and a rule that does not compile at all reports the error in a banner above the diagram). Nodes do not display results at rest, so step through the trace to read values.
+As you step, the current node shows its context and result in a bubble, and executed nodes stay highlighted so the taken path is visible. If evaluation fails, the editor marks the node on the engine's failure breadcrumb with the error (and a rule that does not compile at all reports the error in a banner above the diagram). Nodes do not display results at rest, so step through the trace to read values.
 
 ## Dynamic Data
 
@@ -224,7 +224,7 @@ trace. Every key is optional and omitted keys keep the engine default:
 ```
 
 When the settings differ from the defaults, the toolbar shows a compact
-summary so a surprising result is traceable to the configuration. Changing
+summary so you can trace a surprising result to the configuration. Changing
 `config` rebuilds the engine, which resets selection and undo history.
 
 ## Custom Operators
@@ -262,11 +262,11 @@ The editor supports light and dark themes:
 <DataLogicEditor value={expression} />
 ```
 
-The component sets `data-theme` on its own `.logic-editor` root, so a `data-theme` on a parent or ancestor is not read. Use the `theme` prop to force a theme.
+The component sets `data-theme` on its own `.logic-editor` root and does not read a `data-theme` on a parent or ancestor. Use the `theme` prop to force a theme.
 
 ## Handling Null/Empty Expressions
 
-The editor gracefully handles null or undefined expressions:
+The editor handles null or undefined expressions:
 
 ```tsx
 function ConditionalEditor({ expression }) {

@@ -1,6 +1,6 @@
 # Quick Start
 
-This guide covers the essential patterns for using JSONLogic in JavaScript/TypeScript.
+The core patterns for using JSONLogic from JavaScript/TypeScript.
 
 ## Basic Evaluation
 
@@ -37,7 +37,7 @@ console.log(evaluate(priceLogic, orderData, false)); // "32.97"
 
 ## Compiled Rules
 
-For repeated evaluation of the same logic, use `CompiledRule` for better performance:
+For repeated evaluation of the same logic, use `CompiledRule` so the rule compiles once instead of on every call:
 
 ```javascript
 import init, { CompiledRule } from '@goplasmatic/datalogic-wasm';
@@ -55,7 +55,7 @@ console.log(rule.evaluate('{"age": 18}')); // "true"
 
 ## Parsing Results
 
-Results are returned as JSON strings. Parse them for use in your application:
+Every call returns its result as a JSON string. Parse it for use in your application:
 
 ```javascript
 const result = evaluate('{"+": [1, 2, 3]}', '{}', false);

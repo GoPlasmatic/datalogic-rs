@@ -1,8 +1,8 @@
 # Migration Guide
 
-This page is a quick conceptual overview. The full v4 → v5 cookbook —
-every renamed call, every cargo-feature swap, every error-handling
-update — lives in [`MIGRATION.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md)
+This page is a quick conceptual overview. The full v4 → v5 cookbook
+(every renamed call, every cargo-feature swap, every error-handling
+update) lives in [`MIGRATION.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md)
 at the repo root. Treat that file as authoritative.
 
 ## v4 to v5 Migration
@@ -10,11 +10,11 @@ at the repo root. Treat that file as authoritative.
 ### v5 is a hard cliff
 
 v5 has **no compatibility shim**. The pre-release `compat` feature and
-the `LegacyApi` trait are gone — there is no transitional crate
+the `LegacyApi` trait are gone; there is no transitional crate
 configuration. Plan a single cutover: update Cargo.toml, run a
 find-and-replace pass, and re-run your test suite.
 
-The on-the-wire JSONLogic spec is unchanged — your rules and data still
+The on-the-wire JSONLogic spec is unchanged: your rules and data still
 look the same. Everything that changes is on the Rust side.
 
 ### What changed at a glance
@@ -40,15 +40,15 @@ look the same. Everything that changes is on the Rust side.
   `&serde_json::Value` (gated on `serde_json`).
 - **Module-level helpers for one-shot calls.** `datalogic_rs::eval`,
   `datalogic_rs::eval_str`, `datalogic_rs::eval_into`, and
-  `datalogic_rs::compile` use a shared default engine — no need to
-  construct an `Engine` for the simple cases.
+  `datalogic_rs::compile` use a shared default engine, so you don't need
+  to construct an `Engine` for the simple cases.
 - **Sessions are explicit.** Reusable arenas live on
   [`Session`] (`engine.session()`); the session never auto-resets,
-  so callers call `session.reset()` between batches.
+  so you call `session.reset()` between batches.
 - **Trace surface is a session.** `engine.trace().eval_str(rule, data)`
   returns a [`TracedRun<R>`] with `result: Result<R, Error>` plus
   `steps` and `expression_tree`. Available on `feature = "trace"`.
-  The old `TracedResult` type is gone — successful and failed runs
+  The old `TracedResult` type is gone; successful and failed runs
   share the same `TracedRun<R>` shape.
 - **Custom operators take pre-evaluated args.** Implementations get
   `args: &[&'a DataValue<'a>]`, a `&mut EvalContext<'_, 'a>`, and a
@@ -118,7 +118,7 @@ impl CustomOperator for DoubleOperator {
         _ctx: &mut EvalContext<'_, 'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
-        // args are already evaluated — no Evaluator call.
+        // args are already evaluated; no Evaluator call.
         let n = args.first()
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
@@ -155,7 +155,7 @@ let engine = Engine::builder()
 If you're stepping from v3 directly to v5, the v3 → v4 jump is a
 historical layer that no longer matches anything in this codebase. Read
 the [v4-to-v5 section](#v4-to-v5-migration) above and the repo-root
-`MIGRATION.md`; everything you need to land on v5 is covered there.
+`MIGRATION.md`; they cover everything you need to land on v5.
 
 ### Getting Help
 

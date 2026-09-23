@@ -21,7 +21,7 @@ The full function-by-function surface, build instructions, and cbindgen notes li
 
 ## Binary distribution
 
-Because these bindings rely on compiled shared/static libraries, the release pipeline compiles the `bindings/c` code for all supported operating systems and architectures. The binaries are then bundled into the standard package layout for each ecosystem.
+Because these bindings rely on compiled shared/static libraries, the release pipeline compiles the `bindings/c` code for every supported operating system and architecture, then bundles the binaries into each ecosystem's standard package layout.
 
 | Ecosystem | Packaging | Binaries Layout | Loading Mechanism |
 |---|---|---|---|
@@ -33,19 +33,19 @@ Because these bindings rely on compiled shared/static libraries, the release pip
 ## The JSON-in/JSON-out rule
 
 To keep the C ABI surface simple and performant, inputs and outputs crossing the boundary are **UTF-8 JSON strings passed as `(pointer, length)` pairs** (ABI v2 carries an explicit byte length, so there are no NUL terminators and embedded NULs or non-ASCII bytes are safe).
-No complex struct marshaling is performed at the boundary. Instead, inputs are serialized to JSON in the host language, passed to Rust, evaluated, and the result is returned as JSON bytes to be parsed back by the host.
+The boundary does no complex struct marshaling. The host language serializes inputs to JSON and passes them to Rust; Rust evaluates them and returns the result as JSON bytes for the host to parse.
 
 ## Memory management & safety
 
-Because the Go, JVM, .NET, and PHP bindings interface with the Rust core over a C FFI boundary, memory management rules differ significantly from native Go/Java/C#/PHP code.
+Because the Go, JVM, .NET, and PHP bindings interface with the Rust core over a C FFI boundary, memory management rules differ from native Go/Java/C#/PHP code.
 
 ### ⚠️ The danger: native memory leaks
 
-When you instantiate an `Engine` or compile a `Rule` in a managed language, the actual structures (optimized bytecode ASTs, configuration options, operator collections) are allocated on the **native Rust heap**, and only a raw 64-bit memory pointer is returned to your host language.
+When you instantiate an `Engine` or compile a `Rule` in a managed language, the core allocates the actual structures (optimized bytecode ASTs, configuration options, operator collections) on the **native Rust heap** and returns only a raw 64-bit memory pointer to your host language.
 
-Managed garbage collectors (like the JVM, .NET CLR, Go's GC, or PHP's Zend GC) **only track the size of the wrapper object itself** (which is usually a few bytes representing the pointer address). The GC has no awareness of the potentially megabytes of memory allocated on the native heap behind that pointer.
+Managed garbage collectors (like the JVM, .NET CLR, Go's GC, or PHP's Zend GC) **only track the size of the wrapper object itself** (usually a few bytes holding the pointer address). The GC cannot see the native memory behind that pointer, which can run to megabytes.
 
-If you let these wrapper objects go out of scope without closing them, the native memory is not reclaimed by the collector's normal accounting. What happens next is language-specific: JVM handles that are never closed **leak permanently** until the host process terminates (the binding registers no `Cleaner`); the Go and .NET wrappers register best-effort finalizers, so the memory is eventually recovered, but only whenever the GC happens to run; PHP releases the handle in the wrapper's destructor as soon as the object goes out of scope. None of these fallbacks are a substitute for explicit cleanup.
+If you let these wrapper objects go out of scope without closing them, the collector's normal accounting does not reclaim the native memory. The outcome depends on the language: JVM handles that are never closed **leak permanently** until the host process terminates (the binding registers no `Cleaner`); the Go and .NET wrappers register best-effort finalizers, so they eventually recover the memory, but only when the GC happens to run; PHP releases the handle in the wrapper's destructor as soon as the object goes out of scope. None of these fallbacks replaces explicit cleanup.
 
 ### 🛡️ Best practices per language
 
@@ -71,7 +71,7 @@ defer session.Close() // ALWAYS defer Close
 
 #### ☕ JVM: try-with-resources
 
-Java and Kotlin provide the `try-with-resources` statement. Every native-handle class (`Engine`, `Rule`, `Session`, `TracedSession`, `DataHandle`) implements `AutoCloseable`, making this the cleanest and safest pattern (`EngineBuilder` is not closeable; it releases its native handle when `build()` runs):
+Java and Kotlin provide the `try-with-resources` statement. Every native-handle class (`Engine`, `Rule`, `Session`, `TracedSession`, `DataHandle`) implements `AutoCloseable`, which makes this the safest pattern (`EngineBuilder` is not closeable; it releases its native handle when `build()` runs):
 
 ```java
 // Automatic closure of Engine and Rule
@@ -87,7 +87,7 @@ try (Engine engine = new Engine();
 
 #### 🔷 .NET: `using` statements
 
-In C#, use the `using` keyword. If you forget, the C# wrapper provides a finalizer fallback, but explicit disposal is highly recommended:
+In C#, use the `using` keyword. If you forget, the C# wrapper provides a finalizer fallback, but dispose explicitly rather than rely on it:
 
 ```csharp
 using var engine = new Engine();
@@ -102,7 +102,7 @@ using (var session = engine.OpenSession())
 
 #### 🐘 PHP: scope-destructors & `close()`
 
-PHP releases FFI objects when they fall out of scope. However, for CLI daemons, Swoole services, or long-running PHP-FPM requests, always close handles manually:
+PHP releases FFI objects when they fall out of scope. For CLI daemons, Swoole services, or long-running PHP-FPM requests, close handles manually:
 
 ```php
 $engine = new Engine();
@@ -119,7 +119,7 @@ $engine->close();
 
 ## 🧵 Thread safety & concurrency
 
-When sharing compiled logic across multiple threads, remember the following thread-safety boundaries:
+When you share compiled logic across threads, respect these thread-safety boundaries:
 
 | Class / Type | Thread-Safe? | Usage Pattern |
 |---|---|---|
@@ -131,4 +131,4 @@ When sharing compiled logic across multiple threads, remember the following thre
 
 ### Why `Session` is not thread-safe
 
-`Session` contains a fast, zero-copy `bumpalo` arena allocator. It works by moving a cursor forward on a pre-allocated memory page. If two threads evaluate logic concurrently using the same session, they will overwrite each other's memory, leading to crashes or data corruption.
+`Session` contains a zero-copy `bumpalo` arena allocator, which allocates by moving a cursor forward on a pre-allocated memory page. If two threads evaluate logic concurrently with the same session, they overwrite each other's memory and cause crashes or data corruption.

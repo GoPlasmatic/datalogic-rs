@@ -108,8 +108,8 @@ app.put('/rules/:id', express.json({ limit: '64kb' }), (req, res) => {
 `compile` rejects malformed JSON and structurally invalid rules (for
 example a multi-key object when templating is off), but it does **not**
 verify operator names: `{ "discuont": [...] }` compiles fine and throws
-`errorType: 'InvalidOperator'` only when the rule is evaluated. That is
-why the golden-case loop matters; if a rule ships without test cases,
+`errorType: 'InvalidOperator'` only when you evaluate the rule. The
+golden-case loop catches this; if a rule ships without test cases,
 evaluate it once against a representative payload before persisting it.
 
 Two things are doing security work here: the **size limit** on the body
@@ -139,12 +139,12 @@ app.post('/evaluate-batch', async (req, res, next) => {
 
 ## Letting the frontend preview the same rule
 
-Because every binding runs the same core, the exact rule your Express
-service enforces can be previewed in the browser with
+Because every binding runs the same core, you can preview the exact
+rule your Express service enforces in the browser with
 [`@goplasmatic/datalogic-wasm`](../javascript/installation.md), or
-rendered and step-debugged with the
-[React visual editor](../react-ui/installation.md): no re-implementation,
-no drift between what the UI shows and what the API decides.
+render and step-debug it with the
+[React visual editor](../react-ui/installation.md). Nothing gets
+re-implemented, so what the UI shows matches what the API decides.
 
 ## Error handling
 

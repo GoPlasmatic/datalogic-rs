@@ -6,7 +6,7 @@ This guide covers theming, styling, and advanced customization of the DataLogicE
 
 ### System Theme (Default)
 
-By default, the editor detects system theme preference:
+By default, the editor follows the system theme preference:
 
 ```tsx
 <DataLogicEditor value={expression} />
@@ -69,12 +69,12 @@ Use the `className` prop for container styling:
 
 ### CSS Variables
 
-The component's theme variables are scoped to its `.logic-editor` root element (not `:root`), so they do not leak into the rest of your app. To override them, target the same scope. The dark theme is applied via `.logic-editor[data-theme="dark"]`.
+The component's theme variables are scoped to its `.logic-editor` root element (not `:root`), so they do not leak into the rest of your app. To override them, target the same scope. The dark theme applies through `.logic-editor[data-theme="dark"]`.
 
 The primary axis is the **signal palette**: a node is coloured by the type of
 value it produces, not by its operator category. Everything else sits on a
 neutral substrate, and the accent colour is reserved for selection, root and
-focus. These are the real token names with their light-theme values:
+focus. These are the token names with their light-theme values:
 
 ```css
 .logic-editor {
@@ -127,10 +127,11 @@ The dark theme redefines the same tokens under
 `.logic-editor[data-theme="dark"]` (for example `--board: #0a0f16`,
 `--surface: #10161f`, `--ink: #e6edf5`).
 
-Older token names (`--bg-primary`, `--bg-secondary`, `--text-primary`,
-`--border-primary`, `--accent-blue`, `--node-bg`, `--syntax-*`, `--debug-*`,
-and the `--success-*` / `--error-*` / `--warning-*` families) are kept as
-aliases mapped onto the tokens above, so existing overrides keep working.
+The stylesheet keeps older token names (`--bg-primary`, `--bg-secondary`,
+`--text-primary`, `--border-primary`, `--accent-blue`, `--node-bg`,
+`--syntax-*`, `--debug-*`, and the `--success-*` / `--error-*` / `--warning-*`
+families) as aliases mapped onto the tokens above, so existing overrides keep
+working.
 Prefer the tokens above for new work.
 
 ### Fonts
@@ -184,7 +185,7 @@ Target specific node types:
 }
 ```
 
-> **Note:** There are three node types: `operator`, `literal`, and `structure`. There is no `variable` node type, variables (`var` / `val`) render as operator nodes, so a `.react-flow__node-variable` selector matches nothing.
+> **Note:** There are three node types: `operator`, `literal`, and `structure`. There is no `variable` node type: variables (`var` / `val`) render as operator nodes, so a `.react-flow__node-variable` selector matches nothing.
 
 ### Edge Styling
 

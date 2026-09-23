@@ -1,6 +1,6 @@
 # Basic Concepts
 
-Understanding how datalogic-rs works will help you use it effectively.
+This page covers the model behind datalogic-rs: rules, compilation, evaluation, and the engine.
 
 ## JSONLogic Format
 
@@ -35,7 +35,7 @@ Arguments can be:
 
 ## Compilation vs Evaluation
 
-`datalogic` separates rule processing into two distinct phases for maximum execution speed.
+`datalogic` separates rule processing into two phases: you compile a rule once, then evaluate it against as many data payloads as you need.
 
 ### Compilation Phase
 
@@ -87,9 +87,9 @@ $rule = $engine->compile('{">": [{"var": "x"}, 10]}');
 
 ### Evaluation Phase
 
-During evaluation, the engine dispatches operations via OpCodes and walks the data context. The actual evaluation buffers are allocated within a transient or session-scoped memory arena.
+During evaluation, the engine dispatches operations via OpCodes and walks the data context. It allocates evaluation buffers in a transient or session-scoped memory arena.
 
-Here is how you evaluate a compiled rule against data using a reusable session:
+To evaluate a compiled rule against data with a reusable session:
 
 <div class="codetabs">
 
@@ -97,7 +97,7 @@ Here is how you evaluate a compiled rule against data using a reusable session:
 let engine = Engine::new();
 let compiled = engine.compile(r#"{">": [{"var": "x"}, 10]}"#).unwrap();
 
-// Reusable session — reuses the memory buffer across calls.
+// Reusable session: reuses the memory buffer across calls.
 let mut session = engine.session();
 let result = session.eval_str(&compiled, r#"{"x": 42}"#).unwrap();
 assert_eq!(result, "true");
@@ -176,9 +176,9 @@ echo $result; // "true"
 
 ## The Engine
 
-The `Engine` is the central component that holds custom configurations and registered operators. Once constructed, the engine is frozen and immutable.
+The `Engine` holds custom configurations and registered operators. Once constructed, the engine is immutable.
 
-Here is how to construct and configure an engine across runtimes:
+To construct and configure an engine in each runtime:
 
 <div class="codetabs">
 
@@ -308,8 +308,8 @@ The engine:
 
 ## Context Stack
 
-The context stack manages variable scope during evaluation. This is
-important for array operations like `map`, `filter`, and `reduce`.
+The context stack manages variable scope during evaluation. Array
+operations like `map`, `filter`, and `reduce` depend on it.
 
 ```rust
 // In a filter operation, "" refers to the current element
@@ -330,7 +330,7 @@ During array operations:
 JSONLogic operators often perform type coercion:
 
 ### Arithmetic
-- Strings are parsed as numbers when possible (`"5" + 3 = 8`)
+- Arithmetic operators parse strings as numbers when possible (`"5" + 3 = 8`)
 - Non-numeric strings raise a `Thrown { type: "NaN" }` error by default;
   configurable via [`EvaluationConfig::arithmetic_nan_handling`](../advanced/configuration.md)
 
@@ -339,15 +339,15 @@ JSONLogic operators often perform type coercion:
 - `===` performs strict equality (no coercion)
 
 ### Truthiness
-By default, uses JavaScript-style truthiness:
+By default, the engine uses JavaScript-style truthiness:
 - Falsy: `false`, `0`, `""`, `null`, `[]`, `{}`
 - Truthy: everything else
 
-This is configurable via `EvaluationConfig`.
+You can change this via `EvaluationConfig`.
 
 ## Thread Safety
 
-`Logic` is `Send + Sync` and can be shared across threads via `Arc`:
+`Logic` is `Send + Sync`, so you can share it across threads via `Arc`:
 
 ```rust
 use datalogic_rs::Engine;
@@ -373,7 +373,7 @@ for h in handles {
 
 ## Next Steps
 
-- [Operators Overview](../operators/overview.md) - Learn about all available operators
-- [Configuration](../advanced/configuration.md) - Customize evaluation behavior
-- [Custom Operators](../advanced/custom-operators.md) - Extend with your own logic
-- [Migration Guide](../migration.md) - Move from v4 to v5
+- [Operators Overview](../operators/overview.md): every available operator
+- [Configuration](../advanced/configuration.md): customize evaluation behavior
+- [Custom Operators](../advanced/custom-operators.md): extend the engine with your own logic
+- [Migration Guide](../migration.md): move from v4 to v5

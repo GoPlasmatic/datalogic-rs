@@ -52,15 +52,15 @@ Built-in operators use direct OpCode dispatch instead of string lookups:
 
 v5 optimizations:
 
-- **Arena allocation** — `&DataValue<'a>` results live in a `bumpalo::Bump`
+- **Arena allocation**: `&DataValue<'a>` results live in a `bumpalo::Bump`
   for one evaluation. Read-through ops like `var` borrow zero-copy from the
   caller's input.
-- **Reusable arenas** — `Session` reuses one `Bump` across calls; the caller
-  calls `session.reset()` between batches so peak memory tracks the largest
+- **Reusable arenas**: `Session` reuses one `Bump` across calls; you call
+  `session.reset()` between batches so peak memory tracks the largest
   single evaluation rather than the sum.
-- **Pre-built literal singletons** — trivial literals (`Null`, `Bool`,
+- **Pre-built literal singletons**: trivial literals (`Null`, `Bool`,
   empty primitives) are static and incur no per-call allocation.
-- **`Arc<Logic>`** — cheap clone for cross-thread sharing.
+- **`Arc<Logic>`**: cheap clone for cross-thread sharing.
 
 ## Benchmarking
 
@@ -106,7 +106,7 @@ fn main() {
 ```
 
 For the absolute hot path, drop down to `Engine::evaluate` and manage the
-arena yourself — the result is a zero-copy `&DataValue<'a>` and avoids the
+arena yourself. The result is a zero-copy `&DataValue<'a>` and avoids the
 deep-clone Session does at the boundary.
 
 ```rust
@@ -114,7 +114,7 @@ use bumpalo::Bump;
 
 let arena = Bump::new();
 let result = engine.evaluate(&compiled, r#"{"x": 1}"#, &arena).unwrap();
-// `result` is `&DataValue<'_>` — borrows from `arena`.
+// `result` is `&DataValue<'_>`, borrowed from `arena`.
 ```
 
 ## Optimization Tips
@@ -128,7 +128,7 @@ for data in datasets {
     session.eval_str(&compiled, data)?;
 }
 
-// Bad — recompiles every iteration
+// Bad: recompiles every iteration
 for data in datasets {
     let compiled = engine.compile(rule).unwrap();
     engine.eval_str(rule, data)?;
@@ -165,7 +165,7 @@ cheapest / most-likely-to-decide check comes first:
 ### 4. Minimize Cloning in Custom Operators
 
 `CustomOperator` receives args as `&DataValue<'a>` borrows. Avoid
-materialising into owned values unless you actually need to mutate.
+materialising into owned values unless you need to mutate.
 
 ```rust
 let n = args[0].as_f64().unwrap_or(0.0); // cheap read

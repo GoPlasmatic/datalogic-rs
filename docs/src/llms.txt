@@ -1,6 +1,6 @@
 # datalogic-rs
 
-> High-performance JSONLogic (json-logic) rules engine and sandboxed
+> JSONLogic (json-logic) rules engine and sandboxed
 > expression evaluator: one Rust core with official bindings for
 > Node.js, browser/edge WASM, Python, Go, Java (JVM), .NET, and PHP,
 > plus an embeddable React visual rule editor and step-through
@@ -12,7 +12,7 @@ Key facts: rules compile once to opcode programs and evaluate in a
 reusable memory arena (10.3 ns geomean across the 51-suite benchmark
 matrix); the core is `#![forbid(unsafe_code)]` with no eval, no I/O,
 and no scripting runtime, so user-submitted rules are safe to evaluate;
-every binding runs the same 1,658-case conformance battery (58 suites)
+every binding runs the same 1,953-case conformance battery (64 suites)
 in CI, so semantics never drift between languages; 84 built-in
 operators including datetime, string/array/object extensions, error
 handling (try/throw), and flagd-compatible feature-flag operators

@@ -12,7 +12,7 @@ Common issues and solutions for datalogic-rs.
 
 1. Check the operator name spelling (operators are case-sensitive).
 2. Register a custom operator on the builder.
-3. Enable templating mode (requires `feature = "templating"`) — unknown
+3. Enable templating mode (requires `feature = "templating"`); unknown
    keys then become literal output fields.
 
 ```rust
@@ -32,7 +32,7 @@ let engine = datalogic_rs::Engine::builder().with_templating(true).build();
 ### A template key runs as an operator instead of being emitted
 
 **Cause:** This is the inverse of the error above, and it is quieter: you
-get no error at all, just the wrong result. In templating mode a
+get no error, only the wrong result. In templating mode a
 single-key object is always an operator invocation, so a key that happens
 to name a built-in runs the operator instead of becoming an output field.
 
@@ -45,13 +45,13 @@ to name a built-in runs the operator instead of becoming an output field.
 Around 60 names are affected: `type`, `map`, `filter`, `if`, `keys`,
 `values`, `entries`, `length`, `in`, `sort`, `now`, `try`, `cat`, `+`,
 `==` and the rest of the operator table, plus any custom operator you
-registered. Note that the same key behaves differently with siblings:
+registered. The same key behaves differently with siblings:
 `{"type": X, "other": 1}` emits both keys, because multi-key object keys
 are always literal.
 
-**Solution:** enable the key escape and prefix the key with it. Exactly
-one leading prefix is stripped, and an escaped key is never resolved as
-an operator.
+**Solution:** enable the key escape and prefix the key with it. The engine
+strips exactly one leading prefix and never resolves an escaped key as an
+operator.
 
 ```rust
 # #[cfg(feature = "templating")]
@@ -112,14 +112,14 @@ let engine = Engine::builder().with_config(config).build();
 **Cause:** Custom operator type that isn't `Send + Sync`.
 
 **Solution:** Use thread-safe primitives. Avoid `Rc`, `RefCell`, etc., in
-operator state — wrap shared state in `Arc<Mutex<_>>` or atomics.
+operator state; wrap shared state in `Arc<Mutex<_>>` or atomics.
 
 ### v4 method calls fail to compile in v5
 
 **Cause:** v5 renamed the public surface (`DataLogic` → `Engine`,
 `CompiledLogic` → `Logic`, `Operator` → `CustomOperator`,
 `evaluate_*` → `eval_*`, etc.) and removed the pre-release `compat`
-shim. v5 is a hard cliff — there is no transitional feature flag.
+shim. v5 is a hard cliff: there is no transitional feature flag.
 
 **Solutions:**
 
@@ -180,10 +180,10 @@ evaluate(logic, data, false);
 **Solutions:**
 
 ```javascript
-// Browser/Bundler — need default import for init
+// Browser/Bundler: need default import for init
 import init, { evaluate } from '@goplasmatic/datalogic-wasm';
 
-// Node.js — no init needed
+// Node.js: no init needed
 const { evaluate } = require('@goplasmatic/datalogic-wasm');
 ```
 
@@ -194,7 +194,7 @@ const { evaluate } = require('@goplasmatic/datalogic-wasm');
 **Solutions:**
 
 1. Check your bundler configuration
-2. Ensure WASM files are served correctly
+2. Ensure your server serves the WASM files correctly
 3. Check CORS headers if loading from CDN
 
 For Webpack:
@@ -324,7 +324,7 @@ cd bindings/wasm && ./build.sh
 ### Bundler can't find WASM file
 
 ```javascript
-// Webpack — enable async WASM
+// Webpack: enable async WASM
 experiments: { asyncWebAssembly: true }
 ```
 

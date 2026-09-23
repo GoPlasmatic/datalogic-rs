@@ -1,6 +1,6 @@
 # API & GIL Management
 
-`datalogic-py` provides context managers for arena recycling and releases the Global Interpreter Lock (GIL) to enable true parallelism.
+`datalogic-py` provides context managers for arena recycling and releases the Global Interpreter Lock (GIL) so threads can evaluate in parallel.
 
 ## Session Lifecycle (Context Manager)
 
@@ -23,9 +23,9 @@ with engine.session() as session:
 
 ## Global Interpreter Lock (GIL) Release
 
-Python's multi-threading is typically limited by the Global Interpreter Lock (GIL). However, `datalogic-py` releases the GIL during the evaluation phase.
+The Global Interpreter Lock (GIL) usually limits Python multi-threading. `datalogic-py` releases the GIL during evaluation.
 
-*   **Parallel execution:** If you run `rule.evaluate` inside a `ThreadPoolExecutor` or standard Python `threading.Thread`, multiple evaluations will run concurrently on separate CPU cores inside the Rust engine.
+*   **Parallel execution:** If you run `rule.evaluate` inside a `ThreadPoolExecutor` or standard Python `threading.Thread`, multiple evaluations run concurrently on separate CPU cores inside the Rust engine.
 *   **Best Practice:** Share a single `Engine` and compiled `Rule` across all threads. Keep `Session` objects thread-local (one per thread).
 
 ```python
@@ -51,7 +51,7 @@ all taking a pre-parsed `DataHandle` instead of a dict or JSON string:
 
 | Tier | Entry point | Use when |
 |------|-------------|----------|
-| Data handle | `DataHandle(json)` then `rule.evaluate_data(data)` / `session.evaluate_data(rule, data)` | The same payload is evaluated many times: parse once, zero parse work per call |
+| Data handle | `DataHandle(json)` then `rule.evaluate_data(data)` / `session.evaluate_data(rule, data)` | You evaluate the same payload many times: parse once, zero parse work per call |
 | Typed | `session.evaluate_bool/int/float/truthy(rule, data)` | Predicates and scalar results, no result conversion on the way out |
 | Batch | `session.evaluate_batch(rule, datas)` / `session.evaluate_many(rules, data)` | Many evaluations per native call, with per-item errors |
 
@@ -89,7 +89,7 @@ reference: [Python README](https://github.com/GoPlasmatic/datalogic-rs/tree/main
 ## Error Handling
 
 All runtime exceptions in the Python binding inherit from `DataLogicError`. There are two main subclasses:
-*   `ParseError`: Raised when rules or input datasets are malformed, or if an unsupported Python type (e.g. `bytes`, `datetime`, or `Decimal`) is provided. Tuples and sets are accepted and converted to JSON arrays.
+*   `ParseError`: Raised when rules or input datasets are malformed, or when you pass an unsupported Python type (e.g. `bytes`, `datetime`, or `Decimal`). The binding accepts tuples and sets and converts them to JSON arrays.
 *   `EvaluateError`: Raised during evaluation. Exposes `.error_type`, `.operator`, `.node_ids` (a list of compiled-node ids forming a leaf-to-root breadcrumb), and `.path` (a list of step dicts, each with `node_id`, `operator`, `arg_index`, and `json_pointer`). Two tags come from the binding rather than the engine: `"TypeMismatch"` (a typed session evaluation whose result has the wrong type) and `"InvalidArgument"` (e.g. a rule compiled by a different engine passed to a session).
 
 ```python

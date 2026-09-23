@@ -1,6 +1,6 @@
 # .NET / C# (P/Invoke)
 
-The .NET binding `Goplasmatic.Datalogic` is a P/Invoke wrapper over the shared C ABI. It targets **.NET 8.0** and uses source-generated `LibraryImport` stubs, making it fully **NativeAOT-ready**.
+The .NET binding `Goplasmatic.Datalogic` is a P/Invoke wrapper over the shared C ABI. It targets **.NET 8.0** and uses source-generated `LibraryImport` stubs, so it is **NativeAOT-ready**.
 
 ## Installation
 
@@ -26,7 +26,7 @@ Console.WriteLine(result); // "6"
 
 ### Reusable Compiled Rules
 
-Always compile rules when executing them repeatedly. Use C#'s `using var` syntax or `using` blocks to dispose of native engine and rule memory:
+Compile rules that you evaluate repeatedly. Use C#'s `using var` syntax or `using` blocks to dispose of native engine and rule memory:
 
 ```csharp
 using Goplasmatic.Datalogic;
@@ -59,12 +59,12 @@ foreach (var input in dataset)
 
 ## Concurrency
 
-*   `Engine` and `Rule` instances are thread-safe and can be shared globally.
-*   `Session` instances are **not** thread-safe and must be kept local to individual threads.
-*   The native-handle types (`Engine`, `Rule`, `Session`, `TracedSession`, `DataHandle`) implement `IDisposable`. If a developer forgets to call `Dispose()`, these wrappers contain finalizers to release native memory as a best-effort fallback. However, explicit disposal is highly recommended to prevent resource starvation. `EngineBuilder` is not disposable; it releases its native handle when `Build()` runs.
+*   `Engine` and `Rule` instances are thread-safe; you can share them globally.
+*   `Session` instances are **not** thread-safe; keep each one local to a single thread.
+*   The native-handle types (`Engine`, `Rule`, `Session`, `TracedSession`, `DataHandle`) implement `IDisposable`. If you forget to call `Dispose()`, their finalizers release native memory as a best-effort fallback. Dispose explicitly anyway to prevent resource starvation. `EngineBuilder` is not disposable; it releases its native handle when `Build()` runs.
 
 ## Going deeper
 
-- [C ABI internals: memory management & thread safety](c-abi.md) — the native-heap ownership rules every FFI binding shares
+- [C ABI internals: memory management & thread safety](c-abi.md): the native-heap ownership rules every FFI binding shares
 - [Engine configuration semantics](advanced/configuration.md)
-- [Package README on NuGet](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/dotnet#readme) — full API surface, error types, and platform table
+- [Package README on NuGet](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/dotnet#readme): full API surface, error types, and platform table

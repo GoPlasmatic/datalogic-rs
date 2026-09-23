@@ -1,10 +1,10 @@
 # Concurrency & Sessions
 
-Go's goroutines make concurrency central. `datalogic-go` maps directly to Rust's thread-safety properties.
+Go code leans on goroutines, and `datalogic-go` maps directly to the Rust core's thread-safety properties.
 
 ## Concurrency Model
 
-*   **`Engine`**: Thread-safe (`Send + Sync` in Rust). Construct a single `Engine` and share it across goroutines safely.
+*   **`Engine`**: Thread-safe (`Send + Sync` in Rust). Construct a single `Engine` and share it across goroutines.
 *   **`Rule`**: Thread-safe. Compile a rule once, and call `rule.Evaluate()` from multiple goroutines concurrently.
 *   **`Session`**: **Not thread-safe**. Sessions manage a reusable memory arena for evaluation buffers. Share them only within a single goroutine or task, never concurrently.
 *   **`DataHandle`**: Thread-safe and engine-independent. Parse a payload once with `datalogic.ParseData()`, share it across goroutines (evaluation only reads it), and `Close()` it after the last use.
@@ -21,7 +21,7 @@ Go's goroutines make concurrency central. `datalogic-go` maps directly to Rust's
 | Batch | `session.EvaluateBatch(rule, handles)` / `session.EvaluateMany(rules, handle)` | Many evaluations per native call, with per-item errors in each `BatchResult.Err` |
 | Traced | `engine.TracedSession()` then `ts.Evaluate(ruleJSON, dataJSON)` | Step-level execution traces for debuggers and tooling |
 
-Custom operators are registered on `datalogic.NewEngineBuilder().AddOperator(name, fn)` with an `OperatorFunc` (`func(argsJSON string) (string, error)`), and `datalogic.Version()` reports the linked engine version. Examples for every tier are in the [Go README](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/go#data-handles-typed-results-and-batch-evaluation).
+Register custom operators with `datalogic.NewEngineBuilder().AddOperator(name, fn)` and an `OperatorFunc` (`func(argsJSON string) (string, error)`), and `datalogic.Version()` reports the linked engine version. Examples for every tier are in the [Go README](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/go#data-handles-typed-results-and-batch-evaluation).
 
 ## Reusing Arenas with `Session`
 
@@ -62,7 +62,7 @@ func main() {
 
 ## Error Handling
 
-Errors are returned as `*datalogic.Error` structs, which carry detailed debugging metadata:
+Failed calls return a `*datalogic.Error` struct, which carries debugging metadata:
 *   `Type`: The error class name (e.g. `ParseError`, `Thrown`, `TypeError`).
 *   `Operator`: The outermost operator where the execution failed.
 *   `PathJSON`: A JSON-array string describing the path from the rule root to the failing node, where elements carry fields like `operator` and `json_pointer`.

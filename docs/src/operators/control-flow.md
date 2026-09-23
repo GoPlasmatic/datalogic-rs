@@ -263,8 +263,8 @@ whose key strictly equals the value, or a default. `match` is an alias of
 
 **Notes:**
 - Case comparison is strict (no type coercion): the number `1` does not match the string `"1"`.
-- The discriminant is evaluated once and compared against each case in order.
-- Only the matching case's result (or the default) is evaluated.
+- `switch` evaluates the discriminant once and compares it against each case in order.
+- `switch` evaluates only the matching case's result (or the default).
 - Case keys may be expressions: `{ "switch": [{ "var": "x" }, [[{ "var": "y" }, "dyn"]], "d"] }` returns `"dyn"` when `x` equals `y`.
 
 ---
@@ -302,7 +302,7 @@ Return the runtime type of a value as a string.
 ```
 
 **Notes:**
-- `type` reads exactly one argument. A literal array such as `{ "type": [1, 2, 3] }` is parsed as a multi-argument call, so it inspects the first element (here, `"number"`). Pass a single value that resolves to an array, e.g. `{ "type": { "var": "items" } }`.
+- `type` reads exactly one argument. The engine parses a literal array such as `{ "type": [1, 2, 3] }` as a multi-argument call, so `type` inspects the first element (here, `"number"`). Pass a single value that resolves to an array, e.g. `{ "type": { "var": "items" } }`.
 - Datetime and duration values (from `now`, `datetime`, `timestamp`) report `"datetime"` / `"duration"`, even though they render as strings in JSON output.
 
 ---

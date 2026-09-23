@@ -1,9 +1,9 @@
 # Playground (inline)
 
-> **Want the full experience?** Try the [Full-Page Visual Editor](playground/) with examples
-> and resizable panels. This page embeds the same widget inline for quick checks.
+> The [Full-Page Visual Editor](playground/) adds examples and resizable panels.
+> This page embeds the same widget inline for quick checks.
 
-Try JSONLogic expressions right in your browser! This playground uses the visual debugger component powered by WebAssembly.
+Try JSONLogic expressions in your browser. This playground runs the visual debugger component on WebAssembly.
 
 <div id="datalogic-playground" data-datalogic-playground></div>
 
@@ -96,6 +96,6 @@ Data:
 
 ## Learn More
 
-- [Operators Overview](operators/overview.md) - Full operator documentation
-- [Getting Started](getting-started/quick-start.md) - Using the library
-- [Use Cases](use-cases/examples.md) - Real-world examples
+- [Operators Overview](operators/overview.md): Full operator documentation
+- [Getting Started](getting-started/quick-start.md): Using the library
+- [Use Cases](use-cases/examples.md): Real-world examples

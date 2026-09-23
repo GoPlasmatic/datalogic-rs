@@ -1,6 +1,6 @@
 # Quick Start
 
-Evaluate rules instantly in Python using the `datalogic-py` binding.
+Evaluate rules in Python with the `datalogic-py` binding.
 
 ## Simple One-Shot Evaluation
 
@@ -23,7 +23,7 @@ print(result) # 25
 
 ## Reusable Compiled Rules
 
-For production loops, compile the rule once. This eliminates parsing overhead and parses the rule directly into the optimized Rust bytecode:
+For production loops, compile the rule once. Compiling parses the rule a single time into the optimized Rust bytecode, so each evaluation skips parsing:
 
 ```python
 from datalogic_py import Engine
@@ -40,7 +40,7 @@ for user in [{"score": 75}, {"score": 30}, {"score": 90}]:
 
 ## Parsing Performance: `evaluate` vs `evaluate_str`
 
-*   `rule.evaluate(dict_data)` accepts a Python `dict` or `list` and walks the Python objects straight into the engine's arena (`pythonize` is used only as a fallback for unusual types such as subclasses and sets). This is 3–10× faster than a standard JSON-string round-trip.
-*   `rule.evaluate_str(json_string)` accepts a raw JSON string. If you already have a serialized JSON payload (e.g. read from a network socket or file), use this method to bypass Python-to-Rust dictionary marshaling completely.
+*   `rule.evaluate(dict_data)` accepts a Python `dict` or `list` and walks the Python objects straight into the engine's arena (it falls back to `pythonize` only for unusual types such as subclasses and sets). This is 3–10× faster than a standard JSON-string round-trip.
+*   `rule.evaluate_str(json_string)` accepts a raw JSON string. If you already have a serialized JSON payload (e.g. read from a network socket or file), use this method to skip Python-to-Rust dictionary marshaling.
 
 Next: [Configuration & Errors](configuration-and-errors.md) covers engine configuration presets, the exception hierarchy, and type conversion.

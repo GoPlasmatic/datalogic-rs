@@ -62,7 +62,7 @@ Logical NOT - negates a boolean value.
 - Uses configurable truthiness rules (default: JavaScript-style)
 - Falsy values: `false`, `0`, `""`, `null`, `[]`, `{}`
 - Truthy values: everything else
-- An array argument is read as the argument list, and `!` uses only its first element. A literal array to be negated must be wrapped: `{ "!": [[1, 2]] }`
+- An array argument is read as the argument list, and `!` uses only its first element. To negate a literal array, wrap it: `{ "!": [[1, 2]] }`
 
 ---
 
@@ -261,4 +261,4 @@ The default JavaScript-style truthiness:
 | `{}` | No |
 | `null` | No |
 
-This can be customized via `EvaluationConfig`. See [Configuration](../advanced/configuration.md).
+You can customize this via `EvaluationConfig`. See [Configuration](../advanced/configuration.md).

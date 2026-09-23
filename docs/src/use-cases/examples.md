@@ -1,6 +1,6 @@
 # Use Cases & Examples
 
-Real-world JSONLogic recipes for common scenarios. Every rule on this page is plain JSON: author it once, store it where you store data (a database row, a config file, an API payload), and evaluate it unchanged from any language datalogic-rs ships bindings for. Each recipe below is the rule, a sample data payload, and the result; standard-mode recipes also embed a live widget so you can run them right here. A few recipes use the engine's templating mode to build output objects; those are flagged inline. Their results are shown in authoring order for readability; the engine emits object keys in sorted order (for example `{"errors": [...], "valid": false}`), which is the same JSON value.
+Real-world JSONLogic recipes for common scenarios. Every rule on this page is plain JSON: author it once, store it where you store data (a database row, a config file, an API payload), and evaluate it unchanged from any language datalogic-rs ships bindings for. Each recipe below is the rule, a sample data payload, and the result; standard-mode recipes also embed a live widget so you can run them on the page. A few recipes use the engine's templating mode to build output objects; a note under each one flags it. This page shows their results in authoring order for readability; the engine emits object keys in sorted order (for example `{"errors": [...], "valid": false}`), which is the same JSON value.
 
 ## Run any of these in your language
 
@@ -158,7 +158,7 @@ Result: `false` (12345 % 100 = 45, and 45 is not below the 20 cutoff)
 
 ### Beta Access
 
-Enable for beta testers OR employees OR users who signed up before a date. The `ends_with` operator requires the `ext-string` feature in Rust; enabled by default in every binding.
+Enable for beta testers OR employees OR users who signed up before a date. The `ends_with` operator requires the `ext-string` feature in Rust; every binding enables it by default.
 
 ```json
 {
@@ -323,7 +323,7 @@ Result: `{"valid": false, "errors": ["email", "password"]}`
 
 ### Field Constraints
 
-Check email shape, password length, and age range, and collect a message for each failed check. `length` requires the `ext-string` feature in Rust; enabled by default in every binding.
+Check email shape, password length, and age range, and collect a message for each failed check. `length` requires the `ext-string` feature in Rust; every binding enables it by default.
 
 ```json
 {
@@ -396,7 +396,7 @@ Data:
 
 Result: `{"error": "Company name required for business accounts"}`
 
-> **Templating recipe.** The `error` and `valid` branches are literal output fields, which needs templating mode (see [Required Fields](#required-fields) above); run it in the [playground](https://goplasmatic.github.io/datalogic-rs/playground/) with **Templating** switched on.
+> **Templating recipe.** The `error` and `valid` branches are literal output fields, so they need templating mode (see [Required Fields](#required-fields) above); run it in the [playground](https://goplasmatic.github.io/datalogic-rs/playground/) with **Templating** switched on.
 
 ---
 
@@ -438,7 +438,7 @@ Result: `true`
 
 ### Permission Checking
 
-Is the required permission in the user's permission list:
+Check whether the required permission is in the user's permission list:
 
 ```json
 {
@@ -593,7 +593,7 @@ Transform and reshape data.
 
 ### API Response Mapping
 
-Reshape raw records into an API response: rename fields, derive a full name, normalize email case, and compute counts. `lower` and `length` require the `ext-string` feature in Rust; enabled by default in every binding.
+Reshape raw records into an API response: rename fields, derive a full name, normalize email case, and compute counts. `lower` and `length` require the `ext-string` feature in Rust; every binding enables them by default.
 
 ```json
 {
@@ -635,7 +635,7 @@ Result: `{"users": [{"id": 101, "fullName": "Ada Lovelace", "email": "ada@exampl
 
 ### Report Generation
 
-Build a report object with a computed title, a generation timestamp, and reduced summary stats. `format_date` and `now` require the `datetime` feature and `length` the `ext-string` feature in Rust; both enabled by default in every binding.
+Build a report object with a computed title, a generation timestamp, and reduced summary stats. `format_date` and `now` require the `datetime` feature and `length` the `ext-string` feature in Rust; every binding enables both by default.
 
 ```json
 {
@@ -716,7 +716,7 @@ Data:
 
 Result: `{"channel": "slack", "priority": "warning"}`
 
-> **Templating recipe.** The channel/priority branches are output templates, which needs templating mode (`templating` feature + `Engine::builder().with_templating(true)` in Rust, the `templating` constructor flag in every binding); run it in the [playground](https://goplasmatic.github.io/datalogic-rs/playground/) with **Templating** switched on.
+> **Templating recipe.** The channel/priority branches are output templates, so they need templating mode (`templating` feature + `Engine::builder().with_templating(true)` in Rust, the `templating` constructor flag in every binding); run it in the [playground](https://goplasmatic.github.io/datalogic-rs/playground/) with **Templating** switched on.
 
 ### User Preferences
 

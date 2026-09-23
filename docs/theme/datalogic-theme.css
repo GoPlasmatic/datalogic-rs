@@ -440,8 +440,8 @@ a {
    mdBook's defaults leave a large gap between entries
    (`.chapter-item { margin-block-start: 0.6em }` and `.section { line-height:
    1.9em }`). We tighten that rhythm and treat the flex row that wraps each
-   link (`.chapter-link-wrapper`) as the highlight pill, so the whole row —
-   link plus fold chevron — reacts to hover and active state together. */
+   link (`.chapter-link-wrapper`) as the highlight pill, so the whole row (link
+   plus fold chevron) reacts to hover and active state together. */
 
 .sidebar .chapter li.chapter-item {
     line-height: 1.3;
@@ -911,7 +911,7 @@ pre:hover .buttons {
    The global `pre` card styling above (border, 12px radius, shadow and a
    1.6rem padding, all `!important`) bleeds into the embedded playground. Its
    editors are a syntax-highlight `<pre>` overlay sitting behind a transparent
-   `<textarea>`, and the result pane is a `<pre>` too — so the card chrome makes
+   `<textarea>`, and the result pane is a `<pre>` too, so the card chrome makes
    the inputs read as floating cards, and the 1.6rem padding shoves the
    highlighted text out of alignment with the caret and selection underneath.
    Strip the chrome back off and hand padding control back to the embed layout

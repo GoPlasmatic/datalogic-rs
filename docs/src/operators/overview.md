@@ -1,6 +1,6 @@
 # Operators Overview
 
-datalogic-rs provides 84 built-in operators organized into logical categories. In the Rust crate, 33 baseline operators are always available in the default build (`default = []`); a further 29 canonical operators are enabled by opt-in Cargo features, twenty tensor-marshalling operators sit behind the `tensor` feature, and two flagd-compatible operators (`fractional`, `sem_ver`) sit behind the `flagd` feature. Every language binding (WASM, Node, Python, Go, JVM, .NET, PHP) ships with all operator features enabled, so the full set is available out of the box outside Rust. Counts are by canonical operator: `var` and `?:` are accepted as input aliases of `val` and `if`, and `match` is an alias of `switch`, so the aliases are not counted separately. This section documents each operator with syntax, examples, and notes on behavior.
+datalogic-rs provides 84 built-in operators organized into logical categories. In the Rust crate, 33 baseline operators are always available in the default build (`default = []`); a further 29 canonical operators are enabled by opt-in Cargo features, twenty tensor-marshalling operators sit behind the `tensor` feature, and two flagd-compatible operators (`fractional`, `sem_ver`) sit behind the `flagd` feature. Every language binding (WASM, Node, Python, Go, JVM, .NET, PHP) ships with all operator features enabled, so outside Rust the full set is available with no configuration. Counts are by canonical operator: `var` and `?:` are accepted as input aliases of `val` and `if`, and `match` is an alias of `switch`, so the aliases are not counted separately. This section documents each operator with syntax, examples, and notes on behavior.
 
 ## Operator Categories
 
@@ -22,7 +22,7 @@ datalogic-rs provides 84 built-in operators organized into logical categories. I
 
 ## Which operators need which Cargo feature
 
-This split only affects the **Rust crate**: only the baseline set is built in the default build (`default = []`). A rule that uses any other operator against an engine compiled without its feature still compiles (`Engine::compile` succeeds, because an unknown key is treated like an unregistered custom operator), but evaluating it fails with an `InvalidOperator` error naming the operator. In templating mode an unknown key is echoed as data instead of erroring (see the [API reference](../rust/api-reference.md)). Every language binding enables all operator features, so the full set is always available there.
+This split only affects the **Rust crate**: only the baseline set is built in the default build (`default = []`). A rule that uses any other operator against an engine compiled without its feature still compiles (`Engine::compile` succeeds, because the compiler treats an unknown key like an unregistered custom operator), but evaluating it fails with an `InvalidOperator` error naming the operator. In templating mode the engine echoes an unknown key as data instead of erroring (see the [API reference](../rust/api-reference.md)). Every language binding enables all operator features, so the full set is always available there.
 
 | Cargo feature | Operators |
 |---------------|-----------|
@@ -35,7 +35,7 @@ This split only affects the **Rust crate**: only the baseline set is built in th
 | `error-handling` | `try`, `throw` |
 | `datetime` | `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`, `now` |
 | `tensor` | `tensor`, `zeros`, `full`, `scatter`, `rle_expand`, `one_hot`, `stack`, `concat`, `unstack`, `reshape`, `transpose`, `pad`, `crop`, `cast`, `normalize`, `argmax`, `gather`, `to_list`, `shape`, `dtype` |
-| `tensor-half` | (no new operators — lets the element-wise ones handle `f16` / `bf16`) |
+| `tensor-half` | (no new operators; lets the element-wise ones handle `f16` / `bf16`) |
 | `flagd` | `fractional`, `sem_ver` |
 
 The table above is maintained by hand; the machine-readable source of
@@ -82,7 +82,7 @@ This matters when a later operand could raise an error, or is expensive:
 }
 ```
 
-If `denominator` is missing or `0`, `and` returns that falsy value and the division (which would throw a `NaN` error for an integer zero divisor) is never evaluated; with `{ "denominator": 4 }` the result is `25`. Note that `var` itself never errors on a missing path, it returns `null`, so plain property access such as `{ "var": "user.profile.name" }` needs no guard.
+If `denominator` is missing or `0`, `and` returns that falsy value and never evaluates the division (which would throw a `NaN` error for an integer zero divisor); with `{ "denominator": 4 }` the result is `25`. `var` itself never errors on a missing path (it returns `null`), so plain property access such as `{ "var": "user.profile.name" }` needs no guard.
 
 ## Type Coercion
 

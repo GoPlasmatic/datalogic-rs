@@ -60,7 +60,7 @@ impl CustomOperator for DoubleOperator {
 
 ## Registering Custom Operators
 
-Operator registration is builder-only. Once the engine is built, its operator set is frozen and immutable.
+Operator registration is builder-only. Once you build the engine, its operator set is frozen.
 
 Select your language to see how to register a custom operator:
 
@@ -387,9 +387,9 @@ fn value_type_name(v: &DataValue<'_>) -> &'static str {
 ```
 
 The `Error` type is structured: `tag()` returns a stable variant tag,
-and the `operator()` / `node_ids()` metadata (resolvable to a source path
-with `resolve_path(&compiled)`) is populated automatically by the engine
-when a custom operator returns an error.
+and when a custom operator returns an error, the engine populates the
+`operator()` / `node_ids()` metadata (resolvable to a source path with
+`resolve_path(&compiled)`) automatically.
 
 To wrap a foreign error type into `Error`, use `Error::wrap`:
 
@@ -402,7 +402,7 @@ To wrap a foreign error type into `Error`, use `Error::wrap`:
 
 1. **Validate argument count and types early.**
 2. **Allocate results in the arena** (`arena.alloc(...)` / `arena.alloc_str(...)`).
-3. **Return meaningful errors** — `Error::invalid_arguments`, `Error::type_error`, `Error::custom_message`, `Error::wrap`.
-4. **Keep operators focused** — one responsibility per operator.
+3. **Return meaningful errors**: `Error::invalid_arguments`, `Error::type_error`, `Error::custom_message`, `Error::wrap`.
+4. **Keep operators focused**: one responsibility per operator.
 5. **Use `Arc` for shared configuration** to maintain `Send + Sync`.
-6. **Test with literals, variables, and nested expressions** — the engine evaluates each before calling you.
+6. **Test with literals, variables, and nested expressions**: the engine evaluates each before calling you.

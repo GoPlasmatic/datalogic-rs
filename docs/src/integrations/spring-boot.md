@@ -72,7 +72,7 @@ public class RuleService {
 }
 ```
 
-Compiled rules are shared safely across request threads. If rule churn
+Request threads can share compiled rules safely. If rule churn
 is high, evict old versions (Caffeine or a bounded LinkedHashMap) and
 `close()` evicted rules to release their native handles promptly.
 
@@ -98,8 +98,8 @@ public class EligibilityController {
 }
 ```
 
-The JVM surface is JSON-string in/out, which composes naturally with
-Spring endpoints that already hold the request body as JSON. If you're
+The JVM surface is JSON-string in/out, which fits Spring endpoints
+that already hold the request body as JSON. If you're
 mapping through Jackson anyway, serialize once and reuse: for payloads
 evaluated repeatedly, parse once into a `DataHandle` (immutable,
 thread-safe) and use the handle-based evaluations to skip the per-call
@@ -149,4 +149,5 @@ The rule your Spring service enforces is the same rule (same bytes,
 same semantics, same conformance battery) that your React admin UI
 can render and step-debug with the
 [visual editor](../react-ui/installation.md), and that a Node or Python
-service can evaluate with its own binding. One engine, no drift.
+service can evaluate with its own binding, so behavior does not drift
+between them.

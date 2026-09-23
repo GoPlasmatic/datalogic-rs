@@ -2,8 +2,8 @@
 
 [json-logic-js](https://github.com/jwadhams/json-logic-js) is the reference
 JSONLogic implementation. datalogic-rs passes the same official JSONLogic
-test suite, so **your existing rules run unchanged**. What changes is the
-call surface (one function per binding) and a few configurable behaviors.
+test suite, so **your existing rules run unchanged**. The call surface changes (one
+function per binding), along with a few configurable behaviors.
 This page is the short version; see [How It Compares](comparison.md) for the
 positioning.
 
@@ -31,7 +31,7 @@ await init();
 evaluate('{">": [{"var": "age"}, 18]}', '{"age": 21}', false); // "true"
 ```
 
-Same rule, same result. For repeated evaluation of one rule, compile it once
+All three return the same result. For repeated evaluation of one rule, compile it once
 (`Engine`/`CompiledRule`) instead of calling the one-shot helper in a loop.
 
 ## Custom operations

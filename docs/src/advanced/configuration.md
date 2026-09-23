@@ -18,7 +18,7 @@ let engine = Engine::builder().with_config(config).build();
 ```
 
 > v5 dropped the inherent `Engine::with_config` /
-> `with_preserve_structure` / `with_config_and_structure` constructors —
+> `with_preserve_structure` / `with_config_and_structure` constructors;
 > use the builder. There is no compatibility shim. See the
 > [Migration Guide](../migration.md) for the v4 → v5 mapping.
 
@@ -39,7 +39,7 @@ let config = EvaluationConfig::default()
 
 ### NaN Handling
 
-Control how non-numeric values are handled in arithmetic operations.
+Control how arithmetic operations handle non-numeric values.
 
 ```rust
 use datalogic_rs::{EvaluationConfig, NanHandling};
@@ -201,12 +201,12 @@ is, how to pick a number, and the per-call
 ```rust
 use datalogic_rs::{Engine, EvaluationConfig};
 
-// Lenient arithmetic — IgnoreValue + ReturnNull divide-by-zero
+// Lenient arithmetic: IgnoreValue + ReturnNull divide-by-zero
 let engine = Engine::builder()
     .with_config(EvaluationConfig::safe_arithmetic())
     .build();
 
-// Strict — errors for any type mismatch and no numeric coercion
+// Strict: errors for any type mismatch and no numeric coercion
 let engine = Engine::builder()
     .with_config(EvaluationConfig::strict())
     .build();
@@ -220,9 +220,9 @@ language bindings use to pass engine configuration across FFI
 boundaries through one shared parser; Rust callers normally use the
 typed `with_*` setters above.
 
-All keys are optional. The `"preset"` key is applied first, then the
-remaining keys override individual fields on top of it. Unknown keys
-and unknown enum strings are rejected with a `ConfigurationError`, so
+All keys are optional. The parser applies the `"preset"` key first, then
+the remaining keys override individual fields on top of it. It rejects
+unknown keys and unknown enum strings with a `ConfigurationError`, so
 typos fail loudly instead of being silently ignored.
 
 | Key | Value |
@@ -285,9 +285,9 @@ Templating mode carries one option of its own,
 `with_template_key_escape(prefix)`, unset by default. Without it a
 single-key object is always an operator invocation, so a key that names a
 built-in (`type`, `map`, `if`, `length`, …) or a registered custom
-operator can never be emitted as an output field. With it, exactly one
-leading `prefix` is stripped from every template key and an escaped key
-is never resolved as an operator:
+operator can never be emitted as an output field. With it, the engine
+strips exactly one leading `prefix` from every template key and never
+resolves an escaped key as an operator:
 
 ```rust
 let engine = Engine::builder()

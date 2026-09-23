@@ -1,6 +1,6 @@
 # Usage Modes
 
-The DataLogicEditor has no `mode` enum. Its behavior is driven entirely by which props you pass. The same component is a read-only viewer, a live debugger, a visual editor, or any combination of those, depending on `data`, `editable`, and `templating`.
+The DataLogicEditor has no `mode` enum. The props you pass determine its behavior. The same component is a read-only viewer, a live debugger, a visual editor, or any combination of those, depending on `data`, `editable`, and `templating`.
 
 ## Behavior Overview
 
@@ -13,7 +13,7 @@ The DataLogicEditor has no `mode` enum. Its behavior is driven entirely by which
 | Engine settings | `config` | Evaluation semantics: presets, NaN and division-by-zero handling, truthiness, coercion, recursion cap | No |
 | Custom operators | `customOperators` | Extra operators registered on the engine | No |
 
-These are not mutually exclusive. Setting `editable` and providing `data` at the same time gives you live debugging while you edit.
+You can combine these. Setting `editable` and providing `data` at the same time gives you live debugging while you edit.
 
 ## Read-only (Default)
 
@@ -33,7 +33,7 @@ With only a `value`, the editor renders a static flow diagram of the JSONLogic e
 - Node highlighting on hover
 - Tree-based automatic layout
 - Nodes coloured by the type of value they produce (boolean, number, string, collection, data, temporal, null), with a category icon in the header
-- A Flow/Hierarchy toolbar toggle: **Flow** (default) puts sources on the left and the result on the right, **Hierarchy** puts the root on the left in JSON nesting order. The choice is reflected as `data-direction` on the `.logic-editor` root
+- A Flow/Hierarchy toolbar toggle: **Flow** (default) puts sources on the left and the result on the right, **Hierarchy** puts the root on the left in JSON nesting order. The editor reflects the choice as `data-direction` on the `.logic-editor` root
 
 ## Debugging
 
@@ -57,12 +57,12 @@ Provide a `data` prop and the editor evaluates the expression with the engine's 
 - Play/pause, step forward and back, and jump to first/last (Space, arrow keys, Home/End)
 - A step timeline listing every recorded step with its node, iteration index, context and result, with click-to-jump
 - A bubble on the current node showing the context it evaluated against and the value it produced
-- A highlighted execution path, so the branch actually taken is visible
-- Failure reporting: the node on the engine's failure breadcrumb (`node_ids` in the structured error) is marked with the error, and a rule that fails to compile reports the error in a banner above the diagram
+- A highlighted execution path, so you can see which branch ran
+- Failure reporting: the editor marks the node on the engine's failure breadcrumb (`node_ids` in the structured error) with the error, and a rule that fails to compile reports the error in a banner above the diagram
 
 Values appear as you step. No node shows a result at rest.
 
-Internally, when `data` is provided the component uses the WASM `evaluateWithTrace` API to capture the result of each sub-expression, the order of evaluation, context values at each step, and the final computed result.
+Internally, when you provide `data` the component uses the WASM `evaluateWithTrace` API to capture the result of each sub-expression, the order of evaluation, context values at each step, and the final computed result.
 
 ## Editing
 
@@ -84,7 +84,7 @@ Set `editable` to turn on the full visual builder.
 - Undo/redo, from the toolbar or the keyboard
 - Keyboard shortcuts: copy/paste (Cmd/Ctrl+C / V), duplicate (Cmd/Ctrl+D), select all (Cmd/Ctrl+A), undo/redo (Cmd/Ctrl+Z, Shift+Cmd/Ctrl+Z or Cmd/Ctrl+Y), delete (Backspace/Delete), deselect (Escape)
 
-When `editable` is set, `onChange` is active: edits are debounced (about 300ms) and the rebuilt JSONLogic expression is passed back so you can keep your own state in sync.
+When `editable` is set, `onChange` is active: the editor debounces edits (about 300ms) and passes back the rebuilt JSONLogic expression so you can keep your own state in sync.
 
 ## Editing with Live Debugging
 

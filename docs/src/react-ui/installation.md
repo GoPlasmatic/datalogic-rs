@@ -25,7 +25,7 @@ The package requires:
 | `react-dom` | 18+ or 19+ | React DOM renderer |
 | `@xyflow/react` | 12+ | Flow diagram rendering |
 
-> **Note:** The `@goplasmatic/datalogic-wasm` WASM package is bundled internally for evaluation.
+> **Note:** The package bundles `@goplasmatic/datalogic-wasm` internally for evaluation.
 
 ## CSS Setup
 
@@ -82,7 +82,7 @@ The editor requires a container with defined dimensions:
 
 ## TypeScript Setup
 
-Types are included in the package. Import types as needed:
+The package ships its own types. Import them as needed:
 
 ```tsx
 import type {
@@ -112,11 +112,11 @@ See [Props & API](props-api.md#types) for the full export list.
 
 ### Vite
 
-Works out of the box. No additional configuration needed.
+Needs no additional configuration.
 
 ### Webpack
 
-Ensure CSS loaders are configured:
+Configure CSS loaders:
 
 ```javascript
 module.exports = {

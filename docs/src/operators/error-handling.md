@@ -18,7 +18,7 @@ Catch errors and provide fallback values.
 **Arguments:**
 - `expression` - Expression that might throw an error
 - `fallback` - Value or expression to use if an error occurs
-- Further arms are tried in order: each arm runs only if every arm before it raised an error. Only the last arm is evaluated with the error object as its context; intermediate arms see the ordinary data context
+- `try` tries further arms in order: each arm runs only if every arm before it raised an error. Only the last arm evaluates with the error object as its context; intermediate arms see the ordinary data context
 
 **Returns:** Result of expression if successful, or fallback value/expression result if an error occurs.
 
@@ -32,10 +32,10 @@ Catch errors and provide fallback values.
   default argument for that (see [Control Flow](control-flow.md)).
 
 **Context in Catch:**
-When an error is caught, the catch expression evaluates with the error object
-as its context, so its fields are read via `var` / `val`:
-- A string `throw` produces the error object `{ "type": <string> }`, so the
-  message is read with `{ "var": "type" }`.
+When `try` catches an error, the catch expression evaluates with the error
+object as its context, so you read its fields via `var` / `val`:
+- A string `throw` produces the error object `{ "type": <string> }`, so you
+  read the message with `{ "var": "type" }`.
 - An object `throw` (sourced from data) preserves its own keys, so fields such
   as `{ "var": "code" }` or `{ "var": "message" }` read those keys directly.
 - Engine-raised errors arrive as `{ "type": <message> }`: an unknown operator
@@ -186,7 +186,7 @@ Throw an error with optional details.
 
 **Arguments:**
 - `message` - Error message string. The string becomes the error object's `type` field, or
-- `error_object` - An error object value (sourced from data, or built in templating mode) with arbitrary keys such as `code` and `message`. A multi-key object written inline as a literal does NOT compile in the default engine, because it is parsed as an operator map. A single-key literal such as `{ "throw": { "type": "X" } }` does not work either, even in templating mode: `type` is an operator name, so it runs the `type` operator on `"X"` and throws `{ "type": "string" }`. An error object carrying a `type` key must come from data (`{ "throw": { "var": "err" } }`).
+- `error_object` - An error object value (sourced from data, or built in templating mode) with arbitrary keys such as `code` and `message`. A multi-key object written inline as a literal does NOT compile in the default engine, because the engine parses it as an operator map. A single-key literal such as `{ "throw": { "type": "X" } }` does not work either, even in templating mode: `type` is an operator name, so it runs the `type` operator on `"X"` and throws `{ "type": "string" }`. An error object carrying a `type` key must come from data (`{ "throw": { "var": "err" } }`).
 
 **Returns:** Never returns normally; throws an error that must be caught by `try`.
 
@@ -283,7 +283,7 @@ a missing `var` is `null` rather than an error:
 // Result: "en"
 ```
 
-Reserve `try` for expressions that can actually raise: `throw`, an integer
+Reserve `try` for expressions that can raise: `throw`, an integer
 division by zero, invalid arguments, an unknown operator, a datetime parse
 failure.
 
@@ -330,7 +330,7 @@ The variadic form tries each arm in turn:
 
 ### Collecting All Errors
 
-While JSONLogic doesn't natively support collecting multiple errors, you can structure validations to report all issues:
+JSONLogic has no native way to collect multiple errors, but you can structure validations to report every failure:
 
 ```json
 { "filter": [
@@ -355,5 +355,5 @@ While JSONLogic doesn't natively support collecting multiple errors, you can str
 This returns an array of error messages for all validation failures. To wrap
 it in an object such as `{ "errors": [...] }`, enable templating mode
 (`Engine::builder().with_templating(true)`, Cargo feature `templating`); in the
-default engine a top-level `errors` key is parsed as an operator and fails with
+default engine parses a top-level `errors` key as an operator, which fails with
 `InvalidOperator`.

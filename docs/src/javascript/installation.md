@@ -2,7 +2,7 @@
 
 > **Two npm packages, one engine.** This chapter covers `@goplasmatic/datalogic-wasm`, the WASM build: pick it for browsers, edge runtimes, Deno, and anywhere portability matters. For Node.js servers, prefer the native [`@goplasmatic/datalogic-node`](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/node) package (napi), which calls the Rust core directly and runs at native speed.
 
-The `@goplasmatic/datalogic-wasm` package provides WebAssembly bindings for the datalogic-rs engine, bringing high-performance JSONLogic evaluation to JavaScript and TypeScript.
+The `@goplasmatic/datalogic-wasm` package provides WebAssembly bindings for the datalogic-rs engine, so you can evaluate JSONLogic from JavaScript and TypeScript.
 
 ## Package Installation
 
@@ -19,7 +19,7 @@ pnpm add @goplasmatic/datalogic-wasm
 
 ## Build Targets
 
-The package includes three build targets optimized for different environments:
+The package includes three build targets, one per environment:
 
 | Target | Use Case | Init Required |
 |--------|----------|---------------|
@@ -96,7 +96,7 @@ The WASM binary is a single self-contained module: approximately 2.84 MB uncompr
 
 ## CDN Usage
 
-For quick prototyping or simple pages, you can load directly from a CDN:
+For prototypes or simple pages, you can load the module from a CDN:
 
 ```html
 <script type="module">

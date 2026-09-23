@@ -2,7 +2,7 @@
 
 `@goplasmatic/datalogic-node` is the **native** Node.js binding: the Rust core compiled per platform and loaded through [napi-rs](https://napi.rs/), with no WebAssembly in between. On Node servers it is the fast path, running close to native Rust throughput.
 
-> **Two npm packages, one engine.** This package is for Node services that want maximum throughput. [`@goplasmatic/datalogic-wasm`](../javascript/installation.md) is the WebAssembly build: it also runs under Node, but its home turf is browsers, edge runtimes, Deno, and Bun. Same core, same semantics, same conformance battery either way.
+> **Two npm packages, one engine.** This package is for Node services that want maximum throughput. [`@goplasmatic/datalogic-wasm`](../javascript/installation.md) is the WebAssembly build: it also runs under Node, but its home turf is browsers, edge runtimes, Deno, and Bun. Both run the same core and pass the same conformance battery.
 
 ## Install
 
@@ -10,7 +10,7 @@
 npm install @goplasmatic/datalogic-node
 ```
 
-Prebuilt platform binaries are published as `optionalDependencies`, so npm pulls only the `.node` file matching your platform:
+The prebuilt platform binaries ship as `optionalDependencies`, so npm pulls only the `.node` file matching your platform:
 
 | Platform | Architectures |
 |---|---|
@@ -19,7 +19,7 @@ Prebuilt platform binaries are published as `optionalDependencies`, so npm pulls
 | macOS         | x64, arm64 |
 | Windows       | x64, arm64 |
 
-Node 18 and newer are supported. There is no build step and no WASM initialization: import and call.
+Requires Node 18 or newer. There is no build step and no WASM initialization: import and call.
 
 ## Quick start
 
@@ -35,7 +35,7 @@ const result = apply(
 // -> "pass"
 ```
 
-Both arguments also accept JSON text: a JS string passed as `rule` or `data` is parsed as JSON, not treated as a string value. To evaluate against a data document that *is* a JSON string, pass it encoded (`rule.evaluate(JSON.stringify('hello'))`), or hand the JSON text to the string-in methods (`evaluateStr`) or a `DataHandle`.
+Both arguments also accept JSON text: the binding parses a JS string passed as `rule` or `data` as JSON instead of treating it as a string value. To evaluate against a data document that *is* a JSON string, pass it encoded (`rule.evaluate(JSON.stringify('hello'))`), or hand the JSON text to the string-in methods (`evaluateStr`) or a `DataHandle`.
 
 ## Compile once, evaluate many
 
@@ -65,7 +65,7 @@ const custom = new Engine({}, {
 custom.compile({ double: [21] }).evaluate({}); // 42
 ```
 
-Note the nesting: `preset` and the other evaluation options go under `config`, not at the top level. The options bag only reads `templating`, `templateKeyEscape` and `config`; other top-level keys are ignored, so `new Engine({ preset: 'strict' })` silently builds a default engine.
+`preset` and the other evaluation options nest under `config`, not at the top level. The options bag only reads `templating`, `templateKeyEscape` and `config`; other top-level keys are ignored, so `new Engine({ preset: 'strict' })` silently builds a default engine.
 
 `templateKeyEscape` is a single-character prefix, unset by default, that lets a template emit a key which would otherwise be swallowed as an operator: with `new Engine({ templating: true, templateKeyEscape: '$' })`, `{ $type: { var: 'x' } }` yields `{ type: 1 }` rather than running the `type` operator, and `{ $$type: 1 }` yields `{ $type: 1 }`. Anything other than a one-character string throws `errorType: 'InvalidArguments'`. See [Structured Objects](../advanced/structured-objects.md#emitting-keys-that-are-operator-names). Unknown keys *inside* `config` throw `errorType: 'ConfigurationError'`. [Configuration](../advanced/configuration.md) covers what each option means.
 
@@ -122,7 +122,7 @@ for (const [i, o] of flags.entries()) {
 
 ## Async evaluation
 
-`rule.evaluateStrAsync(dataJson)` evaluates on the libuv thread pool and returns a `Promise<string>`. It is not faster per call than `evaluateStr`; the win is keeping large payloads' parse + evaluate + serialize off the event loop:
+`rule.evaluateStrAsync(dataJson)` evaluates on the libuv thread pool and returns a `Promise<string>`. It is no faster per call than `evaluateStr`; it keeps large payloads' parse + evaluate + serialize off the event loop:
 
 ```js
 const result = await rule.evaluateStrAsync('{"age": 25}');
@@ -140,7 +140,7 @@ run.result;       // 6
 run.steps.length; // 1 (one step per operator node; literals record no step)
 ```
 
-Failures do not throw: `result` is `null`, `error` carries the message, and `structured_error` the structured form. The rule is compiled with optimization disabled so every operator surfaces a step; use it for debugging, not hot paths.
+Failures do not throw: `result` is `null`, `error` carries the message, and `structured_error` the structured form. It compiles the rule with optimization disabled so every operator surfaces a step; use it for debugging, not hot paths.
 
 ## Operator names
 

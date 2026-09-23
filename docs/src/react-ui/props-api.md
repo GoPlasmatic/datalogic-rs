@@ -51,7 +51,7 @@ data?: unknown
 
 #### `onChange`
 
-Callback fired when the expression changes. It is active whenever `editable` is set: edits in the canvas are debounced (about 300ms) and the rebuilt JSONLogic expression is passed back.
+Callback fired when the expression changes. It is active whenever `editable` is set: the editor debounces canvas edits (about 300ms) and passes back the rebuilt JSONLogic expression.
 
 ```tsx
 onChange?: (expr: JsonLogicValue | null) => void
@@ -111,7 +111,7 @@ onTemplatingChange?: (value: boolean) => void
 
 #### `exampleSuggestions`
 
-Optional list of example names to surface as quick-action chips in the empty state. Each chip, when clicked, calls `onSelectExample` with the corresponding name. Chips render only when both `exampleSuggestions` and `onSelectExample` are provided, and are ignored when the editor is non-empty.
+Optional list of example names to surface as quick-action chips in the empty state. Each chip, when clicked, calls `onSelectExample` with the corresponding name. Chips render only when you provide both `exampleSuggestions` and `onSelectExample` and the editor is empty.
 
 ```tsx
 exampleSuggestions?: string[]
@@ -169,8 +169,8 @@ interface DataLogicEvaluationConfig {
 The toolbar shows a compact summary whenever the settings differ from the
 engine defaults. Changing `config` rebuilds the engine, which resets selection
 and undo history, so keep the object referentially stable (`useMemo`) if the
-parent re-renders often. An unknown key or value is rejected by the engine
-with a `ConfigurationError`. See
+parent re-renders often. The engine rejects an unknown key or value with a
+`ConfigurationError`. See
 [Configuration](../advanced/configuration.md) for what each setting does.
 
 #### `customOperators`
@@ -277,7 +277,7 @@ interface DataLogicEditorProps {
 
 ### LogicNode
 
-A React Flow node carrying our custom node data (for advanced customization):
+A React Flow node carrying the package's custom node data (for advanced customization):
 
 ```tsx
 import type { Node } from '@xyflow/react';
@@ -513,7 +513,7 @@ function applyTreeLayout(
 
 **Parameters:**
 - `nodes` - Array of nodes
-- `edges` - Optional array of edges. When omitted, edges are derived from the node relationships
+- `edges` - Optional array of edges. When omitted, the function derives edges from the node relationships
 - `direction` - `'flow'` (default) lays the graph out left-to-right in data-flow order: leaf operands on the left, the root's result on the right. `'hierarchy'` also runs left-to-right but ranks the root first, matching JSON nesting order. The component's toolbar toggles between the two and reflects the choice as `data-direction` on the `.logic-editor` root.
 
 **Returns:** Nodes with updated positions and dimensions.
@@ -524,7 +524,7 @@ function applyTreeLayout(
 
 ### Custom Node Rendering
 
-For advanced customization, you can use the utilities to render with your own React Flow setup:
+For advanced customization, use the utilities to render with your own React Flow setup:
 
 ```tsx
 import { ReactFlow } from '@xyflow/react';

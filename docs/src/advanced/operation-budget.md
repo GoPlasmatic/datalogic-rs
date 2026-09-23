@@ -4,10 +4,10 @@
 published binding.*
 
 The engine has no built-in timeout, and a wall-clock one would not help
-much anyway: it is not deterministic, it fires after the work is done
-rather than before, and it cannot tell you *which* rule was expensive.
-The operation budget is the alternative — a counter the engine increments
-as it works, and a ceiling it refuses to cross.
+much: it is not deterministic, it fires after the work is done rather
+than before, and it cannot tell you *which* rule was expensive. The
+operation budget is the alternative: a counter the engine increments as
+it works, and a ceiling it refuses to cross.
 
 ```rust,ignore
 use datalogic_rs::{Engine, EvaluationConfig};
@@ -34,14 +34,15 @@ everyone. Wall-clock time depends on the machine, its load, and what
 else the process is doing.
 
 A count is also charged **before** the work. Every operator prices what
-it is about to do and asks for it up front, so a rule that would build a
-billion-element tensor is refused rather than run and then reported.
+it is about to do and asks for it up front, so the engine refuses a rule
+that would build a billion-element tensor instead of running it and
+reporting afterwards.
 
 And the failure is **attributable**: `BudgetExceeded` carries the node
 breadcrumb like every other engine error, so you can point at the part of
 the rule that went over.
 
-What a budget does *not* do is bound wall-clock time directly. It bounds
+A budget does *not* bound wall-clock time directly. It bounds
 work, and work correlates with time; for a hard time guarantee you still
 need process-level isolation (see
 [Security and Sandboxing](security.md)).
@@ -69,9 +70,9 @@ And what is **not** charged:
 - **A CSE-memoised subtree is charged once**, on the evaluation that
   fills the slot.
 
-The per-item charge is what keeps the number honest. Several operators
+The per-item charge keeps the number honest. Several operators
 recognise predicate and body shapes at compile time and evaluate them
-inline without dispatching the body — under a naive scheme those would
+inline without dispatching the body. Under a naive scheme those would
 cost nothing per item, and whether a rule fitted its budget would depend
 on which shape the compiler happened to recognise. Charging when the
 source resolves means an iteration costs at least its input length
@@ -83,8 +84,7 @@ The count is deterministic for a **pinned crate version**, not across
 versions: a new fast path or fold changes what gets dispatched. Budget
 for the work you want to allow, not for a number you measured.
 
-A useful way to calibrate: meter your real rules against your real
-payloads, take the worst case, and leave generous headroom.
+To calibrate, meter your real rules against your real payloads, take the worst case, and leave generous headroom.
 
 ```rust,ignore
 use bumpalo::Bump;
@@ -117,7 +117,7 @@ Under an exhausted budget this raises rather than returning
 `"fallback"`. That is deliberate: a rule that could catch its own budget
 failure could spend the budget in a loop.
 
-Every other error stays catchable exactly as before — a budget changes
+Every other error stays catchable exactly as before: a budget changes
 nothing about `throw`, `try`, or any other failure mode.
 
 ## Reaching it from a binding
@@ -166,13 +166,13 @@ result_json, ops = engine.eval_metered(rule, data)
 Both take an optional third argument that overrides the configured
 budget for one call. The C ABI (and the Go, JVM, .NET and PHP bindings
 built on it) carry the engine-wide config key only; build a second
-engine when two budgets are wanted.
+engine when you want two budgets.
 
 ## In the Studio
 
 The [playground](../playground.md) exposes the budget under **Engine
 settings → Operation budget**, and reports what every evaluation spent
-as an *N ops* badge on the Result panel — so you can see the cost of a
+as an *N ops* badge on the Result panel, so you can see the cost of a
 rule while editing it, not only when it trips a ceiling. Setting a budget
 that a rule crosses shows the `BudgetExceeded` error with its `budget`
 and `spent` figures and highlights the node that went over.
@@ -181,7 +181,7 @@ and `spent` figures and highlights the node that went over.
 
 The dispatcher already charges 1 for the operator node itself, so an
 operator whose work is bounded by a constant needs no charge at all. One
-that walks a large input or builds a large result should price it —
+that walks a large input or builds a large result should price it
 before allocating:
 
 ```rust,ignore
@@ -211,8 +211,8 @@ carrying a `cfg` of its own.
 
 Pick a unit that makes the operator's cost **proportional to its data**.
 Elements touched is the usual choice. An operator whose work is *not*
-proportional to its data would be under-priced by an unbounded ratio —
-which is exactly why the built-in tensor family is arithmetic-free: a
+proportional to its data would be under-priced by an unbounded ratio.
+That is why the built-in tensor family is arithmetic-free: a
 matmul reads 2n² elements and does n³ multiplies, so pricing it by data
 moved would make the budget stop measuring anything.
 
@@ -221,7 +221,7 @@ moved would make the budget stop measuring anything.
 The feature is a Cargo flag rather than an always-on `Option<u64>`
 because the add-and-compare per dispatched node is measurable. On the
 self benchmark's full suite, with the feature compiled in and no budget
-set, the geomean moves from 22.75 to 23.56 ns/op (+3.6%) — paired runs on
-one machine, with the feature-off number unchanged from before the feature
-existed. Builds that do not want a counter compile it out entirely: the
+set, the geomean moves from 22.75 to 23.56 ns/op (+3.6%), measured as
+paired runs on one machine, with the feature-off number unchanged from
+before the feature existed. Builds that do not want a counter compile it out entirely: the
 counter, the compare and the error variant all disappear.

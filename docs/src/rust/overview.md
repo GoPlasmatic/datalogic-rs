@@ -1,6 +1,6 @@
 # Rust (Native Crate)
 
-`datalogic-rs` is the core: everything the other bindings expose is implemented here. Using the crate directly gives you the full API ladder, including the zero-copy tier no wrapper exposes.
+`datalogic-rs` is the core: it implements everything the other bindings expose. Using the crate directly gives you the full API ladder, including the zero-copy tier no wrapper exposes.
 
 ## Install
 
@@ -27,7 +27,7 @@ let result = datalogic_rs::eval_str(
 assert_eq!(result, "true");
 ```
 
-Module-level helpers (`eval`, `eval_str`, `eval_into`, `compile`) are backed by a default engine, so one-off evaluation needs no setup.
+A default engine backs the module-level helpers (`eval`, `eval_str`, `eval_into`, `compile`), so one-off evaluation needs no setup.
 
 ## Five tiers, one engine
 
@@ -35,7 +35,7 @@ The crate exposes a fine-grained API ladder; pick the tier matching your perform
 
 | Tier | API Entry Point | When to use |
 | :--- | :--- | :--- |
-| **Tier 0** | `eval_str`, `eval`, `eval_into`, `compile` | Quick scripts, simple tasks, one-off execution |
+| **Tier 0** | `eval_str`, `eval`, `eval_into`, `compile` | Quick scripts, one-off execution |
 | **Tier 1** | `Engine::eval*` | Custom operators, non-default configs, templating mode |
 | **Tier 2** | `Engine::session()` + `Session::eval*` | Hot loops (APIs, message queues, bulk pipelines); reuses internal bump arenas |
 | **Tier 3** | `Engine::evaluate(&Logic, data, &Bump)` | Zero-copy evaluation with a caller-owned `bumpalo::Bump` arena |
@@ -61,8 +61,8 @@ Compiled `Logic` is `Send + Sync`: share it across threads via `Arc` (or `Engine
 
 ## Where everything else is documented
 
-- [API Reference](api-reference.md) — every public type, method, and error variant
-- [docs.rs/datalogic-rs](https://docs.rs/datalogic-rs) — rustdoc with feature badges
-- [Crate README](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs#readme) — the deep-dive with per-tier performance profiles
-- [Runnable examples](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs/examples) — ten CI-built examples from getting started to zero-copy input
+- [API Reference](api-reference.md): every public type, method, and error variant
+- [docs.rs/datalogic-rs](https://docs.rs/datalogic-rs): rustdoc with feature badges
+- [Crate README](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs#readme): the deep-dive with per-tier performance profiles
+- [Runnable examples](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs/examples): ten CI-built examples from getting started to zero-copy input
 - [Custom Operators](../advanced/custom-operators.md) · [Configuration](../advanced/configuration.md) · [Structured Objects](../advanced/structured-objects.md) · [Security & Sandboxing](../advanced/security.md)

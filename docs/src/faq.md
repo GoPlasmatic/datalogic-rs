@@ -11,12 +11,13 @@ specification is available at [jsonlogic.com](https://jsonlogic.com).
 
 ### Why use datalogic-rs instead of the reference implementation?
 
-- **Performance** — significantly faster than JS implementations
-- **Thread Safety** — `Logic` is `Send + Sync`; wrap in `Arc` to share
-- **Extended Operators** — datetime, string operations, error handling, more
-- **Type Safety** — full Rust type system benefits
-- **WASM Support** — same engine in browsers and Node.js
-- **Zero `unsafe`** — the crate is built with `#![forbid(unsafe_code)]`
+- **Performance**: about 84x faster than json-logic-js across the shared
+  benchmark suites (see [Performance](performance.md))
+- **Thread Safety**: `Logic` is `Send + Sync`; wrap in `Arc` to share
+- **Extended Operators**: datetime, string operations, error handling, more
+- **Type Safety**: full Rust type system benefits
+- **WASM Support**: same engine in browsers and Node.js
+- **Zero `unsafe`**: the crate is built with `#![forbid(unsafe_code)]`
 
 ### Is datalogic-rs fully compatible with JSONLogic?
 
@@ -33,7 +34,7 @@ also includes additional operators that extend the specification.
 not pull in `serde_json`, and the arena evaluation path is exposed
 directly. See the [Migration Guide](migration.md) for the move from v4.
 
-v5 is a hard cliff — there is no compatibility shim, so plan a single
+v5 is a hard cliff: there is no compatibility shim, so plan a single
 cutover when upgrading from v4. The repo-root `MIGRATION.md` has the
 per-call cookbook.
 
@@ -108,7 +109,7 @@ const value = JSON.parse(result);
 
 ### How do I use this with TypeScript?
 
-Types are included in the package:
+The package includes types:
 
 ```typescript
 import init, { evaluate, CompiledRule } from '@goplasmatic/datalogic-wasm';
@@ -198,7 +199,7 @@ rather than a boolean:
 
 ### What happened to the `preserve` operator?
 
-It was removed in v5. Literal scalars and arrays already pass through
+v5 removed it. Literal scalars and arrays already pass through
 inline, and templated objects belong in templating mode
 (`Engine::builder().with_templating(true).build()`, requires
 `feature = "templating"`).
@@ -245,15 +246,15 @@ full comparison table.
 
 ### "Invalid operator" error
 
-In standard mode, unrecognized keys are treated as errors. Either:
+In standard mode, the engine treats unrecognized keys as errors. Either:
 
 1. Fix the operator name (operators are case-sensitive)
 2. Register a custom operator on the builder
-3. Enable templating mode (`feature = "templating"`) — `Engine::builder().with_templating(true).build()`
+3. Enable templating mode (`feature = "templating"`): `Engine::builder().with_templating(true).build()`
 
 ### My template key runs as an operator instead of being emitted
 
-The inverse problem, and quieter: no error, just the wrong result. In
+This is the inverse problem, and quieter: no error, only the wrong result. In
 templating mode a single-key object is always an operator invocation, so
 `{"type": {"var": "x"}}` runs the `type` operator rather than emitting a
 `type` field. Around 60 built-in names are affected, plus any custom

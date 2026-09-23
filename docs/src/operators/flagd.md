@@ -1,6 +1,6 @@
 # flagd-Compat Operators
 
-Two operators specified by the OpenFeature flagd in-process provider ([fractional](https://flagd.dev/reference/custom-operations/fractional-operation/), [semantic version](https://flagd.dev/reference/custom-operations/semver-operation/)) for feature-flag targeting. Implemented to match the canonical [Go evaluator](https://github.com/open-feature/flagd/tree/main/core/pkg/evaluator) byte-for-byte, so a flag definition that works under any flagd provider will produce identical variants here.
+Two operators specified by the OpenFeature flagd in-process provider ([fractional](https://flagd.dev/reference/custom-operations/fractional-operation/), [semantic version](https://flagd.dev/reference/custom-operations/semver-operation/)) for feature-flag targeting. The implementation matches the canonical [Go evaluator](https://github.com/open-feature/flagd/tree/main/core/pkg/evaluator) byte-for-byte, so a flag definition that works under any flagd provider produces identical variants here.
 
 **Cargo feature:** `flagd`. Off by default; opt in via:
 
@@ -16,7 +16,7 @@ Deterministic percentage bucketing for A/B tests and gradual rollouts. Buckets a
 
 **Reference:** [flagd Fractional spec](https://flagd.dev/reference/custom-operations/fractional-operation/)
 
-**Algorithm.** MurmurHash3 x86-32 of the bucketing key, then `bucket = (hash * total_weight) >> 32` and walk cumulative integer weight bands. Identical to the Go evaluator's `core/pkg/evaluator/fractional.go`. The hash is vendored inline (~30 LOC) for portability across every target.
+**Algorithm.** MurmurHash3 x86-32 of the bucketing key, then `bucket = (hash * total_weight) >> 32` and walk cumulative integer weight bands. Identical to the Go evaluator's `core/pkg/evaluator/fractional.go`. The crate vendors the hash inline (~30 LOC) for portability across every target.
 
 **Two argument shapes:**
 
@@ -35,11 +35,11 @@ The first argument evaluates to a string; the remaining args are `[variant, weig
 }
 ```
 
-The canonical pattern concatenates `$flagd.flagKey + email` so the same email gets different variants on different flags; users aren't always in the same cohort across your whole product.
+The canonical pattern concatenates `$flagd.flagKey + email` so the same email gets different variants on different flags, and a user isn't locked into one cohort across your whole product.
 
 ### 2. Implicit bucketing key
 
-Omit the first argument, or let it evaluate to `null` (for example a missing `var`). Any other non-string first argument, such as a number or boolean, is parsed as a bucket definition and, not being an array, makes the whole call return `null`. The bucketing key is built from the root context as `flagKey + targetingKey` (the order the flagd Go evaluator uses):
+Omit the first argument, or let it evaluate to `null` (for example a missing `var`). The operator parses any other non-string first argument, such as a number or boolean, as a bucket definition; since that argument is not an array, the whole call returns `null`. The bucketing key is built from the root context as `flagKey + targetingKey` (the order the flagd Go evaluator uses):
 
 ```json
 {
@@ -69,7 +69,7 @@ Weights must be non-negative integers. Omitted weights default to `1`, so `["red
 
 ### Composing with `if`
 
-Real-world usage typically gates `fractional` behind a precondition rather than running it unconditionally:
+In practice you usually gate `fractional` behind a precondition instead of running it unconditionally:
 
 ```json
 {

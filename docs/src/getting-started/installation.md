@@ -56,7 +56,7 @@ composer require goplasmatic/datalogic
 
 </div>
 
-> **Note for Rust users:** v5 does **not** require `serde_json` by default — the canonical
+> **Note for Rust users:** v5 does **not** require `serde_json` by default: the canonical
 > entry points (`Engine::eval_str`, `Engine::compile(&str)`,
 > `datalogic_rs::eval_str`) are string-based. Add the `serde_json` feature
 > only if you need `serde_json::Value` interop or the typed
@@ -69,7 +69,7 @@ v5 splits the surface into a small core plus opt-in features:
 | Feature | Default | What it adds |
 |---------|---------|-------------|
 | `serde_json` | off | `&serde_json::Value` interop (as `EvalInput` / `IntoLogic`) and the typed `eval_into::<T>` paths on `Engine`, `Session`, and the module-level helpers. Pulls in `serde_json` as a runtime dependency. |
-| `templating` | off | Templating mode — `Engine::builder().with_templating(true).build()`. |
+| `templating` | off | Templating mode, enabled with `Engine::builder().with_templating(true).build()`. |
 | `datetime` | off | `datetime`, `timestamp`, `parse_date`, `format_date`, `date_diff`, `now` operators, including the optional trailing IANA-zone argument on `format_date` / `parse_date` (pulls in `chrono` and `chrono-tz`). |
 | `trace` | off | Per-evaluation execution tracing (`engine.trace()…`). Transitively enables `serde_json`. |
 | `ext-string` | off | Extended string operators. |
@@ -79,9 +79,9 @@ v5 splits the surface into a small core plus opt-in features:
 | `error-handling` | off | `try` / `throw` operators. |
 | `ext-math` | off | Extended math operators. |
 | `flagd` | off | [OpenFeature flagd-compatible](https://flagd.dev/reference/custom-operations/) `fractional` (murmurhash3 percentage bucketing) and `sem_ver` (semantic-version comparison) operators. |
-| `wasm-clock` | off | JS-host clock for the `now` operator on `wasm32-unknown-unknown` (browsers, Node, Deno, Workers); combine with `datetime`. Opt-in on purpose: it forwards to `chrono/wasmbind`, whose JS imports fail to instantiate in non-JS wasm runtimes such as wasmtime, wazero, and Chicory — leave it off there (on WASI the OS clock works without it). |
+| `wasm-clock` | off | JS-host clock for the `now` operator on `wasm32-unknown-unknown` (browsers, Node, Deno, Workers); combine with `datetime`. Opt-in on purpose: it forwards to `chrono/wasmbind`, whose JS imports fail to instantiate in non-JS wasm runtimes such as wasmtime, wazero, and Chicory, so leave it off there (on WASI the OS clock works without it). |
 
-Example — opt into `serde_json::Value` interop plus templating:
+Example: opt into `serde_json::Value` interop plus templating:
 
 ```toml
 [dependencies]
@@ -91,7 +91,7 @@ serde_json = "1.0"
 
 ## Version Selection
 
-- **v5.x** (current): canonical string-based API, opt-in `serde_json`, builder-only operator registration. v5 is a hard cliff — no `compat` shim — so plan a single cutover.
+- **v5.x** (current): canonical string-based API, opt-in `serde_json`, builder-only operator registration. v5 is a hard cliff (no `compat` shim), so plan a single cutover.
 - **v4.x**: `DataLogic` engine, `serde_json::Value`-first API. Still functional but no longer the active line.
 - **v3.x**: Arena-based allocation, predates the v4 simplification. Bug-fix only.
 
@@ -123,12 +123,12 @@ cd bindings/wasm
 
 ## Minimum Rust Version
 
-datalogic-rs v5 uses **Rust edition 2024** — Rust **1.85** or later is
-required. The crate is built with `#![forbid(unsafe_code)]`.
+datalogic-rs v5 uses **Rust edition 2024**, so it requires Rust **1.85**
+or later. The crate sets `#![forbid(unsafe_code)]`.
 
 ## Verifying Installation
 
-Create a simple script or test file to verify everything works:
+Create a short script or test file to verify the install:
 
 <div class="codetabs">
 

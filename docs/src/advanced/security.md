@@ -1,6 +1,6 @@
 # Security and Sandboxing
 
-datalogic-rs is designed to evaluate **untrusted rules over trusted data**:
+datalogic-rs targets **untrusted rules over trusted data**:
 rules submitted by users, stored in a database, or fetched from an API,
 evaluated against data your application controls. This page states exactly
 what that guarantees, what it does not, and how to run untrusted rules
@@ -26,7 +26,7 @@ A rule **cannot**:
 - mutate the input, the engine, or shared state: evaluation takes `&self`
   and returns a fresh value.
 
-The core crate is built with `#![forbid(unsafe_code)]`. The language
+The core crate sets `#![forbid(unsafe_code)]`. The language
 bindings necessarily cross an FFI boundary, so "no unsafe code" is a
 property of the Rust engine, not of every binding shim.
 
@@ -57,8 +57,8 @@ largest single evaluation rather than the cumulative loop.
 
 Iteration count and output size are functions of the **input data size**
 and the **rule complexity**. A `map` over a large array nested inside
-another `map` does not touch the recursion cap at all — it is one
-boundary call doing N x M items of work.
+another `map` does not touch the recursion cap: it is one boundary
+call doing N x M items of work.
 
 Set an **operation budget** to bound that directly:
 
@@ -83,8 +83,8 @@ Belt and braces, in the order that buys the most:
 1. **Bound attacker-controlled input.** Cap array lengths and total payload
    size before evaluating. Iteration and output size scale with the data,
    so this is the cheapest control and the one that fails earliest.
-2. **Set an operation budget.** This is the control that survives a rule
-   designed to be expensive over input you thought was small enough.
+2. **Set an operation budget.** This control survives a rule designed to
+   be expensive over input you thought was small enough.
 3. **Bound rule complexity.** For user-authored rules, cap the serialized
    rule size and reject or lower `max_recursion_depth` / compile depth as
    appropriate for your risk tolerance.

@@ -30,7 +30,7 @@ java --enable-native-access=ALL-UNNAMED ...
 
 (That flag covers classpath applications; if you place the JAR on the module path instead, grant native access to its module name.)
 
-*Note: The Maven `groupId` is `io.github.goplasmatic`, but the Java package path is `com.goplasmatic.datalogic`.*
+*The Maven `groupId` is `io.github.goplasmatic`, but the Java package path is `com.goplasmatic.datalogic`.*
 
 ## Quick Start
 
@@ -51,7 +51,7 @@ public class Main {
 
 ### Reusable Compiled Rules
 
-Always compile rules when executing them repeatedly. Use Java's `try-with-resources` statement to ensure native resources are disposed of correctly:
+Compile rules that you evaluate repeatedly. Use Java's `try-with-resources` statement to close native resources deterministically:
 
 ```java
 import com.goplasmatic.datalogic.Engine;
@@ -97,11 +97,11 @@ public class Main {
 
 ## Concurrency
 
-*   `Engine` and `Rule` instances are fully thread-safe and can be shared globally.
-*   `Session` instances are **not** thread-safe and must be kept local to individual threads.
+*   `Engine` and `Rule` instances are thread-safe; you can share them globally.
+*   `Session` instances are **not** thread-safe; keep each one local to a single thread.
 
 ## Going deeper
 
-- [C ABI internals: memory management & thread safety](c-abi.md) — the native-heap ownership rules every FFI binding shares
+- [C ABI internals: memory management & thread safety](c-abi.md): the native-heap ownership rules every FFI binding shares
 - [Engine configuration semantics](advanced/configuration.md)
-- [JVM binding README](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/jvm#readme) — full API surface, error types, and platform table
+- [JVM binding README](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/jvm#readme): full API surface, error types, and platform table

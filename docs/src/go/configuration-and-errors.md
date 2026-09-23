@@ -61,7 +61,7 @@ _, err = engine.Apply(`{"+": [null, 1]}`, `{}`)  // err != nil: strict rejects n
 `division_by_zero` governs the float path only: `{"/": [1, 0]}`
 (integer / integer) returns an error under every setting. The strict
 preset rejects non-numeric strings, `null`, and `""` in arithmetic;
-numeric strings such as `"1"` are still coerced, so
+it still coerces numeric strings such as `"1"`, so
 `{"+": ["1", 2]}` returns `"3"`.
 
 Builders are not goroutine-safe: construct and `Build()` on one

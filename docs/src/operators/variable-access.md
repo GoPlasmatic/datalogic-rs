@@ -105,7 +105,7 @@ Alternative variable access with explicit path segments and scope levels.
 // Data: { "items": ["a", "b"] }
 // Result: "a"
 
-// No default slot: a second element is just another path segment
+// No default slot: a second element is another path segment
 { "val": ["missing", "default"] }
 // Data: {}
 // Result: null (looks up data.missing.default)
@@ -123,7 +123,7 @@ Alternative variable access with explicit path segments and scope levels.
 
 **Notes:**
 - `val` does NOT support `var`'s dot-path strings: a string argument is a single
-  literal key, so `{ "val": "a.b" }` looks up the key `"a.b"`, it does not descend
+  literal key, so `{ "val": "a.b" }` looks up the key `"a.b"`; it does not descend
   into `a` then `b`
 - For nested access use the array form `{ "val": ["a", "b"] }`, where each element
   is one path segment
@@ -151,7 +151,7 @@ or key).
 ```
 
 Levels come in pairs, because the reference implementation this form comes
-from keeps two entries per iterator — the iteration metadata, then the
+from keeps two entries per iterator: the iteration metadata, then the
 enclosing element. `[[1]]` and `[[2]]` therefore name the same frame, one
 iterator out; `[[3]]` and `[[4]]` name the one beyond it, and so on. Levels
 count **frames**, not iterators of a particular kind: a `reduce` body and a
@@ -166,8 +166,8 @@ count **frames**, not iterators of a particular kind: a `reduce` body and a
 - `{ "val": [[1], "index"] }` returns the current element's zero-based position
   while iterating an array (or an object, in stored order); `{ "val": [[1], "key"] }`
   returns its key while iterating an object. `[[3]]` reads the enclosing
-  iterator's index or key, `[[5]]` the one beyond it — odd levels only, since an
-  even level names an element rather than its metadata.
+  iterator's index or key, `[[5]]` the one beyond it. Only odd levels work,
+  since an even level names an element rather than its metadata.
 - `index` and `key` are `null` wherever no such metadata exists: `key` over an
   array, anything inside `reduce` or a `try` catch arm (those frames carry no
   iteration metadata), and a level that climbs past the outermost frame. At an
@@ -177,8 +177,8 @@ count **frames**, not iterators of a particular kind: a `reduce` body and a
 - A marker is an array of **exactly one** number. `{ "val": [[0, 1]] }` is a
   path chain walking index 0 then index 1, not level 0 with a stray tail, and
   `{ "val": [[2, 9], "field"] }` is not level 2.
-- Relative path syntax such as `"../field"` is not supported; it is treated as a
-  literal key and resolves to `null`.
+- Relative path syntax such as `"../field"` is not supported; the engine treats
+  it as a literal key, which resolves to `null`.
 - `var` accepts the same `[[N], ...]` form, because it compiles to `val`.
 
 **Reading an enclosing element from a nested iterator:**

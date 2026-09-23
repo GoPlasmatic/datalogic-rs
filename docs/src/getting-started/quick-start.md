@@ -1,6 +1,6 @@
 # Quick Start
 
-This guide will get you evaluating JSONLogic rules in minutes.
+This guide covers evaluating JSONLogic rules, from the one-shot helpers to a reusable `Engine`.
 
 ## The simplest path: one-shot helpers
 
@@ -81,7 +81,7 @@ echo $result; // "true"
 
 </div>
 
-The module-level helpers delegate to a lazily-constructed default engine under the hood (in Java, C#, and PHP, where there is no module-level helper, a default `Engine` plus `apply` is the same one-shot). They are the right starting point for tutorials, scripts, and code that doesn't need custom operators or non-default configurations.
+The module-level helpers delegate to a lazily-constructed default engine (in Java, C#, and PHP, where there is no module-level helper, a default `Engine` plus `apply` is the same one-shot). They are the right starting point for tutorials, scripts, and code that doesn't need custom operators or non-default configurations.
 
 ## When you need an Engine
 
@@ -197,7 +197,7 @@ echo $result; // "true"
 
 </div>
 
-Engine configuration, sessions, and the full Rust API ladder are covered in the [Rust chapter](../rust/overview.md) and each language's chapter.
+The [Rust chapter](../rust/overview.md) and each language's chapter cover engine configuration, sessions, and the full Rust API ladder.
 
 ## Working with Variables
 
@@ -294,7 +294,7 @@ Filter, map, and reduce arrays:
 
 ## Error Handling
 
-Evaluation failures are structured values, not opaque strings. A failing rule produces an error object with a stable `type` tag, and the engine also reports the offending operator and a path breadcrumb to the failing node:
+Evaluation failures are structured values: a failing rule produces an error object with a stable `type` tag, and the engine also reports the offending operator and a path breadcrumb to the failing node:
 
 ```json
 { "+": ["text", 1] }
@@ -317,7 +317,7 @@ To catch a runtime error inside the rule itself, wrap it in `try` (Rust crate: e
 <div class="playground-widget" data-logic='{"try": [{"/": [10, {"var": "divisor"}]}, 0]}' data-data='{"divisor": 0}'>
 </div>
 
-How uncaught errors surface in your host language (Rust `Result`, JavaScript exceptions, Python exceptions, Go `error` values, Java/C#/PHP exceptions) is covered in each binding's chapter: [Node.js](../nodejs/overview.md), [browser WASM](../javascript/api-reference.md), [Python](../python/api-gil.md), [Go](../go/quick-start.md), [Java](../jvm.md), [.NET](../dotnet.md), [PHP](../php.md).
+Each binding's chapter covers how uncaught errors surface in your host language (Rust `Result`, JavaScript exceptions, Python exceptions, Go `error` values, Java/C#/PHP exceptions): [Node.js](../nodejs/overview.md), [browser WASM](../javascript/api-reference.md), [Python](../python/api-gil.md), [Go](../go/quick-start.md), [Java](../jvm.md), [.NET](../dotnet.md), [PHP](../php.md).
 
 ## Next Steps
 

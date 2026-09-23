@@ -324,7 +324,7 @@ Check if the first value is less than or equal to the second.
 **Notes (all ordering operators):**
 - Chained comparisons are useful for range checks
 - `{ "<": [a, x, b] }` is equivalent to `a < x AND x < b`
-- Any number of operands is accepted: `{ "<": [1, 2, 3, 4] }` is `true` and `{ "<": [1, 2, 5, 4] }` is `false`. Evaluation short-circuits at the first failing pair, so later operands are never evaluated (`{ ">": [5, 3, 4, { "throw": "boom" }] }` is `false`, nothing is thrown)
+- The operators accept any number of operands: `{ "<": [1, 2, 3, 4] }` is `true` and `{ "<": [1, 2, 5, 4] }` is `false`. Evaluation short-circuits at the first failing pair and never evaluates later operands (`{ ">": [5, 3, 4, { "throw": "boom" }] }` is `false`, nothing is thrown)
 - Fewer than two operands (`{ "<": [1] }`, `{ "<": [] }`) is an Invalid Arguments error
 - Two strings compare lexicographically (`{ ">": ["10", "9"] }` is `false`); a string against a number is coerced numerically (`{ ">": ["10", 9] }` is `true`). A non-numeric string against a number throws a `NaN` error (`{ "<": ["abc", 1] }`)
 - `==` and `!=` also accept more than two operands: `{ "==": [1, 1, 1] }` is `true`

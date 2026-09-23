@@ -1,6 +1,6 @@
 # Framework Integration
 
-This guide covers integration with popular JavaScript frameworks and build tools.
+Integration recipes for common JavaScript frameworks and build tools.
 
 ## React
 
@@ -88,7 +88,7 @@ export function useJsonLogic(logic: object, data: unknown) {
 }
 ```
 
-Two details matter here. Effects are keyed on the serialized inputs, not the objects: an inline rule literal is a new object identity on every render, and an object result from `JSON.parse` is a new identity on every evaluation, so keying on the objects themselves would recompile per render and, for object results, loop until React reports "Maximum update depth exceeded". And every `CompiledRule` holds WASM memory, so the hook calls `free()` when it replaces a rule and on unmount rather than waiting for the garbage collector.
+Two details matter here. The effects key on the serialized inputs, not the objects: an inline rule literal is a new object identity on every render, and an object result from `JSON.parse` is a new identity on every evaluation, so keying on the objects themselves would recompile per render and, for object results, loop until React reports "Maximum update depth exceeded". And every `CompiledRule` holds WASM memory, so the hook calls `free()` when it replaces a rule and on unmount rather than waiting for the garbage collector.
 
 Usage:
 
@@ -285,7 +285,7 @@ app.post('/api/evaluate', (req, res) => {
 
 ### Vite
 
-WASM works out of the box with Vite:
+Vite needs no WASM-specific configuration:
 
 ```typescript
 // vite.config.ts

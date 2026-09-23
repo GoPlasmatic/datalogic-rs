@@ -32,7 +32,7 @@ await init();
 await init({ module_or_path: '/custom/path/datalogic_wasm_bg.wasm' });
 ```
 
-Passing the source positionally (`init('/path/to.wasm')`) still works but is deprecated by wasm-bindgen and logs a console warning; use the object form.
+Passing the source positionally (`init('/path/to.wasm')`) still works, but wasm-bindgen deprecates it and logs a console warning; use the object form.
 
 > **Note:** Node.js does not require initialization, and `init` is not a function there. The package's `node` export condition resolves the bare specifier to the CommonJS `nodejs` target, so a default import (`import init from '@goplasmatic/datalogic-wasm'`) binds `init` to the module namespace object and `await init()` throws `TypeError: init is not a function`. Code that has to run in both places should guard the call:
 >
@@ -176,7 +176,7 @@ Every built-in operator name this WASM build accepts, in the engine's registry o
 function builtinOperatorNames(): string[];
 ```
 
-**Returns:** Array of operator keys. The list includes the input aliases (`var` for `val`, `?:` for `if`, `match` for `switch`), so it has 87 entries for the 84 built-in operators. It is derived from the compiler's own lookup table, so tooling (editors, linters, palettes) can validate rules against the engine instead of a hand-maintained list. Custom operators are not included; see [`engine.customOperatorNames()`](#customoperatornames-string).
+**Returns:** Array of operator keys. The list includes the input aliases (`var` for `val`, `?:` for `if`, `match` for `switch`), so it has 87 entries for the 84 built-in operators. It is derived from the compiler's own lookup table, so tooling (editors, linters, palettes) can validate rules against the engine instead of a hand-maintained list. The list excludes custom operators; see [`engine.customOperatorNames()`](#customoperatornames-string).
 
 **Example:**
 ```javascript
@@ -195,7 +195,7 @@ names.includes('preserve');    // false (removed in v5)
 
 ### `CompiledRule`
 
-Pre-compiled rule for efficient repeated evaluation. `CompiledRule` builds its own engine internally, so it cannot use custom operators; for those, use [`Engine`](#engine) + `engine.compile()`.
+Pre-compiled rule for repeated evaluation. `CompiledRule` builds its own engine internally, so it cannot use custom operators; for those, use [`Engine`](#engine) + `engine.compile()`.
 
 #### Constructor
 
@@ -208,7 +208,7 @@ new CompiledRule(logic: string, templating: boolean, config?: string | object, t
 - `templating` - Enable templating mode
 - `config` (optional) - Evaluation config for this rule's engine, as a JSON string or a plain object. Same keys as [Engine configuration](#engine-configuration).
 
-**Throws:** If the logic is invalid JSON or contains compilation errors (for example a multi-key object when templating is off), or a `ConfigurationError` for an unknown config key. Unknown operator names are not rejected here; they surface as an `InvalidOperator` error when the rule is evaluated.
+**Throws:** If the logic is invalid JSON or contains compilation errors (for example a multi-key object when templating is off), or a `ConfigurationError` for an unknown config key. The constructor does not reject unknown operator names; they surface as an `InvalidOperator` error when you evaluate the rule.
 
 **Example:**
 ```javascript
@@ -249,7 +249,7 @@ rule.evaluateData(handle); // "3"
 
 ##### `free(): void`
 
-Release the rule's WASM memory eagerly. Every class in this package is also reclaimed by a `FinalizationRegistry` when the JS object is garbage-collected, but that is best-effort; call `free()` when you are done with a rule you create often (per render, per request). A freed rule throws on use.
+Release the rule's WASM memory eagerly. A `FinalizationRegistry` also reclaims every class in this package when the JS object is garbage-collected, but that is best-effort; call `free()` when you are done with a rule you create often (per render, per request). A freed rule throws on use.
 
 > **Tracing a compiled rule:** `CompiledRule` has no trace method. For execution traces, call the standalone `evaluateWithTrace(logic, data, templating)` function, or `engine.evaluateWithTrace(logic, data)` on an [`Engine`](#engine) when you need custom config or operators. Both recompile per call but return the full `TracedResult` shape.
 
@@ -323,7 +323,7 @@ failed.structured_error.thrown; // { type: "NaN" }
 
 ##### `customOperatorNames(): string[]`
 
-Names of the custom operators registered on this engine (order is not guaranteed). Built-ins are listed by the module-level [`builtinOperatorNames()`](#builtinoperatornames).
+Names of the custom operators registered on this engine (order is not guaranteed). The module-level [`builtinOperatorNames()`](#builtinoperatornames) lists the built-ins.
 
 ```javascript
 engine.customOperatorNames();       // ["double"]
@@ -353,7 +353,7 @@ rule.evaluate('{"user": {"age": 21}}'); // "true"
 
 ### `Session`
 
-The hot-loop tier. A session owns one bump arena and resets it at the start of each evaluation, so a tight loop reuses the same memory instead of allocating a fresh arena per call (which is what `rule.evaluate()` does). Results are returned as owned strings, so they stay valid across later calls.
+The hot-loop tier. A session owns one bump arena and resets it at the start of each evaluation, so a tight loop reuses the same memory instead of allocating a fresh arena per call (which is what `rule.evaluate()` does). The session returns results as owned strings, so they stay valid across later calls.
 
 ```javascript
 const engine = new Engine({});
@@ -407,7 +407,7 @@ Sessions are single-threaded like everything else in this package: use a session
 
 ### `DataHandle`
 
-An immutable, pre-parsed JSON document resident in WASM linear memory. Every string-taking method copies the data across the JS/WASM boundary and re-parses it on each call; a handle pays that once, so it is the right tool when the same payload is evaluated more than once (rule sets, bulk scoring).
+An immutable, pre-parsed JSON document resident in WASM linear memory. Every string-taking method copies the data across the JS/WASM boundary and re-parses it on each call; a handle pays that once, so it is the right tool when you evaluate the same payload more than once (rule sets, bulk scoring).
 
 ```typescript
 new DataHandle(json: string)
@@ -418,7 +418,7 @@ new DataHandle(json: string)
 - `allocatedBytes` (getter) - bytes held by the handle's backing arena (input copy + parsed tree)
 - `free(): void` - release the resident copy after the last evaluation
 
-Handles are never consumed by evaluation and are independent of any engine: one handle can feed rules and sessions of different engines, as long as everything lives in the same module instance.
+Evaluation never consumes a handle, and handles are independent of any engine: one handle can feed rules and sessions of different engines, as long as everything lives in the same module instance.
 
 ```javascript
 const handle = new DataHandle('{"user": {"age": 34}}');

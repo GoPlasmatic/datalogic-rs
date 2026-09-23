@@ -57,7 +57,7 @@ Parse or validate a datetime value.
 ```
 
 **Arguments:**
-- `value` - An RFC 3339 datetime string (`2024-01-01T00:00:00Z`, or with a `+HH:MM`/`-HH:MM` offset; fractional seconds and a space instead of `T` are accepted), or a naive `YYYY-MM-DDTHH:MM:SS` string, which is read as UTC. Date-only strings (`2024-01-01`) and colon-less offsets (`-0500`, `+05`) are rejected with `Invalid datetime format`; use `parse_date` for those and for custom formats
+- `value` - An RFC 3339 datetime string (`2024-01-01T00:00:00Z`, or with a `+HH:MM`/`-HH:MM` offset; fractional seconds and a space instead of `T` are accepted), or a naive `YYYY-MM-DDTHH:MM:SS` string, which the engine reads as UTC. Date-only strings (`2024-01-01`) and colon-less offsets (`-0500`, `+05`) fail with `Invalid datetime format`; use `parse_date` for those and for custom formats
 
 **Returns:** A datetime value (rendered as an ISO 8601 string, preserving the parsed offset); its `type` is "datetime", not "string".
 
@@ -153,7 +153,7 @@ Create or parse a duration value. Durations represent time periods (not points i
 **Notes:**
 - Produces a duration value; `{ "type": { "timestamp": "1d" } }` is `"duration"`
 - Units overflow-normalise (`"1d:25h"` becomes `"2d:1h:0m:0s"`)
-- Negative (`"-1d"`), fractional (`"1.5h"`), week (`"1w"`), and numeric (`3600`) inputs are rejected with `Invalid duration format`
+- Negative (`"-1d"`), fractional (`"1.5h"`), week (`"1w"`), and numeric (`3600`) inputs fail with `Invalid duration format`
 
 **Try it:**
 
@@ -162,7 +162,7 @@ Create or parse a duration value. Durations represent time periods (not points i
 
 ### Duration Arithmetic
 
-Durations can be used in arithmetic operations:
+The arithmetic operators accept durations:
 
 ```json
 // Multiply duration
@@ -231,7 +231,7 @@ Parse a date string with a custom format into a datetime value.
 **Arguments:**
 - `string` - Date string to parse
 - `format` - Format string using simplified tokens
-- `timezone` - Optional IANA zone name (e.g. `"Asia/Kolkata"`). Without it, naive input is read as UTC; with it, the input is read as wall-clock time *in that zone* and resolved to the corresponding UTC instant.
+- `timezone` - Optional IANA zone name (e.g. `"Asia/Kolkata"`). Without it, the engine reads naive input as UTC; with it, the engine reads the input as wall-clock time *in that zone* and resolves it to the corresponding UTC instant.
 
 **Returns:** A datetime value (rendered as an ISO 8601 string in JSON output); its `type` is "datetime", not "string".
 
@@ -279,7 +279,7 @@ Raw [chrono `%` specifiers](https://docs.rs/chrono/latest/chrono/format/strftime
 **Timezone notes:**
 - Zone offsets (including DST) come from the compiled-in IANA table: no fixed-offset arithmetic, no tzdata I/O.
 - An ambiguous local time (clocks rolled back, the wall-clock occurs twice) resolves to the **earlier** instant; a nonexistent one (spring-forward gap) is an error.
-- An unknown zone name that appears as a *literal* in the rule is rejected while the rule is compiled, but `Engine::compile` itself still succeeds: the call is replaced by a marker that raises `Invalid Arguments` (naming the operator, not the zone) when the rule is evaluated. A zone arriving through data fails at evaluation with `Unknown timezone: <name>`.
+- The compiler rejects an unknown zone name that appears as a *literal* in the rule, but `Engine::compile` itself still succeeds: it replaces the call with a marker that raises `Invalid Arguments` (naming the operator, not the zone) when the rule is evaluated. A zone arriving through data fails at evaluation with `Unknown timezone: <name>`.
 
 **Try it:**
 
@@ -301,7 +301,7 @@ Format a datetime as a string with a custom format.
 **Arguments:**
 - `datetime` - Datetime value to format
 - `format` - Format string using simplified tokens (same as parse_date)
-- `timezone` - Optional IANA zone name (e.g. `"Asia/Kolkata"`). When present, the instant is rendered as wall-clock time in that zone (DST-correct via the IANA table) instead of UTC.
+- `timezone` - Optional IANA zone name (e.g. `"Asia/Kolkata"`). When present, `format_date` renders the instant as wall-clock time in that zone (DST-correct via the IANA table) instead of UTC.
 
 **Returns:** Formatted date string.
 

@@ -52,7 +52,7 @@ Check for missing fields in the data.
 ```
 
 **Notes:**
-- Only absent paths are reported. A key that exists with a `null` or empty-string value counts as present, so `{ "missing": ["x"] }` with `{ "x": null }` or `{ "x": "" }` returns `[]`. This differs from json-logic-js, which also reports keys whose value is `null` or `""`
+- `missing` reports only absent paths. A key that exists with a `null` or empty-string value counts as present, so `{ "missing": ["x"] }` with `{ "x": null }` or `{ "x": "" }` returns `[]`. This differs from json-logic-js, which also reports keys whose value is `null` or `""`
 - Dot-separated names walk nested objects (`"user.email"`)
 
 ### Common Patterns
@@ -87,7 +87,7 @@ Check for missing fields in the data.
 
 ## missing_some
 
-Require that at least N of a set of fields are present; the missing ones are returned only when fewer than N are present.
+Require that at least N of a set of fields are present; returns the missing ones only when fewer than N are present.
 
 **Syntax:**
 ```json

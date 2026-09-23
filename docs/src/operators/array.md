@@ -14,9 +14,9 @@ Concatenate multiple arrays into one.
 ```
 
 **Arguments:**
-- `array1`, `array2`, ... - Arrays to concatenate; scalars and objects are wrapped as single elements
+- `array1`, `array2`, ... - Arrays to concatenate; `merge` wraps scalars and objects as single elements
 
-**Returns:** A single array: the arguments concatenated one level deep. Nested arrays inside an argument are kept as elements (no deep flatten), and `null` arguments and `null` elements are dropped.
+**Returns:** A single array: the arguments concatenated one level deep. Nested arrays inside an argument stay as elements (no deep flatten), and `merge` drops `null` arguments and `null` elements.
 
 **Examples:**
 
@@ -121,8 +121,8 @@ Filter array elements based on a condition.
 
 **Notes:**
 - Inside the condition, `{"var": ""}` refers to the current element
-- The original array is not modified
-- An object input is filtered by its values and returns an object of the kept pairs: `{ "filter": [{ "var": "x" }, { ">": [{ "var": "" }, 3] }] }` with `{ "x": { "a": 1, "b": 5 } }` is `{ "b": 5 }`
+- `filter` does not modify the original array
+- `filter` filters an object input by its values and returns an object of the kept pairs: `{ "filter": [{ "var": "x" }, { ">": [{ "var": "" }, 3] }] }` with `{ "x": { "a": 1, "b": 5 } }` is `{ "b": 5 }`
 - A `null` or missing input yields `[]`; a scalar input is an Invalid Arguments error
 
 ---
@@ -188,7 +188,7 @@ Transform each element of an array.
 
 **Notes:**
 - An object input maps over its values and returns an array (`{ "a": 1, "b": 5 }` doubled is `[2, 10]`)
-- A `null` or missing input yields `[]`; a scalar input is treated as a one-element array (`{ "map": [5, { "*": [{ "var": "" }, 2] }] }` is `[10]`)
+- A `null` or missing input yields `[]`; `map` treats a scalar input as a one-element array (`{ "map": [5, { "*": [{ "var": "" }, 2] }] }` is `[10]`)
 
 ---
 
@@ -341,7 +341,7 @@ Check if all elements satisfy a condition.
 
 **Notes (all, some, none):**
 - An object input checks the object's values
-- A `null`, missing, or scalar input is treated as an empty collection: `all` is `false`, `some` is `false`, `none` is `true`
+- A `null`, missing, or scalar input counts as an empty collection: `all` is `false`, `some` is `false`, `none` is `true`
 
 ---
 
@@ -640,7 +640,7 @@ Collapse an array into groups on a computed key.
 </div>
 
 **Notes:**
-- Keys are kept as their evaluated values: numbers, booleans, `null`, and even objects group correctly by deep equality; they are not stringified.
+- `group_by` keeps keys as their evaluated values and does not stringify them: numbers, booleans, `null`, and objects group by deep equality.
 - Elements whose key expression misses (resolves to `null`) group together under a `null` key.
 - `null` or empty input yields `[]`. Non-array input (scalar or object) is an error.
 
@@ -658,7 +658,7 @@ Drop duplicate elements, by value or by a computed key.
 
 **Arguments:**
 - `array` - Array to deduplicate (a value that resolves to an array)
-- `key_expression` - Optional per-element expression; when present, elements are deduplicated by the computed key instead of by value
+- `key_expression` - Optional per-element expression; when present, `distinct` deduplicates by the computed key instead of by value
 
 **Returns:** Array with duplicates removed. The first occurrence wins, so output preserves input order.
 

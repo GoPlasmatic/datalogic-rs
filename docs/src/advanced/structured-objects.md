@@ -24,8 +24,8 @@ let engine = Engine::builder()
 
 ## How It Works
 
-In normal mode, unknown keys in a JSON object are treated as errors (or as
-custom operators when one is registered). With structure preservation
+In normal mode, the engine treats unknown keys in a JSON object as errors
+(or as custom operators when one is registered). With structure preservation
 enabled, unknown keys become literal output fields.
 
 **Normal mode:**
@@ -47,7 +47,7 @@ to name an operator is swallowed:
 
 ```json
 { "type": { "var": "x" } }
-// Result: "number"  — the `type` operator ran; no key was emitted
+// Result: "number"  (the `type` operator ran; no key was emitted)
 ```
 
 That makes roughly 60 names unusable as output keys on their own: `type`,
@@ -66,8 +66,8 @@ let engine = Engine::builder()
     .build();
 ```
 
-Exactly one leading prefix is stripped from every template key, and an
-escaped key is never resolved as an operator:
+The engine strips exactly one leading prefix from every template key and
+never resolves an escaped key as an operator:
 
 | Template key | Output key |
 |--------------|------------|
@@ -83,7 +83,7 @@ escaped key is never resolved as an operator:
 ```
 
 Stripping is uniform across arities, so a key means the same thing whether
-or not it has siblings. Three things worth knowing:
+or not it has siblings. Three caveats:
 
 - **The setting is off by default and opt-in.** Without it, `$`-prefixed
   keys pass through verbatim exactly as before. Turning it on does change
@@ -165,7 +165,7 @@ let result = engine.eval_str(template, data).unwrap();
 
 ## Arrays in Templates
 
-Arrays are processed element by element:
+The engine processes arrays element by element:
 
 ```rust
 let template = r#"{
@@ -211,9 +211,9 @@ let result = engine.eval_str(template, data).unwrap();
 
 ## The `preserve` Operator Was Removed
 
-In v4 there was an explicit `preserve` operator that wrapped a value to
-prevent further evaluation. **v5 removed it.** Wrap-as-output is exactly
-what templating mode already does for objects, and literal scalars
+v4 had an explicit `preserve` operator that wrapped a value to prevent
+further evaluation. **v5 removed it.** Wrap-as-output is what templating
+mode already does for objects, and literal scalars
 / arrays already pass through inline. If you need to emit a JSON object
 verbatim from a rule, enable `with_templating(true)` and write the object
 directly.
