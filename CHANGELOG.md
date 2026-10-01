@@ -24,6 +24,15 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   A development dependency of the UI build; nothing it touches ships in a
   published package.
 
+### Changed
+
+- **Dependency updates across the bindings.** .NET: `System.Text.Json`
+  10.0.12 (a runtime dependency of the NuGet package),
+  `Microsoft.SourceLink.GitHub` 10.0.401, `Microsoft.NET.Test.Sdk`
+  18.10.1. JVM: `maven-compiler-plugin` 3.16.0, `maven-surefire-plugin`
+  3.6.0. Node: `@napi-rs/cli` 3.10.5. The Rust crates, Python (maturin
+  1.15.0), PHP (`phpunit` ^13) and Go were already current.
+
 ### Fixed
 
 - **`var` with a computed path and a default returned `null`.** In
