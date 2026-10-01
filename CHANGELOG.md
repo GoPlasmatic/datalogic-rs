@@ -8,7 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
-## [Unreleased]
+## [5.7.1] - 2026-10-01
+
+### Security
+
+- **JVM: jackson-databind 2.22.2 → 2.22.3** (#78), fixing
+  [GHSA-cxp5-3px4-pw24](https://github.com/advisories/GHSA-cxp5-3px4-pw24)
+  (quadratic forward-reference completion) and
+  [GHSA-wv8q-qhhj-9h54](https://github.com/advisories/GHSA-wv8q-qhhj-9h54)
+  (unknown raw type IDs retained), both rated high. jackson-databind is a
+  runtime dependency of `io.github.goplasmatic:datalogic`, so JVM users
+  should take this release.
+- **UI tooling: brace-expansion 5.0.9 → 5.0.12** (#79), fixing
+  [GHSA-q2hr-2g5m-vwhr](https://github.com/advisories/GHSA-q2hr-2g5m-vwhr).
+  A development dependency of the UI build; nothing it touches ships in a
+  published package.
 
 ### Fixed
 
