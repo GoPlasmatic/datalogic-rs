@@ -149,9 +149,10 @@ fn resolve_at(node: &mut CompiledNode, depth: u32, needs_ancestors: &mut bool) {
         }
         // A `val` that survived as a generic operator has a non-literal level
         // argument, so the frame it reads is only known at runtime and could
-        // be any ancestor.
+        // be any ancestor. A computed `var` path can evaluate to a
+        // `[level]`-prefixed chain too.
         CompiledNode::BuiltinOperator {
-            opcode: OpCode::Val,
+            opcode: OpCode::Val | OpCode::VarDefault,
             ..
         } => *needs_ancestors = true,
         _ => {}

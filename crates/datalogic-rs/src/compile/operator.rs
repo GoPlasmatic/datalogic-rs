@@ -52,6 +52,19 @@ pub(super) fn try_compile_var(args: &[CompiledNode], ctx: &mut CompileCtx) -> Op
             let segs = parse_path_segments(&s);
             (segs, ReduceHint::None)
         }
+        // A computed (or array-literal) path with a default: the path is
+        // only known at runtime, and the second argument is a default, not
+        // the path segment `val` would read it as.
+        _ if args.len() >= 2 => {
+            return Some(CompiledNode::BuiltinOperator {
+                id: Some(ctx.next_id()),
+                opcode: crate::opcode::OpCode::VarDefault,
+                args: args[..2].to_vec().into_boxed_slice(),
+                predicate_hint: None,
+                iter_arg_kind: crate::operators::array::IterArgKind::General,
+            });
+        }
+        // A computed path alone reads like a one-argument `val`.
         _ => return None,
     };
 

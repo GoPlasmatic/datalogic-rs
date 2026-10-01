@@ -11,7 +11,7 @@ the JSONLogic rules engine with one Rust core and official bindings for
 Rust, Node.js, the browser (WASM), Python, Go, Java, .NET, and PHP.
 Compile a rule once and evaluate it many times, natively in Java. Same
 rules, same semantics: every binding runs the same core and passes the
-same 1,953-case conformance battery (64 suites).
+same 1,974-case conformance battery (65 suites).
 
 For the cross-runtime overview and the API-tier model every binding
 implements, see the
