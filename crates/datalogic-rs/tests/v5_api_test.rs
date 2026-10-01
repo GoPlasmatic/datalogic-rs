@@ -403,3 +403,51 @@ fn invalid_args_round_trip_still_errors_under_templating() {
         );
     }
 }
+
+/// `eval_as` produces the output type straight from the result, with no
+/// `serde_json::Value` round trip; for `serde_json::Value` it must agree
+/// with `eval_into`, datetime sentinels and non-finite floats included.
+#[cfg(feature = "serde_json")]
+#[test]
+fn eval_as_agrees_with_eval_into() {
+    use serde_json::Value;
+    let engine = Engine::new();
+    let data = r#"{"xs": [1, 2.5, -3], "s": "é", "o": {"k": [true, null]}}"#;
+    let mut rules = vec![
+        r#"{"var": ""}"#,
+        r#"{"var": "xs"}"#,
+        r#"{"/": [1, 0]}"#,
+        r#"{"cat": [{"var": "s"}, 1]}"#,
+        r#"{"map": [{"var": "xs"}, {"*": [{"var": ""}, 2]}]}"#,
+    ];
+    if cfg!(feature = "datetime") {
+        rules.push(r#"{"datetime": "2026-10-01T12:00:00Z"}"#);
+        rules.push(r#"[{"timestamp": "1d:2h:3m:4s"}]"#);
+    }
+    for rule in rules {
+        let compiled = engine.compile(rule).unwrap();
+        let into = engine.session().eval_into::<Value, _>(&compiled, data);
+        let as_ = engine.session().eval_as::<Value, _>(&compiled, data);
+        match (into, as_) {
+            (Ok(a), Ok(b)) => assert_eq!(a, b, "{rule}"),
+            (Err(a), Err(b)) => assert_eq!(a.tag(), b.tag(), "{rule}"),
+            (a, b) => panic!("{rule}: eval_into {a:?} vs eval_as {b:?}"),
+        }
+        let one_shot = engine.eval_as::<Value, _, _>(rule, data);
+        let one_shot_into = engine.eval_into::<Value, _, _>(rule, data);
+        match (one_shot_into, one_shot) {
+            (Ok(a), Ok(b)) => assert_eq!(a, b, "one-shot {rule}"),
+            (Err(a), Err(b)) => assert_eq!(a.tag(), b.tag(), "one-shot {rule}"),
+            (a, b) => panic!("one-shot {rule}: eval_into {a:?} vs eval_as {b:?}"),
+        }
+    }
+    // The other output types work through the same entry point.
+    let compiled = engine.compile(r#"{"var": "s"}"#).unwrap();
+    assert_eq!(
+        engine
+            .session()
+            .eval_as::<String, _>(&compiled, data)
+            .unwrap(),
+        r#""é""#
+    );
+}

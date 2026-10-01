@@ -10,7 +10,8 @@
 //!   array/object spines are built in the arena.
 //! - `&ParsedData` — parse-once handle; passed through unchanged (zero cost).
 //! - `&str` — JSON-parsed via [`datavalue::DataValue::from_str`].
-//! - `&serde_json::Value` (`serde_json`) — deep-converted into the arena.
+//! - `&serde_json::Value` (`serde_json`) — viewed in place like an owned
+//!   value: strings and keys are borrowed.
 //!
 //! `EvalInput` carries the arena lifetime in its trait parameter, so it
 //! is the right adapter when the **caller** supplies the arena. For the
@@ -35,29 +36,32 @@ use crate::arena::DataValue;
 /// The set of supported input shapes is a closed class defined entirely
 /// in this file.
 mod sealed {
-    use datavalue::OwnedDataValue;
+    use bumpalo::Bump;
+
+    use crate::arena::DataValue;
 
     pub trait Sealed {}
 
-    /// How the one-shot entry points reach an [`OwnedInput`](super::OwnedInput)
-    /// as an owned value: `f` runs against it, borrowed when the caller
-    /// already holds one and converted otherwise. Lives here rather than on
-    /// `OwnedInput` so it stays out of the public API. Supertrait methods
-    /// are in scope wherever an `OwnedInput` bound is.
-    pub trait LendOwned: Sized {
-        /// Converts through `into_owned_input` and lends the result.
-        /// `&OwnedDataValue` overrides it to lend itself without the clone
-        /// that `into_owned_input` has to make (#76).
-        #[inline]
-        fn lend_owned<R>(
+    /// How the one-shot entry points reach an
+    /// [`OwnedInput`](super::OwnedInput): `f` runs against the input as an
+    /// arena value in a per-call arena, with no owned copy in between.
+    /// JSON text is parsed straight into the arena (unescaped strings
+    /// borrow from the text); an owned value or a `serde_json::Value` is
+    /// viewed in place, borrowing its leaves (#76). Lives here rather than
+    /// on `OwnedInput` so it stays out of the public API. Supertrait
+    /// methods are in scope wherever an `OwnedInput` bound is.
+    pub trait LendArena: Sized {
+        fn lend_arena<R>(
             self,
-            f: impl FnOnce(&OwnedDataValue) -> crate::Result<R>,
-        ) -> crate::Result<R>
-        where
-            Self: super::OwnedInput,
-        {
-            f(&self.into_owned_input()?)
-        }
+            f: impl for<'a> FnOnce(&'a DataValue<'a>, &'a Bump) -> crate::Result<R>,
+        ) -> crate::Result<R>;
+    }
+
+    /// The per-call arena of a one-shot evaluation. 4 KB covers typical
+    /// small-rule evaluations without a second chunk.
+    #[inline]
+    pub(super) fn one_shot_arena() -> Bump {
+        Bump::with_capacity(4096)
     }
 }
 
@@ -159,24 +163,37 @@ impl<'a> EvalInput<'a> for &'a serde_json::Value {
 /// helpers, where the engine creates and owns the arena per call.
 ///
 /// Unlike [`EvalInput`] (which carries an arena lifetime), `OwnedInput`
-/// produces an [`OwnedDataValue`] without borrowing into a caller arena.
-/// The engine then views that owned value in its per-call bump, borrowing
-/// its leaves. Sealed; the supported set is closed:
+/// does not borrow into a caller arena: the engine creates one per call
+/// and brings the input into it as cheaply as its shape allows. Sealed;
+/// the supported set is closed:
 ///
-/// - `&str` — JSON-parsed.
-/// - `&String` — JSON-parsed.
-/// - `&OwnedDataValue` — borrowed by the engine's own entry points;
-///   [`into_owned_input`](Self::into_owned_input) clones it.
-/// - `OwnedDataValue` — moved.
-/// - `&serde_json::Value` (`serde_json`) — deep-converted.
+/// - `&str`, `&String` — parsed straight into the per-call arena;
+///   unescaped strings borrow from the text.
+/// - `&OwnedDataValue`, `OwnedDataValue` — viewed in place: strings, keys
+///   and tensor bytes are borrowed, only the spines are built.
+/// - `&serde_json::Value` (`serde_json`) — viewed in place the same way.
+///
+/// [`into_owned_input`](Self::into_owned_input) materialises any of them
+/// as an [`OwnedDataValue`] for callers that want one; the engine's own
+/// entry points do not use it.
 ///
 /// For the borrowed-result paths, use [`EvalInput`] instead.
-pub trait OwnedInput: sealed::Sealed + sealed::LendOwned {
+pub trait OwnedInput: sealed::Sealed + sealed::LendArena {
     /// Materialise `self` as an owned data value.
     fn into_owned_input(self) -> Result<OwnedDataValue>;
 }
 
-impl sealed::LendOwned for &str {}
+impl sealed::LendArena for &str {
+    #[inline]
+    fn lend_arena<R>(
+        self,
+        f: impl for<'a> FnOnce(&'a DataValue<'a>, &'a Bump) -> Result<R>,
+    ) -> Result<R> {
+        let arena = sealed::one_shot_arena();
+        let data = arena.alloc(DataValue::from_str(self, &arena)?);
+        f(data, &arena)
+    }
+}
 impl OwnedInput for &str {
     #[inline]
     fn into_owned_input(self) -> Result<OwnedDataValue> {
@@ -184,7 +201,15 @@ impl OwnedInput for &str {
     }
 }
 
-impl sealed::LendOwned for &String {}
+impl sealed::LendArena for &String {
+    #[inline]
+    fn lend_arena<R>(
+        self,
+        f: impl for<'a> FnOnce(&'a DataValue<'a>, &'a Bump) -> Result<R>,
+    ) -> Result<R> {
+        self.as_str().lend_arena(f)
+    }
+}
 impl OwnedInput for &String {
     #[inline]
     fn into_owned_input(self) -> Result<OwnedDataValue> {
@@ -192,10 +217,15 @@ impl OwnedInput for &String {
     }
 }
 
-impl sealed::LendOwned for &OwnedDataValue {
+impl sealed::LendArena for &OwnedDataValue {
     #[inline]
-    fn lend_owned<R>(self, f: impl FnOnce(&OwnedDataValue) -> Result<R>) -> Result<R> {
-        f(self)
+    fn lend_arena<R>(
+        self,
+        f: impl for<'a> FnOnce(&'a DataValue<'a>, &'a Bump) -> Result<R>,
+    ) -> Result<R> {
+        let arena = sealed::one_shot_arena();
+        let data = arena.alloc(self.view_in(&arena));
+        f(data, &arena)
     }
 }
 impl OwnedInput for &OwnedDataValue {
@@ -206,7 +236,15 @@ impl OwnedInput for &OwnedDataValue {
 }
 
 impl sealed::Sealed for OwnedDataValue {}
-impl sealed::LendOwned for OwnedDataValue {}
+impl sealed::LendArena for OwnedDataValue {
+    #[inline]
+    fn lend_arena<R>(
+        self,
+        f: impl for<'a> FnOnce(&'a DataValue<'a>, &'a Bump) -> Result<R>,
+    ) -> Result<R> {
+        (&self).lend_arena(f)
+    }
+}
 impl OwnedInput for OwnedDataValue {
     #[inline]
     fn into_owned_input(self) -> Result<OwnedDataValue> {
@@ -215,7 +253,17 @@ impl OwnedInput for OwnedDataValue {
 }
 
 #[cfg(feature = "serde_json")]
-impl sealed::LendOwned for &serde_json::Value {}
+impl sealed::LendArena for &serde_json::Value {
+    #[inline]
+    fn lend_arena<R>(
+        self,
+        f: impl for<'a> FnOnce(&'a DataValue<'a>, &'a Bump) -> Result<R>,
+    ) -> Result<R> {
+        let arena = sealed::one_shot_arena();
+        let data = arena.alloc(crate::arena::value_to_data(self, &arena));
+        f(data, &arena)
+    }
+}
 #[cfg(feature = "serde_json")]
 impl OwnedInput for &serde_json::Value {
     #[inline]

@@ -79,6 +79,25 @@ impl ParsedData {
         Ok(Self(cell))
     }
 
+    /// Copy a `serde_json::Value` into a self-contained document, for a
+    /// caller that already holds the data as a `Value` and will evaluate
+    /// it many times. One copy, at construction; every evaluation after
+    /// that is free.
+    #[cfg(feature = "serde_json")]
+    pub fn from_value(value: &serde_json::Value) -> Self {
+        Self(ParsedCell::new(Bump::new(), |arena| {
+            DataValue::from_serde_value_in(value, arena)
+        }))
+    }
+
+    /// Copy an [`datavalue::OwnedDataValue`] into a self-contained
+    /// document. Evaluating against the owned value directly already
+    /// borrows its leaves; a handle also skips rebuilding the array and
+    /// object spines on every evaluation.
+    pub fn from_owned(value: &datavalue::OwnedDataValue) -> Self {
+        Self(ParsedCell::new(Bump::new(), |arena| value.to_arena(arena)))
+    }
+
     /// Borrow the parsed tree.
     ///
     /// The returned reference is valid for as long as the handle lives;
@@ -112,6 +131,58 @@ mod tests {
         assert!(v.is_object());
         assert_eq!(v.to_string(), r#"{"a":[1,2,3],"b":"text"}"#);
         assert!(data.allocated_bytes() > 0);
+    }
+
+    /// `from_value` and `from_owned` hold the same tree `from_json` parses
+    /// from the same document: unicode, escapes, number kinds, nesting,
+    /// empty containers.
+    #[cfg(feature = "serde_json")]
+    #[test]
+    fn every_constructor_holds_the_same_tree() {
+        let docs = [
+            r#"{"a": [1, -2, 3.5, 18446744073709551615], "b": "text"}"#,
+            r#"{"ключ": {"日本": ["é", "", "😀", "a\"b"]}, "": {"": null}}"#,
+            r#"[[], {}, [[]], {"x": {}}, true, false, null]"#,
+            r#""just a string""#,
+            "42",
+        ];
+        for doc in docs {
+            let from_json = ParsedData::from_json(doc).unwrap();
+            let value: serde_json::Value = serde_json::from_str(doc).unwrap();
+            let from_value = ParsedData::from_value(&value);
+            let owned = datavalue::OwnedDataValue::from_json(doc).unwrap();
+            let from_owned = ParsedData::from_owned(&owned);
+            assert_eq!(from_value.value(), from_json.value(), "from_value: {doc}");
+            assert_eq!(from_owned.value(), from_json.value(), "from_owned: {doc}");
+            // Key order: an owned value keeps the document's; a
+            // `serde_json::Value` has its map's (sorted, without
+            // `preserve_order`), which equality ignores.
+            assert_eq!(
+                from_owned.value().to_string(),
+                from_json.value().to_string()
+            );
+        }
+    }
+
+    /// The handle owns its tree: dropping the source does not invalidate it.
+    #[cfg(feature = "serde_json")]
+    #[test]
+    fn a_handle_outlives_its_source() {
+        let engine = Engine::new();
+        let rule = engine.compile(r#"{"cat": [{"var": "s"}, "!"]}"#).unwrap();
+        let from_value = {
+            let value = serde_json::json!({"s": "kept"});
+            ParsedData::from_value(&value)
+        };
+        let from_owned = {
+            let owned = datavalue::OwnedDataValue::from_json(r#"{"s": "kept"}"#).unwrap();
+            ParsedData::from_owned(&owned)
+        };
+        let arena = bumpalo::Bump::new();
+        for data in [&from_value, &from_owned] {
+            let out = engine.evaluate(&rule, data, &arena).unwrap();
+            assert_eq!(out.as_str(), Some("kept!"));
+        }
     }
 
     #[test]

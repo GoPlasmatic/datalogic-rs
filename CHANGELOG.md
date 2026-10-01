@@ -72,6 +72,29 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   [Operation Budget](./docs/src/advanced/operation-budget.md) lists every
   charge, and what is still priced at its node alone.
 
+- **The remaining per-call copies of the context are gone.**
+  - A `&serde_json::Value` input borrows its strings and keys instead of
+    copying each into the arena, so it costs what an owned value costs:
+    the array and object spines.
+  - The one-shot entry points (`Engine::eval*`, `datalogic_rs::eval*`,
+    traced `eval*`) given JSON text used to parse it into an owned tree,
+    copying every string to the heap, then build an arena view of that.
+    They now parse straight into the per-call arena, borrowing unescaped
+    strings from the text. Given a `serde_json::Value`, they view it in
+    place instead of converting it to an owned value first.
+
+### Added
+
+- **`Engine::eval_as` / `Session::eval_as`** convert the result straight
+  into any `FromDataValue` output (`OwnedDataValue`, `String`,
+  `serde_json::Value`). For a `serde_json::Value` that is one conversion,
+  where `eval_into::<serde_json::Value>` builds the value and then
+  deserializes it into a second one.
+- **`ParsedData::from_value` and `ParsedData::from_owned`** build a
+  reusable handle from a `serde_json::Value` or an `OwnedDataValue`, not
+  only from JSON text. One copy at construction; every evaluation after
+  that costs nothing to bring the data in.
+
 ### Changed
 
 - **`datavalue-rs` floor raised to 0.3.1**, the release that adds

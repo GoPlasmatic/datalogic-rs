@@ -1,10 +1,12 @@
-//! Evaluating against an `&OwnedDataValue` must not copy the context (#76).
+//! Evaluating must not copy the context's leaves (#76).
 //!
 //! A host that keeps its state in an owned value and evaluates many small
 //! rules against it should pay for what each rule reads, not for the size
 //! of the state. The owned value outlives the evaluation, so its strings,
 //! object keys and tensor bytes can be borrowed: only the array and object
-//! spines need building in the arena.
+//! spines need building in the arena. The same holds for a
+//! `serde_json::Value` the caller holds, and for JSON text, whose
+//! unescaped strings the parser can borrow.
 //!
 //! The tests measure heap bytes allocated on the calling thread during one
 //! evaluation, against two contexts of identical shape where one holds
@@ -114,15 +116,47 @@ fn assert_independent_of_leaf_size<T: std::fmt::Debug + PartialEq>(
     expected: T,
     run: impl Fn(&OwnedDataValue) -> T,
 ) {
-    let small = context(1);
-    let large = context(LONG);
+    assert_same_cost(name, &context(1), &context(LONG), expected, run);
+}
+
+/// [`assert_independent_of_leaf_size`] with the context as a
+/// `serde_json::Value`.
+fn assert_serde_independent_of_leaf_size<T: std::fmt::Debug + PartialEq>(
+    name: &str,
+    expected: T,
+    run: impl Fn(&serde_json::Value) -> T,
+) {
+    let as_serde = |leaf| serde_json::from_str(&context(leaf).to_string()).unwrap();
+    assert_same_cost(name, &as_serde(1), &as_serde(LONG), expected, run);
+}
+
+/// [`assert_independent_of_leaf_size`] with the context as JSON text.
+fn assert_text_independent_of_leaf_size<T: std::fmt::Debug + PartialEq>(
+    name: &str,
+    expected: T,
+    run: impl Fn(&str) -> T,
+) {
+    let (small, large) = (context(1).to_string(), context(LONG).to_string());
+    assert_same_cost(name, small.as_str(), large.as_str(), expected, run);
+}
+
+/// Assert that `run` allocates the same for `small` and `large` (two
+/// inputs of identical shape, leaves of different length), give or take
+/// [`SLACK`], and returns `expected` for both.
+fn assert_same_cost<I: ?Sized, T: std::fmt::Debug + PartialEq>(
+    name: &str,
+    small: &I,
+    large: &I,
+    expected: T,
+    run: impl Fn(&I) -> T,
+) {
     // Warm up: lazily initialised statics (the top-level helpers' shared
     // engine, thread-local pools) must not land in either measurement.
-    let _ = run(&small);
-    let _ = run(&large);
+    let _ = run(small);
+    let _ = run(large);
 
-    let (small_bytes, small_out) = allocated_by(|| run(&small));
-    let (large_bytes, large_out) = allocated_by(|| run(&large));
+    let (small_bytes, small_out) = allocated_by(|| run(small));
+    let (large_bytes, large_out) = allocated_by(|| run(large));
     assert_eq!(small_out, expected, "{name}: wrong result (small context)");
     assert_eq!(large_out, expected, "{name}: wrong result (large context)");
     assert!(
@@ -411,4 +445,144 @@ fn datetimes_survive_the_view() {
     let arena = Bump::new();
     let out = engine.evaluate(&compiled, &data, &arena).unwrap();
     assert_eq!(out.to_string(), r#""2026-10-01""#);
+}
+
+// ---------------------------------------------------------------------------
+// A `serde_json::Value` context
+// ---------------------------------------------------------------------------
+
+#[test]
+fn serde_engine_evaluate() {
+    let engine = Engine::new();
+    let compiled = engine.compile(RULE).unwrap();
+    assert_serde_independent_of_leaf_size("Engine::evaluate(&Value)", two(), |data| {
+        let arena = Bump::new();
+        engine.evaluate(&compiled, data, &arena).unwrap().to_owned()
+    });
+}
+
+#[test]
+fn serde_session_eval() {
+    let engine = Engine::new();
+    let compiled = engine.compile(RULE).unwrap();
+    assert_serde_independent_of_leaf_size("Session::eval(&Value)", two(), |data| {
+        engine.session().eval(&compiled, data).unwrap()
+    });
+}
+
+#[test]
+fn serde_engine_eval() {
+    let engine = Engine::new();
+    assert_serde_independent_of_leaf_size("Engine::eval(&Value)", two(), |data| {
+        engine.eval(RULE, data).unwrap()
+    });
+}
+
+#[test]
+fn serde_engine_eval_into() {
+    let engine = Engine::new();
+    assert_serde_independent_of_leaf_size(
+        "Engine::eval_into(&Value)",
+        serde_json::json!(2),
+        |data| {
+            engine
+                .eval_into::<serde_json::Value, _, _>(RULE, data)
+                .unwrap()
+        },
+    );
+}
+
+#[test]
+fn serde_top_level_eval() {
+    assert_serde_independent_of_leaf_size("datalogic_rs::eval(&Value)", two(), |data| {
+        datalogic_rs::eval(RULE, data).unwrap()
+    });
+}
+
+// ---------------------------------------------------------------------------
+// A JSON text context
+// ---------------------------------------------------------------------------
+
+#[test]
+fn text_session_eval() {
+    let engine = Engine::new();
+    let compiled = engine.compile(RULE).unwrap();
+    assert_text_independent_of_leaf_size("Session::eval(&str)", two(), |data| {
+        engine.session().eval(&compiled, data).unwrap()
+    });
+}
+
+#[test]
+fn text_engine_eval() {
+    let engine = Engine::new();
+    assert_text_independent_of_leaf_size("Engine::eval(&str)", two(), |data| {
+        engine.eval(RULE, data).unwrap()
+    });
+}
+
+#[test]
+fn text_engine_eval_str() {
+    let engine = Engine::new();
+    assert_text_independent_of_leaf_size("Engine::eval_str(&str)", "2".to_string(), |data| {
+        engine.eval_str(RULE, data).unwrap()
+    });
+}
+
+#[test]
+fn text_engine_eval_into() {
+    let engine = Engine::new();
+    assert_text_independent_of_leaf_size("Engine::eval_into(&str)", serde_json::json!(2), |data| {
+        engine
+            .eval_into::<serde_json::Value, _, _>(RULE, data)
+            .unwrap()
+    });
+}
+
+#[test]
+fn text_top_level_eval_str() {
+    assert_text_independent_of_leaf_size("datalogic_rs::eval_str(&str)", "2".to_string(), |data| {
+        datalogic_rs::eval_str(RULE, data).unwrap()
+    });
+}
+
+#[cfg(feature = "trace")]
+#[test]
+fn text_traced_eval_str() {
+    // The trace snapshots the scope per step whatever the input; measure
+    // against the same run fed a pre-parsed handle.
+    let engine = Engine::new();
+    let compiled = engine.compile(RULE).unwrap();
+    let measure = |leaf: usize| {
+        let text = context(leaf).to_string();
+        let parsed = datalogic_rs::ParsedData::from_json(&text).unwrap();
+        let zero_copy = || {
+            let arena = Bump::new();
+            let run = engine.trace().eval_borrowed(&compiled, &parsed, &arena);
+            run.result.unwrap().to_string()
+        };
+        let one_shot = || engine.trace().eval_str(RULE, text.as_str()).result.unwrap();
+        let _ = (zero_copy(), one_shot());
+        let (baseline, a) = allocated_by(zero_copy);
+        let (bytes, b) = allocated_by(one_shot);
+        assert_eq!((a.as_str(), b.as_str()), ("2", "2"));
+        bytes.saturating_sub(baseline)
+    };
+    let (small, large) = (measure(1), measure(LONG));
+    assert!(
+        large <= small + SLACK,
+        "TracedSession::eval_str(&str) allocated {large} bytes over the zero-copy \
+         trace against the large context and {small} against the small one"
+    );
+}
+
+/// A string with an escape cannot be borrowed from the text: the parser
+/// has to write the unescaped form somewhere. That is the one leaf a text
+/// input still copies, and the result must be right.
+#[test]
+fn escaped_strings_in_text_still_evaluate() {
+    let engine = Engine::new();
+    let out = engine
+        .eval_str(r#"{"var": "s"}"#, r#"{"s": "a\"b\\c\u00e9"}"#)
+        .unwrap();
+    assert_eq!(out, r#""a\"b\\cé""#);
 }

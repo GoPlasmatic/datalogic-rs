@@ -51,9 +51,39 @@ mod serde_impl {
         }
     }
 
-    /// Deep-convert a `&Value` into an arena-resident `DataValue`. Thin
-    /// wrapper over `datavalue::DataValue::from_serde_value_in`.
-    pub(crate) fn value_to_data<'a>(v: &Value, arena: &'a Bump) -> DataValue<'a> {
-        DataValue::from_serde_value_in(v, arena)
+    /// View a `&Value` as an arena `DataValue`: strings and object keys
+    /// are borrowed from `v`, and only the array and object spines are
+    /// built in `arena` (`datavalue`'s `from_serde_value_in` copies every
+    /// string). Numbers convert exactly as that function converts them.
+    pub(crate) fn value_to_data<'a>(v: &'a Value, arena: &'a Bump) -> DataValue<'a> {
+        match v {
+            Value::Null => DataValue::Null,
+            Value::Bool(b) => DataValue::Bool(*b),
+            Value::Number(n) => DataValue::Number(number(n)),
+            Value::String(s) => DataValue::String(s.as_str()),
+            Value::Array(items) => DataValue::Array(
+                arena.alloc_slice_fill_iter(items.iter().map(|item| value_to_data(item, arena))),
+            ),
+            Value::Object(map) => DataValue::Object(
+                arena.alloc_slice_fill_iter(
+                    map.iter()
+                        .map(|(k, item)| (k.as_str(), value_to_data(item, arena))),
+                ),
+            ),
+        }
+    }
+
+    /// `serde_json::Number` to `NumberValue`, the same mapping as
+    /// `datavalue`'s serde bridge: i64 when it fits, then u64 (whose
+    /// out-of-i64 values take `from_u64`'s f64 fallback), then f64.
+    fn number(n: &serde_json::Number) -> datavalue::NumberValue {
+        use datavalue::NumberValue;
+        if let Some(i) = n.as_i64() {
+            NumberValue::Integer(i)
+        } else if let Some(u) = n.as_u64() {
+            NumberValue::from_u64(u)
+        } else {
+            NumberValue::Float(n.as_f64().unwrap_or(0.0))
+        }
     }
 }

@@ -837,9 +837,38 @@ impl Engine {
         serde_json::from_value(value).map_err(crate::Error::from)
     }
 
-    /// Internal generic shared by `eval` / `eval_str` / `eval_into`.
-    /// Compiles, allocates a fresh per-call arena, evaluates, and
-    /// projects the result through [`crate::FromDataValue`].
+    /// One-shot evaluation converting the result straight into `O`, any
+    /// [`crate::FromDataValue`] output: `OwnedDataValue`, a JSON
+    /// [`String`], or a `serde_json::Value` (with `serde_json`).
+    ///
+    /// For a `serde_json::Value` result this is one conversion, where
+    /// [`Self::eval_into`]`::<serde_json::Value>` builds the value and then
+    /// deserializes it into a second one.
+    ///
+    /// ```rust
+    /// # #[cfg(feature = "serde_json")] {
+    /// use datalogic_rs::Engine;
+    ///
+    /// let engine = Engine::new();
+    /// let user: serde_json::Value = engine
+    ///     .eval_as(r#"{"var": "user"}"#, r#"{"user": {"id": 7}}"#)
+    ///     .unwrap();
+    /// assert_eq!(user["id"], 7);
+    /// # }
+    /// ```
+    pub fn eval_as<O, R, D>(&self, rule: R, data: D) -> Result<O>
+    where
+        O: crate::FromDataValue,
+        R: crate::IntoLogic,
+        D: crate::OwnedInput,
+    {
+        self.eval_with(rule, data)
+    }
+
+    /// Internal generic shared by `eval` / `eval_str` / `eval_into` /
+    /// `eval_as`. Compiles, brings the data into a per-call arena,
+    /// evaluates, and projects the result through
+    /// [`crate::FromDataValue`].
     fn eval_with<O, R, D>(&self, rule: R, data: D) -> Result<O>
     where
         O: crate::FromDataValue,
@@ -847,10 +876,8 @@ impl Engine {
         D: crate::OwnedInput,
     {
         let compiled = self.compile(rule)?;
-        data.lend_owned(|owned_data| {
-            // 4 KB initial capacity covers typical small-rule evaluations.
-            let arena = bumpalo::Bump::with_capacity(4096);
-            let result = self.evaluate(&compiled, owned_data, &arena)?;
+        data.lend_arena(|data, arena| {
+            let result = self.evaluate(&compiled, data, arena)?;
             O::from_arena(result)
         })
     }

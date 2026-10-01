@@ -14,6 +14,23 @@
 //! [`crate::Engine::eval_str`] (convenience). For full caller control of
 //! the arena lifecycle, use [`crate::Engine::evaluate`] directly with a
 //! caller-passed `&Bump`.
+//!
+//! # What each input adds to the arena
+//!
+//! Every call brings its data into the arena before evaluating, and that
+//! stays until [`Session::reset`]. What it costs depends on the input:
+//!
+//! | Input | Arena cost per call |
+//! |-------|---------------------|
+//! | `&ParsedData` | nothing: the tree already lives in the handle |
+//! | `&DataValue` | nothing |
+//! | `&OwnedDataValue` | the array and object spines; strings, keys and tensor bytes are borrowed |
+//! | `&serde_json::Value` | the array and object spines; strings and keys are borrowed |
+//! | `&str` | a parse tree; unescaped strings are borrowed from the text |
+//!
+//! For a large context evaluated many times, build a
+//! [`crate::ParsedData`] once (`from_json`, `from_value` or `from_owned`)
+//! and pass the handle: each call then costs only what the rule does.
 
 use bumpalo::Bump;
 use datavalue::OwnedDataValue;
@@ -144,11 +161,29 @@ impl<'engine> Session<'engine> {
         self.eval_as(compiled, data)
     }
 
-    /// Shared body for `eval` / `eval_str` / `eval_into`: evaluate against the
-    /// session arena and project the borrowed result through
-    /// [`crate::FromDataValue`]. The output type `R` is resolved at each call
-    /// site (owned value, JSON string, …). Mirrors [`Engine::eval_with`].
-    fn eval_as<'a, R, D>(&'a mut self, compiled: &Logic, data: D) -> Result<R>
+    /// Evaluate and convert the result straight into `R`, any
+    /// [`crate::FromDataValue`] output: [`OwnedDataValue`], a JSON
+    /// [`String`], or a `serde_json::Value` (with `serde_json`). The shared
+    /// body of [`Self::eval`] / [`Self::eval_str`] / `eval_into`.
+    ///
+    /// For a `serde_json::Value` result this is one conversion, where
+    /// `eval_into::<serde_json::Value>` builds the value and then
+    /// deserializes it into a second one.
+    ///
+    /// ```rust
+    /// # #[cfg(feature = "serde_json")] {
+    /// use datalogic_rs::Engine;
+    ///
+    /// let engine = Engine::new();
+    /// let compiled = engine.compile(r#"{"var": "user"}"#).unwrap();
+    /// let mut session = engine.session();
+    /// let user: serde_json::Value = session
+    ///     .eval_as(&compiled, r#"{"user": {"id": 7}}"#)
+    ///     .unwrap();
+    /// assert_eq!(user["id"], 7);
+    /// # }
+    /// ```
+    pub fn eval_as<'a, R, D>(&'a mut self, compiled: &Logic, data: D) -> Result<R>
     where
         R: crate::FromDataValue,
         D: EvalInput<'a>,
