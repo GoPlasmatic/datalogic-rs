@@ -22,6 +22,50 @@ test('DataHandle throws ParseError on malformed JSON', () => {
   });
 });
 
+// ---------------- DataHandle.fromValue ----------------
+
+test('DataHandle.fromValue builds a handle from a JS value', () => {
+  const engine = new Engine();
+  const rule = engine.compile({ '+': [{ var: 'user.age' }, 1] });
+  const fromValue = DataHandle.fromValue({ user: { age: 34 } });
+  const fromJson = new DataHandle('{"user": {"age": 34}}');
+  assert.ok(fromValue instanceof DataHandle);
+  assert.ok(fromValue.allocatedBytes > 0);
+  assert.equal(rule.evaluateData(fromValue), 35);
+  assert.equal(rule.evaluateData(fromValue), rule.evaluateData(fromJson));
+});
+
+test('DataHandle.fromValue agrees with a JSON handle on every shape', () => {
+  const engine = new Engine();
+  const whole = engine.compile({ var: '' });
+  const docs = [
+    { a: [1, -2, 3.5], b: 'text', c: null, d: true },
+    { 'ключ': { '日本': ['é', '', '😀', 'a"b'] }, '': { '': null } },
+    [[], {}, [[]], { x: {} }],
+    'just a string',
+    42,
+    null,
+  ];
+  for (const doc of docs) {
+    const fromValue = DataHandle.fromValue(doc);
+    const fromJson = new DataHandle(JSON.stringify(doc));
+    assert.deepEqual(whole.evaluateData(fromValue), whole.evaluateData(fromJson));
+    assert.deepEqual(whole.evaluateData(fromValue), doc);
+  }
+});
+
+test('a fromValue handle is reusable and independent of its source', () => {
+  const engine = new Engine();
+  const rule = engine.compile({ cat: [{ var: 's' }, '!'] });
+  const source = { s: 'kept' };
+  const h = DataHandle.fromValue(source);
+  source.s = 'changed';
+  const session = engine.session();
+  for (let i = 0; i < 3; i++) {
+    assert.equal(session.evaluateData(rule, h), 'kept!');
+  }
+});
+
 test('a handle is reusable across rules, engines, and sessions', () => {
   const h = new DataHandle('{"x": 41}');
   const e1 = new Engine();

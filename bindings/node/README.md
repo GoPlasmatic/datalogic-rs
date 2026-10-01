@@ -125,6 +125,7 @@ cannot share a handle across worker threads, so parse one per worker.
 import { Engine, DataHandle } from '@goplasmatic/datalogic-node';
 
 const handle = new DataHandle('{"age": 25, "status": "active"}'); // throws ParseError on bad JSON
+const fromObj = DataHandle.fromValue({ age: 25, status: 'active' }); // no JSON round trip
 handle.allocatedBytes;              // arena bytes (input copy + tree)
 
 rule.evaluateData(handle);          // JS value out, no parse per call
@@ -232,6 +233,7 @@ try {
 | `Engine.session()` → `Session` | Open a hot-loop arena |
 | `Engine.customOperatorNames()` | Names of the custom operators registered on this engine |
 | `new DataHandle(json)` | Parse a payload once into a reusable handle |
+| `DataHandle.fromValue(value)` | Build a handle from a JS value, copied once (later changes to the value are not seen) |
 | `DataHandle.allocatedBytes` | Arena bytes held by the handle |
 | `Rule.evaluate(data)` | Evaluate, returns JS value |
 | `Rule.evaluateStr(data)` | Evaluate, returns JSON string |

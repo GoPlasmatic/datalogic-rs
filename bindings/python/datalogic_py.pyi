@@ -200,7 +200,10 @@ class DataHandle:
     Independent of any engine, shareable across threads for reads.
     """
 
-    def __new__(cls, json: str) -> DataHandle: ...
+    def __new__(cls, data: Any) -> DataHandle:
+        """Parse a JSON ``str``, or copy any JSON-shaped value (``dict``,
+        ``list``, number, ``bool``, ``None``) into the handle. A ``str`` is
+        always JSON text."""
     @property
     def allocated_bytes(self) -> int:
         """Bytes held by the handle's backing arena."""

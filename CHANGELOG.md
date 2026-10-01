@@ -95,6 +95,12 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   only from JSON text. One copy at construction; every evaluation after
   that costs nothing to bring the data in.
 
+- **Node: `DataHandle.fromValue(value)`** builds a handle from a JS value
+  without a JSON round trip.
+- **Python: `DataHandle(value)`** accepts any JSON-shaped value (`dict`,
+  `list`, number, `bool`, `None`), not only JSON text. A `str` is still
+  parsed as JSON.
+
 ### Changed
 
 - **`datavalue-rs` floor raised to 0.3.1**, the release that adds

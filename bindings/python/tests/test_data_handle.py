@@ -21,6 +21,70 @@ def test_malformed_json_raises_parse_error():
         DataHandle("{ not json")
 
 
+def test_construct_from_a_python_value():
+    engine = Engine()
+    rule = engine.compile({"+": [{"var": "user.age"}, 1]})
+    from_value = DataHandle({"user": {"age": 34}})
+    from_json = DataHandle('{"user": {"age": 34}}')
+    assert from_value.allocated_bytes > 0
+    assert rule.evaluate_data(from_value) == 35
+    assert rule.evaluate_data(from_value) == rule.evaluate_data(from_json)
+
+
+@pytest.mark.parametrize(
+    "doc",
+    [
+        {"a": [1, -2, 3.5, 2**63 - 1], "b": "text", "c": None, "d": True},
+        {"ключ": {"日本": ["é", "", "😀", 'a"b']}, "": {"": None}},
+        [[], {}, [[]], {"x": {}}],
+        42,
+        None,
+        True,
+        [1, "two", 3.0],
+    ],
+)
+def test_value_handle_agrees_with_json_handle(doc):
+    engine = Engine()
+    whole = engine.compile({"var": ""})
+    from_value = DataHandle(doc)
+    from_json = DataHandle(json.dumps(doc))
+    assert whole.evaluate_data(from_value) == whole.evaluate_data(from_json)
+    assert whole.evaluate_data(from_value) == doc
+
+
+def test_a_str_is_always_json_text():
+    # A str argument is parsed as JSON, as before: to hold a string value,
+    # pass its JSON form.
+    engine = Engine()
+    whole = engine.compile({"var": ""})
+    assert whole.evaluate_data(DataHandle('"just a string"')) == "just a string"
+    with pytest.raises(ParseError):
+        DataHandle("just a string")
+
+
+def test_value_handle_is_independent_of_its_source():
+    engine = Engine()
+    rule = engine.compile({"cat": [{"var": "s"}, "!"]})
+    source = {"s": "kept"}
+    handle = DataHandle(source)
+    source["s"] = "changed"
+    assert rule.evaluate_data(handle) == "kept!"
+
+
+def test_fallback_shapes_match_evaluate():
+    # Shapes the direct walk does not cover go through the same pythonize
+    # path `evaluate` uses, so a handle holds what `evaluate` would see.
+    engine = Engine()
+    whole = engine.compile({"var": ""})
+    for doc in ({7}, (1, 2)):
+        assert whole.evaluate_data(DataHandle(doc)) == whole.evaluate(doc)
+
+
+def test_unconvertible_value_raises():
+    with pytest.raises(Exception):
+        DataHandle(object())
+
+
 def test_rule_evaluate_data():
     engine = Engine()
     rule = engine.compile({">=": [{"var": "age"}, 18]})

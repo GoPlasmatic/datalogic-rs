@@ -58,6 +58,20 @@ impl DataHandle {
         }
     }
 
+    /// Build a handle from a JS value (object, array, string, number,
+    /// boolean or null) without serialising it to JSON first. The value is
+    /// copied into the handle once; later changes to it are not seen.
+    ///
+    /// ```js
+    /// const handle = DataHandle.fromValue({ user: { age: 34 } });
+    /// ```
+    #[napi(factory)]
+    pub fn from_value(data: serde_json::Value) -> Self {
+        Self {
+            parsed: ParsedData::from_value(&data),
+        }
+    }
+
     /// Bytes held by the handle's backing arena (input copy + parsed
     /// tree). Useful for sizing and diagnostics.
     #[napi(getter)]

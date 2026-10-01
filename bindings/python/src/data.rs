@@ -15,9 +15,10 @@ use datalogic_rs::ParsedData;
 use datalogic_rs::bumpalo::Bump;
 use datalogic_rs::datavalue::DataValue;
 use pyo3::prelude::*;
+use pyo3::types::PyString;
 use self_cell::self_cell;
 
-use crate::conv::{Unsupported, py_to_datavalue};
+use crate::conv::{Unsupported, dict_to_value, py_to_datavalue};
 use crate::error::engine_error_to_pyerr;
 
 self_cell!(
@@ -33,7 +34,8 @@ self_cell!(
 
 /// The two ways a resident parsed tree comes to exist in this binding.
 pub(crate) enum ParsedTree {
-    /// Parsed from JSON text by the core (`DataHandle`).
+    /// A core `ParsedData`: JSON text, or a value the pythonize path
+    /// converted (`DataHandle`).
     Json(ParsedData),
     /// Built by walking Python objects into a local arena (dict path).
     PyBuilt(PyBuiltData),
@@ -110,18 +112,38 @@ pub struct DataHandle {
 
 #[pymethods]
 impl DataHandle {
-    /// Parse ``json`` (a JSON ``str``) into a resident handle.
+    /// Build a resident handle from ``data``: a JSON ``str``, parsed, or
+    /// any JSON-shaped Python value (``dict``, ``list``, ``int``,
+    /// ``float``, ``bool``, ``None``), copied into the handle once without
+    /// a JSON round trip. Later changes to the value are not seen.
     ///
-    /// :raises ParseError: on malformed JSON.
+    /// A ``str`` is always JSON text: to hold a string value, pass its
+    /// JSON form (``'"text"'``).
+    ///
+    /// :raises ParseError: on malformed JSON text.
     #[new]
-    fn new(py: Python<'_>, json: &str) -> PyResult<Self> {
-        let owned = json.to_string();
-        let parsed = py
-            .detach(move || ParsedData::from_json(&owned))
-            .map_err(|e| engine_error_to_pyerr(py, &e, None))?;
-        Ok(Self {
-            tree: SharedTree(ParsedTree::Json(parsed)),
-        })
+    fn new(py: Python<'_>, data: &Bound<'_, PyAny>) -> PyResult<Self> {
+        if let Ok(s) = data.cast::<PyString>() {
+            let owned = s.to_str()?.to_string();
+            let parsed = py
+                .detach(move || ParsedData::from_json(&owned))
+                .map_err(|e| engine_error_to_pyerr(py, &e, None))?;
+            return Ok(Self {
+                tree: SharedTree(ParsedTree::Json(parsed)),
+            });
+        }
+        // The direct walk covers the plain shapes; anything it does not
+        // (subclassed containers, mappings, out-of-range ints, ...) goes
+        // through the pythonize path, which handles it or raises the same
+        // error `evaluate` would.
+        let tree = match build_py_tree(data) {
+            Ok(tree) => tree,
+            Err(_) => {
+                let value = dict_to_value(py, data)?;
+                SharedTree(ParsedTree::Json(ParsedData::from_value(&value)))
+            }
+        };
+        Ok(Self { tree })
     }
 
     /// Bytes held by the handle's backing arena (input copy + parsed

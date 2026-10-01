@@ -74,7 +74,7 @@ The Python binding mirrors the Rust engine's
 | Engine       | `Engine().eval(rule, data)`              | Custom configuration (templating, custom operators, config)   |
 | Compile once | `Engine().compile(rule).evaluate(data)`  | Same rule evaluated against many data inputs                  |
 | Session      | `with engine.session() as sess: …`       | Hot loops: amortise arena reset across iterations             |
-| Data handle  | `DataHandle(json)` → `sess.evaluate_data(rule, data)` | Same payload evaluated many times: parse once, zero parse work per call |
+| Data handle  | `DataHandle(json or value)` → `sess.evaluate_data(rule, data)` | Same payload evaluated many times: parse or convert once, zero work per call |
 | Typed        | `sess.evaluate_bool/int/float/truthy(rule, data)` | Predicates and scalar results, no JSON decode on the way out |
 | Batch        | `sess.evaluate_batch(rule, datas)` / `sess.evaluate_many(rules, data)` | Many evaluations per native call, per-item errors |
 | Traced       | `engine.evaluate_with_trace(logic_json, data_json)` | Step-by-step debugging; feeds the React debugger |
@@ -177,6 +177,7 @@ garbage-collects the handle.
 from datalogic_py import DataHandle
 
 data = DataHandle('{"age": 25, "status": "active"}')  # raises ParseError on bad JSON
+data = DataHandle({"age": 25, "status": "active"})    # or any JSON-shaped value, copied once
 data.allocated_bytes                    # bytes held by the handle's arena
 
 rule.evaluate_data(data)                # thread-safe, like rule.evaluate
