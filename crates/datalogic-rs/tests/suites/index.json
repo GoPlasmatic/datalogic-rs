@@ -29,6 +29,7 @@
   "val.json",
   "val-compat.json",
   "val.extra.json",
+  "var-computed-path.json",
   "scopes.json",
   "scopes-nested.json",
   "empty-objects.json",

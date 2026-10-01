@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
+## [Unreleased]
+
+### Fixed
+
+- **`var` with a computed path and a default returned `null`.** In
+  `{"var": [path, default]}` where `path` is an expression (or an array
+  literal) rather than a string or number, the runtime read the default
+  as a second path segment, the way `val` reads its arguments. So
+  `{"var": [{"cat": ["user.", {"var": "field"}]}, "n/a"]}` came back
+  `null` whether or not the path existed. It now takes the default only
+  when the path misses, exactly as a literal-path `var` does (a present
+  `null`, `0`, `""` or `false` is returned as is). The same rule could
+  also disagree between the default engine and `trace()` / engines built
+  with constant folding off, because folding sometimes turned the path
+  into a literal first. A `var` with a computed path and no default is
+  unchanged. Found by the property tests.
+
 ## [5.7.0] - 2026-10-01
 
 ### Fixed

@@ -63,6 +63,12 @@ use std::str::FromStr;
 pub(crate) enum OpCode {
     // === Core: Variable Access ===
     Val = 1,
+    /// `{"var": [path, default]}` whose path is not a string or number
+    /// literal. Internal: the compiler emits it (`try_compile_var`), no
+    /// operator name maps to it, and it renders back as `var`. Kept apart
+    /// from [`OpCode::Val`] because `val` reads a second argument as a path
+    /// segment and `var` reads it as the default.
+    VarDefault = 87,
 
     // === Core: Comparison Operators ===
     Equals = 2,
@@ -483,6 +489,7 @@ impl OpCode {
         match self {
             // Core: variable access. `val` is canonical; `var` is an alias.
             OpCode::Val => "val",
+            OpCode::VarDefault => "var",
             // Core: comparison
             OpCode::Equals => "==",
             OpCode::StrictEquals => "===",

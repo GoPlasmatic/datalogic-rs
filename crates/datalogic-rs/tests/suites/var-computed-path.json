@@ -1,0 +1,130 @@
+[
+    "A `var` whose path is computed takes its default the same way a literal path does: only when the path is missing. Before 5.7.1 the default was read as a second path segment, so any computed path with a default came back null.",
+    {
+        "description": "computed path that resolves, default unused",
+        "rule": { "var": [{ "cat": ["a.", { "var": "g" }] }, "D"] },
+        "data": { "g": "y", "a": { "y": 7 } },
+        "result": 7
+    },
+    {
+        "description": "computed path that misses takes the default",
+        "rule": { "var": [{ "var": "f" }, "D"] },
+        "data": { "f": "x" },
+        "result": "D"
+    },
+    {
+        "description": "computed path that misses one level down takes the default",
+        "rule": { "var": [{ "cat": ["a.", { "var": "g" }] }, "D"] },
+        "data": { "g": "zz", "a": { "y": 7 } },
+        "result": "D"
+    },
+    {
+        "description": "computed path to a present null keeps the null",
+        "rule": { "var": [{ "cat": ["n"] }, "D"] },
+        "data": { "n": null },
+        "result": null
+    },
+    {
+        "description": "computed path to a present 0 keeps the 0",
+        "rule": { "var": [{ "cat": ["z"] }, "D"] },
+        "data": { "z": 0 },
+        "result": 0
+    },
+    {
+        "description": "computed path to a present false keeps the false",
+        "rule": { "var": [{ "cat": ["f"] }, "D"] },
+        "data": { "f": false },
+        "result": false
+    },
+    {
+        "description": "computed path to a present empty string keeps it",
+        "rule": { "var": [{ "cat": ["e"] }, "D"] },
+        "data": { "e": "" },
+        "result": ""
+    },
+    {
+        "description": "computed numeric path into an array",
+        "rule": { "var": [{ "-": [{ "var": "i" }, 1] }, "D"] },
+        "data": { "i": 2, "0": "no", "1": "yes" },
+        "result": "yes"
+    },
+    {
+        "description": "computed numeric path into a root array",
+        "rule": { "var": [{ "+": [1, 0] }, "D"] },
+        "data": ["x", "y"],
+        "result": "y"
+    },
+    {
+        "description": "computed numeric path past the end takes the default",
+        "rule": { "var": [{ "+": [4, 1] }, "D"] },
+        "data": ["x", "y"],
+        "result": "D"
+    },
+    {
+        "description": "computed path against null data takes the default",
+        "rule": { "var": [{ "-": [1, 1] }, "D"] },
+        "data": null,
+        "result": "D"
+    },
+    {
+        "description": "the property-test case: computed path, false default, null data",
+        "rule": { "var": [{ "+": null }, false] },
+        "data": null,
+        "result": false
+    },
+    {
+        "description": "computed path that evaluates to null reads the whole data",
+        "rule": { "var": [{ "var": "nope" }, "D"] },
+        "data": { "k": 1 },
+        "result": { "k": 1 }
+    },
+    {
+        "description": "computed default is evaluated on a miss",
+        "rule": { "var": [{ "cat": ["miss"] }, { "+": [40, 2] }] },
+        "data": {},
+        "result": 42
+    },
+    {
+        "description": "arguments after the default are ignored",
+        "rule": { "var": [{ "cat": ["miss"] }, "D", "ignored"] },
+        "data": {},
+        "result": "D"
+    },
+    {
+        "description": "a literal array path is a path chain, with the default on a miss",
+        "rule": { "var": [["a", "y"], "D"] },
+        "data": { "a": { "y": 7 } },
+        "result": 7
+    },
+    {
+        "description": "a literal array path that misses takes the default",
+        "rule": { "var": [["a", "q"], "D"] },
+        "data": { "a": { "y": 7 } },
+        "result": "D"
+    },
+    {
+        "description": "a computed path without a default is unchanged",
+        "rule": { "var": [{ "cat": ["a.", { "var": "g" }] }] },
+        "data": { "g": "y", "a": { "y": 7 } },
+        "result": 7
+    },
+    "Inside iterators the computed path reads the current element, like a literal one.",
+    {
+        "description": "map: computed path per element, default on the elements that miss",
+        "rule": { "map": [{ "var": "xs" }, { "var": [{ "cat": ["k"] }, "D"] }] },
+        "data": { "xs": [{ "k": 1 }, {}, { "k": null }] },
+        "result": [1, "D", null]
+    },
+    {
+        "description": "reduce: computed accumulator path with a default",
+        "rule": { "reduce": [[1, 2, 3], { "+": [{ "var": [{ "cat": ["accumulator"] }, 100] }, { "var": "current" }] }, 0] },
+        "data": null,
+        "result": 6
+    },
+    {
+        "description": "reduce: computed path into current with a default",
+        "rule": { "reduce": [{ "var": "rows" }, { "+": [{ "var": "accumulator" }, { "var": [{ "cat": ["current.v"] }, 10] }] }, 0] },
+        "data": { "rows": [{ "v": 1 }, {}, { "v": 3 }] },
+        "result": 14
+    }
+]

@@ -275,7 +275,7 @@ fn opcode_is_static(opcode: &OpCode, args: &[CompiledNode]) -> bool {
     match opcode {
         // Context-dependent: These operators read from the data context, which is
         // not available at compile time. They must remain dynamic.
-        Val | Missing | MissingSome => false,
+        Val | VarDefault | Missing | MissingSome => false,
         #[cfg(feature = "ext-control")]
         Exists => false,
 
