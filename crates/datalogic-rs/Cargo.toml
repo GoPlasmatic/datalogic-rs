@@ -7,10 +7,12 @@ edition.workspace = true
 # build of this crate needs 1.98 whether or not `tensor` is on. The
 # previous 1.85 floor tracked edition 2024 and the crate's own language
 # use, which is still 1.85 — nothing here needs 1.98 directly. Requires
-# `datavalue-rs >= 0.3`: 0.2.2 and earlier printed whole floats outside
+# `datavalue-rs >= 0.3.1`: 0.2.2 and earlier printed whole floats outside
 # i64's exact range through a saturating cast (`float_to_str`'s fast path
-# mirrors the fixed Display and would break byte-parity against them), and
-# the `Tensor` variant the `tensor` feature matches on arrived in 0.3.
+# mirrors the fixed Display and would break byte-parity against them), the
+# `Tensor` variant the `tensor` feature matches on arrived in 0.3, and
+# `OwnedDataValue::view_in`, which lets an owned context be evaluated
+# without copying its strings and tensor bytes, arrived in 0.3.1.
 rust-version = "1.98"
 license.workspace = true
 authors.workspace = true
@@ -142,7 +144,7 @@ chrono = { version = "0.4.45", default-features = false, features = ["std", "clo
 # `format_date` / `parse_date`. 0.10.x tracks chrono 0.4.x. Rides the
 # `datetime` feature (see the feature comment above).
 chrono-tz = { version = "0.10", default-features = false, features = ["std"], optional = true }
-datavalue = { version = "0.3", package = "datavalue-rs", features = ["serde"] }
+datavalue = { version = "0.3.1", package = "datavalue-rs", features = ["serde"] }
 bumpalo = { version = "3.20", features = ["collections"] }
 # Number -> string rendering on the `cat` / string-coercion hot path
 # (`arena::value::strings`). Both render digits without the `core::fmt`
@@ -153,7 +155,7 @@ ryu = "1"
 # Inline-capacity frame stack for `ContextStack`, so iterator operators
 # (map/filter/reduce/quantifiers) never touch the heap at typical nesting
 # depths. Floor 1.6.1 avoids RUSTSEC-2021-0003 under minimal-versions.
-smallvec = "1.16.1"
+smallvec = "1.16.2"
 # Used by the `flagd` feature's `sem_ver` operator. `default-features =
 # false` strips `serde` / `serde1` integration we don't need — the
 # operator only uses `Version::parse` + `PartialOrd`.

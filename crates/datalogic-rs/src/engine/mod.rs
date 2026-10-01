@@ -227,8 +227,10 @@ mod dispatch;
 /// singletons with no allocation; a non-empty String allocates a single
 /// `DataValue` wrapper into the per-call arena (the `&str` is borrowed from
 /// the owned source); non-empty Arrays/Objects rebuild their spine in the
-/// arena via [`borrow_to_arena`], borrowing string bytes from the owned
-/// source instead of copying them.
+/// arena via `OwnedDataValue::view_in`, borrowing strings, keys and tensor
+/// bytes from the owned source instead of copying them. Sound because the
+/// compiled node, and therefore `value`, outlives the evaluation:
+/// `dispatch_node` borrows the node at the same `'a` as the arena.
 ///
 /// `#[cold]` + `#[inline(never)]`: `dispatch_node` is `#[inline(always)]`,
 /// so its literal path is stamped into every operator's dispatch site —
@@ -255,47 +257,7 @@ fn literal_fallback<'a>(
             crate::arena::singletons::singleton_empty_object()
         }
         OwnedDataValue::String(s) => arena.alloc(crate::arena::DataValue::String(s.as_str())),
-        _ => arena.alloc(borrow_to_arena(value, arena)),
-    }
-}
-
-/// Convert an owned composite literal into an arena `DataValue`, borrowing
-/// string bytes (element strings and object keys) from the owned source
-/// instead of copying them into the arena the way
-/// `OwnedDataValue::to_arena` does. Only the array/object spine is built in
-/// the arena. Sound because the compiled node — and therefore `value` —
-/// outlives the evaluation: `dispatch_node` borrows the node at the same
-/// `'a` as the arena. Recursion depth mirrors the value's nesting, which is
-/// bounded by the JSON parser / compile-time depth caps upstream.
-fn borrow_to_arena<'a>(
-    value: &'a datavalue::OwnedDataValue,
-    arena: &'a bumpalo::Bump,
-) -> crate::arena::DataValue<'a> {
-    use crate::arena::DataValue;
-    use datavalue::OwnedDataValue;
-    match value {
-        OwnedDataValue::Null => DataValue::Null,
-        OwnedDataValue::Bool(b) => DataValue::Bool(*b),
-        OwnedDataValue::Number(n) => DataValue::Number(*n),
-        OwnedDataValue::String(s) => DataValue::String(s.as_str()),
-        OwnedDataValue::Array(items) => DataValue::Array(
-            arena.alloc_slice_fill_with(items.len(), |i| borrow_to_arena(&items[i], arena)),
-        ),
-        OwnedDataValue::Object(pairs) => {
-            DataValue::Object(arena.alloc_slice_fill_with(pairs.len(), |i| {
-                let (k, v) = &pairs[i];
-                (k.as_str(), borrow_to_arena(v, arena))
-            }))
-        }
-        #[cfg(feature = "datetime")]
-        OwnedDataValue::DateTime(d) => DataValue::DateTime(*d),
-        #[cfg(feature = "datetime")]
-        OwnedDataValue::Duration(d) => DataValue::Duration(*d),
-        // `to_arena` copies the shape and the payload into the arena, so
-        // the result does not borrow the `Arc`. One bump for the 40-byte
-        // header on top, which is what `DataValue::Tensor` points at.
-        #[cfg(feature = "tensor")]
-        OwnedDataValue::Tensor(t) => DataValue::tensor_in(t.to_arena(arena), arena),
+        _ => arena.alloc(value.view_in(arena)),
     }
 }
 
@@ -870,11 +832,12 @@ impl Engine {
         D: crate::OwnedInput,
     {
         let compiled = self.compile(rule)?;
-        // 4 KB initial capacity covers typical small-rule evaluations.
-        let arena = bumpalo::Bump::with_capacity(4096);
-        let owned_data = data.into_owned_input()?;
-        let result = self.evaluate(&compiled, &owned_data, &arena)?;
-        O::from_arena(result)
+        data.lend_owned(|owned_data| {
+            // 4 KB initial capacity covers typical small-rule evaluations.
+            let arena = bumpalo::Bump::with_capacity(4096);
+            let result = self.evaluate(&compiled, owned_data, &arena)?;
+            O::from_arena(result)
+        })
     }
 
     /// Bump the per-thread dispatch-boundary depth counter, bailing with

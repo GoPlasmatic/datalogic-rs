@@ -53,7 +53,7 @@ pub(crate) fn evaluate_throw<'a>(
             crate::arena::singletons::singleton_null()
         } else if let CompiledNode::Value { value, .. } = &args[0] {
             // Literal fast path — skip arena dispatch.
-            arena.alloc(value.to_arena(arena))
+            arena.alloc(value.view_in(arena))
         } else {
             engine.dispatch_node(&args[0], ctx, arena)?
         };

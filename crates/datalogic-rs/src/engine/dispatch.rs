@@ -202,7 +202,7 @@ pub(super) fn dispatch_node_inner<'a>(
             #[cfg(feature = "error-handling")]
             CompiledNode::Throw(data) => {
                 if ctx.in_catch_scope() && !ctx.is_tracing() {
-                    let av: &crate::arena::DataValue = arena.alloc(data.error.to_arena(arena));
+                    let av: &crate::arena::DataValue = arena.alloc(data.error.view_in(arena));
                     ctx.set_thrown_slot(av);
                     Err(Error::deferred_thrown())
                 } else {

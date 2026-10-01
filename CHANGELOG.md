@@ -8,6 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
+## [Unreleased]
+
+### Fixed
+
+- **Evaluating against an `&OwnedDataValue` copied the whole context first
+  (#76).** Every evaluation cost O(size of the context) however little the
+  rule read: the `EvalInput` impl deep-copied each string, object key and
+  tensor buffer into the arena before the rule ran. It now borrows them
+  through `OwnedDataValue::view_in` and builds only the array and object
+  spines, so the cost follows the number of containers rather than their
+  bytes. The one-shot entry points (`Engine::eval` / `eval_str` /
+  `eval_into`, the top-level `datalogic_rs::eval*` helpers and the traced
+  `eval` / `eval_str` / `eval_into`) also cloned the owned value before
+  that copy; they now borrow it. Results are unchanged; every suite case
+  now runs through each input type and must agree.
+
+  Reading one field from an 8 MB owned context (one 8 MB string plus 8,192
+  short ones) went from 278 µs to 20 µs through `Engine::evaluate`, and
+  from 583 µs to 20 µs through `Engine::eval`. What remains is the 8,192
+  array slots.
+
+### Changed
+
+- **`datavalue-rs` floor raised to 0.3.1**, the release that adds
+  `OwnedDataValue::view_in`.
+
 ## [5.6.0] - 2026-09-20
 
 ### Fixed

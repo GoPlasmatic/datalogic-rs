@@ -332,13 +332,11 @@ impl<'e> TracedSession<'e> {
     where
         D: crate::OwnedInput,
     {
-        let owned_data = match data.into_owned_input() {
-            Ok(d) => d,
-            Err(e) => return Self::compile_failed(e),
-        };
-        let arena = bumpalo::Bump::new();
-        self.eval_borrowed_in(compiled, &owned_data, &arena)
-            .convert(|result| result.and_then(crate::FromDataValue::from_arena))
+        self.with_owned_data(data, |owned_data| {
+            let arena = bumpalo::Bump::new();
+            self.eval_borrowed_in(compiled, owned_data, &arena)
+                .convert(|result| result.and_then(crate::FromDataValue::from_arena))
+        })
     }
 
     /// One-shot traced evaluation with JSON-string boundary on both
@@ -350,13 +348,11 @@ impl<'e> TracedSession<'e> {
         R: crate::IntoLogic,
         D: crate::OwnedInput,
     {
-        let (compiled, owned_data) = match self.prepare(rule, data) {
-            Ok(prepared) => prepared,
-            Err(e) => return Self::compile_failed(e),
-        };
-        let arena = bumpalo::Bump::new();
-        self.eval_borrowed_in(&compiled, &owned_data, &arena)
-            .convert(|result| result.map(|v| v.to_string()))
+        self.prepare(rule, data, |compiled, owned_data| {
+            let arena = bumpalo::Bump::new();
+            self.eval_borrowed_in(compiled, owned_data, &arena)
+                .convert(|result| result.map(|v| v.to_string()))
+        })
     }
 
     /// Typed traced evaluation: deserialise the result into
@@ -369,37 +365,56 @@ impl<'e> TracedSession<'e> {
         R: crate::IntoLogic,
         D: crate::OwnedInput,
     {
-        let (compiled, owned_data) = match self.prepare(rule, data) {
-            Ok(prepared) => prepared,
-            Err(e) => return Self::compile_failed(e),
-        };
-        let arena = bumpalo::Bump::new();
-        self.eval_borrowed_in(&compiled, &owned_data, &arena)
-            .convert(|result| {
-                result.and_then(|v| {
-                    let value: serde_json::Value = crate::FromDataValue::from_arena(v)?;
-                    serde_json::from_value(value).map_err(crate::Error::from)
+        self.prepare(rule, data, |compiled, owned_data| {
+            let arena = bumpalo::Bump::new();
+            self.eval_borrowed_in(compiled, owned_data, &arena)
+                .convert(|result| {
+                    result.and_then(|v| {
+                        let value: serde_json::Value = crate::FromDataValue::from_arena(v)?;
+                        serde_json::from_value(value).map_err(crate::Error::from)
+                    })
                 })
-            })
+        })
     }
 
     /// Shared front half of the one-shot traced entry points
     /// ([`Self::eval_str`] / [`Self::eval_into`]): normalise the rule,
     /// compile it with the optimizer + constant-fold passes disabled, and
-    /// normalise the data into an owned value the arena run can borrow.
-    fn prepare<R, D>(
+    /// hand `run` the compiled rule and the data as an owned value the arena
+    /// run can borrow. A failure in either step is reported as a failed run.
+    fn prepare<R, D, T>(
         &self,
         rule: R,
         data: D,
-    ) -> crate::Result<(crate::Logic, datavalue::OwnedDataValue)>
+        run: impl FnOnce(&crate::Logic, &datavalue::OwnedDataValue) -> TracedRun<T>,
+    ) -> TracedRun<T>
     where
         R: crate::IntoLogic,
         D: crate::OwnedInput,
     {
-        let owned = rule.into_owned_logic()?;
-        let compiled = crate::Logic::compile_for_trace(&owned, self.engine)?;
-        let owned_data = data.into_owned_input()?;
-        Ok((compiled, owned_data))
+        let compiled = match rule
+            .into_owned_logic()
+            .and_then(|owned| crate::Logic::compile_for_trace(&owned, self.engine))
+        {
+            Ok(compiled) => compiled,
+            Err(e) => return Self::compile_failed(e),
+        };
+        self.with_owned_data(data, |owned_data| run(&compiled, owned_data))
+    }
+
+    /// Run `run` against `data` as an owned value: borrowed when the caller
+    /// passed one (no clone), converted otherwise. A conversion failure is
+    /// reported as a failed run.
+    fn with_owned_data<D, T>(
+        &self,
+        data: D,
+        run: impl FnOnce(&datavalue::OwnedDataValue) -> TracedRun<T>,
+    ) -> TracedRun<T>
+    where
+        D: crate::OwnedInput,
+    {
+        data.lend_owned(|owned_data| Ok(run(owned_data)))
+            .unwrap_or_else(Self::compile_failed)
     }
 
     /// Traced borrowed evaluation against a caller-owned arena. Mirrors

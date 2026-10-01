@@ -63,6 +63,11 @@ impl Engines {
 /// and `{"val": [[0, 1]]}` meant different things on each. A split is a bug
 /// in the engine even when both answers look reasonable, because the same
 /// rule is supposed to mean one thing.
+///
+/// The second axis is the input type. Each one reaches the arena through its
+/// own conversion, and an owned value borrows its strings, keys and tensor
+/// bytes instead of copying them (#76), so the same data must evaluate the
+/// same whichever form it arrives in.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Mode {
     /// `Engine::compile`, the path production rules take.
@@ -74,6 +79,19 @@ enum Mode {
     /// use. Compiles from source with the optimizer disabled.
     #[cfg(feature = "trace")]
     Traced,
+    /// The default compile path, with the data handed over as an
+    /// `&OwnedDataValue` instead of a `serde_json::Value`. Each input type
+    /// reaches the arena through its own conversion (the owned one borrows
+    /// its leaves rather than copying them), and they must agree.
+    OwnedData,
+    /// The default compile path, with the data as JSON text.
+    JsonText,
+    /// `Engine::eval_into` with an `&OwnedDataValue`: the one-shot path,
+    /// which takes its data through `OwnedInput` rather than `EvalInput`.
+    OneShotOwned,
+    /// `Engine::trace` with an `&OwnedDataValue`.
+    #[cfg(feature = "trace")]
+    TracedOwned,
 }
 
 impl Mode {
@@ -83,6 +101,11 @@ impl Mode {
             Mode::NoFold => "no-fold",
             #[cfg(feature = "trace")]
             Mode::Traced => "traced",
+            Mode::OwnedData => "owned-data",
+            Mode::JsonText => "json-text",
+            Mode::OneShotOwned => "one-shot-owned",
+            #[cfg(feature = "trace")]
+            Mode::TracedOwned => "traced-owned",
         }
     }
 }
@@ -94,6 +117,9 @@ fn modes() -> Vec<Mode> {
     let mut modes = vec![Mode::Default, Mode::NoFold];
     #[cfg(feature = "trace")]
     modes.push(Mode::Traced);
+    modes.extend([Mode::OwnedData, Mode::JsonText, Mode::OneShotOwned]);
+    #[cfg(feature = "trace")]
+    modes.push(Mode::TracedOwned);
     modes
 }
 
@@ -143,13 +169,45 @@ fn evaluate(
             Err(error) => Outcome::Failure(error, Stage::Eval),
         };
     }
-    let engine = engines.select(templating, key_escape, mode == Mode::Default);
-    match engine.compile(rule) {
-        Ok(compiled) => match engine.session().eval_into::<Value, _>(&compiled, data) {
+    // The input-type modes take the data as an owned value. Built from the
+    // JSON text so it carries exactly what a host parsing the same payload
+    // would hold.
+    let owned = || {
+        datavalue::OwnedDataValue::from_json(&data.to_string()).expect("suite data is valid JSON")
+    };
+    #[cfg(feature = "trace")]
+    if mode == Mode::TracedOwned {
+        let engine = engines.select(templating, key_escape, true);
+        return match engine
+            .trace()
+            .eval_into::<Value, _, _>(rule, &owned())
+            .result
+        {
             Ok(value) => Outcome::Value(value),
             Err(error) => Outcome::Failure(error, Stage::Eval),
-        },
-        Err(error) => Outcome::Failure(error, Stage::Compile),
+        };
+    }
+    if mode == Mode::OneShotOwned {
+        let engine = engines.select(templating, key_escape, true);
+        return match engine.eval_into::<Value, _, _>(rule, &owned()) {
+            Ok(value) => Outcome::Value(value),
+            Err(error) => Outcome::Failure(error, Stage::Eval),
+        };
+    }
+    let engine = engines.select(templating, key_escape, mode != Mode::NoFold);
+    let compiled = match engine.compile(rule) {
+        Ok(compiled) => compiled,
+        Err(error) => return Outcome::Failure(error, Stage::Compile),
+    };
+    let mut session = engine.session();
+    let result = match mode {
+        Mode::OwnedData => session.eval_into::<Value, _>(&compiled, &owned()),
+        Mode::JsonText => session.eval_into::<Value, _>(&compiled, data.to_string().as_str()),
+        _ => session.eval_into::<Value, _>(&compiled, data),
+    };
+    match result {
+        Ok(value) => Outcome::Value(value),
+        Err(error) => Outcome::Failure(error, Stage::Eval),
     }
 }
 
@@ -585,7 +643,7 @@ fn run_test_file(test_file: &str, engines: &mut Engines) -> (usize, usize, usize
                 description,
                 &[
                     format!(
-                        "Compile-path split: `default` and `{}` disagree on the same rule",
+                        "Path split: `default` and `{}` disagree on the same rule",
                         mode.label()
                     ),
                     format!("default: {:?}", key.1),

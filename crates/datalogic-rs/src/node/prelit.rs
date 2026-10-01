@@ -129,7 +129,7 @@ impl PreLit {
             _ => return None,
         }
         // A spine holds `DataValue`s that borrow the owner, but a tensor
-        // only becomes a `DataValue` through an arena (`to_arena`), and
+        // only becomes a `DataValue` through an arena (`view_in`), and
         // there is no arena at compile time. So a literal containing one
         // anywhere gets no prelit at all and falls through to
         // `literal_fallback` at dispatch. This is the guard that makes the
