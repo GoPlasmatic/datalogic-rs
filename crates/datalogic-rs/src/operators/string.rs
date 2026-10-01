@@ -18,17 +18,27 @@ pub(crate) fn evaluate_concat<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     // Build the concatenated string using a bumpalo String to avoid heap alloc.
+    // Each piece is charged its bytes before it is appended, and an array
+    // argument one per item on top, so an accumulator (`cat` of the
+    // accumulator inside `reduce`) is charged for the copy it makes.
     let mut buf = bumpalo::collections::String::new_in(arena);
     for arg in args {
         let av = engine.dispatch_node(arg, ctx, arena)?;
         match av {
             // For arrays, concat each item's string form.
             DataValue::Array(items) => {
+                ctx.charge(items.len() as u64)?;
                 for it in *items {
-                    buf.push_str(data_to_str(it, arena));
+                    let piece = data_to_str(it, arena);
+                    ctx.charge_bytes(piece.len())?;
+                    buf.push_str(piece);
                 }
             }
-            _ => buf.push_str(data_to_str(av, arena)),
+            _ => {
+                let piece = data_to_str(av, arena);
+                ctx.charge_bytes(piece.len())?;
+                buf.push_str(piece);
+            }
         }
     }
     Ok(arena.alloc(DataValue::String(buf.into_bump_str())))
@@ -49,6 +59,8 @@ pub(crate) fn evaluate_substr<'a>(
 
     let s_av = engine.dispatch_node(&args[0], ctx, arena)?;
     let string = data_to_str(s_av, arena);
+    // Finding the boundaries scans the string.
+    ctx.charge_bytes(string.len())?;
 
     // `start` defaults to 0; `length` is optional. Both swallow non-numeric
     // values silently (per substr's spec). Literal fast path skips dispatch.
@@ -180,8 +192,12 @@ pub(crate) fn evaluate_in<'a>(
 
     let result = match haystack {
         // String haystack — substring check (needle must be a string).
+        // Charged the haystack's bytes, which the search reads.
         DataValue::String(h) => match needle {
-            DataValue::String(n) => h.contains(*n),
+            DataValue::String(n) => {
+                ctx.charge_bytes(h.len())?;
+                h.contains(*n)
+            }
             _ => false,
         },
         // Array haystack — element-equality check via arena-native
@@ -190,10 +206,24 @@ pub(crate) fn evaluate_in<'a>(
         // (or whether) the needle is found.
         DataValue::Array(items) => {
             ctx.charge(items.len() as u64)?;
-            items.iter().any(|it| {
-                crate::operators::comparison::compare_equals(it, needle, true, engine)
-                    .unwrap_or(false)
-            })
+            let mut found = false;
+            for it in items.iter() {
+                // A failed comparison counts as "not this item", except an
+                // exhausted budget, which is final.
+                match crate::operators::comparison::compare_equals(it, needle, true, engine, ctx) {
+                    Ok(true) => {
+                        found = true;
+                        break;
+                    }
+                    Ok(false) => {}
+                    #[cfg(feature = "budget")]
+                    Err(e) if matches!(e.kind, crate::ErrorKind::BudgetExceeded { .. }) => {
+                        return Err(e);
+                    }
+                    Err(_) => {}
+                }
+            }
+            found
         }
         _ => false,
     };
@@ -215,6 +245,8 @@ pub(crate) fn evaluate_starts_with<'a>(
     let p = engine.dispatch_node(&args[1], ctx, arena)?;
     let s_str = data_to_str(s, arena);
     let p_str = data_to_str(p, arena);
+    // The test reads at most the needle's length.
+    ctx.charge_bytes(p_str.len().min(s_str.len()))?;
     Ok(crate::arena::singletons::singleton_bool(
         s_str.starts_with(p_str),
     ))
@@ -235,6 +267,8 @@ pub(crate) fn evaluate_ends_with<'a>(
     let p = engine.dispatch_node(&args[1], ctx, arena)?;
     let s_str = data_to_str(s, arena);
     let p_str = data_to_str(p, arena);
+    // The test reads at most the needle's length.
+    ctx.charge_bytes(p_str.len().min(s_str.len()))?;
     Ok(crate::arena::singletons::singleton_bool(
         s_str.ends_with(p_str),
     ))
@@ -253,6 +287,7 @@ pub(crate) fn evaluate_upper<'a>(
     }
     let av = engine.dispatch_node(&args[0], ctx, arena)?;
     let s = data_to_str(av, arena);
+    ctx.charge_bytes(s.len())?;
     // Build the upper-cased text straight into the arena instead of
     // allocating a heap `String` via `to_uppercase()` then copying it in.
     // Pre-size to the source byte length so the common (ASCII, length-
@@ -279,6 +314,7 @@ pub(crate) fn evaluate_lower<'a>(
     }
     let av = engine.dispatch_node(&args[0], ctx, arena)?;
     let s = data_to_str(av, arena);
+    ctx.charge_bytes(s.len())?;
     // Build the lower-cased text straight into the arena instead of
     // allocating a heap `String` via `to_lowercase()` then copying it in.
     // Pre-size to the source byte length so the common (ASCII, length-
@@ -305,6 +341,8 @@ pub(crate) fn evaluate_trim<'a>(
     }
     let av = engine.dispatch_node(&args[0], ctx, arena)?;
     let s = data_to_str(av, arena);
+    // An all-whitespace string is scanned end to end.
+    ctx.charge_bytes(s.len())?;
     // `s` is already arena-resident, so `s.trim()` is an arena `&'a str`
     // sub-slice; no re-copy needed.
     Ok(arena.alloc(DataValue::String(s.trim())))
@@ -344,12 +382,20 @@ pub(crate) fn evaluate_split<'a>(
         }
     };
 
-    split_arena_normal(text_str, delim_str, arena)
+    // The text's bytes now, and one per part produced in
+    // `split_arena_normal`.
+    ctx.charge_bytes(text_str.len())?;
+    split_arena_normal(text_str, delim_str, ctx, arena)
 }
 
 #[cfg(feature = "ext-string")]
 #[inline]
-fn split_arena_normal<'a>(text: &str, delim: &str, arena: &'a Bump) -> Result<&'a DataValue<'a>> {
+fn split_arena_normal<'a>(
+    text: &str,
+    delim: &str,
+    ctx: &mut ContextStack<'_>,
+    arena: &'a Bump,
+) -> Result<&'a DataValue<'a>> {
     if text.is_empty() {
         // Empty input → [""].
         let item: &'a str = "";
@@ -358,8 +404,10 @@ fn split_arena_normal<'a>(text: &str, delim: &str, arena: &'a Bump) -> Result<&'
     }
     if delim.is_empty() {
         // Empty delimiter → split into individual characters.
+        let parts = text.chars().count();
+        ctx.charge(parts as u64)?;
         let mut items: bumpalo::collections::Vec<'a, DataValue<'a>> =
-            bumpalo::collections::Vec::with_capacity_in(text.chars().count(), arena);
+            bumpalo::collections::Vec::with_capacity_in(parts, arena);
         for c in text.chars() {
             // Per-char arena string. For ASCII, a 1-byte alloc per char.
             let mut buf = bumpalo::collections::String::new_in(arena);
@@ -373,5 +421,9 @@ fn split_arena_normal<'a>(text: &str, delim: &str, arena: &'a Bump) -> Result<&'
     for part in text.split(delim) {
         items.push(DataValue::String(arena.alloc_str(part)));
     }
+    // Charged once the parts exist, to avoid a second scan to count them.
+    // Safe to charge after: there are at most as many parts as the text
+    // has bytes plus one, and the text was charged before the split.
+    ctx.charge(items.len() as u64)?;
     Ok(arena.alloc(DataValue::Array(items.into_bump_slice())))
 }

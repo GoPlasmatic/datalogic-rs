@@ -64,9 +64,12 @@ pub(crate) fn evaluate_group_by<'a>(
         guard.step_indexed(item, i);
         let key = engine.dispatch_node(key_expr, guard.stack(), arena)?;
 
+        // One per group the key is compared against, charged before the
+        // scan: n distinct keys cost n(n-1)/2.
+        guard.stack().charge(groups.len() as u64)?;
         let mut matched = false;
         for (k, items) in groups.iter_mut() {
-            if compare_equals(k, key, true, engine)? {
+            if compare_equals(k, key, true, engine, guard.stack())? {
                 items.push(*item);
                 matched = true;
                 break;

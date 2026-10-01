@@ -672,12 +672,15 @@ pub(crate) fn resolve_iter_input<'a>(
 /// would otherwise cost 0 per item, which would make whether a rule fits
 /// its budget depend on which shape the populate pass recognised.
 ///
-/// An object source arrives as `Bridge` and is charged 1 here; its pairs
-/// dispatch the body individually, so the per-item cost lands anyway.
+/// An object source arrives as `Bridge` and is charged one per pair, the
+/// same as an array's one per item: a literal body costs nothing to
+/// dispatch, so the body charge alone would price a `filter` over a large
+/// object at a constant. Any other `Bridge` (a scalar) is charged 1.
 #[inline(always)]
 fn charged<'a>(input: ResolvedInput<'a>, ctx: &mut ContextStack<'a>) -> Result<ResolvedInput<'a>> {
     let items = match &input {
         ResolvedInput::Iterable(src) => src.len() as u64,
+        ResolvedInput::Bridge(DataValue::Object(pairs)) => pairs.len() as u64,
         _ => 1,
     };
     ctx.charge(items)?;

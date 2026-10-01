@@ -150,12 +150,17 @@ pub(super) fn loose_equals(
     match loose_equals_core(left, right) {
         LooseEqualsResult::Equal => Ok(true),
         LooseEqualsResult::NotEqual => Ok(false),
-        LooseEqualsResult::Incompatible => {
-            if engine.config().loose_equality_errors {
-                Err(Error::invalid_arguments(NAN_ERROR))
-            } else {
-                Ok(false)
-            }
-        }
+        LooseEqualsResult::Incompatible => incompatible(engine),
+    }
+}
+
+/// The answer for operands loose equality cannot compare (two unequal
+/// arrays among them): an error under `loose_equality_errors`, else
+/// `false`.
+pub(super) fn incompatible(engine: &Engine) -> Result<bool> {
+    if engine.config().loose_equality_errors {
+        Err(Error::invalid_arguments(NAN_ERROR))
+    } else {
+        Ok(false)
     }
 }

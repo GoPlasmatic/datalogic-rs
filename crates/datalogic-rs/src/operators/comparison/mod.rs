@@ -250,12 +250,18 @@ impl OrdOp {
 /// Arena-native equality. Loose mode goes through [`loose::loose_equals`];
 /// strict mode is a direct [`PartialEq`] with one carve-out: numeric
 /// variants compare as `f64` so `Integer(1) === Float(1.0)` is `true`.
+///
+/// Charges, before comparing, the work a comparison of two containers
+/// does (see [`structural_cost`]) and, with `datetime`, one per pair of an
+/// object operand scanned for a datetime or duration sentinel. Scalars
+/// compare in constant time and charge nothing.
 #[inline]
 pub(crate) fn compare_equals(
     left: &DataValue<'_>,
     right: &DataValue<'_>,
     strict: bool,
     engine: &Engine,
+    ctx: &mut ContextStack<'_>,
 ) -> Result<bool> {
     // Datetime / duration takes precedence on string/object operands.
     #[cfg(feature = "datetime")]
@@ -275,6 +281,7 @@ pub(crate) fn compare_equals(
             _ => true,
         };
         if probe_dt {
+            ctx.charge(object_len(left).saturating_add(object_len(right)))?;
             // Fast path: strings in the strict ISO shape with identical
             // designator and precision are temporally equal iff byte-equal;
             // skip parsing. See `iso_byte_compare_eligible` for the invariant.
@@ -297,6 +304,15 @@ pub(crate) fn compare_equals(
     }
 
     if !strict {
+        // Loose equality compares two arrays structurally, never two
+        // objects.
+        if let (DataValue::Array(_), DataValue::Array(_)) = (left, right) {
+            return if container_eq(left, right, ctx)? {
+                Ok(true)
+            } else {
+                loose::incompatible(engine)
+            };
+        }
         return loose_equals(left, right, engine);
     }
 
@@ -306,7 +322,80 @@ pub(crate) fn compare_equals(
     if let (DataValue::Number(a), DataValue::Number(b)) = (left, right) {
         return Ok(a.as_f64() == b.as_f64());
     }
+    if let (DataValue::Array(_), DataValue::Array(_))
+    | (DataValue::Object(_), DataValue::Object(_)) = (left, right)
+    {
+        return container_eq(left, right, ctx);
+    }
     Ok(left == right)
+}
+
+/// Pairs in an object operand, 0 for anything else.
+#[cfg(feature = "datetime")]
+#[inline]
+fn object_len(v: &DataValue<'_>) -> u64 {
+    match v {
+        DataValue::Object(pairs) => pairs.len() as u64,
+        _ => 0,
+    }
+}
+
+/// Structural equality of two values, the same answer as `DataValue`'s
+/// `PartialEq`, charging each container level before comparing it: 1 per
+/// array element, and `|a| x |b|` per object level, since object equality
+/// finds each key of one side by scanning the other. Containers of
+/// different lengths are unequal before any charge, and a comparison that
+/// stops at the first difference is charged only for the levels it
+/// reached. One walk, so pricing costs nothing beyond the counter.
+///
+/// Without the `budget` feature this is plain `PartialEq`.
+#[inline]
+fn container_eq(a: &DataValue<'_>, b: &DataValue<'_>, ctx: &mut ContextStack<'_>) -> Result<bool> {
+    #[cfg(feature = "budget")]
+    {
+        counted_eq(a, b, ctx)
+    }
+    #[cfg(not(feature = "budget"))]
+    {
+        let _ = ctx;
+        Ok(a == b)
+    }
+}
+
+#[cfg(feature = "budget")]
+fn counted_eq(a: &DataValue<'_>, b: &DataValue<'_>, ctx: &mut ContextStack<'_>) -> Result<bool> {
+    match (a, b) {
+        (DataValue::Array(x), DataValue::Array(y)) => {
+            if x.len() != y.len() {
+                return Ok(false);
+            }
+            ctx.charge(x.len() as u64)?;
+            for (p, q) in x.iter().zip(y.iter()) {
+                if !counted_eq(p, q, ctx)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+        (DataValue::Object(x), DataValue::Object(y)) => {
+            if x.len() != y.len() {
+                return Ok(false);
+            }
+            ctx.charge((x.len() as u64).saturating_mul(y.len() as u64))?;
+            for (k, v) in x.iter() {
+                match y.iter().find(|(yk, _)| yk == k) {
+                    Some((_, w)) => {
+                        if !counted_eq(v, w, ctx)? {
+                            return Ok(false);
+                        }
+                    }
+                    None => return Ok(false),
+                }
+            }
+            Ok(true)
+        }
+        _ => Ok(a == b),
+    }
 }
 
 /// Arena-native ordered comparison (`<`, `<=`, `>`, `>=`).
@@ -409,7 +498,7 @@ fn equals_chain<'a>(
     let first_av = engine.dispatch_node(&args[0], ctx, arena)?;
     for arg in &args[1..] {
         let cur_av = engine.dispatch_node(arg, ctx, arena)?;
-        if !compare_equals(first_av, cur_av, strict, engine)? {
+        if !compare_equals(first_av, cur_av, strict, engine, ctx)? {
             return Ok(crate::arena::singletons::singleton_false());
         }
     }
@@ -431,7 +520,7 @@ fn not_equals_pair<'a>(
     }
     let a = engine.dispatch_node(&args[0], ctx, arena)?;
     let b = engine.dispatch_node(&args[1], ctx, arena)?;
-    let eq = compare_equals(a, b, strict, engine)?;
+    let eq = compare_equals(a, b, strict, engine, ctx)?;
     Ok(crate::arena::singletons::singleton_bool(!eq))
 }
 
@@ -544,6 +633,11 @@ mod iso_fastpath_tests {
 
     const ORD_OPS: [OrdOp; 4] = [OrdOp::Gt, OrdOp::Gte, OrdOp::Lt, OrdOp::Lte];
 
+    /// A context for direct `compare_equals` calls: unbounded, rooted at null.
+    fn test_ctx() -> ContextStack<'static> {
+        ContextStack::new(crate::arena::singletons::singleton_null(), false)
+    }
+
     // ---- Gate classification ----
 
     #[test]
@@ -650,7 +744,7 @@ mod iso_fastpath_tests {
         }
         for strict in [false, true] {
             assert_eq!(
-                compare_equals(&lv, &rv, strict, engine).unwrap(),
+                compare_equals(&lv, &rv, strict, engine, &mut test_ctx()).unwrap(),
                 parse_verdict_eq(l, r),
                 "equality mismatch for {l:?} vs {r:?} (strict={strict})"
             );
@@ -666,7 +760,7 @@ mod iso_fastpath_tests {
         };
         let eq = |l: &str, r: &str| {
             let (lv, rv) = (DataValue::String(l), DataValue::String(r));
-            compare_equals(&lv, &rv, false, &engine).unwrap()
+            compare_equals(&lv, &rv, false, &engine, &mut test_ctx()).unwrap()
         };
 
         // Equal / less / greater on the plain Z form.
@@ -698,7 +792,7 @@ mod iso_fastpath_tests {
         };
         let eq = |l: &str, r: &str| {
             let (lv, rv) = (DataValue::String(l), DataValue::String(r));
-            compare_equals(&lv, &rv, false, &engine).unwrap()
+            compare_equals(&lv, &rv, false, &engine, &mut test_ctx()).unwrap()
         };
 
         // Mixed offsets: byte order says Greater, instants say Less.

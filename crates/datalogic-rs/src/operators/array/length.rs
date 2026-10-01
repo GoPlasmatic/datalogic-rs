@@ -23,7 +23,11 @@ pub(crate) fn evaluate_length<'a>(
     let arg = engine.dispatch_node(&args[0], ctx, arena)?;
 
     let n: i64 = match arg {
-        DataValue::String(s) => s.chars().count() as i64,
+        // Counting chars walks the string.
+        DataValue::String(s) => {
+            ctx.charge_bytes(s.len())?;
+            s.chars().count() as i64
+        }
         DataValue::Array(items) => items.len() as i64,
         _ => return Err(crate::Error::invalid_args()),
     };

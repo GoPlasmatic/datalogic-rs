@@ -650,12 +650,21 @@ impl Engine {
     ///   compile-time fast path evaluates a predicate inline instead of
     ///   dispatching its body: the iteration costs at least its input
     ///   length whichever path runs.
-    /// - **1 per item a collection operator copies or examines**, charged
-    ///   before the work: `merge` per item of each array argument, `in` per
-    ///   item of an array haystack, `missing` / `missing_some` per path of
-    ///   a path list from data, `keys` / `values` / `entries` per key, and
-    ///   a stepped `slice` per item produced. String operators are not yet
-    ///   priced by length.
+    /// - **1 per item a collection operator copies, examines or
+    ///   compares**, charged before the work: `merge` per item of each
+    ///   array argument, `in` per item of an array haystack, `missing` /
+    ///   `missing_some` per path of a path list from data, `keys` /
+    ///   `values` / `entries` per key, a stepped `slice` per item produced,
+    ///   `distinct` / `group_by` per comparison, `sort` n·⌈log₂ n⌉, and
+    ///   one-argument arithmetic per array item. Iterating an object costs
+    ///   1 per key.
+    /// - **The structural walk of an equality between containers**: 1 per
+    ///   array element, `|a| x |b|` per object level, for each level the
+    ///   comparison reaches.
+    /// - **1 per whole 64 bytes of string a string operator reads** (`cat`,
+    ///   `substr`, `upper`, `lower`, `trim`, `length`, `split`, `in` on a
+    ///   string, `starts_with` / `ends_with`, string `slice`), so strings
+    ///   under 64 bytes are free.
     /// - **Whatever an operator charges for itself.** The tensor family
     ///   prices each operator at `max(elements read, elements produced)`,
     ///   before it allocates. A [`crate::CustomOperator`] that walks a

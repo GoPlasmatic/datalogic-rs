@@ -212,8 +212,9 @@ fn subtract_one_arg<'a>(
 ) -> Result<&'a DataValue<'a>> {
     let av = engine.dispatch_node(arg, ctx, arena)?;
 
-    // Array fold case: (first - second - ...).
+    // Array fold case: (first - second - ...). One per item, before the fold.
     if let DataValue::Array(items) = av {
+        ctx.charge(items.len() as u64)?;
         if items.is_empty() {
             return Err(crate::Error::invalid_args());
         }
@@ -398,6 +399,9 @@ fn one_arg_array_fold<'a>(
     arena: &'a Bump,
     op: ArithOp,
 ) -> Result<&'a DataValue<'a>> {
+    // One per item, before the fold: the node charge alone would price a
+    // sum over a large array at a constant.
+    ctx.charge(items.len() as u64)?;
     if items.is_empty() {
         return Ok(alloc_number(
             arena,

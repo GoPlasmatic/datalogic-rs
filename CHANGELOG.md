@@ -49,6 +49,29 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   budget calibrated tightly against 5.6.0 on such rules may need
   re-metering.
 
+- **More operators did work the budget never saw.** A follow-up audit to
+  #77 measured rules charged up to 2,000 times less than the work they did:
+  - `distinct` and `group_by` compare each item with every value kept so
+    far, n(n-1)/2 comparisons over n distinct values, and were charged n.
+    They now charge each comparison.
+  - Iterating an object (`map`, `filter`, `all`, ... over an object) with a
+    literal body was charged 1 however many keys it had. It is now charged
+    1 per key, like an array's 1 per item.
+  - String operators were charged their node only, so a `cat` accumulator
+    in `reduce` copied n² bytes for a linear count. They now charge 1 per
+    whole 64 bytes of string they read (shorter strings stay free), and
+    `cat` and `split` 1 per item or part on top.
+  - Equality between two arrays or two objects (`==`, `===`, `in`,
+    `switch`, `distinct`, ...) walks both structures; it now charges each
+    level as the comparison reaches it.
+  - `sort` charges n·⌈log₂ n⌉ for its comparisons, one-argument arithmetic
+    over an array charges 1 per item, and the tensor constructors and
+    `stack` / `concat` charge `max(read, produced)` for a zero-element
+    result as they already did for any other.
+
+  [Operation Budget](./docs/src/advanced/operation-budget.md) lists every
+  charge, and what is still priced at its node alone.
+
 ### Changed
 
 - **`datavalue-rs` floor raised to 0.3.1**, the release that adds

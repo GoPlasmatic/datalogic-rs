@@ -596,10 +596,16 @@ fn collections() -> String {
     format!(
         r#"{{"xs": [{}], "obj": {{{}}}, "paths": [{}], "x": 3, "s": "hello",
             "nested": [[1, 2], [3, 4], [5]], "holes": [null, 1, null, 2],
-            "empty": [], "empty_obj": {{}}}}"#,
+            "empty": [], "empty_obj": {{}}, "dups": [1, 1, 2, 2, 3, 3],
+            "ones": [1, 1, 1, 1], "long": "{}", "uni": "{}", "csv": "a,b,c,d",
+            "words": ["{}", "{}"]}}"#,
         xs.join(","),
         obj.join(","),
-        paths.join(",")
+        paths.join(","),
+        "x".repeat(200),
+        "\u{e9}".repeat(100),
+        "a".repeat(64),
+        "b".repeat(65),
     )
 }
 
@@ -628,7 +634,8 @@ fn every_collection_operator_charges_what_the_table_says() {
         (r#"{"in": [{"var": "x"}, {"var": "xs"}]}"#, 3 + n),
         (r#"{"in": [-1, {"var": "xs"}]}"#, 2 + n),
         (r#"{"in": [-1, {"var": "empty"}]}"#, 2),
-        // A string haystack is not priced per byte (yet).
+        // A string haystack is priced by its bytes (see the string table);
+        // "hello" is under one unit.
         (r#"{"in": ["ell", {"var": "s"}]}"#, 2),
         // missing / missing_some: paths that come from data cost one each.
         // Literal paths are bounded by the rule and cost nothing extra.
@@ -637,6 +644,51 @@ fn every_collection_operator_charges_what_the_table_says() {
         (r#"{"missing_some": [1, {"var": "paths"}]}"#, 2 + n),
         (r#"{"missing_some": [1, ["a", "b"]]}"#, 1),
     ];
+    // Iterating an object: one per pair, like an array's one per item. A
+    // root `var` source is read without being dispatched, so these cost the
+    // iterator's node plus the pairs (plus the body, where it dispatches).
+    cases.extend([
+        (r#"{"filter": [{"var": "obj"}, true]}"#, 1 + n),
+        (r#"{"map": [{"var": "obj"}, 1]}"#, 1 + n),
+        (r#"{"all": [{"var": "obj"}, true]}"#, 1 + n),
+        (r#"{"map": [{"var": "obj"}, {"var": ""}]}"#, 1 + 2 * n),
+        (r#"{"filter": [{"var": "empty_obj"}, true]}"#, 1),
+    ]);
+    // One-argument arithmetic folds an array: one per item.
+    cases.extend([
+        (r#"{"+": {"var": "xs"}}"#, 2 + n),
+        (r#"{"-": {"var": "xs"}}"#, 2 + n),
+        (r#"{"*": [{"var": "ones"}]}"#, 2 + 4),
+        (r#"{"/": {"var": "ones"}}"#, 2 + 4),
+        (r#"{"%": {"var": "ones"}}"#, 2 + 4),
+        (r#"{"+": {"var": "empty"}}"#, 2),
+    ]);
+    // Equality between two arrays or two objects charges the structural
+    // walk before it runs: one per array element compared, and |a|x|b| key
+    // probes per object level (object equality finds each key by scan).
+    // Containers of different lengths are unequal without a walk. With
+    // `datetime`, an object operand is also scanned for a sentinel key,
+    // one per pair.
+    let probe = if cfg!(feature = "datetime") { 2 * n } else { 0 };
+    cases.extend([
+        (r#"{"==": [{"var": "xs"}, {"var": "xs"}]}"#, 3 + n),
+        (r#"{"!==": [{"var": "xs"}, {"var": "xs"}]}"#, 3 + n),
+        (
+            r#"{"===": [{"var": "nested"}, {"var": "nested"}]}"#,
+            3 + 3 + 2 + 2 + 1,
+        ),
+        (r#"{"===": [{"var": "xs"}, {"var": "nested"}]}"#, 3),
+        (
+            r#"{"===": [{"var": "obj"}, {"var": "obj"}]}"#,
+            3 + n * n + probe,
+        ),
+        // Loose equality never compares two objects structurally.
+        (r#"{"==": [{"var": "obj"}, {"var": "obj"}]}"#, 3 + probe),
+        // `in` charges each comparison it makes: the first item matches.
+        (r#"{"in": [[1, 2], {"var": "nested"}]}"#, 2 + 3 + 2),
+        // Scalars compare in constant time.
+        (r#"{"==": [{"var": "x"}, 3]}"#, 2),
+    ]);
     #[cfg(feature = "ext-object")]
     cases.extend([
         (r#"{"keys": [{"var": "obj"}]}"#, 2 + n),
@@ -654,6 +706,28 @@ fn every_collection_operator_charges_what_the_table_says() {
         (r#"{"slice": [{"var": "xs"}, 0, null, 2]}"#, 2 + n / 2),
         (r#"{"slice": [{"var": "xs"}, null, null, -1]}"#, 2 + n),
         (r#"{"slice": [{"var": "xs"}, 0, 10, 3]}"#, 2 + 4),
+        // distinct / group_by compare each item with every value kept so
+        // far: n(n-1)/2 comparisons over n distinct values, on top of the
+        // iterator's one per item.
+        (r#"{"distinct": [{"var": "xs"}]}"#, 1 + n + n * (n - 1) / 2),
+        // [1,1,2,2,3,3]: kept sizes 0,1,1,2,2,3.
+        (r#"{"distinct": [{"var": "dups"}]}"#, 1 + 6 + 9),
+        (
+            r#"{"distinct": [{"var": "xs"}, {"var": ""}]}"#,
+            1 + 2 * n + n * (n - 1) / 2,
+        ),
+        (
+            r#"{"group_by": [{"var": "xs"}, {"var": ""}]}"#,
+            1 + 2 * n + n * (n - 1) / 2,
+        ),
+        (
+            r#"{"group_by": [{"var": "dups"}, {"var": ""}]}"#,
+            1 + 2 * 6 + 9,
+        ),
+        // sort: n log2 n comparisons on top of the one per item.
+        (r#"{"sort": [{"var": "xs"}]}"#, 1 + n + n * 6),
+        (r#"{"sort": [{"var": "ones"}]}"#, 1 + 4 + 4 * 2),
+        (r#"{"sort": [{"var": "empty"}]}"#, 1),
     ]);
 
     let data = collections();
@@ -665,6 +739,90 @@ fn every_collection_operator_charges_what_the_table_says() {
         }
     }
     assert!(wrong.is_empty(), "\n{}", wrong.join("\n"));
+}
+
+/// Every string operator's total charge over [`collections`]. A string
+/// operator charges one operation per whole 64 bytes of string it reads
+/// (rounded down, so a string under 64 bytes is free), before the work. `cat`
+/// and `split` also charge one per item: each array item `cat` appends,
+/// each part `split` produces.
+#[test]
+fn every_string_operator_charges_what_the_table_says() {
+    // `long` is 200 bytes (3 whole units), `uni` is 100 two-byte chars (200
+    // bytes, 3 units), `words` holds a 64-byte and a 65-byte string (1 unit
+    // each). Anything under 64 bytes is free.
+    #[allow(unused_mut)]
+    let mut cases: Vec<(&str, u64)> = vec![
+        (r#"{"cat": [{"var": "long"}, {"var": "long"}]}"#, 3 + 3 + 3),
+        (r#"{"cat": [{"var": "words"}]}"#, 2 + 2 + 1 + 1),
+        // Arrays inside an array argument are stringified: "[1,2]" etc.,
+        // each under a unit, so only the items are charged.
+        (r#"{"cat": [{"var": "nested"}]}"#, 2 + 3),
+        (r#"{"cat": ["a", {"var": "x"}]}"#, 2),
+        (r#"{"cat": [{"var": "empty"}]}"#, 2),
+        // Folded to "" at compile time: free.
+        (r#"{"cat": []}"#, 0),
+        (r#"{"substr": [{"var": "long"}, 1, 5]}"#, 2 + 3),
+        (r#"{"in": ["xx", {"var": "long"}]}"#, 2 + 3),
+    ];
+    #[cfg(feature = "ext-string")]
+    cases.extend([
+        (r#"{"length": {"var": "long"}}"#, 2 + 3),
+        (r#"{"length": {"var": "uni"}}"#, 2 + 3),
+        // An array's length is O(1).
+        (r#"{"length": {"var": "xs"}}"#, 2),
+        // A prefix or suffix test reads at most the needle's length.
+        (r#"{"starts_with": [{"var": "long"}, "xx"]}"#, 2),
+        (
+            r#"{"ends_with": [{"var": "long"}, {"var": "long"}]}"#,
+            3 + 3,
+        ),
+        (r#"{"upper": {"var": "long"}}"#, 2 + 3),
+        (r#"{"lower": {"var": "uni"}}"#, 2 + 3),
+        (r#"{"trim": {"var": "long"}}"#, 2 + 3),
+        // split: the text, plus one per part.
+        (r#"{"split": [{"var": "csv"}, ","]}"#, 2 + 4),
+        (r#"{"split": [{"var": "long"}, ""]}"#, 2 + 3 + 200),
+    ]);
+    #[cfg(feature = "ext-array")]
+    cases.extend([
+        // Slicing a string walks its chars, stepped or not.
+        (r#"{"slice": [{"var": "long"}, 1, 10]}"#, 2 + 3),
+        (r#"{"slice": [{"var": "long"}, 0, null, 2]}"#, 2 + 3),
+    ]);
+
+    let data = collections();
+    let mut wrong = Vec::new();
+    for (rule, expected) in &cases {
+        let spent = ops(rule, &data);
+        if spent != *expected {
+            wrong.push(format!("{rule}: charged {spent}, table says {expected}"));
+        }
+    }
+    assert!(wrong.is_empty(), "\n{}", wrong.join("\n"));
+}
+
+/// The string form of #77's accumulator: each step copies the whole
+/// accumulated string.
+#[test]
+fn a_cat_accumulator_costs_its_quadratic_work() {
+    let n = 2_000u64;
+    let rule = r#"{"reduce": [{"var": "xs"}, {"cat": [{"var": "accumulator"}, "abcdefgh"]}, ""]}"#;
+    // Step i copies 8i bytes: 8 n(n+1)/2 bytes in all, 1 unit per whole 64
+    // (each step rounds down by at most one unit).
+    let spent = ops(rule, &array_of(n as usize));
+    assert!(
+        spent >= 8 * n * (n + 1) / 2 / 64 - n,
+        "charged {spent} for {} bytes copied",
+        8 * n * (n + 1) / 2
+    );
+}
+
+#[test]
+fn distinct_over_distinct_values_costs_its_quadratic_work() {
+    let n = 1_000u64;
+    let spent = ops(r#"{"distinct": [{"var": "xs"}]}"#, &array_of(n as usize));
+    assert!(spent >= n * (n - 1) / 2, "charged {spent}");
 }
 
 /// The accumulator from #77: each step copies the whole accumulator, so
@@ -707,4 +865,24 @@ fn an_operator_is_refused_by_its_own_charge_not_only_by_its_node() {
         "BudgetExceeded"
     );
     assert_eq!(under_budget(rule, &data, n + 2).expect("exact fit"), n + 2);
+}
+
+/// A tensor operator charges `max(read, produced)`, and the read side
+/// matters when nothing is produced: a zero-element result still walks
+/// its shape, its part list or its indices.
+#[cfg(feature = "tensor")]
+#[test]
+fn a_zero_element_tensor_still_pays_for_what_it_reads() {
+    // node + max(3 dims, 0 elements)
+    assert_eq!(ops(r#"{"zeros": [[0, 0, 0], "u8"]}"#, "null"), 1 + 3);
+    assert_eq!(ops(r#"{"full": [[0, 0, 0], "u8", 1]}"#, "null"), 1 + 3);
+    // node + max(3 indices, 3 x 0 elements)
+    assert_eq!(ops(r#"{"one_hot": [[0, 1, 2], 0, "u8"]}"#, "null"), 1 + 3);
+    // `stack` node + the operand list node + 3 x (`zeros` node + max(1, 0))
+    // + max(3 parts, 0 elements).
+    let z = r#"{"zeros": [[0], "u8"]}"#;
+    assert_eq!(
+        ops(&format!(r#"{{"stack": [[{z}, {z}, {z}], 0]}}"#), "null"),
+        1 + 1 + 3 * 2 + 3
+    );
 }

@@ -56,7 +56,9 @@ pub(crate) fn evaluate_stack<'a>(
         return Err(bad("stack: every tensor must have the same shape"));
     }
     let total: usize = parts.iter().map(|t| t.numel()).sum();
-    charge(ctx, total as u64)?;
+    // max(tensors read, elements produced): zero-element parts are still
+    // each validated.
+    charge(ctx, cost(parts.len(), total))?;
 
     // Insert the new axis: [outer…, n, inner…].
     let mut shape = bvec::<usize>(arena, first.ndim() + 1);
@@ -113,7 +115,9 @@ pub(crate) fn evaluate_concat<'a>(
         ));
     }
     let total: usize = parts.iter().map(|t| t.numel()).sum();
-    charge(ctx, total as u64)?;
+    // max(tensors read, elements produced): zero-element parts are still
+    // each validated.
+    charge(ctx, cost(parts.len(), total))?;
 
     let mut shape = bvec::<usize>(arena, first.ndim());
     shape.extend_from_slice(first.shape());

@@ -15,7 +15,9 @@ use super::helpers::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
 /// same predicate `in` uses — `1` and `"1"` stay distinct, objects and
 /// arrays compare structurally. Dedup is a linear scan over the kept set
 /// (`DataValue` has no `Hash`/`Ord`); see the note on `group_by` for the
-/// upgrade path if this ever shows up in profiles.
+/// upgrade path if this ever shows up in profiles. Each scan is charged the
+/// size of the kept set before it runs, so n distinct values cost
+/// n(n-1)/2 on top of the iterator's one per item.
 ///
 /// The unkeyed form runs no callback and never touches the context stack,
 /// which is what lets `opcode_is_static` classify it as fold-eligible.
@@ -48,7 +50,7 @@ pub(crate) fn evaluate_distinct<'a>(
     }
 
     if args.len() < 2 {
-        return distinct_by_value(&src, engine, arena);
+        return distinct_by_value(&src, ctx, engine, arena);
     }
     distinct_by_key(&src, &args[1], ctx, engine, arena)
 }
@@ -56,6 +58,7 @@ pub(crate) fn evaluate_distinct<'a>(
 #[inline]
 fn distinct_by_value<'a>(
     src: &IterSrc<'a>,
+    ctx: &mut ContextStack<'a>,
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
@@ -63,9 +66,10 @@ fn distinct_by_value<'a>(
     let mut kept = bvec::<DataValue<'a>>(arena, len);
     for i in 0..len {
         let item = src.get(i);
+        ctx.charge(kept.len() as u64)?;
         let mut seen = false;
         for prev in kept.iter() {
-            if compare_equals(prev, item, true, engine)? {
+            if compare_equals(prev, item, true, engine, ctx)? {
                 seen = true;
                 break;
             }
@@ -94,9 +98,10 @@ fn distinct_by_key<'a>(
         guard.step_indexed(item, i);
         let key = engine.dispatch_node(key_expr, guard.stack(), arena)?;
 
+        guard.stack().charge(seen_keys.len() as u64)?;
         let mut seen = false;
         for prev in seen_keys.iter() {
-            if compare_equals(prev, key, true, engine)? {
+            if compare_equals(prev, key, true, engine, guard.stack())? {
                 seen = true;
                 break;
             }

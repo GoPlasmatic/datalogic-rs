@@ -50,6 +50,8 @@ pub(crate) fn evaluate_slice<'a>(
         return slice_array(items, start, end, step, ctx, arena);
     }
     if let DataValue::String(s) = coll_av {
+        // Char-indexing walks the string, stepped or not.
+        ctx.charge_bytes(s.len())?;
         return Ok(slice_string(s, start, end, step, arena));
     }
     Err(crate::Error::invalid_args())
@@ -84,11 +86,12 @@ fn slice_array<'a>(
     }
 
     let indices = slice_indices(len, start, end, step);
-    if indices.is_empty() {
+    let count = indices.clone().count();
+    if count == 0 {
         return Ok(crate::arena::singletons::singleton_empty_array());
     }
-    ctx.charge(indices.len() as u64)?;
-    let mut out = bvec::<DataValue<'a>>(arena, indices.len());
+    ctx.charge(count as u64)?;
+    let mut out = bvec::<DataValue<'a>>(arena, count);
     for i in indices {
         out.push(items[i as usize]);
     }
@@ -121,8 +124,9 @@ fn slice_string<'a>(
     }
 
     let chars: Vec<char> = s.chars().collect();
-    let indices = slice_indices(chars.len() as i64, start, end, step);
-    let result_string: String = indices.iter().map(|&i| chars[i as usize]).collect();
+    let result_string: String = slice_indices(chars.len() as i64, start, end, step)
+        .map(|i| chars[i as usize])
+        .collect();
     let out: &'a str = arena.alloc_str(&result_string);
     arena.alloc(DataValue::String(out))
 }
@@ -151,11 +155,11 @@ fn extract_opt_i64_arena<'a>(
     }
 }
 
-/// Index list for a slice given start/end/step. Computes the index sequence
-/// without materializing values.
+/// The indices a slice selects, in order, given start/end/step. An iterator
+/// rather than a list so a caller can count the selection (to charge for
+/// it) before allocating anything.
 #[inline]
-fn slice_indices(len: i64, start: Option<i64>, end: Option<i64>, step: i64) -> Vec<i64> {
-    let mut out = Vec::new();
+fn slice_indices(len: i64, start: Option<i64>, end: Option<i64>, step: i64) -> SliceIndices {
     let (actual_start, actual_end) = if step > 0 {
         (
             normalize_index(start.unwrap_or(0), len),
@@ -175,15 +179,40 @@ fn slice_indices(len: i64, start: Option<i64>, end: Option<i64>, step: i64) -> V
         };
         (s, e)
     };
-
-    let mut i = actual_start;
-    while (step > 0 && i < actual_end) || (step < 0 && i > actual_end) {
-        if i >= 0 && i < len {
-            out.push(i);
-        }
-        i += step;
+    SliceIndices {
+        next: Some(actual_start),
+        end: actual_end,
+        step,
+        len,
     }
-    out
+}
+
+/// See [`slice_indices`]. `next` is `None` once a step would overflow.
+#[derive(Clone)]
+struct SliceIndices {
+    next: Option<i64>,
+    end: i64,
+    step: i64,
+    len: i64,
+}
+
+impl Iterator for SliceIndices {
+    type Item = i64;
+
+    #[inline]
+    fn next(&mut self) -> Option<i64> {
+        while let Some(i) = self.next {
+            if !((self.step > 0 && i < self.end) || (self.step < 0 && i > self.end)) {
+                self.next = None;
+                return None;
+            }
+            self.next = i.checked_add(self.step);
+            if i >= 0 && i < self.len {
+                return Some(i);
+            }
+        }
+        None
+    }
 }
 
 /// Normalize slice indices with overflow protection.

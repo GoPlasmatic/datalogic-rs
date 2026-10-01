@@ -54,6 +54,9 @@ pub(crate) fn evaluate_sort<'a>(
     if len == 0 {
         return Ok(crate::arena::singletons::singleton_empty_array());
     }
+    // Comparisons, on top of the iterator's one per item: n * ceil(log2 n),
+    // charged before sorting.
+    ctx.charge(comparisons(len))?;
 
     let ascending = sort_direction(args, ctx, engine, arena)?;
 
@@ -259,4 +262,14 @@ fn compare_values(a: &DataValue<'_>, b: &DataValue<'_>) -> Ordering {
         }
         _ => type_rank(a).cmp(&type_rank(b)),
     }
+}
+
+/// `n * ceil(log2 n)`: the comparison count a sort of `n` items is charged.
+#[inline]
+fn comparisons(n: usize) -> u64 {
+    if n < 2 {
+        return 0;
+    }
+    let log2 = u64::from(usize::BITS - (n - 1).leading_zeros());
+    (n as u64).saturating_mul(log2)
 }

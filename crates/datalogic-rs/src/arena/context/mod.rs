@@ -206,6 +206,10 @@ pub(crate) const fn frame_target(frame_count: usize, level: usize) -> FrameTarge
     frame_at_climb(frame_count, data_climb(level))
 }
 
+/// Bytes of string one budget operation pays for. See
+/// [`ContextStack::charge_bytes`].
+pub(crate) const STRING_UNIT: usize = 64;
+
 impl<'a> ContextStack<'a> {
     #[inline]
     pub(crate) fn new(root: &'a DataValue<'a>, track_ancestors: bool) -> Self {
@@ -580,6 +584,22 @@ impl<'a> ContextStack<'a> {
     #[cfg(not(feature = "budget"))]
     #[inline(always)]
     pub(crate) fn charge(&mut self, _n: u64) -> crate::Result<()> {
+        Ok(())
+    }
+
+    /// Charge for reading `bytes` of string: one operation per whole
+    /// [`STRING_UNIT`] bytes, rounded down. A per-byte charge would swamp
+    /// the node and item counts on ordinary rules; a cache line's worth
+    /// keeps a string operator's cost proportional to its data at the same
+    /// scale as one item. Rounding down makes a string shorter than one
+    /// unit free, which is nearly every string a rule touches: they skip
+    /// the counter entirely, and a long string or an accumulator is still
+    /// charged for all but its last partial unit.
+    #[inline(always)]
+    pub(crate) fn charge_bytes(&mut self, bytes: usize) -> crate::Result<()> {
+        if bytes >= STRING_UNIT {
+            self.charge((bytes / STRING_UNIT) as u64)?;
+        }
         Ok(())
     }
 

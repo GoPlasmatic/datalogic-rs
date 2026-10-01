@@ -56,8 +56,9 @@ Concretely:
 | Charged | Amount |
 |---------|--------|
 | Each node the engine dispatches | 1 |
-| Each item an iterator examines (`map`, `filter`, `reduce`, the quantifiers, `sort`, …) | 1 per item, charged as soon as the source resolves |
-| Each item a collection operator copies or examines | 1 per item, charged before the work (see below) |
+| Each item an iterator examines (`map`, `filter`, `reduce`, the quantifiers, `sort`, …), over an array or an object | 1 per item or key, charged as soon as the source resolves |
+| Each item a collection operator copies, examines or compares | 1 per item, charged before the work (see below) |
+| Each whole 64 bytes of string a string operator reads | 1 (see below) |
 | Each tensor operator | `max(elements read, elements produced)` |
 | A custom operator | whatever it charges via `EvalContext::charge` |
 
@@ -79,7 +80,11 @@ The collection operators whose work grows with an argument charge for it:
 | `in` with an array haystack | the haystack's length, whether or not the needle is found |
 | `missing`, `missing_some` with a path list from data | 1 per path (literal paths cost nothing extra) |
 | `keys`, `values`, `entries` | 1 per key |
-| `slice` with a step other than 1 | 1 per item produced (a contiguous slice borrows its source and costs nothing extra) |
+| `slice` of an array with a step other than 1 | 1 per item produced (a contiguous slice borrows its source and costs nothing extra) |
+| `distinct`, `group_by` | 1 per comparison: each item is compared with every value or group kept so far, so n distinct values cost n(n-1)/2 |
+| `sort` | n·⌈log₂ n⌉ comparisons |
+| `+`, `-`, `*`, `/`, `%` over one array argument | 1 per item |
+| `==`, `===`, `!=`, `!==`, `in`, `switch` comparing two arrays or two objects | 1 per array element, and \|a\|×\|b\| per object level (object equality finds each key by scanning the other side), for each level the comparison reaches; containers of different lengths cost nothing extra |
 
 Without these, an accumulator does quadratic work for a linear count:
 
@@ -90,9 +95,28 @@ Without these, an accumulator does quadratic work for a linear count:
 copies the whole accumulator on every step, n(n+1)/2 items over n
 inputs, and is now charged for each of them.
 
-String operators (`cat`, `substr`, `upper`, `lower`, `trim`, `split`,
-`in` with a string haystack) are not yet priced by length. They charge
-their node only.
+String operators charge 1 per whole 64 bytes of string they read, so a
+string shorter than 64 bytes, which is nearly every string a rule
+touches, costs nothing extra:
+
+| Operator | Bytes charged |
+|----------|---------------|
+| `cat` | each piece it appends (an array or object argument is charged its JSON text), plus 1 per item of an array argument |
+| `substr`, `upper`, `lower`, `trim`, `length`, `slice` of a string | the input string |
+| `in` with a string haystack | the haystack |
+| `starts_with`, `ends_with` | the shorter of the string and the prefix or suffix |
+| `split` | the input string, plus 1 per part produced |
+
+So a `cat` accumulator, `{"reduce": [xs, {"cat": [{"var": "accumulator"}, …]}, ""]}`,
+is charged for the accumulated string on every step. A unit of 64 bytes
+leaves ordinary rules' counts at their node counts while a megabyte of
+string still costs about 16,000.
+
+Not priced beyond their node: field lookups (`var`, `val`, `exists`)
+on wide objects, which may scan the object's keys; the datetime and
+`flagd` parsers; a custom truthiness function, which receives an owned
+copy of each value it tests; and a traced run's per-step context
+snapshots.
 
 The per-item charge keeps the number honest. Several operators
 recognise predicate and body shapes at compile time and evaluate them

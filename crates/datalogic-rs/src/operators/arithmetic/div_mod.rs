@@ -146,6 +146,8 @@ fn one_arg_div_mod<'a>(
     let av = engine.dispatch_node(arg, ctx, arena)?;
 
     if let DataValue::Array(items) = av {
+        // One per item, before the fold.
+        ctx.charge(items.len() as u64)?;
         // Modulo requires ≥2 elements; divide tolerates 1+ (1-elem returns first).
         if items.is_empty() || (op.is_modulo() && items.len() < 2) {
             return Err(crate::Error::invalid_args());

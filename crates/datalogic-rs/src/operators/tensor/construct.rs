@@ -102,7 +102,9 @@ pub(crate) fn evaluate_zeros<'a>(
     let shape = as_shape(arg(args, 0, ctx, engine, arena)?, arena)?;
     let dtype = as_dtype(arg(args, 1, ctx, engine, arena)?)?;
 
-    charge(ctx, numel_of(shape)? as u64)?;
+    // max(dims read, elements produced): a zero-element shape still has
+    // its dimensions validated.
+    charge(ctx, cost(shape.len(), numel_of(shape)?))?;
     let buf = DataTensor::zeroed_bytes_in(dtype, shape, arena).map_err(wrap)?;
     finish_bytes(dtype, shape, buf, arena)
 }
@@ -119,7 +121,7 @@ pub(crate) fn evaluate_full<'a>(
     let dtype = as_dtype(arg(args, 1, ctx, engine, arena)?)?;
     let value = arg(args, 2, ctx, engine, arena)?;
 
-    charge(ctx, numel_of(shape)? as u64)?;
+    charge(ctx, cost(shape.len(), numel_of(shape)?))?;
     by_dtype!(dtype, full_impl, shape, value, arena)
 }
 
@@ -296,7 +298,8 @@ pub(crate) fn evaluate_one_hot<'a>(
         return Err(bad("one_hot: indices must be an array"));
     };
     let shape = arena.alloc_slice_copy(&[indices.len(), depth]);
-    charge(ctx, numel_of(shape)? as u64)?;
+    // max(indices read, elements produced): depth 0 still walks the indices.
+    charge(ctx, cost(indices.len(), numel_of(shape)?))?;
     by_dtype!(dtype, one_hot_impl, indices, shape, arena)
 }
 
