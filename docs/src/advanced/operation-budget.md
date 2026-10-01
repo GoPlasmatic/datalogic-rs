@@ -57,6 +57,7 @@ Concretely:
 |---------|--------|
 | Each node the engine dispatches | 1 |
 | Each item an iterator examines (`map`, `filter`, `reduce`, the quantifiers, `sort`, …) | 1 per item, charged as soon as the source resolves |
+| Each item a collection operator copies or examines | 1 per item, charged before the work (see below) |
 | Each tensor operator | `max(elements read, elements produced)` |
 | A custom operator | whatever it charges via `EvalContext::charge` |
 
@@ -69,6 +70,29 @@ And what is **not** charged:
   on whether folding was enabled.
 - **A CSE-memoised subtree is charged once**, on the evaluation that
   fills the slot.
+
+The collection operators whose work grows with an argument charge for it:
+
+| Operator | Charge on top of its node |
+|----------|---------------------------|
+| `merge` | 1 per item of each array argument (scalars and `null` cost nothing extra) |
+| `in` with an array haystack | the haystack's length, whether or not the needle is found |
+| `missing`, `missing_some` with a path list from data | 1 per path (literal paths cost nothing extra) |
+| `keys`, `values`, `entries` | 1 per key |
+| `slice` with a step other than 1 | 1 per item produced (a contiguous slice borrows its source and costs nothing extra) |
+
+Without these, an accumulator does quadratic work for a linear count:
+
+```json
+{"reduce": [{"var": "xs"}, {"merge": [{"var": "accumulator"}, [{"var": "current"}]]}, []]}
+```
+
+copies the whole accumulator on every step, n(n+1)/2 items over n
+inputs, and is now charged for each of them.
+
+String operators (`cat`, `substr`, `upper`, `lower`, `trim`, `split`,
+`in` with a string haystack) are not yet priced by length. They charge
+their node only.
 
 The per-item charge keeps the number honest. Several operators
 recognise predicate and body shapes at compile time and evaluate them

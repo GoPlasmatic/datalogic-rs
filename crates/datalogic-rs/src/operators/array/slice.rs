@@ -47,7 +47,7 @@ pub(crate) fn evaluate_slice<'a>(
     };
 
     if let DataValue::Array(items) = coll_av {
-        return Ok(slice_array(items, start, end, step, arena));
+        return slice_array(items, start, end, step, ctx, arena);
     }
     if let DataValue::String(s) = coll_av {
         return Ok(slice_string(s, start, end, step, arena));
@@ -56,14 +56,19 @@ pub(crate) fn evaluate_slice<'a>(
 }
 
 /// Composite arena array — slice through the arena items.
+///
+/// A contiguous slice borrows the source and costs nothing beyond its node.
+/// A stepped one copies, and is charged one operation per item it produces
+/// before copying them.
 #[inline]
 fn slice_array<'a>(
     items: &'a [DataValue<'a>],
     start: Option<i64>,
     end: Option<i64>,
     step: i64,
+    ctx: &mut ContextStack<'a>,
     arena: &'a Bump,
-) -> &'a DataValue<'a> {
+) -> Result<&'a DataValue<'a>> {
     let len = items.len() as i64;
 
     // Contiguous step==1 (the default, no explicit step): the selected
@@ -73,20 +78,21 @@ fn slice_array<'a>(
         let s = normalize_index(start.unwrap_or(0), len);
         let e = normalize_index(end.unwrap_or(len), len);
         if s >= e {
-            return crate::arena::singletons::singleton_empty_array();
+            return Ok(crate::arena::singletons::singleton_empty_array());
         }
-        return arena.alloc(DataValue::Array(&items[s as usize..e as usize]));
+        return Ok(arena.alloc(DataValue::Array(&items[s as usize..e as usize])));
     }
 
     let indices = slice_indices(len, start, end, step);
     if indices.is_empty() {
-        return crate::arena::singletons::singleton_empty_array();
+        return Ok(crate::arena::singletons::singleton_empty_array());
     }
+    ctx.charge(indices.len() as u64)?;
     let mut out = bvec::<DataValue<'a>>(arena, indices.len());
     for i in indices {
         out.push(items[i as usize]);
     }
-    arena.alloc(DataValue::Array(out.into_bump_slice()))
+    Ok(arena.alloc(DataValue::Array(out.into_bump_slice())))
 }
 
 /// String slice — char-indexed; the contiguous `step == 1` case borrows a

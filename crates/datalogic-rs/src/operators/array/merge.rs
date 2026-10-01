@@ -14,6 +14,12 @@ use bumpalo::Bump;
 /// args dominate — pre-size the buffer to `args.len()` on first push to
 /// avoid the immediate-grow that the previous unconditional bvec was
 /// already paying for.
+///
+/// Charges one operation per item of each array argument, before copying
+/// them, nulls included since each is examined to be skipped. The node
+/// charge alone would price an accumulator (`merge` of the accumulator and
+/// one item, inside `reduce`) at a constant per step while it copies the
+/// whole accumulator each time (#77).
 #[inline]
 pub(crate) fn evaluate_merge<'a>(
     args: &'a [CompiledNode],
@@ -33,6 +39,7 @@ pub(crate) fn evaluate_merge<'a>(
         match av {
             // Direct arena Array (e.g. result of upstream arena filter/map).
             DataValue::Array(items) => {
+                ctx.charge(items.len() as u64)?;
                 for item in items.iter() {
                     if !item.is_null() {
                         push(*item);

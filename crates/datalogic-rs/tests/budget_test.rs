@@ -572,3 +572,139 @@ mod custom {
         assert_eq!(err.tag(), "BudgetExceeded");
     }
 }
+
+// ---------------------------------------------------------------------------
+// Collection operators charge for the items they move
+// ---------------------------------------------------------------------------
+//
+// An operator whose work grows with the size of an argument charges one
+// operation per item it copies or examines, on top of the 1 the dispatcher
+// takes for its node. Without that, the work an accumulator does in a
+// `reduce` grows with the square of the input while the count grows
+// linearly, and a budget sized to stop a runaway rule never trips (#77).
+
+/// Items in each collection [`collections`] builds.
+const ITEMS: u64 = 50;
+
+/// `xs`: `ITEMS` integers. `obj`: `ITEMS` keys. `paths`: `ITEMS` path
+/// strings, none of which resolve. Plus small fixtures for the edge cases.
+fn collections() -> String {
+    let n = ITEMS as usize;
+    let xs: Vec<String> = (0..n).map(|i| i.to_string()).collect();
+    let obj: Vec<String> = (0..n).map(|i| format!(r#""k{i}": {i}"#)).collect();
+    let paths: Vec<String> = (0..n).map(|i| format!(r#""absent{i}""#)).collect();
+    format!(
+        r#"{{"xs": [{}], "obj": {{{}}}, "paths": [{}], "x": 3, "s": "hello",
+            "nested": [[1, 2], [3, 4], [5]], "holes": [null, 1, null, 2],
+            "empty": [], "empty_obj": {{}}}}"#,
+        xs.join(","),
+        obj.join(","),
+        paths.join(",")
+    )
+}
+
+/// Every collection operator's total charge over [`collections`], node
+/// costs included. The count is spelled out per case so a change to any
+/// one operator's pricing shows up as a diff against this table.
+#[test]
+fn every_collection_operator_charges_what_the_table_says() {
+    let n = ITEMS;
+    // (rule, expected total)
+    #[allow(unused_mut)]
+    let mut cases: Vec<(&str, u64)> = vec![
+        // merge: 1 per item of each array argument, nulls inside included
+        // (they are examined to be skipped). One level only: a nested array
+        // is one item.
+        (r#"{"merge": [{"var": "xs"}]}"#, 2 + n),
+        (r#"{"merge": [{"var": "xs"}, {"var": "xs"}]}"#, 3 + 2 * n),
+        (r#"{"merge": [{"var": "nested"}]}"#, 2 + 3),
+        (r#"{"merge": [{"var": "holes"}]}"#, 2 + 4),
+        (r#"{"merge": [{"var": "empty"}]}"#, 2),
+        // A scalar or null argument is pushed or skipped in constant time.
+        (r#"{"merge": [{"var": "x"}, {"var": "nothing"}]}"#, 3),
+        // in: an array haystack costs its length, charged up front the way
+        // iterators charge theirs, so a match at index 3 costs the same as
+        // no match at all.
+        (r#"{"in": [{"var": "x"}, {"var": "xs"}]}"#, 3 + n),
+        (r#"{"in": [-1, {"var": "xs"}]}"#, 2 + n),
+        (r#"{"in": [-1, {"var": "empty"}]}"#, 2),
+        // A string haystack is not priced per byte (yet).
+        (r#"{"in": ["ell", {"var": "s"}]}"#, 2),
+        // missing / missing_some: paths that come from data cost one each.
+        // Literal paths are bounded by the rule and cost nothing extra.
+        (r#"{"missing": {"var": "paths"}}"#, 2 + n),
+        (r#"{"missing": ["a", "b"]}"#, 1),
+        (r#"{"missing_some": [1, {"var": "paths"}]}"#, 2 + n),
+        (r#"{"missing_some": [1, ["a", "b"]]}"#, 1),
+    ];
+    #[cfg(feature = "ext-object")]
+    cases.extend([
+        (r#"{"keys": [{"var": "obj"}]}"#, 2 + n),
+        (r#"{"values": [{"var": "obj"}]}"#, 2 + n),
+        (r#"{"entries": [{"var": "obj"}]}"#, 2 + n),
+        (r#"{"keys": [{"var": "empty_obj"}]}"#, 2),
+        (r#"{"values": [{"var": "nothing"}]}"#, 2),
+    ]);
+    #[cfg(feature = "ext-array")]
+    cases.extend([
+        // A contiguous slice borrows the source: constant.
+        (r#"{"slice": [{"var": "xs"}, 1, 10]}"#, 2),
+        (r#"{"slice": [{"var": "xs"}]}"#, 2),
+        // A stepped slice copies: 1 per item produced.
+        (r#"{"slice": [{"var": "xs"}, 0, null, 2]}"#, 2 + n / 2),
+        (r#"{"slice": [{"var": "xs"}, null, null, -1]}"#, 2 + n),
+        (r#"{"slice": [{"var": "xs"}, 0, 10, 3]}"#, 2 + 4),
+    ]);
+
+    let data = collections();
+    let mut wrong = Vec::new();
+    for (rule, expected) in &cases {
+        let spent = ops(rule, &data);
+        if spent != *expected {
+            wrong.push(format!("{rule}: charged {spent}, table says {expected}"));
+        }
+    }
+    assert!(wrong.is_empty(), "\n{}", wrong.join("\n"));
+}
+
+/// The accumulator from #77: each step copies the whole accumulator, so
+/// the work is n(n+1)/2 items. The count has to see that.
+#[test]
+fn a_merge_accumulator_costs_its_quadratic_work() {
+    let n = 200u64;
+    let rule = r#"{"reduce": [{"var": "xs"}, {"merge": [{"var": "accumulator"}, [{"var": "current"}]]}, []]}"#;
+    let spent = ops(rule, &array_of(n as usize));
+    assert!(
+        spent >= n * (n + 1) / 2,
+        "charged {spent} for {} items copied",
+        n * (n + 1) / 2
+    );
+}
+
+#[test]
+fn a_budget_sized_for_linear_work_refuses_a_quadratic_accumulator() {
+    // 100 operations per input item is generous for any linear rule, and
+    // the accumulator copies 500,500 items over 1,000 inputs.
+    let n = 1_000;
+    let rule = r#"{"reduce": [{"var": "xs"}, {"merge": [{"var": "accumulator"}, [{"var": "current"}]]}, []]}"#;
+    let err = under_budget(rule, &array_of(n), 100 * n as u64).expect_err("should be refused");
+    assert_eq!(err.tag(), "BudgetExceeded");
+}
+
+#[cfg(feature = "ext-object")]
+#[test]
+fn an_operator_is_refused_by_its_own_charge_not_only_by_its_node() {
+    // `entries` over 100 keys: 2 nodes plus 100 rows. A budget that covers
+    // the nodes and not the rows has to refuse, and the exact total fits.
+    let n = 100u64;
+    let obj: Vec<String> = (0..n).map(|i| format!(r#""k{i}": {i}"#)).collect();
+    let data = format!(r#"{{"o": {{{}}}}}"#, obj.join(","));
+    let rule = r#"{"entries": [{"var": "o"}]}"#;
+    assert_eq!(
+        under_budget(rule, &data, n + 1)
+            .expect_err("one short")
+            .tag(),
+        "BudgetExceeded"
+    );
+    assert_eq!(under_budget(rule, &data, n + 2).expect("exact fit"), n + 2);
+}

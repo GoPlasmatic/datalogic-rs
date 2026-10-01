@@ -29,6 +29,26 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   from 583 µs to 20 µs through `Engine::eval`. What remains is the 8,192
   array slots.
 
+- **`merge` and other collection operators were charged one operation
+  however many items they moved (#77).** Under `ops_budget`, an
+  accumulator such as
+  `{"reduce": [xs, {"merge": [{"var": "accumulator"}, [{"var": "current"}]]}, []]}`
+  copied n(n+1)/2 items over n inputs while the count grew linearly, so
+  a budget meant to stop a runaway rule never tripped. Each of these now
+  charges, before the work, one operation per item it copies or examines:
+  `merge` per item of each array argument, `in` per item of an array
+  haystack, `missing` / `missing_some` per path of a path list that comes
+  from data, `keys` / `values` / `entries` per key, and `slice` with a step
+  other than 1 per item produced. A contiguous `slice` still borrows its
+  source and costs only its node. String operators are not yet priced by
+  length.
+
+  Rules using these operators now report higher counts. The count was
+  never stable across versions (see
+  [Operation Budget](./docs/src/advanced/operation-budget.md)), but a
+  budget calibrated tightly against 5.6.0 on such rules may need
+  re-metering.
+
 ### Changed
 
 - **`datavalue-rs` floor raised to 0.3.1**, the release that adds

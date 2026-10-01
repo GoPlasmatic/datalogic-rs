@@ -17,6 +17,9 @@ use bumpalo::Bump;
 
 /// Resolve the single object argument shared by all three operators.
 /// `Ok(None)` means "result is the empty array" (null or empty object).
+///
+/// Charges one operation per pair before the caller builds its result:
+/// each operator produces one item per pair.
 #[inline]
 fn resolve_object<'a>(
     args: &'a [CompiledNode],
@@ -29,7 +32,10 @@ fn resolve_object<'a>(
     }
     match engine.dispatch_node(&args[0], ctx, arena)? {
         DataValue::Object([]) => Ok(None),
-        DataValue::Object(pairs) => Ok(Some(pairs)),
+        DataValue::Object(pairs) => {
+            ctx.charge(pairs.len() as u64)?;
+            Ok(Some(pairs))
+        }
         DataValue::Null => Ok(None),
         _ => Err(crate::Error::invalid_args()),
     }

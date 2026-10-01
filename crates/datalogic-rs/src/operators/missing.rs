@@ -35,7 +35,7 @@ pub(crate) fn evaluate_missing<'a>(
 
     for arg in args {
         let av = engine.dispatch_node(arg, ctx, arena)?;
-        accumulate_dynamic_missing(av, lookup, &mut missing, arena);
+        accumulate_dynamic_missing(av, lookup, &mut missing, ctx, arena)?;
     }
 
     if missing.is_empty() {
@@ -66,19 +66,24 @@ pub(crate) fn evaluate_missing_some<'a>(
         bumpalo::collections::Vec::new_in(arena);
     let mut present_count: usize = 0;
 
+    // A path list from data is charged its full length up front, whether or
+    // not enough paths turn up present to stop early.
     let short_circuit = match paths_av {
-        DataValue::Array(items) => items.iter().any(|it| {
-            it.as_str().is_some_and(|p| {
-                check_path(
-                    p,
-                    lookup,
-                    &mut missing,
-                    &mut present_count,
-                    min_present,
-                    arena,
-                )
+        DataValue::Array(items) => {
+            ctx.charge(items.len() as u64)?;
+            items.iter().any(|it| {
+                it.as_str().is_some_and(|p| {
+                    check_path(
+                        p,
+                        lookup,
+                        &mut missing,
+                        &mut present_count,
+                        min_present,
+                        arena,
+                    )
+                })
             })
-        }),
+        }
         _ => false,
     };
 
@@ -131,7 +136,7 @@ pub(crate) fn evaluate_compiled_missing<'a>(
                 let buf = missing.get_or_insert_with(|| {
                     bumpalo::collections::Vec::with_capacity_in(data.args.len(), arena)
                 });
-                accumulate_dynamic_missing(av, lookup, buf, arena);
+                accumulate_dynamic_missing(av, lookup, buf, ctx, arena)?;
             }
         }
     }
@@ -194,12 +199,16 @@ pub(crate) fn evaluate_compiled_missing_some<'a>(
             let mut missing: bumpalo::collections::Vec<'a, DataValue<'a>> =
                 bumpalo::collections::Vec::new_in(arena);
             let mut present = 0usize;
+            // Charged like the runtime path list in `evaluate_missing_some`.
             let short = match paths_av {
-                DataValue::Array(items) => items.iter().any(|it| {
-                    it.as_str().is_some_and(|p| {
-                        check_path(p, lookup, &mut missing, &mut present, min_present, arena)
+                DataValue::Array(items) => {
+                    ctx.charge(items.len() as u64)?;
+                    items.iter().any(|it| {
+                        it.as_str().is_some_and(|p| {
+                            check_path(p, lookup, &mut missing, &mut present, min_present, arena)
+                        })
                     })
-                }),
+                }
                 _ => false,
             };
             if short || present >= min_present || missing.is_empty() {
@@ -230,15 +239,20 @@ fn check_path<'a>(
     false
 }
 
+/// Check a dynamic `missing` argument: one path string, or an array of them.
+/// An array is charged one operation per path before any is looked up: its
+/// length comes from data, so the node charge alone would not bound it.
 #[inline]
 fn accumulate_dynamic_missing<'a>(
     av: &'a DataValue<'a>,
     lookup: &'a DataValue<'a>,
     missing: &mut bumpalo::collections::Vec<'a, DataValue<'a>>,
+    ctx: &mut ContextStack<'a>,
     arena: &'a Bump,
-) {
+) -> Result<()> {
     match av {
         DataValue::Array(items) => {
+            ctx.charge(items.len() as u64)?;
             for it in *items {
                 if let Some(path) = it.as_str()
                     && !crate::arena::value::path_exists_str(lookup, path)
@@ -252,4 +266,5 @@ fn accumulate_dynamic_missing<'a>(
         }
         _ => {}
     }
+    Ok(())
 }

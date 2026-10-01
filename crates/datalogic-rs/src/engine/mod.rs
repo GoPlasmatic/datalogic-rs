@@ -650,6 +650,12 @@ impl Engine {
     ///   compile-time fast path evaluates a predicate inline instead of
     ///   dispatching its body: the iteration costs at least its input
     ///   length whichever path runs.
+    /// - **1 per item a collection operator copies or examines**, charged
+    ///   before the work: `merge` per item of each array argument, `in` per
+    ///   item of an array haystack, `missing` / `missing_some` per path of
+    ///   a path list from data, `keys` / `values` / `entries` per key, and
+    ///   a stepped `slice` per item produced. String operators are not yet
+    ///   priced by length.
     /// - **Whatever an operator charges for itself.** The tensor family
     ///   prices each operator at `max(elements read, elements produced)`,
     ///   before it allocates. A [`crate::CustomOperator`] that walks a
