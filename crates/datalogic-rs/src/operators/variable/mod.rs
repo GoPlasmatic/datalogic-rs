@@ -2,7 +2,9 @@
 //!
 //! Both `var` and `val` operator names normalize to `OpCode::Val`
 //! (see `OpCode::FromStr`); the var-specific arg shape (path + default
-//! fallback) is collapsed at compile time by `try_compile_var`. The runtime
+//! fallback) is collapsed at compile time by `try_compile_var`, which
+//! emits the internal `OpCode::VarDefault` for a computed path with a
+//! default. The runtime
 //! split lives here:
 //!
 //! - [`val`] — `evaluate_val` and the compiled fast path
@@ -24,7 +26,7 @@ mod val;
 
 #[cfg(feature = "ext-control")]
 pub(crate) use exists::{evaluate_exists, evaluate_exists_compiled};
-pub(crate) use val::{evaluate_val, evaluate_val_compiled};
+pub(crate) use val::{evaluate_val, evaluate_val_compiled, evaluate_var_default};
 
 /// Resolve a `[level]` + metadata-hint path (`"index"` / `"key"`) for the
 /// interpreted path, which only learns the path string at runtime. Used by

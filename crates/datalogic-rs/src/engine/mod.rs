@@ -842,7 +842,7 @@ impl Engine {
     /// [`String`], or a `serde_json::Value` (with `serde_json`).
     ///
     /// For a `serde_json::Value` result this is one conversion, where
-    /// [`Self::eval_into`]`::<serde_json::Value>` builds the value and then
+    /// `eval_into::<serde_json::Value>` (with `serde_json`) builds the value and then
     /// deserializes it into a second one.
     ///
     /// ```rust

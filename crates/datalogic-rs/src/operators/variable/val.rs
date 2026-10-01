@@ -343,7 +343,7 @@ fn eval_val_multiarg<'a>(
     Ok(cur)
 }
 
-/// Single-arg `val` where the path arg evaluated to an array. Distinguishes
+/// Path arg that evaluated to an array. Distinguishes
 /// `[[level], path...]` from a plain path-chain array. Empty array →
 /// current data (matches `{"var": []}` semantics).
 ///
@@ -351,16 +351,19 @@ fn eval_val_multiarg<'a>(
 /// construction, so `try_compile_val` always turns it into a `Var` node. A
 /// one-element array reaching this path is therefore a *computed* path, and
 /// keeps its path meaning — `[0]` is "index 0", not "level 0".
-fn eval_val_array_path<'a>(
+///
+/// `None` when the path misses, so `var` can tell a miss from a present
+/// `null`; [`eval_val_array_path`] reads a miss as `null`.
+fn lookup_array_path<'a>(
     path_av: &'a DataValue<'a>,
     arr_len: usize,
     ctx: &mut ContextStack<'a>,
     arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
+) -> Result<Option<&'a DataValue<'a>>> {
     use crate::arena::value::{access_path_str_ref, apply_path_element};
 
     if arr_len == 0 {
-        return Ok(current_data(ctx));
+        return Ok(Some(current_data(ctx)));
     }
     if arr_len >= 2 {
         let level_opt = array_get(path_av, 0).and_then(level_marker_from_array);
@@ -370,7 +373,7 @@ fn eval_val_array_path<'a>(
                     .unwrap_or_else(|| crate::arena::singletons::singleton_null());
                 let path_str = second.as_str().unwrap_or("");
                 if let Some(av) = metadata_hint_lookup(ctx, level, path_str, arena) {
-                    return Ok(av);
+                    return Ok(Some(av));
                 }
             }
 
@@ -380,14 +383,14 @@ fn eval_val_array_path<'a>(
                 let item = array_get(path_av, i)
                     .unwrap_or_else(|| crate::arena::singletons::singleton_null());
                 let Some(seg) = item.as_str() else {
-                    return Ok(crate::arena::singletons::singleton_null());
+                    return Ok(None);
                 };
                 match access_path_str_ref(cur, seg) {
                     Some(next) => cur = next,
-                    None => return Ok(crate::arena::singletons::singleton_null()),
+                    None => return Ok(None),
                 }
             }
-            return Ok(cur);
+            return Ok(Some(cur));
         }
     }
 
@@ -398,20 +401,35 @@ fn eval_val_array_path<'a>(
             array_get(path_av, i).unwrap_or_else(|| crate::arena::singletons::singleton_null());
         match apply_path_element(cur, elem) {
             Some(next) => cur = next,
-            None => return Ok(crate::arena::singletons::singleton_null()),
+            None => return Ok(None),
         }
     }
-    Ok(cur)
+    Ok(Some(cur))
 }
 
-/// Single-arg `val` where the path arg is a string or numeric scalar.
+/// [`lookup_array_path`], with a miss read as `null` (`val`'s answer).
+fn eval_val_array_path<'a>(
+    path_av: &'a DataValue<'a>,
+    arr_len: usize,
+    ctx: &mut ContextStack<'a>,
+    arena: &'a Bump,
+) -> Result<&'a DataValue<'a>> {
+    Ok(lookup_array_path(path_av, arr_len, ctx, arena)?
+        .unwrap_or_else(|| crate::arena::singletons::singleton_null()))
+}
+
+/// Path arg that is a string or numeric scalar.
 /// Strings get the reduce-shortcut probe (`current` / `accumulator` /
 /// dotted siblings) and the "direct key wins over dotted-path" rule;
 /// non-negative integers index a numeric key on current data.
-fn eval_val_scalar_path<'a>(
+///
+/// `None` when the path misses (any other scalar always misses), so `var`
+/// can tell a miss from a present `null`; [`eval_val_scalar_path`] reads a
+/// miss as `null`.
+fn lookup_scalar_path<'a>(
     path_av: &'a DataValue<'a>,
     ctx: &ContextStack<'a>,
-) -> Result<&'a DataValue<'a>> {
+) -> Option<&'a DataValue<'a>> {
     use crate::arena::context::ContextRef;
     use crate::arena::value::access_path_str_ref;
 
@@ -419,22 +437,20 @@ fn eval_val_scalar_path<'a>(
         if let ContextRef::Frame(frame) = ctx.current() {
             if s == "current" {
                 if let Some(av) = frame.get_reduce_current() {
-                    return Ok(av);
+                    return Some(av);
                 }
             } else if s == "accumulator" {
                 if let Some(av) = frame.get_reduce_accumulator() {
-                    return Ok(av);
+                    return Some(av);
                 }
             } else if let Some(rest) = s.strip_prefix("current.") {
                 if let Some(cur) = frame.get_reduce_current() {
-                    return Ok(access_path_str_ref(cur, rest)
-                        .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
+                    return access_path_str_ref(cur, rest);
                 }
             } else if let Some(rest) = s.strip_prefix("accumulator.")
                 && let Some(acc) = frame.get_reduce_accumulator()
             {
-                return Ok(access_path_str_ref(acc, rest)
-                    .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
+                return access_path_str_ref(acc, rest);
             }
         }
 
@@ -444,10 +460,9 @@ fn eval_val_scalar_path<'a>(
         if let DataValue::Object(pairs) = cur
             && let Some(av) = crate::arena::value::object_lookup_field(pairs, s)
         {
-            return Ok(av);
+            return Some(av);
         }
-        return Ok(access_path_str_ref(cur, s)
-            .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
+        return access_path_str_ref(cur, s);
     }
 
     if let Some(i) = path_av.as_i64()
@@ -457,13 +472,54 @@ fn eval_val_scalar_path<'a>(
         // Common small indices (0..100) hit the static `&'static str`
         // cache; only larger keys pay the heap `String` allocation.
         if let Some(static_key) = super::small_int_str(i) {
-            return Ok(access_path_str_ref(cur, static_key)
-                .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
+            return access_path_str_ref(cur, static_key);
         }
         let key = i.to_string();
-        return Ok(access_path_str_ref(cur, &key)
-            .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
+        return access_path_str_ref(cur, &key);
     }
 
-    Ok(crate::arena::singletons::singleton_null())
+    None
+}
+
+/// [`lookup_scalar_path`], with a miss read as `null` (`val`'s answer).
+fn eval_val_scalar_path<'a>(
+    path_av: &'a DataValue<'a>,
+    ctx: &ContextStack<'a>,
+) -> Result<&'a DataValue<'a>> {
+    Ok(lookup_scalar_path(path_av, ctx)
+        .unwrap_or_else(|| crate::arena::singletons::singleton_null()))
+}
+
+/// `var` with a path that is not a string or number literal (computed, or
+/// an array literal) and a default: `{"var": [path, default]}`. Resolves the
+/// path the way a one-argument `var` / `val` does and takes `default` only
+/// when the path misses, matching a literal-path `var`: a present `null`,
+/// `0`, `""` or `false` is returned as is. A `null` path reads the whole
+/// current data. Arguments after the default are ignored.
+///
+/// Before this existed the shape fell through to [`evaluate_val`], which
+/// reads every argument as a path segment, so the default became a second
+/// segment and the result was almost always `null`.
+pub(crate) fn evaluate_var_default<'a>(
+    args: &'a [CompiledNode],
+    ctx: &mut ContextStack<'a>,
+    engine: &crate::Engine,
+    arena: &'a Bump,
+) -> Result<&'a DataValue<'a>> {
+    let Some(path_node) = args.first() else {
+        return Ok(current_data(ctx));
+    };
+    let path_av = engine.dispatch_node(path_node, ctx, arena)?;
+    let found = if matches!(path_av, DataValue::Null) {
+        Some(current_data(ctx))
+    } else if let Some(arr_len) = array_len(path_av) {
+        lookup_array_path(path_av, arr_len, ctx, arena)?
+    } else {
+        lookup_scalar_path(path_av, ctx)
+    };
+    match (found, args.get(1)) {
+        (Some(av), _) => Ok(av),
+        (None, Some(default)) => engine.dispatch_node(default, ctx, arena),
+        (None, None) => Ok(crate::arena::singletons::singleton_null()),
+    }
 }

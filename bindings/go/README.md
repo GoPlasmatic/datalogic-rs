@@ -14,8 +14,8 @@ via cgo, linking `libdatalogic_c.a` statically, so end-user binaries
 carry no runtime shared-library dependency.
 
 Same rules, same semantics as the Rust crate: every binding runs the
-same core and passes the same 1,953-case conformance battery
-(64 suites). For the cross-runtime overview and the API-tier model
+same core and passes the same 1,974-case conformance battery
+(65 suites). For the cross-runtime overview and the API-tier model
 every binding implements, see the
 [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 

@@ -230,6 +230,7 @@ pub(super) fn dispatch_node_inner<'a>(
         simple: [
             // Variable / context
             Val => crate::operators::variable::evaluate_val,
+            VarDefault => crate::operators::variable::evaluate_var_default,
             #[cfg(feature = "ext-control")]
             Exists => crate::operators::variable::evaluate_exists,
 
