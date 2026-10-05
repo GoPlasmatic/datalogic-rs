@@ -439,9 +439,12 @@ grammar.
    fields, and a trailing `..BASE` starts from another preset instead:
    `{ on_empty_source: Some(singleton_empty_array), ..ITERATOR }`.
 
-   The shape is `eager(Extractor, ...)` for a fixed-arity operator
-   (arguments evaluated and coerced for you), `raw` for one that evaluates
-   its own arguments (lazy, control flow, variadic), `each` for an
+   The shape is `eager(Extractor, ...)` for an operator whose arguments
+   can be evaluated in order (coerced for you; a variadic tail is
+   `Rest<T>`, which evaluates each argument when the body asks, so
+   `{"??": [...]}` still stops at the first non-null), `raw` for one that
+   inspects its argument nodes or evaluates only some of them (`if`,
+   `val`, `throw`), `each` for an
    iterator over `args[0]`, or `iter` for an iterator that resolves its
    source itself (it receives the cached `IterArgKind`). An `each` row
    declares `on_empty_source`, the result for a null, missing or empty

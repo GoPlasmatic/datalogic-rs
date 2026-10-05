@@ -9,7 +9,7 @@
 //!
 //! - [`val`] — `evaluate_val` and the compiled fast path
 //!   (`evaluate_val_compiled`), plus the four-stage resolution helpers.
-//! - [`exists`] — `evaluate_exists` and `evaluate_exists_compiled`
+//! - [`exists`] — `exists` and `evaluate_exists_compiled`
 //!   (gated on the `ext-control` feature).
 //!
 //! Helpers shared by both flows live at module level here.
@@ -25,7 +25,7 @@ mod exists;
 mod val;
 
 #[cfg(feature = "ext-control")]
-pub(crate) use exists::{evaluate_exists, evaluate_exists_compiled};
+pub(crate) use exists::{evaluate_exists_compiled, exists};
 pub(crate) use val::{evaluate_val, evaluate_val_compiled, evaluate_var_default};
 
 /// Resolve a `[level]` + metadata-hint path (`"index"` / `"key"`) for the

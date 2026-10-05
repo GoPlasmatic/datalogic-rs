@@ -29,7 +29,9 @@
 //! ```
 //!
 //! - **`raw`**: `f(args, ctx, engine, arena, extra...)`. The body evaluates
-//!   its own arguments (lazy and control-flow operators, variadics). With
+//!   its own arguments: for an operator that inspects its argument nodes or
+//!   evaluates only some of them (`if`, `val`, `throw`), and the few rows
+//!   that measured faster this way (the comparisons, `and` / `or`). With
 //!   `[arity]`, the generated arm first applies the row's `on_missing` /
 //!   `on_extra` policy (see [`eager::raw`]), so the body can index any
 //!   position below the minimum; without it, the body takes any count.
@@ -418,6 +420,9 @@ operators! {
         VarDefault [] => raw variable::evaluate_var_default { reads_context: true, display: Some("var") };
 
         // ── comparison ───────────────────────────────────────────────────
+        // The comparisons and `and` / `or` stay `raw`: as `eager` rows
+        // (`eager(Any, Any, Rest<Any>)`) they measured 2 to 5% slower on
+        // their suites and `macro/eligibility` (phase 2, P6).
         Equals ["=="] => raw[2..] comparison::equals @ Eq(EqOp::LOOSE);
         StrictEquals ["==="] => raw[2..] comparison::equals @ Eq(EqOp::STRICT);
         NotEquals ["!="] => raw[2] comparison::not_equals @ Eq(EqOp::LOOSE_NE);
@@ -454,13 +459,13 @@ operators! {
         Min ["min"] => iter[1..] arithmetic::extremum @ Extremum(Extremum::Min) { fold: Fold::Never };
 
         // ── strings ──────────────────────────────────────────────────────
-        Concat ["cat"] => raw string::evaluate_concat { algebra: Some(Algebra::Concat), ..STRING };
+        Concat ["cat"] => eager(Rest<Any>) string::concat { algebra: Some(Algebra::Concat), ..STRING };
         Substr ["substr"] => eager(Str, Lenient<Int>, Lenient<Int>) string::substr
             { on_missing: Miss::Return(singleton_empty_string), ..STRING };
         In ["in"] => eager(Any, Any) string::in_ { on_missing: Miss::Return(singleton_false), ..STRING };
 
         // ── arrays ───────────────────────────────────────────────────────
-        Merge ["merge"] => raw array::evaluate_merge { fold: Fold::Never, cost: Cost::PerItem };
+        Merge ["merge"] => eager(Rest<Any>) array::merge { fold: Fold::Never, cost: Cost::PerItem };
         // A null, missing or empty source: `[]` for `filter` / `map`; for
         // the quantifiers, `all` is deliberately not vacuously true.
         Filter ["filter"] => each[2] array::evaluate_filter
@@ -478,9 +483,9 @@ operators! {
             { on_empty_source: Some(singleton_true), ..ITERATOR };
 
         // ── missing values ───────────────────────────────────────────────
-        Missing ["missing"] => raw missing::evaluate_missing
+        Missing ["missing"] => eager(Rest<Any>) missing::missing
             { reads_context: true, compile: Some(CompileHook::Args(hooks::missing)) };
-        MissingSome ["missing_some"] => raw[2] missing::evaluate_missing_some {
+        MissingSome ["missing_some"] => eager(Any, Any) missing::missing_some {
             reads_context: true,
             on_missing: Miss::Return(singleton_empty_array),
             compile: Some(CompileHook::Args(hooks::missing_some)),
@@ -545,12 +550,12 @@ operators! {
         // No path names the current data itself, which always exists (the
         // compile hook resolves `{"exists": []}` that way before this row's
         // gate is reached).
-        Exists ["exists"] => raw[1..] variable::evaluate_exists {
+        Exists ["exists"] => eager(Any, Rest<Any>) variable::exists {
             reads_context: true,
             on_missing: Miss::Return(singleton_true),
             compile: Some(CompileHook::Args(hooks::exists)),
         };
-        Coalesce ["??"] => raw control::evaluate_coalesce;
+        Coalesce ["??"] => eager(Rest<Any>) control::coalesce;
         Switch ["switch", "match"] => raw[2..=3] control::evaluate_switch
             { on_missing: Miss::Return(singleton_null) };
         Type ["type"] => eager(Any) inspect::type_ { on_missing: Miss::Return(inspect::type_of_nothing) };
@@ -607,6 +612,8 @@ operators! {
         // list (fractional, sem_ver, now, try, throw) and no soundness
         // argument was made for the flagd pair; a flag rule calls each
         // once, so there is nothing to gain from relaxing it.
+        // Stays `raw`: as `eager(Any, Rest<Any>)` it measured 9% slower on
+        // `flagd/fractional.json` (phase 2, P6).
         Fractional ["fractional"] => raw[1..] flagd::evaluate_fractional
             { reads_context: true, cse: Cse::Never, on_missing: Miss::Return(singleton_null) };
         // Pure given its arguments, so a fully literal call folds. Never

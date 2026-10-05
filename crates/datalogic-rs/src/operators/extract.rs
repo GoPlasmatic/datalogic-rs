@@ -24,7 +24,7 @@
 //! `operators::tensor`, with that family's error messages. Extractors are
 //! added when a row needs one: a numeric coercion under the engine's
 //! `NumericCoercionConfig` and an array extractor are not here yet,
-//! because every operator that reads those has variadic or
+//! because every operator that reads those (arithmetic, `slice`) has
 //! operator-specific rules that keep it a `raw` row.
 
 // Which extractors a build uses depends on which operator families it
@@ -353,6 +353,18 @@ impl<'a> IntoValue<'a> for f64 {
     #[inline(always)]
     fn into_value(self, cx: &mut Cx<'_, 'a>) -> &'a DataValue<'a> {
         NumberValue::from_f64(self).into_value(cx)
+    }
+}
+
+/// A collected array; empty becomes the shared empty-array singleton.
+impl<'a> IntoValue<'a> for bumpalo::collections::Vec<'a, DataValue<'a>> {
+    #[inline(always)]
+    fn into_value(self, cx: &mut Cx<'_, 'a>) -> &'a DataValue<'a> {
+        if self.is_empty() {
+            crate::arena::singletons::singleton_empty_array()
+        } else {
+            cx.alloc(DataValue::Array(self.into_bump_slice()))
+        }
     }
 }
 

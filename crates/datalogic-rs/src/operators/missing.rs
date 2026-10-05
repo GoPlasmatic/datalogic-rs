@@ -1,4 +1,4 @@
-use crate::{CompiledNode, Engine, Result};
+use crate::{Engine, Result};
 
 // =============================================================================
 // Arena-mode missing / missing_some
@@ -6,6 +6,8 @@ use crate::{CompiledNode, Engine, Result};
 // Path lookups walk `&DataValue` natively via `path_exists_*`.
 // =============================================================================
 
+use super::eager::Cx;
+use super::extract::{Any, RestArgs};
 use crate::arena::{ContextStack, DataValue};
 use bumpalo::Bump;
 
@@ -20,42 +22,37 @@ fn lookup_data<'a>(ctx: &ContextStack<'a>) -> &'a DataValue<'a> {
     ctx.current().data()
 }
 
-/// Native arena-mode `missing`. Accumulates missing-path strings directly
-/// into the arena.
+/// `missing`: the paths (strings, or arrays of them) not present in the
+/// current data. Accumulates missing-path strings directly into the arena.
+/// The compile hook turns most calls into `CompiledNode::Missing`; this
+/// body runs for the rest.
 #[inline]
-pub(crate) fn evaluate_missing<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    let lookup = lookup_data(ctx);
+pub(crate) fn missing<'a>(
+    cx: &mut Cx<'_, 'a>,
+    paths: RestArgs<'a, Any>,
+) -> Result<bumpalo::collections::Vec<'a, DataValue<'a>>> {
+    let lookup = lookup_data(cx.ctx);
     let mut missing: bumpalo::collections::Vec<'a, DataValue<'a>> =
-        bumpalo::collections::Vec::with_capacity_in(args.len(), arena);
+        bumpalo::collections::Vec::with_capacity_in(paths.len(), cx.arena);
 
-    for arg in args {
-        let av = engine.dispatch_node(arg, ctx, arena)?;
-        accumulate_dynamic_missing(av, lookup, &mut missing, ctx, arena)?;
+    for i in 0..paths.len() {
+        let av = paths.get(i, cx)?;
+        accumulate_dynamic_missing(av, lookup, &mut missing, cx.ctx, cx.arena)?;
     }
-
-    if missing.is_empty() {
-        return Ok(crate::arena::singletons::singleton_empty_array());
-    }
-    Ok(arena.alloc(DataValue::Array(missing.into_bump_slice())))
+    Ok(missing)
 }
 
-/// Native arena-mode `missing_some`.
+/// `missing_some`: `[]` when at least `min_av` of the listed paths are
+/// present, otherwise the missing ones. The compile hook turns most calls
+/// into `CompiledNode::MissingSome`; this body runs for the rest.
 #[inline]
-pub(crate) fn evaluate_missing_some<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn missing_some<'a>(
+    cx: &mut Cx<'_, 'a>,
+    min_av: &'a DataValue<'a>,
+    paths_av: &'a DataValue<'a>,
 ) -> Result<&'a DataValue<'a>> {
-    let min_av = engine.dispatch_node(&args[0], ctx, arena)?;
+    let (ctx, arena) = (&mut *cx.ctx, cx.arena);
     let min_present = min_av.as_i64().unwrap_or(1).max(0) as usize;
-
-    let paths_av = engine.dispatch_node(&args[1], ctx, arena)?;
     let lookup = lookup_data(ctx);
 
     let mut missing: bumpalo::collections::Vec<'a, DataValue<'a>> =

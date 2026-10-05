@@ -36,21 +36,21 @@ pub(crate) fn evaluate_if<'a>(
     Ok(crate::arena::singletons::singleton_null())
 }
 
+/// `??`: the first argument that is not `null`, evaluated left to right
+/// and stopping there; `null` if there is none.
 #[cfg(feature = "ext-control")]
 #[inline]
-pub(crate) fn evaluate_coalesce<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    for arg in args {
-        let v = engine.dispatch_node(arg, ctx, arena)?;
+pub(crate) fn coalesce<'a>(
+    cx: &mut crate::operators::eager::Cx<'_, 'a>,
+    values: crate::operators::extract::RestArgs<'a, crate::operators::extract::Any>,
+) -> Result<Option<&'a DataValue<'a>>> {
+    for i in 0..values.len() {
+        let v = values.get(i, cx)?;
         if !matches!(v, DataValue::Null) {
-            return Ok(v);
+            return Ok(Some(v));
         }
     }
-    Ok(crate::arena::singletons::singleton_null())
+    Ok(None)
 }
 
 #[cfg(feature = "ext-control")]

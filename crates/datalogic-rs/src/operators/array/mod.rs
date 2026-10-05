@@ -42,7 +42,7 @@ mod sort;
 // Operator entry points (consumed by the dispatcher).
 pub(crate) use filter::evaluate_filter;
 pub(crate) use map::evaluate_map;
-pub(crate) use merge::evaluate_merge;
+pub(crate) use merge::merge;
 pub(crate) use quantifiers::quantifier;
 pub(crate) use reduce::evaluate_reduce;
 

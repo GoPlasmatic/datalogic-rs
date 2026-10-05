@@ -5,12 +5,12 @@
 //! present. The whole module is gated on `feature = "ext-control"` via the
 //! `mod exists;` declaration in the parent.
 
-use bumpalo::Bump;
-
 use super::{array_get, array_len, current_data};
 use crate::Result;
 use crate::arena::{ContextStack, DataValue};
 use crate::node::PathSegment;
+use crate::operators::eager::Cx;
+use crate::operators::extract::{Any, RestArgs};
 
 /// Arena variant of `evaluate_exists_compiled`. Always returns a Bool singleton.
 #[inline]
@@ -65,74 +65,71 @@ fn object_step<'a>(av: &'a DataValue<'a>, key: &str) -> Option<&'a DataValue<'a>
     }
 }
 
-/// Arena-native `exists` operator (raw form). Mirrors value-mode semantics:
-/// only Object types resolve, the final segment is a `contains_key` probe so
-/// keys with `null` values still report as present.
+/// `exists`: whether the path is present in the current data. Mirrors
+/// value-mode semantics: only Object types resolve, the final segment is a
+/// `contains_key` probe so keys with `null` values still report as present.
+///
+/// One argument is a key or an array of segments; several are one segment
+/// each, evaluated in order until one is not a string. The compile hook
+/// turns literal paths into `CompiledNode::Exists`; this body runs for the
+/// rest.
 #[inline]
-pub(crate) fn evaluate_exists<'a>(
-    args: &'a [crate::CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &crate::Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    let cur = current_data(ctx);
+pub(crate) fn exists<'a>(
+    cx: &mut Cx<'_, 'a>,
+    first: &'a DataValue<'a>,
+    rest: RestArgs<'a, Any>,
+) -> Result<bool> {
+    let cur = current_data(cx.ctx);
 
-    if args.len() == 1 {
-        let arg = engine.dispatch_node(&args[0], ctx, arena)?;
-        if let Some(s) = arg.as_str() {
-            return Ok(crate::arena::singletons::singleton_bool(object_contains(
-                cur, s,
-            )));
+    if rest.is_empty() {
+        if let Some(s) = first.as_str() {
+            return Ok(object_contains(cur, s));
         }
-        if let Some(arr_len) = array_len(arg) {
-            if arr_len == 0 {
-                return Ok(crate::arena::singletons::singleton_false());
-            }
-            let mut walk = cur;
-            for i in 0..arr_len {
-                let elem =
-                    array_get(arg, i).unwrap_or_else(|| crate::arena::singletons::singleton_null());
-                let Some(seg) = elem.as_str() else {
-                    return Ok(crate::arena::singletons::singleton_false());
-                };
-                if i == arr_len - 1 {
-                    return Ok(crate::arena::singletons::singleton_bool(object_contains(
-                        walk, seg,
-                    )));
-                }
-                match object_step(walk, seg) {
-                    Some(next) => walk = next,
-                    None => return Ok(crate::arena::singletons::singleton_false()),
-                }
-            }
-            return Ok(crate::arena::singletons::singleton_true());
+        let Some(arr_len) = array_len(first) else {
+            return Ok(false);
+        };
+        if arr_len == 0 {
+            return Ok(false);
         }
-        return Ok(crate::arena::singletons::singleton_false());
+        let mut walk = cur;
+        for i in 0..arr_len {
+            let elem =
+                array_get(first, i).unwrap_or_else(|| crate::arena::singletons::singleton_null());
+            let Some(seg) = elem.as_str() else {
+                return Ok(false);
+            };
+            if i == arr_len - 1 {
+                return Ok(object_contains(walk, seg));
+            }
+            match object_step(walk, seg) {
+                Some(next) => walk = next,
+                None => return Ok(false),
+            }
+        }
+        return Ok(true);
     }
 
-    // Multiple args — each must evaluate to a string segment.
-    let mut paths: bumpalo::collections::Vec<'a, &'a DataValue<'a>> =
-        bumpalo::collections::Vec::with_capacity_in(args.len(), arena);
-    for arg in args {
-        let av = engine.dispatch_node(arg, ctx, arena)?;
-        if av.as_str().is_none() {
-            return Ok(crate::arena::singletons::singleton_false());
-        }
-        paths.push(av);
+    // Several arguments: each must evaluate to a string segment. A
+    // non-string one ends the call before later ones are evaluated.
+    let Some(head) = first.as_str() else {
+        return Ok(false);
+    };
+    let mut segments: bumpalo::collections::Vec<'a, &'a str> =
+        bumpalo::collections::Vec::with_capacity_in(rest.len() + 1, cx.arena);
+    segments.push(head);
+    for i in 0..rest.len() {
+        let Some(seg) = rest.get(i, cx)?.as_str() else {
+            return Ok(false);
+        };
+        segments.push(seg);
     }
+    let (last, init) = segments.split_last().expect("at least the head segment");
     let mut walk = cur;
-    let last = paths.len() - 1;
-    for (i, av) in paths.iter().enumerate() {
-        let seg = av.as_str().expect("checked above");
-        if i == last {
-            return Ok(crate::arena::singletons::singleton_bool(object_contains(
-                walk, seg,
-            )));
-        }
+    for seg in init {
         match object_step(walk, seg) {
             Some(next) => walk = next,
-            None => return Ok(crate::arena::singletons::singleton_false()),
+            None => return Ok(false),
         }
     }
-    Ok(crate::arena::singletons::singleton_true())
+    Ok(object_contains(walk, last))
 }

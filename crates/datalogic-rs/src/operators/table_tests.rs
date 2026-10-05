@@ -378,13 +378,17 @@ fn arity_is_derived_from_the_signature() {
     assert_eq!(OpCode::TensorPad.arity(), Arity::between(3, 4));
 }
 
-/// The declared arity of every `raw` and `iter` row, pinned. `ANY` means
-/// the body takes any count (it may still branch on it). Published in
-/// `Engine::operators()` and `operators.json`, so a change is deliberate.
+/// The arity of every row that is not a plain fixed-arity `eager` row,
+/// pinned, whatever shape implements it now: a row may move between shapes
+/// (`raw[2..]` to `eager(Any, Any, Rest<Any>)`) without changing the counts
+/// it publishes. `ANY` means the body takes any count (it may still branch
+/// on it). Published in `Engine::operators()` and `operators.json`.
 #[test]
-fn raw_and_iter_arity_is_pinned() {
-    let expected = |op: OpCode| -> Arity {
-        match op {
+fn declared_arity_is_pinned() {
+    let expected = |op: OpCode| -> Option<Arity> {
+        Some(match op {
+            OpCode::Val | OpCode::VarDefault | OpCode::Add | OpCode::Multiply => Arity::ANY,
+            OpCode::Concat | OpCode::Merge | OpCode::Missing => Arity::ANY,
             OpCode::Equals | OpCode::StrictEquals => Arity::at_least(2),
             OpCode::NotEquals | OpCode::StrictNotEquals => Arity::exactly(2),
             OpCode::GreaterThan
@@ -410,20 +414,83 @@ fn raw_and_iter_arity_is_pinned() {
             #[cfg(feature = "ext-control")]
             OpCode::Exists => Arity::at_least(1),
             #[cfg(feature = "ext-control")]
+            OpCode::Coalesce => Arity::ANY,
+            #[cfg(feature = "ext-control")]
             OpCode::Switch => Arity::between(2, 3),
             #[cfg(feature = "error-handling")]
             OpCode::Try => Arity::at_least(1),
+            #[cfg(feature = "error-handling")]
+            OpCode::Throw => Arity::ANY,
             #[cfg(feature = "flagd")]
             OpCode::Fractional => Arity::at_least(1),
-            _ => Arity::ANY,
-        }
+            _ => return None,
+        })
     };
     for &op in OpCode::ALL {
-        if op.catalogue_entry().shape.starts_with("eager") {
-            continue;
+        match expected(op) {
+            Some(arity) => assert_eq!(op.arity(), arity, "{op:?}"),
+            // Every other row is a fixed-arity `eager` row, whose arity the
+            // signature test covers.
+            None => assert!(
+                op.catalogue_entry().shape.starts_with("eager"),
+                "{op:?} needs a pinned arity"
+            ),
         }
-        assert_eq!(op.arity(), expected(op), "{op:?}");
     }
+}
+
+/// The rows that stay `raw`, pinned. Most inspect their argument nodes
+/// before (or instead of) evaluating them, so no extractor signature fits:
+/// `val` reads its path segments, `if` / `switch` / `try` evaluate only the
+/// arms they reach, `throw` builds its payload from a literal, the
+/// arithmetic operators reject a literal array argument, and `slice`
+/// returns for a null collection before evaluating its other arguments.
+/// The comparisons, `and` / `or` and `fractional` would fit an `eager`
+/// signature but measured slower as one (phase 2, P6); moving them needs a
+/// new benchmark result, not just a passing suite. Everything else is
+/// `eager`, `each` or `iter`.
+#[test]
+fn raw_rows_are_pinned() {
+    let mut raw: Vec<&str> = OpCode::ALL
+        .iter()
+        .filter(|op| op.catalogue_entry().shape == "raw")
+        .map(|op| op.catalogue_entry().variant)
+        .collect();
+    raw.sort_unstable();
+    let mut want = vec![
+        "Add",
+        "And",
+        "Divide",
+        "Equals",
+        "GreaterThan",
+        "GreaterThanEqual",
+        "If",
+        "LessThan",
+        "LessThanEqual",
+        "Modulo",
+        "Multiply",
+        "NotEquals",
+        "Or",
+        "StrictEquals",
+        "StrictNotEquals",
+        "Subtract",
+        "Val",
+        "VarDefault",
+    ];
+    if cfg!(feature = "ext-array") {
+        want.push("Slice");
+    }
+    if cfg!(feature = "ext-control") {
+        want.push("Switch");
+    }
+    if cfg!(feature = "error-handling") {
+        want.extend(["Throw", "Try"]);
+    }
+    if cfg!(feature = "flagd") {
+        want.push("Fractional");
+    }
+    want.sort_unstable();
+    assert_eq!(raw, want);
 }
 
 /// `{name: [null, null, ...]}` with `n` arguments.

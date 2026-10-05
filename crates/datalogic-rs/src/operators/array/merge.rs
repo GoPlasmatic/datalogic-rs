@@ -1,11 +1,12 @@
 //! `merge` — flatten args into a single array, skipping nulls.
 
-use crate::arena::{ContextStack, DataValue, bvec};
-use crate::{CompiledNode, Engine, Result};
-use bumpalo::Bump;
+use crate::Result;
+use crate::arena::{DataValue, bvec};
+use crate::operators::eager::Cx;
+use crate::operators::extract::{Any, RestArgs};
 
-/// Arena-mode `merge`. Flattens its args (each may itself be a nested arena
-/// op) into a single array, skipping nulls.
+/// `merge`: its arguments flattened into one array, skipping nulls (each
+/// argument may itself be a nested arena op).
 ///
 /// The result buffer is allocated lazily on the first non-null push so
 /// "merge with all-null args" and "merge with no args" return the
@@ -21,25 +22,23 @@ use bumpalo::Bump;
 /// one item, inside `reduce`) at a constant per step while it copies the
 /// whole accumulator each time (#77).
 #[inline]
-pub(crate) fn evaluate_merge<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
+pub(crate) fn merge<'a>(
+    cx: &mut Cx<'_, 'a>,
+    parts: RestArgs<'a, Any>,
+) -> Result<bumpalo::collections::Vec<'a, DataValue<'a>>> {
+    let arena = cx.arena;
     let mut results: Option<bumpalo::collections::Vec<'a, DataValue<'a>>> = None;
     let mut push = |item: DataValue<'a>| {
         results
-            .get_or_insert_with(|| bvec::<DataValue<'a>>(arena, args.len().max(1)))
+            .get_or_insert_with(|| bvec::<DataValue<'a>>(arena, parts.len().max(1)))
             .push(item);
     };
 
-    for arg in args {
-        let av = engine.dispatch_node(arg, ctx, arena)?;
-        match av {
+    for i in 0..parts.len() {
+        match parts.get(i, cx)? {
             // Direct arena Array (e.g. result of upstream arena filter/map).
             DataValue::Array(items) => {
-                ctx.charge(items.len() as u64)?;
+                cx.charge(items.len() as u64)?;
                 for item in items.iter() {
                     if !item.is_null() {
                         push(*item);
@@ -53,8 +52,7 @@ pub(crate) fn evaluate_merge<'a>(
         }
     }
 
-    match results {
-        Some(v) if !v.is_empty() => Ok(arena.alloc(DataValue::Array(v.into_bump_slice()))),
-        _ => Ok(crate::arena::singletons::singleton_empty_array()),
-    }
+    // No pushes: an empty `Vec` allocates nothing and converts to the
+    // shared empty-array singleton.
+    Ok(results.unwrap_or_else(|| bumpalo::collections::Vec::new_in(arena)))
 }

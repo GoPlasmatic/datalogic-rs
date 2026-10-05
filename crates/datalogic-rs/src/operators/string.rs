@@ -1,48 +1,50 @@
-use crate::{CompiledNode, Engine, Result};
 // =============================================================================
-// Arena-mode string operators
+// String operators
 // =============================================================================
 //
-// Pre-evaluate args via `dispatch_node` (so var lookups borrow), then
-// build the result. For string-producing ops, the result is allocated as
-// `&'a str` in the arena via `arena.alloc_str` — no heap `String`.
+// Every operator here is an `eager` row: its arguments arrive evaluated and
+// coerced. For string-producing ops, the result is allocated as `&'a str`
+// in the arena, never a heap `String`.
 
 use super::eager::Cx;
-use crate::arena::{ContextStack, DataValue, data_to_str};
-use bumpalo::Bump;
+use super::extract::{Any, RestArgs};
+use crate::Result;
+use crate::arena::{DataValue, data_to_str};
+#[cfg(feature = "ext-string")]
+use {crate::arena::ContextStack, bumpalo::Bump};
 
+/// `cat`: the string forms of every argument, concatenated; an array
+/// argument contributes each item's string form.
 #[inline]
-pub(crate) fn evaluate_concat<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn concat<'a>(
+    cx: &mut Cx<'_, 'a>,
+    parts: RestArgs<'a, Any>,
 ) -> Result<&'a DataValue<'a>> {
     // Build the concatenated string using a bumpalo String to avoid heap alloc.
     // Each piece is charged its bytes before it is appended, and an array
     // argument one per item on top, so an accumulator (`cat` of the
     // accumulator inside `reduce`) is charged for the copy it makes.
+    let arena = cx.arena;
     let mut buf = bumpalo::collections::String::new_in(arena);
-    for arg in args {
-        let av = engine.dispatch_node(arg, ctx, arena)?;
-        match av {
+    for i in 0..parts.len() {
+        match parts.get(i, cx)? {
             // For arrays, concat each item's string form.
             DataValue::Array(items) => {
-                ctx.charge(items.len() as u64)?;
+                cx.charge(items.len() as u64)?;
                 for it in *items {
                     let piece = data_to_str(it, arena);
-                    ctx.charge_bytes(piece.len())?;
+                    cx.charge_bytes(piece.len())?;
                     buf.push_str(piece);
                 }
             }
-            _ => {
+            av => {
                 let piece = data_to_str(av, arena);
-                ctx.charge_bytes(piece.len())?;
+                cx.charge_bytes(piece.len())?;
                 buf.push_str(piece);
             }
         }
     }
-    Ok(arena.alloc(DataValue::String(buf.into_bump_str())))
+    Ok(cx.alloc(DataValue::String(buf.into_bump_str())))
 }
 
 /// `substr(text, start?, length?)`: char-indexed substring. Negative
