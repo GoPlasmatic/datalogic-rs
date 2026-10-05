@@ -194,8 +194,12 @@ impl Drop for DepthGuard {
 /// `EvaluationConfig` rustdoc for arena-management and behaviour-tuning
 /// options respectively.
 pub struct Engine {
+    /// Identifies this engine to the rules it compiles: a compiled custom
+    /// operator call records the engine id and slot, and dispatch takes the
+    /// slot only on the same engine. Unique for the process's lifetime.
+    pub(super) id: u64,
     /// Custom `CustomOperator` implementations registered with the engine.
-    pub(super) custom_operators: HashMap<String, Box<dyn crate::CustomOperator>>,
+    pub(super) custom_operators: CustomOperators,
     /// Whether templating mode is enabled — multi-key objects compile
     /// to output-shaping templates and unknown operator keys pass through.
     #[cfg(feature = "templating")]
@@ -217,6 +221,56 @@ pub struct Engine {
 }
 
 mod dispatch;
+
+/// Source of [`Engine::id`].
+static NEXT_ENGINE_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// The custom operators registered on an engine, addressable by name and,
+/// for the rules the engine compiles, by slot.
+pub(super) struct CustomOperators {
+    ops: Vec<Box<dyn crate::CustomOperator>>,
+    slots: HashMap<String, u32>,
+}
+
+impl CustomOperators {
+    fn new(operators: HashMap<String, Box<dyn crate::CustomOperator>>) -> Self {
+        let mut ops = Vec::with_capacity(operators.len());
+        let mut slots = HashMap::with_capacity(operators.len());
+        for (name, op) in operators {
+            slots.insert(name, ops.len() as u32);
+            ops.push(op);
+        }
+        CustomOperators { ops, slots }
+    }
+
+    fn len(&self) -> usize {
+        self.ops.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.ops.is_empty()
+    }
+
+    /// The slot `name` is registered in.
+    pub(super) fn slot(&self, name: &str) -> Option<u32> {
+        self.slots.get(name).copied()
+    }
+
+    /// The operator registered as `name`.
+    pub(super) fn get(&self, name: &str) -> Option<&dyn crate::CustomOperator> {
+        self.slot(name).map(|slot| self.at(slot))
+    }
+
+    /// The operator in `slot`, which [`Self::slot`] returned on this engine.
+    #[inline]
+    pub(super) fn at(&self, slot: u32) -> &dyn crate::CustomOperator {
+        &*self.ops[slot as usize]
+    }
+
+    fn names(&self) -> impl Iterator<Item = &str> {
+        self.slots.keys().map(String::as_str)
+    }
+}
 
 /// Convert an `OwnedDataValue` literal to an arena-resident `DataValue`
 /// reference. Reached from the `dispatch_node` literal path for any
@@ -333,7 +387,8 @@ impl Engine {
         operators: HashMap<String, Box<dyn crate::CustomOperator>>,
     ) -> Self {
         Self {
-            custom_operators: operators,
+            id: NEXT_ENGINE_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            custom_operators: CustomOperators::new(operators),
             #[cfg(feature = "templating")]
             templating: _templating,
             #[cfg(feature = "templating")]
@@ -415,7 +470,7 @@ impl Engine {
     /// Operator registration is builder-only; this is a read-only check
     /// against the frozen set produced by [`crate::EngineBuilder`].
     pub fn has_custom_operator(&self, name: &str) -> bool {
-        self.custom_operators.contains_key(name)
+        self.custom_operators.slot(name).is_some()
     }
 
     /// What the custom operator registered as `name` declares about
@@ -426,12 +481,18 @@ impl Engine {
         self.custom_operators.get(name).map(|op| op.info())
     }
 
+    /// Where a call to custom operator `name` compiled on this engine finds
+    /// it: this engine's id and the operator's slot.
+    pub(crate) fn custom_operator_slot(&self, name: &str) -> Option<(u64, u32)> {
+        self.custom_operators.slot(name).map(|slot| (self.id, slot))
+    }
+
     /// Iterator over the names of every *custom* operator registered on
     /// this engine (built-ins are not included). Order is unspecified
     /// (HashMap iteration order). Useful for tooling, UIs, and tests
     /// that need to introspect what's available.
     pub fn custom_operator_names(&self) -> impl Iterator<Item = &str> {
-        self.custom_operators.keys().map(String::as_str)
+        self.custom_operators.names()
     }
 
     /// Iterator over every *built-in* operator name this build evaluates:

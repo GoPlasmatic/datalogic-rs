@@ -258,10 +258,13 @@ fn evaluate_custom_operator<'a>(
     arena: &'a bumpalo::Bump,
 ) -> crate::Result<&'a crate::arena::DataValue<'a>> {
     use crate::arena::DataValue;
-    let op = engine
-        .custom_operators
-        .get(&data.name)
-        .ok_or_else(|| Error::invalid_operator(data.name.clone()))?;
+    let op = match data.slot {
+        Some((engine_id, slot)) if engine_id == engine.id => engine.custom_operators.at(slot),
+        _ => engine
+            .custom_operators
+            .get(&data.name)
+            .ok_or_else(|| Error::invalid_operator(data.name.clone()))?,
+    };
     // The declared argument count, checked before any argument runs.
     let count = data.args.len();
     if count < data.info.min_args || data.info.max_args.is_some_and(|max| count > max) {

@@ -152,6 +152,7 @@ fn custom_operator_node(
         name: op_name.to_string(),
         args,
         info,
+        slot: engine.and_then(|e| e.custom_operator_slot(op_name)),
     }));
     if let Some(eng) = engine
         && fold

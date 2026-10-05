@@ -98,6 +98,12 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ### Changed
 
+- **A custom operator call no longer looks its operator up by name.** The
+  compiler records the operator's slot on the engine that compiled the
+  rule, and dispatch indexes it directly; a rule evaluated on another
+  engine still finds that engine's operator by name, as before. A rule
+  calling eight custom operators measured 181 ns per evaluation before and
+  75 ns after.
 - **`ErrorKind::BudgetExceeded` exists in every build.** The variant
   was compiled in only with the `budget` feature, so code outside
   datalogic had to match on `Error::tag() == "BudgetExceeded"`. It is now

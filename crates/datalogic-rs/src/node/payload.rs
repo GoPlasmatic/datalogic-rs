@@ -79,6 +79,10 @@ pub(crate) struct CustomOperatorData {
     /// ([`crate::CustomOperator::info`]); opaque when no operator of that
     /// name was registered.
     pub info: crate::CustomOperatorInfo,
+    /// The compiling engine's id and the operator's slot on it, so the call
+    /// skips the name lookup on that engine. Any other engine looks the
+    /// name up.
+    pub slot: Option<(u64, u32)>,
 }
 
 /// Data for a CSE memo wrapper (boxed inside CompiledNode to reduce enum
