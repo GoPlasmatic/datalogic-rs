@@ -63,6 +63,11 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   operator of the build answers to (aliases included), where the custom
   operator would never run, with a `ConfigurationError` naming the
   built-in. `add_operator` is unchanged.
+- **`Arc<T>` implements `CustomOperator`** (for any
+  `T: CustomOperator + ?Sized`, `Arc<dyn CustomOperator>` included), so
+  one operator instance and its state can be registered on several
+  engines, for example on every engine a host builds on hot reload,
+  without a wrapper type.
 - **`all-operators` feature** enables every operator family. The
   bindings and the benchmark now depend on it instead of listing the
   families one by one.

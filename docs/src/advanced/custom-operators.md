@@ -185,6 +185,27 @@ Only operators compiled into the build count, so without the `datetime`
 feature `now` is a free name. `Engine::builtin_operator_names()` lists the
 names that are taken.
 
+### One operator on several engines
+
+`Arc<T>` implements `CustomOperator`, so a host that rebuilds its engine
+(on hot reload, or one engine per tenant) can keep each operator in an
+`Arc` and register a clone on every builder. The engines share the one
+instance and its state:
+
+```rust
+let registry: Vec<(&str, Arc<dyn CustomOperator>)> = vec![
+    ("double", Arc::new(DoubleOperator)),
+];
+
+let build = || {
+    registry
+        .iter()
+        .fold(Engine::builder(), |b, (name, op)| b.add_operator(*name, Arc::clone(op)))
+        .build()
+};
+let engine = build();
+```
+
 ## Reading Argument Types
 
 `DataValue<'a>` is the arena-resident value tree, re-exported from the

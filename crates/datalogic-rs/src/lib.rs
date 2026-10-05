@@ -325,3 +325,20 @@ impl CustomOperator for Box<dyn CustomOperator> {
         (**self).evaluate(args, ctx, arena)
     }
 }
+
+// `Arc<T>` delegates the same way, so one operator instance (and any state
+// it holds) can be registered on several engines: a host that rebuilds its
+// engine on hot reload keeps its operators in a registry of
+// `Arc<dyn CustomOperator>` and hands each new builder a clone, with no
+// wrapper type of its own.
+impl<T: CustomOperator + ?Sized> CustomOperator for std::sync::Arc<T> {
+    #[inline]
+    fn evaluate<'a>(
+        &self,
+        args: &[&'a DataValue<'a>],
+        ctx: &mut operator::EvalContext<'_, 'a>,
+        arena: &'a bumpalo::Bump,
+    ) -> Result<&'a DataValue<'a>> {
+        (**self).evaluate(args, ctx, arena)
+    }
+}

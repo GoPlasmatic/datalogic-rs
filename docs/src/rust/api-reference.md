@@ -250,6 +250,11 @@ EngineBuilder::new()
 operator registered as `if` or `var` never runs. `try_add_operator`
 refuses such a name with a `ConfigurationError`.
 
+Both take a typed operator, a `Box<dyn CustomOperator>` or an
+`Arc<T: CustomOperator + ?Sized>`. An `Arc` lets one operator instance,
+and any state it holds, serve every engine a host builds, for example a
+registry of `Arc<dyn CustomOperator>` re-registered on each hot reload.
+
 `with_template_key_escape(prefix)` is unset by default. With it, the
 engine strips exactly one leading `prefix` from every template key and
 never resolves an escaped key as an operator, so `{"$type": ...}` emits the key
