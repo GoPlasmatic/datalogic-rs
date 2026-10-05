@@ -32,6 +32,10 @@
 //! [`crate::ParsedData`] once (`from_json`, `from_value` or `from_owned`)
 //! and pass the handle: each call then costs only what the rule does.
 
+use std::marker::PhantomData;
+use std::ops::Deref;
+use std::sync::Arc;
+
 use bumpalo::Bump;
 use datavalue::OwnedDataValue;
 
@@ -63,18 +67,56 @@ use crate::{Engine, EvalInput, Logic, Result};
 ///     session.reset();
 /// }
 /// ```
-pub struct Session<'engine> {
-    engine: &'engine Engine,
+///
+/// # Holding the engine
+///
+/// `E` is how the session holds its engine. [`Engine::session`] borrows it
+/// (`Session<'_>`, the default). A [`SharedSession`] holds an
+/// `Arc<Engine>` instead, so it is `'static + Send`: it can be stored in a
+/// struct, moved to another thread or held across an `.await` without
+/// tying it to the engine's lifetime. Both have the same methods.
+pub struct Session<'engine, E = &'engine Engine> {
+    engine: E,
     arena: Bump,
+    _engine: PhantomData<&'engine Engine>,
 }
 
-impl std::fmt::Debug for Session<'_> {
+/// A [`Session`] that holds its engine by `Arc`: `'static + Send`, with no
+/// lifetime to thread through the caller's types. Build one with
+/// [`SharedSession::new`] or `SharedSession::from(arc)`.
+///
+/// ```rust
+/// use std::sync::Arc;
+/// use datalogic_rs::{Engine, SharedSession};
+///
+/// let engine = Arc::new(Engine::new());
+/// let logic = engine.compile(r#"{"var": "x"}"#).unwrap();
+/// let mut session = SharedSession::new(engine);
+/// let handle = std::thread::spawn(move || session.eval_str(&logic, r#"{"x": 1}"#).unwrap());
+/// assert_eq!(handle.join().unwrap(), "1");
+/// ```
+pub type SharedSession = Session<'static, Arc<Engine>>;
+
+impl SharedSession {
+    /// A session over a shared engine. The session keeps the engine alive.
+    pub fn new(engine: Arc<Engine>) -> Self {
+        Session::with_engine(engine)
+    }
+}
+
+impl From<Arc<Engine>> for SharedSession {
+    fn from(engine: Arc<Engine>) -> Self {
+        SharedSession::new(engine)
+    }
+}
+
+impl<E: Deref<Target = Engine>> std::fmt::Debug for Session<'_, E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Print the engine handle plus the arena's currently-allocated byte
         // count — useful for tracking high-water marks across resets without
         // dumping every chunk's raw bytes.
         f.debug_struct("Session")
-            .field("engine", &self.engine)
+            .field("engine", &*self.engine)
             .field("arena_allocated_bytes", &self.arena.allocated_bytes())
             .finish_non_exhaustive()
     }
@@ -82,11 +124,25 @@ impl std::fmt::Debug for Session<'_> {
 
 impl<'engine> Session<'engine> {
     #[inline]
-    pub(crate) fn new(engine: &'engine Engine) -> Self {
+    pub(crate) fn borrowing(engine: &'engine Engine) -> Self {
+        Session::with_engine(engine)
+    }
+}
+
+impl<'engine, E: Deref<Target = Engine>> Session<'engine, E> {
+    #[inline]
+    fn with_engine(engine: E) -> Self {
         Self {
             engine,
             arena: Bump::new(),
+            _engine: PhantomData,
         }
+    }
+
+    /// The engine this session evaluates with.
+    #[inline]
+    pub fn engine(&self) -> &Engine {
+        &self.engine
     }
 
     /// Reset the session's arena, returning every allocated chunk to the

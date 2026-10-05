@@ -200,7 +200,7 @@ pub use parsed_data::ParsedData;
 pub use path::PathStep;
 pub use result_output::FromDataValue;
 pub use roots::{RootValue, Roots};
-pub use session::Session;
+pub use session::{Session, SharedSession};
 #[cfg(feature = "serde_json")]
 #[cfg_attr(docsrs, doc(cfg(feature = "serde_json")))]
 pub use top_level::eval_into;

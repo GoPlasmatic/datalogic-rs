@@ -373,7 +373,7 @@ impl Engine {
     /// ```
     #[inline]
     pub fn session(&self) -> crate::Session<'_> {
-        crate::Session::new(self)
+        crate::Session::borrowing(self)
     }
 
     /// Internal seam used by the builder. `pub(crate)` is enough — no

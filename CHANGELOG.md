@@ -59,6 +59,15 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   falsy, like an empty array, and a configured `TruthyEvaluator` applies.
   Tested against the engine's own `!!` for every representation and
   evaluator.
+- **`SharedSession`**, a `Session` that holds its engine by `Arc`, so it
+  is `'static + Send`: it can be a struct field, move to another thread or
+  live across an `.await` without borrowing the engine
+  (`SharedSession::new(Arc<Engine>)` or `From<Arc<Engine>>`). It is
+  `Session<'static, Arc<Engine>>`: `Session` gained a defaulted type
+  parameter for how it holds the engine, so `Session<'_>` still names the
+  borrowed form and both have the same methods. `Session::engine()` returns
+  the engine either way. A host that kept a thread-local arena because a
+  session borrowed the engine can keep a session per worker instead.
 - **`Error::code()`** returns an `ErrorCode`, the error's kind without its
   payload: one variant per `ErrorKind` variant, `Copy`, `Eq`, `Hash`,
   present in every build. `ErrorCode::as_str()` is the name `Error::tag()`
