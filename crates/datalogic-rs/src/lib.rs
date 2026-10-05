@@ -133,7 +133,8 @@ pub use builder::EngineBuilder;
 /// instead of an independent `bumpalo` dep to avoid major-version skew.
 pub use bumpalo;
 pub use config::{
-    DivisionByZeroHandling, EvaluationConfig, NanHandling, NumericCoercionConfig, TruthyEvaluator,
+    DivisionByZeroHandling, EvaluationConfig, MissingVar, NanHandling, NumericCoercionConfig,
+    TruthyEvaluator,
 };
 /// The `datavalue` crate, re-exported. `datalogic-rs` builds on `datavalue`'s
 /// owned and borrowed value types — accessing them through this module makes

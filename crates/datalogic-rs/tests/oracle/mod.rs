@@ -503,10 +503,22 @@ struct Inner {
     builtins: HashSet<&'static str>,
     templating: bool,
     escape: Option<char>,
+    /// `MissingVar::Error`: a read that finds nothing raises.
+    missing_var_error: bool,
 }
 
 impl Oracle {
     pub fn new(templating: bool, escape: Option<char>) -> Self {
+        Self::with_missing_var_error(templating, escape, false)
+    }
+
+    /// The oracle for an engine configured with `MissingVar::Error` when
+    /// `missing_var_error` holds.
+    pub fn with_missing_var_error(
+        templating: bool,
+        escape: Option<char>,
+        missing_var_error: bool,
+    ) -> Self {
         let delegate = Engine::builder()
             .with_constant_folding(false)
             .add_operator(SLOT, Slot)
@@ -517,6 +529,7 @@ impl Oracle {
             builtins,
             templating,
             escape,
+            missing_var_error,
         }))
     }
 
@@ -586,10 +599,14 @@ impl Inner {
         self.delegate.truthy_of(v)
     }
 
-    /// A read that found `found`: the value, or `null` for nothing.
-    /// `_name` names the path, for when a miss can be an error.
-    fn read(&self, found: Option<V>, _name: impl FnOnce() -> String) -> Result<V> {
-        Ok(found.unwrap_or(V::Null))
+    /// A read that found `found`: the value, or for nothing `null` or the
+    /// missing-variable error.
+    fn read(&self, found: Option<V>, name: impl FnOnce() -> String) -> Result<V> {
+        match found {
+            Some(v) => Ok(v),
+            None if self.missing_var_error => Err(Error::variable_not_found(name())),
+            None => Ok(V::Null),
+        }
     }
 
     // ----- compile-time checks ---------------------------------------------

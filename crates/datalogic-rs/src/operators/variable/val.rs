@@ -10,7 +10,7 @@ use bumpalo::Bump;
 
 use super::{
     CompiledVarSpec, array_get, array_len, current_data, default_or_null, frame_data_at_level,
-    level_marker_from_array, metadata_hint_lookup, path_str_from_data,
+    level_marker_from_array, metadata_hint_lookup, missed, path_str_from_data, value_path_name,
 };
 use crate::arena::{ContextStack, DataValue};
 use crate::node::{MetadataHint, PathSegment, ReduceHint, ScopeBinding};
@@ -74,7 +74,7 @@ pub(crate) fn evaluate_val_compiled<'a>(
         };
         return match resolved {
             Some(av) => Ok(av),
-            None => default_or_null(default_value, ctx, engine, arena),
+            None => default_or_null(default_value, segments, ctx, engine, arena),
         };
     }
 
@@ -186,7 +186,7 @@ fn resolve_reduce_hint<'a>(
             let resolved = crate::arena::value::traverse_segments(slot, &segments[1..]);
             Some(match resolved {
                 Some(av) => Ok(av),
-                None => default_or_null(default_value, ctx, engine, arena),
+                None => default_or_null(default_value, segments, ctx, engine, arena),
             })
         }
         ReduceHint::None => unreachable!(),
@@ -216,7 +216,7 @@ fn resolve_via_context_stack<'a>(
     }
     match crate::arena::value::traverse_segments(av, segments) {
         Some(child) => Ok(child),
-        None => default_or_null(default_value, ctx, engine, arena),
+        None => default_or_null(default_value, segments, ctx, engine, arena),
     }
 }
 
@@ -252,10 +252,14 @@ pub(crate) fn evaluate_val<'a>(
     if matches!(path_av, DataValue::Null) {
         return Ok(current_data(ctx));
     }
-    if let Some(arr_len) = array_len(path_av) {
-        return eval_val_array_path(path_av, arr_len, ctx, arena);
+    let found = match array_len(path_av) {
+        Some(arr_len) => lookup_array_path(path_av, arr_len, ctx, arena)?,
+        None => lookup_scalar_path(path_av, ctx),
+    };
+    match found {
+        Some(av) => Ok(av),
+        None => missed(engine, || value_path_name(path_av)),
     }
-    eval_val_scalar_path(path_av, ctx)
 }
 
 /// Multi-arg `val` form (`args.len() >= 2`). Evaluates `args[0]` once and
@@ -286,8 +290,10 @@ fn eval_val_multiarg<'a>(
             let path_str = path_str_from_data(path_av, arena);
             let frame_data = frame_data_at_level(ctx, level as isize)
                 .ok_or(Error::invalid_context_level(level as isize))?;
-            return Ok(access_path_str_ref(frame_data, path_str)
-                .unwrap_or_else(|| crate::arena::singletons::singleton_null()));
+            return match access_path_str_ref(frame_data, path_str) {
+                Some(av) => Ok(av),
+                None => missed(engine, || path_str.to_string()),
+            };
         }
 
         // Multi-arg path chain at a relative level.
@@ -302,7 +308,7 @@ fn eval_val_multiarg<'a>(
         for path in paths.iter() {
             match access_path_str_ref(cur, path) {
                 Some(next) => cur = next,
-                None => return Ok(crate::arena::singletons::singleton_null()),
+                None => return missed(engine, || paths.join(".")),
             }
         }
         return Ok(cur);
@@ -337,7 +343,12 @@ fn eval_val_multiarg<'a>(
     for elem in &evaluated[rest_start..] {
         match apply_path_element(cur, elem) {
             Some(next) => cur = next,
-            None => return Ok(crate::arena::singletons::singleton_null()),
+            None => {
+                return missed(engine, || {
+                    let parts: Vec<String> = evaluated.iter().map(|v| value_path_name(v)).collect();
+                    parts.join(".")
+                });
+            }
         }
     }
     Ok(cur)
@@ -407,17 +418,6 @@ fn lookup_array_path<'a>(
     Ok(Some(cur))
 }
 
-/// [`lookup_array_path`], with a miss read as `null` (`val`'s answer).
-fn eval_val_array_path<'a>(
-    path_av: &'a DataValue<'a>,
-    arr_len: usize,
-    ctx: &mut ContextStack<'a>,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    Ok(lookup_array_path(path_av, arr_len, ctx, arena)?
-        .unwrap_or_else(|| crate::arena::singletons::singleton_null()))
-}
-
 /// Path arg that is a string or numeric scalar.
 /// Strings get the reduce-shortcut probe (`current` / `accumulator` /
 /// dotted siblings) and the "direct key wins over dotted-path" rule;
@@ -481,15 +481,6 @@ fn lookup_scalar_path<'a>(
     None
 }
 
-/// [`lookup_scalar_path`], with a miss read as `null` (`val`'s answer).
-fn eval_val_scalar_path<'a>(
-    path_av: &'a DataValue<'a>,
-    ctx: &ContextStack<'a>,
-) -> Result<&'a DataValue<'a>> {
-    Ok(lookup_scalar_path(path_av, ctx)
-        .unwrap_or_else(|| crate::arena::singletons::singleton_null()))
-}
-
 /// `var` with a path that is not a string or number literal (computed, or
 /// an array literal) and a default: `{"var": [path, default]}`. Resolves the
 /// path the way a one-argument `var` / `val` does and takes `default` only
@@ -520,6 +511,6 @@ pub(crate) fn evaluate_var_default<'a>(
     match (found, args.get(1)) {
         (Some(av), _) => Ok(av),
         (None, Some(default)) => engine.dispatch_node(default, ctx, arena),
-        (None, None) => Ok(crate::arena::singletons::singleton_null()),
+        (None, None) => missed(engine, || value_path_name(path_av)),
     }
 }

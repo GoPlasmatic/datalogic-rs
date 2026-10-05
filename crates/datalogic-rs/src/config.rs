@@ -135,6 +135,32 @@ pub struct EvaluationConfig {
     /// which `try` observes but cannot recover from.
     #[cfg(feature = "budget")]
     pub ops_budget: Option<u64>,
+
+    /// What a `var` / `val` read that finds nothing evaluates to. Default:
+    /// [`MissingVar::Null`], the JSONLogic rule. [`MissingVar::Error`]
+    /// raises [`ErrorKind::VariableNotFound`](crate::ErrorKind::VariableNotFound)
+    /// instead, naming the path, so a typo in a path or a field absent from
+    /// the data fails rather than flowing on as `null`.
+    ///
+    /// Only reads count. A `var` with a default (`{"var": ["x", 0]}`) takes
+    /// its default; a field that is present and `null` is `null`;
+    /// `missing`, `missing_some` and `exists` still answer whether paths
+    /// exist; and iteration metadata (`{"val": [[1], "index"]}`) is `null`
+    /// outside an iterator. `try` catches the error like any other.
+    pub missing_var: MissingVar,
+}
+
+/// What a `var` / `val` read that finds nothing evaluates to. See
+/// [`EvaluationConfig::missing_var`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum MissingVar {
+    /// `null`, as JSONLogic specifies.
+    #[default]
+    Null,
+    /// An [`ErrorKind::VariableNotFound`](crate::ErrorKind::VariableNotFound)
+    /// error naming the path.
+    Error,
 }
 
 /// Defines how to handle NaN (Not a Number) scenarios in arithmetic operations
@@ -292,6 +318,7 @@ impl Default for EvaluationConfig {
             max_recursion_depth: 256,
             #[cfg(feature = "budget")]
             ops_budget: None,
+            missing_var: MissingVar::Null,
         }
     }
 }
@@ -407,6 +434,13 @@ impl EvaluationConfig {
         self
     }
 
+    /// Set [`Self::missing_var`].
+    #[must_use]
+    pub fn with_missing_var(mut self, value: MissingVar) -> Self {
+        self.missing_var = value;
+        self
+    }
+
     /// Create a configuration with safe arithmetic (ignores non-numeric values)
     pub fn safe_arithmetic() -> Self {
         Self {
@@ -464,6 +498,7 @@ impl EvaluationConfig {
     /// | `numeric_coercion` | object with bool keys `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
     /// | `max_recursion_depth` | integer ≥ 1 |
     /// | `ops_budget` | integer ≥ 1, or `null` for unbounded (`budget` feature) |
+    /// | `missing_var` | `"null"` \| `"error"` |
     ///
     /// # Example
     ///
@@ -556,6 +591,17 @@ impl EvaluationConfig {
                 }
                 "loose_equality_errors" => {
                     config.loose_equality_errors = expect_bool(key, value)?;
+                }
+                "missing_var" => {
+                    config.missing_var = match expect_str(key, value)? {
+                        "null" => MissingVar::Null,
+                        "error" => MissingVar::Error,
+                        other => {
+                            return Err(cfg_err(format!(
+                                "unknown missing_var {other:?} (expected \"null\" or \"error\")"
+                            )));
+                        }
+                    };
                 }
                 "truthy_evaluator" => {
                     config.truthy_evaluator = match expect_str(key, value)? {

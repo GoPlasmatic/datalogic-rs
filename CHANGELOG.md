@@ -59,6 +59,16 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   falsy, like an empty array, and a configured `TruthyEvaluator` applies.
   Tested against the engine's own `!!` for every representation and
   evaluator.
+- **`EvaluationConfig::missing_var`** chooses what a `var` / `val` read that
+  finds nothing evaluates to: `MissingVar::Null` (the default, JSONLogic's
+  rule) or `MissingVar::Error`, which raises `VariableNotFound` naming the
+  path, so a typo in a path fails instead of flowing on as `null`. A
+  default (`{"var": ["x", 0]}`), a present `null`, `missing`,
+  `missing_some`, `exists` and iteration metadata are not misses, and
+  `try` catches the error. The iterator fast paths that read fields
+  inline step aside in error mode so every read raises the same way. Also
+  settable from the bindings' JSON config as `"missing_var": "error"`. New
+  public type: `MissingVar`.
 - **`SharedSession`**, a `Session` that holds its engine by `Arc`, so it
   is `'static + Send`: it can be a struct field, move to another thread or
   live across an `.await` without borrowing the engine

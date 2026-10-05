@@ -172,17 +172,61 @@ fn array_get<'a>(av: &'a DataValue<'a>, i: usize) -> Option<&'a DataValue<'a>> {
 }
 
 /// Resolve the var's `default_value` when the primary lookup misses, or
-/// fall back to a null singleton.
+/// fall back to [`missed`].
 #[inline]
 fn default_or_null<'a>(
     default_value: Option<&'a CompiledNode>,
+    segments: &[PathSegment],
     ctx: &mut ContextStack<'a>,
     engine: &crate::Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     match default_value {
         Some(node) => engine.dispatch_node(node, ctx, arena),
-        None => Ok(crate::arena::singletons::singleton_null()),
+        None => missed(engine, || segments_name(segments)),
+    }
+}
+
+/// What a read that found nothing (and has no default) evaluates to:
+/// `null`, or under [`MissingVar::Error`](crate::MissingVar::Error) a
+/// `VariableNotFound` error naming the path `name` builds.
+#[inline]
+fn missed<'a>(engine: &crate::Engine, name: impl FnOnce() -> String) -> Result<&'a DataValue<'a>> {
+    if engine.config().missing_var == crate::MissingVar::Error {
+        return Err(missing_variable(name()));
+    }
+    Ok(crate::arena::singletons::singleton_null())
+}
+
+#[cold]
+#[inline(never)]
+fn missing_variable(name: String) -> crate::Error {
+    crate::Error::variable_not_found(name)
+}
+
+/// A compiled path, dotted, for an error message.
+fn segments_name(segments: &[PathSegment]) -> String {
+    let parts: Vec<&str> = segments
+        .iter()
+        .map(|seg| match seg {
+            PathSegment::Field(key) | PathSegment::FieldOrIndex(key, _) => &**key,
+        })
+        .collect();
+    parts.join(".")
+}
+
+/// An evaluated path element, or a list of them, dotted, for an error
+/// message.
+fn value_path_name(value: &DataValue<'_>) -> String {
+    match value {
+        DataValue::String(s) => (*s).to_string(),
+        DataValue::Number(n) => n.to_string(),
+        DataValue::Array(items) => items
+            .iter()
+            .map(value_path_name)
+            .collect::<Vec<_>>()
+            .join("."),
+        other => other.to_owned().to_json_string(),
     }
 }
 

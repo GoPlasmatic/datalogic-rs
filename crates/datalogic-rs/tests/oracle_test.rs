@@ -18,7 +18,7 @@ mod oracle;
 use std::collections::HashMap;
 use std::fs;
 
-use datalogic_rs::{Engine, Error, ErrorKind, ScopedArg};
+use datalogic_rs::{Engine, Error, ErrorKind, EvaluationConfig, MissingVar, ScopedArg};
 use datavalue::OwnedDataValue as V;
 use oracle::Oracle;
 use serde_json::Value;
@@ -51,18 +51,26 @@ fn run_engine(engine: &Engine, rule: &V, data: &V) -> Result<V, Error> {
 
 #[derive(Default)]
 struct Flavours {
+    /// `MissingVar::Error` for every engine and oracle.
+    missing_var_error: bool,
     engines: HashMap<(bool, Option<char>, bool), Engine>,
     oracles: HashMap<(bool, Option<char>), Oracle>,
 }
 
 impl Flavours {
     fn engine(&mut self, templating: bool, escape: Option<char>, folding: bool) -> &Engine {
+        let missing_var = if self.missing_var_error {
+            MissingVar::Error
+        } else {
+            MissingVar::Null
+        };
         self.engines
             .entry((templating, escape, folding))
             .or_insert_with(|| {
                 let mut b = Engine::builder()
                     .with_templating(templating)
-                    .with_constant_folding(folding);
+                    .with_constant_folding(folding)
+                    .with_config(EvaluationConfig::default().with_missing_var(missing_var));
                 if let Some(c) = escape {
                     b = b.with_template_key_escape(c);
                 }
@@ -71,9 +79,10 @@ impl Flavours {
     }
 
     fn oracle(&mut self, templating: bool, escape: Option<char>) -> &Oracle {
-        self.oracles
-            .entry((templating, escape))
-            .or_insert_with(|| Oracle::new(templating, escape))
+        let missing_var_error = self.missing_var_error;
+        self.oracles.entry((templating, escape)).or_insert_with(|| {
+            Oracle::with_missing_var_error(templating, escape, missing_var_error)
+        })
     }
 }
 
@@ -115,6 +124,17 @@ fn suite_cases() -> Vec<(String, usize, Value)> {
 #[test]
 fn every_suite_case_agrees_with_the_oracle() {
     suite_cases_agree(Flavours::default());
+}
+
+/// The same with `MissingVar::Error`, where every read that finds nothing
+/// raises: the suites' expectations do not apply, but the engine and the
+/// oracle must still agree.
+#[test]
+fn every_suite_case_agrees_with_the_oracle_when_a_miss_is_an_error() {
+    suite_cases_agree(Flavours {
+        missing_var_error: true,
+        ..Flavours::default()
+    });
 }
 
 fn suite_cases_agree(mut flavours: Flavours) {
@@ -508,6 +528,17 @@ thread_local! {
         Engine::new(),
         Engine::builder().with_constant_folding(false).build(),
     );
+    static MISSING_VAR_ERROR: (Oracle, Engine, Engine) = {
+        let config = || EvaluationConfig::default().with_missing_var(MissingVar::Error);
+        (
+            Oracle::with_missing_var_error(false, None, true),
+            Engine::builder().with_config(config()).build(),
+            Engine::builder()
+                .with_config(config())
+                .with_constant_folding(false)
+                .build(),
+        )
+    };
 }
 
 /// A rule in templating mode: an output object over generated
@@ -548,6 +579,14 @@ proptest! {
     #[test]
     fn generated_rules_agree_with_the_oracle(rule in arb_expr(Ctx::Root, 3), data in arb_data()) {
         ENGINES.with(|(oracle, folded, unfolded)| check_agrees(oracle, folded, unfolded, &rule, &data));
+    }
+
+    #[test]
+    fn generated_rules_agree_with_the_oracle_when_a_miss_is_an_error(
+        rule in arb_expr(Ctx::Root, 3),
+        data in arb_data(),
+    ) {
+        MISSING_VAR_ERROR.with(|(oracle, folded, unfolded)| check_agrees(oracle, folded, unfolded, &rule, &data));
     }
 
     #[test]

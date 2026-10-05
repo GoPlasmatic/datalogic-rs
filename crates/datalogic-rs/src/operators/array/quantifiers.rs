@@ -62,6 +62,7 @@ pub(crate) fn quantifier<'a>(
     // An indeterminate item (see `FastPredicate::evaluate_opt`) drops to
     // the general loop below, which is exact: fast evaluation is pure.
     if !ctx.is_tracing()
+        && engine.reads_fields_inline()
         && let Some(fast_pred) = FastPredicate::from_node(predicate)
     {
         let short_on = op.short_circuit_on();

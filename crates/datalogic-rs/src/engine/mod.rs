@@ -481,6 +481,14 @@ impl Engine {
         self.custom_operators.get(name).map(|op| op.info())
     }
 
+    /// Whether the iterator fast paths may read fields inline. They read a
+    /// missing field as `null` without dispatching a `var`, which is only
+    /// right while a miss is `null` ([`crate::MissingVar::Null`]).
+    #[inline(always)]
+    pub(crate) fn reads_fields_inline(&self) -> bool {
+        self.config.missing_var == crate::MissingVar::Null
+    }
+
     /// Where a call to custom operator `name` compiled on this engine finds
     /// it: this engine's id and the operator's slot.
     pub(crate) fn custom_operator_slot(&self, name: &str) -> Option<(u64, u32)> {

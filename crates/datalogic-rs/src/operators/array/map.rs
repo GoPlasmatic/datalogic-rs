@@ -37,6 +37,7 @@ pub(crate) fn evaluate_map<'a>(
     // Shape detection is shared with the reduce(map(...)) fusion — see
     // `FusedMapBody::detect`.
     if !ctx.is_tracing()
+        && engine.reads_fields_inline()
         && let Some(shape) = FusedMapBody::detect(body)
         && let Some(result) = map_fused(&src, &shape, arena)
     {
