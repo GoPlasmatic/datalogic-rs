@@ -29,11 +29,11 @@ implements, see the
 <dependency>
     <groupId>io.github.goplasmatic</groupId>
     <artifactId>datalogic</artifactId>
-    <version>5.7.1</version>
+    <version>5.8.0</version>
 </dependency>
 ```
 
-Gradle: `implementation("io.github.goplasmatic:datalogic:5.7.1")`
+Gradle: `implementation("io.github.goplasmatic:datalogic:5.8.0")`
 
 The binding speaks to the engine's C ABI directly through the Java FFM
 API (`java.lang.foreign`), with no JNA, no JNI glue, and no runtime
