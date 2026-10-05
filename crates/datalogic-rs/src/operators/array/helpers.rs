@@ -942,16 +942,17 @@ impl<'n> FieldCursor<'n> {
 }
 
 // =============================================================================
-// Exact arithmetic for the map fast paths
+// Exact arithmetic for the map / reduce fast paths
 // =============================================================================
 
 /// `a op b` with the binary arithmetic operators' representation rules,
 /// for one pair: integer math when both operands are exactly `i64` (whole
 /// floats included), promoting this result alone to `from_f64` on
-/// overflow; `from_f64` otherwise.
+/// overflow; `from_f64` otherwise. Generic over the two combines so each
+/// operation's loop gets them inlined (see [`with_arith`]).
 ///
-/// The `map` arithmetic fast paths compute element by element through
-/// this, never in a separate integer pass that restarts the whole
+/// Every map / reduce arithmetic fast path computes element by element
+/// through this, never in a separate integer pass that restarts the whole
 /// collection in `f64` on the first overflow: that restart rounded exact
 /// neighbours past 2^53 (`i64::MIN + 3` came back as `i64::MIN`), the bug
 /// class of issue #61. Deliberately not `NumberValue::add` / `sub` / `mul`,
@@ -973,13 +974,66 @@ pub(super) fn combine(
     }
 }
 
-/// [`combine`] for a runtime operation.
+/// [`combine`] for a runtime operation: a `match` per call. For a loop,
+/// use [`with_arith`], which matches once outside it.
 #[inline(always)]
 pub(super) fn arith_number(op: ArithOp, a: NumberValue, b: NumberValue) -> NumberValue {
-    match op {
-        ArithOp::Add => combine(a, b, i64::checked_add, |x, y| x + y),
-        ArithOp::Sub => combine(a, b, i64::checked_sub, |x, y| x - y),
-        ArithOp::Mul => combine(a, b, i64::checked_mul, |x, y| x * y),
+    with_arith!(op, |f| f(a, b))
+}
+
+/// Evaluate `$body` with `$int` bound to `op`'s checked integer operation
+/// (`fn(i64, i64) -> Option<i64>`) and `$float` to its `f64` operation,
+/// once per operation, so a loop inside `$body` does no dispatch on the
+/// operation per item. For loops that classify an operand up front (a
+/// literal known to be integral); everything else uses [`with_arith`].
+macro_rules! with_ops {
+    ($op:expr, |$int:ident, $float:ident| $body:expr) => {
+        match $op {
+            ArithOp::Add => {
+                let ($int, $float) = (i64::checked_add, |x: f64, y: f64| x + y);
+                $body
+            }
+            ArithOp::Sub => {
+                let ($int, $float) = (i64::checked_sub, |x: f64, y: f64| x - y);
+                $body
+            }
+            ArithOp::Mul => {
+                let ($int, $float) = (i64::checked_mul, |x: f64, y: f64| x * y);
+                $body
+            }
+        }
+    };
+}
+pub(super) use with_ops;
+
+/// Evaluate `$body` with `$f` bound to `op`'s exact combine
+/// (`Fn(NumberValue, NumberValue) -> NumberValue`), once per operation, so
+/// a loop inside `$body` does no dispatch on the operation per item.
+macro_rules! with_arith {
+    ($op:expr, |$f:ident| $body:expr) => {
+        $crate::operators::array::helpers::with_ops!($op, |int_op, float_op| {
+            let $f = |a: NumberValue, b: NumberValue| {
+                $crate::operators::array::helpers::combine(a, b, int_op, float_op)
+            };
+            $body
+        })
+    };
+}
+pub(super) use with_arith;
+
+/// `x op y` for an integer pair, promoting this result to `from_f64` on
+/// overflow: [`combine`]'s integer arm, for loops that already know both
+/// operands are integers.
+#[inline(always)]
+pub(super) fn combine_ints(
+    x: i64,
+    y: i64,
+    int_op: impl Fn(i64, i64) -> Option<i64>,
+    float_op: impl Fn(f64, f64) -> f64,
+) -> NumberValue {
+    match int_op(x, y) {
+        Some(r) => NumberValue::from_i64(r),
+        None => NumberValue::from_f64(float_op(x as f64, y as f64)),
     }
 }
 

@@ -55,15 +55,14 @@ pub(super) fn alloc_number<'a>(arena: &'a Bump, n: NumberValue) -> &'a DataValue
 /// `match a.checked_op(b) { Some(r) => from_i64(r), None => from_f64(...) }`
 /// pattern that appears across `+`, `-`, and `*`.
 ///
-/// `pub(crate)` rather than `pub(super)` because the `reduce` fast paths
-/// fold through it too. They must reproduce this exact representation
-/// decision — note the overflow arm is `from_f64`, which collapses a
-/// whole, exactly-i64-representable result back to `Integer`, unlike
-/// `NumberValue`'s own `add`/`sub`/`mul` which leave it `Float`. Folding
-/// through anything else silently diverges from general dispatch (see the
-/// issue-#61 note in `operators::array::reduce`).
+/// The overflow arm is `from_f64`, which collapses a whole,
+/// exactly-i64-representable result back to `Integer`, unlike
+/// `NumberValue`'s own `add`/`sub`/`mul` which leave it `Float`. The
+/// `map` / `reduce` fast paths reproduce this exact decision in
+/// `operators::array::helpers::combine`; `tests/fast_arith_test.rs` checks
+/// them against general dispatch.
 #[inline]
-pub(crate) fn try_int_op(
+pub(super) fn try_int_op(
     a: i64,
     b: i64,
     int_op: fn(i64, i64) -> Option<i64>,

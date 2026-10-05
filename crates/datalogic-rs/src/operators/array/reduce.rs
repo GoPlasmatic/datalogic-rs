@@ -9,7 +9,8 @@ use bumpalo::Bump;
 use datavalue::NumberValue;
 
 use super::helpers::{
-    FieldCursor, FusedMapBody, IterArgKind, IterSrc, ResolvedInput, resolve_iter_input,
+    FieldCursor, FusedMapBody, IterArgKind, IterSrc, ResolvedInput, arith_number,
+    resolve_iter_input, with_arith,
 };
 
 /// `reduce` — folds an array into a single value via an accumulator. Input
@@ -207,10 +208,11 @@ fn try_fused_reduce_map<'a>(
     Ok(run_fused_fold(&src, initial, &fold, &map_body, arena))
 }
 
-/// Representation to restart with after the integer mode aborts.
-/// The fused loop. Both the per-item map and the fold run through
-/// [`arith_number`], which applies the binary arithmetic operators' own
-/// representation rules — so the fused result matches what the unfused
+/// The fused loop. Both the per-item map and the fold run through the
+/// shared exact combine (`helpers::combine`, via [`arith_number`] for the
+/// map and `with_arith!` for the fold, whose operation and accumulator side
+/// are fixed outside the loop), which applies the binary arithmetic
+/// operators' own representation rules — so the fused result matches what the unfused
 /// pipeline computes through general dispatch by construction, rather
 /// than by a hand-maintained mirror of it.
 ///
@@ -251,16 +253,25 @@ fn run_fused_fold<'a>(
     let Some(mut acc) = initial.as_number().copied() else {
         return FusedOutcome::Bail;
     };
-    for i in 0..src.len() {
-        let item = src.get(i);
-        let Some(mapped) = mapped_number(map_body, &mut cursors, item, lit) else {
-            return FusedOutcome::Bail;
-        };
-        let Some(next) = fold_number(op, acc_is_lhs, acc, mapped) else {
-            return FusedOutcome::Bail;
-        };
-        acc = next;
-    }
+    // The fold's operation and accumulator side are fixed outside the loop
+    // (one loop per combination); the map body still dispatches per item.
+    with_arith!(op, |f| {
+        if acc_is_lhs {
+            for item in src.0 {
+                let Some(mapped) = mapped_number(map_body, &mut cursors, item, lit) else {
+                    return FusedOutcome::Bail;
+                };
+                acc = f(acc, mapped);
+            }
+        } else {
+            for item in src.0 {
+                let Some(mapped) = mapped_number(map_body, &mut cursors, item, lit) else {
+                    return FusedOutcome::Bail;
+                };
+                acc = f(mapped, acc);
+            }
+        }
+    });
     FusedOutcome::Done(alloc_number(arena, acc))
 }
 
@@ -320,64 +331,13 @@ fn mapped_number<'a>(
         FusedMapBody::ArithVarLit { op, var_is_lhs, .. } => {
             let v = *cursors.a.resolve(item)?.as_number()?;
             let (x, y) = if *var_is_lhs { (v, lit) } else { (lit, v) };
-            arith_number(*op, x, y)
+            Some(arith_number(*op, x, y))
         }
         FusedMapBody::ArithVarVar { op, .. } => {
             let a = *cursors.a.resolve(item)?.as_number()?;
             let b = *cursors.b.as_mut()?.resolve(item)?.as_number()?;
-            arith_number(*op, a, b)
+            Some(arith_number(*op, a, b))
         }
-    }
-}
-
-/// Checked integer combine for one of `+` / `-` / `*`; `None` signals
-/// overflow, which promotes to the float form.
-type IntOp = fn(i64, i64) -> Option<i64>;
-/// The matching float combine, used on overflow or a non-integral operand.
-type FloatOp = fn(f64, f64) -> f64;
-
-/// `a op b` with the binary arithmetic operators' exact representation
-/// rules: integer math whenever both operands land exactly in `i64`
-/// (which includes whole floats), promoting through
-/// [`try_int_op`](crate::operators::arithmetic::try_int_op) on overflow,
-/// and `from_f64` otherwise. Always `Some`; the `Option` lets the fast
-/// paths' callers chain it with their own bail-outs.
-///
-/// Deliberately *not* `NumberValue::add`/`sub`/`mul`: those return a bare
-/// `Float` on integer overflow, where the operators return
-/// `from_f64(..)`, which collapses a whole in-range result back to
-/// `Integer`. `reduce([1], {"-": [accumulator, current]}, i64::MIN)` is
-/// the case that separates them.
-#[inline(always)]
-fn arith_number(op: ArithOp, a: NumberValue, b: NumberValue) -> Option<NumberValue> {
-    // One `match` yielding both functions: each arm then specialises the
-    // fold step with direct calls. Fetching the two through separate
-    // matches left an indirect call per item (measured +4% on the reduce
-    // suite).
-    let (int_op, float_op): (IntOp, FloatOp) = match op {
-        ArithOp::Add => (i64::checked_add, |x, y| x + y),
-        ArithOp::Sub => (i64::checked_sub, |x, y| x - y),
-        ArithOp::Mul => (i64::checked_mul, |x, y| x * y),
-    };
-    Some(match (a.as_i64(), b.as_i64()) {
-        (Some(x), Some(y)) => crate::operators::arithmetic::try_int_op(x, y, int_op, float_op),
-        _ => NumberValue::from_f64(float_op(a.as_f64(), b.as_f64())),
-    })
-}
-
-/// One fold step, honouring which operand the accumulator sits on so
-/// non-commutative folds keep their order.
-#[inline(always)]
-fn fold_number(
-    op: ArithOp,
-    acc_is_lhs: bool,
-    acc: NumberValue,
-    cur: NumberValue,
-) -> Option<NumberValue> {
-    if acc_is_lhs {
-        arith_number(op, acc, cur)
-    } else {
-        arith_number(op, cur, acc)
     }
 }
 
@@ -457,10 +417,13 @@ fn detect_fold_shape(body: &CompiledNode) -> Option<FoldShape<'_>> {
 /// body and folds without per-item context push or body dispatch. Iterates
 /// `IterSrc` directly.
 ///
-/// Folds through [`arith_number`] for the same reason [`run_fused_fold`]
-/// does: it applies the arithmetic operators' representation rules, so the
-/// int/float decision at every step is identical to general dispatch
-/// instead of mirrored. The previous two-pass form (exact i64 while it
+/// Folds through the shared exact combine for the same reason
+/// [`run_fused_fold`] does: it applies the arithmetic operators'
+/// representation rules, so the int/float decision at every step is
+/// identical to general dispatch instead of mirrored. The operation and the
+/// accumulator's side are fixed outside the loop (`with_arith!`): routing
+/// both through a per-item dispatch made this loop's speed depend on code
+/// placement. The previous two-pass form (exact i64 while it
 /// fit, then a full restart in raw f64) diverged above 2^53, and did so
 /// without a map in play — issue #61 reproduced through this path too.
 fn try_reduce_fast_path<'a>(
@@ -478,10 +441,18 @@ fn try_reduce_fast_path<'a>(
     let mut current_field = FieldCursor::new(current_segments);
 
     let mut acc = initial.as_number().copied()?;
-    for i in 0..src.len() {
-        let item = src.get(i);
-        let cur = *current_field.resolve(item)?.as_number()?;
-        acc = fold_number(op, acc_is_lhs, acc, cur)?;
-    }
+    // One loop per (operation, accumulator side): the per-item step is
+    // straight-line arithmetic, with no dispatch on either.
+    with_arith!(op, |f| {
+        if acc_is_lhs {
+            for item in src.0 {
+                acc = f(acc, *current_field.resolve(item)?.as_number()?);
+            }
+        } else {
+            for item in src.0 {
+                acc = f(*current_field.resolve(item)?.as_number()?, acc);
+            }
+        }
+    });
     Some(alloc_number(arena, acc))
 }

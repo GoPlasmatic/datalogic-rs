@@ -5,13 +5,13 @@ use crate::node::PathSegment;
 use crate::operators::meta::ArithOp;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
-use datavalue::OwnedDataValue;
+use datavalue::{NumberValue, OwnedDataValue};
 use std::ops::ControlFlow;
 
-use super::helpers::arith_number;
 use super::helpers::{
     FieldCursor, FusedMapBody, Items, IterSrc, for_each_iter_array, for_each_iter_object,
 };
+use super::helpers::{combine_ints, with_arith, with_ops};
 
 /// `map`: the body's value for each item (or object pair). A scalar source
 /// is mapped as a one-item collection. Body fast path for var/field-extract
@@ -76,10 +76,11 @@ fn map_fused<'a>(
 /// dominant `{*: [{val:[]}, 2]}` style of arithmetic-with-literal map
 /// bodies seen in real workloads.
 ///
-/// Each element goes through [`arith_number`], so results match the
-/// arithmetic operators exactly. Returns `None` if the literal or any value
-/// is not a number, or a field is missing: the caller falls through to the
-/// general path, which owns coercion.
+/// Each element goes through [`combine`](super::helpers::combine) with the operation and operand
+/// order fixed outside the loop, so results match the arithmetic
+/// operators exactly. Returns `None` if the literal or any value is not a
+/// number, or a field is missing: the caller falls through to the general
+/// path, which owns coercion.
 #[inline]
 fn map_arith_var_lit<'a>(
     src: &IterSrc<'a>,
@@ -90,12 +91,45 @@ fn map_arith_var_lit<'a>(
     arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
     let lit = *lit_value.as_number()?;
-    let mut field = FieldCursor::new(var_segs);
+    let lit_f = lit.as_f64();
+    // The literal is classified once: an integral one leaves each element a
+    // single `as_i64` check from exact integer math (the float operation
+    // only runs for a non-integer element or an overflow); a fractional one
+    // makes every element float, exactly as `combine` would decide.
+    with_ops!(op, |int_op, float_op| match (lit.as_i64(), var_is_lhs) {
+        (Some(li), true) => map_numbers(src, var_segs, arena, |v| match v.as_i64() {
+            Some(x) => combine_ints(x, li, int_op, float_op),
+            None => NumberValue::from_f64(float_op(v.as_f64(), lit_f)),
+        }),
+        (Some(li), false) => map_numbers(src, var_segs, arena, |v| match v.as_i64() {
+            Some(x) => combine_ints(li, x, int_op, float_op),
+            None => NumberValue::from_f64(float_op(lit_f, v.as_f64())),
+        }),
+        (None, true) => map_numbers(src, var_segs, arena, |v| {
+            NumberValue::from_f64(float_op(v.as_f64(), lit_f))
+        }),
+        (None, false) => map_numbers(src, var_segs, arena, |v| {
+            NumberValue::from_f64(float_op(lit_f, v.as_f64()))
+        }),
+    })
+}
+
+/// The array of `step(value)` over each item's numeric value; `None`
+/// (abandoning the fast path) on a missing field or a non-number. The
+/// cursor and the result buffer are locals of this loop, not borrowed from
+/// the caller, so they stay in registers across the pushes.
+#[inline(always)]
+fn map_numbers<'a>(
+    src: &IterSrc<'a>,
+    segments: &[PathSegment],
+    arena: &'a Bump,
+    step: impl Fn(NumberValue) -> NumberValue,
+) -> Option<&'a DataValue<'a>> {
+    let mut field = FieldCursor::new(segments);
     let mut results = bvec::<DataValue<'a>>(arena, src.len());
     for item in src.0 {
         let v = *field.resolve(item)?.as_number()?;
-        let (a, b) = if var_is_lhs { (v, lit) } else { (lit, v) };
-        results.push(DataValue::Number(arith_number(op, a, b)));
+        results.push(DataValue::Number(step(v)));
     }
     Some(arena.alloc(DataValue::Array(results.into_bump_slice())))
 }
@@ -119,11 +153,13 @@ fn map_arith_var_var<'a>(
     let mut a_field = FieldCursor::new(a_segs);
     let mut b_field = FieldCursor::new(b_segs);
     let mut results = bvec::<DataValue<'a>>(arena, src.len());
-    for item in src.0 {
-        let a = *a_field.resolve(item)?.as_number()?;
-        let b = *b_field.resolve(item)?.as_number()?;
-        results.push(DataValue::Number(arith_number(op, a, b)));
-    }
+    with_arith!(op, |f| {
+        for item in src.0 {
+            let a = *a_field.resolve(item)?.as_number()?;
+            let b = *b_field.resolve(item)?.as_number()?;
+            results.push(DataValue::Number(f(a, b)));
+        }
+    });
     Some(arena.alloc(DataValue::Array(results.into_bump_slice())))
 }
 

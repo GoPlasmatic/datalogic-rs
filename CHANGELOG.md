@@ -93,6 +93,12 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   items: `{">": [{"var": ""}, 500]}` filters in 1.17 µs (was 3.2 µs, or
   6.0 µs in some builds of the same code), full `all` / `some` scans are
   3.7 to 3.9 times faster, and comparisons on a field are 26 to 31% faster.
+- **`map` and `reduce` arithmetic fast paths fix their operation outside
+  the loop.** Over 1,000 items: `reduce` with `{"+": [{"var":
+  "current.score"}, {"var": "accumulator"}]}` is 21% faster, a fused
+  `reduce` over `map` 9 to 16%, `map` with two fields 13% and with a
+  fractional literal 38%; the remaining shapes are flat to 5% faster. The
+  timings are now the same across builds of the same code.
 
 ## [5.7.1] - 2026-10-01
 
