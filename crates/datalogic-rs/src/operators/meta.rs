@@ -1,9 +1,10 @@
 //! Declared facts about each built-in operator, and the rules that derive
 //! every optimizer classification from them.
 //!
-//! Each row of the operator table ([`super::table`]) carries one [`OpMeta`],
-//! written with struct-update syntax over a preset:
-//! `OpMeta { cost: Cost::Bytes, ..PURE }`. The fields are *declared* facts
+//! Each row of the operator table ([`super::table`]) carries one [`OpMeta`]:
+//! its family's preset (`PURE`, `STRING`, `ITERATOR`, `TENSOR`), with the
+//! fields the row writes in braces overriding it
+//! (`{ cost: Cost::Node, on_extra: Extra::InvalidArgs }`). The fields are *declared* facts
 //! (does it read the context? push a frame? have an effect?). Nothing here
 //! is a per-operator list: the scope pass, the CSE pass and constant folding
 //! all ask the derivation methods on [`OpMeta`], so a new row is classified
@@ -214,6 +215,11 @@ pub(crate) enum Algebra {
     Extremum(Extremum),
     /// `all`, `some`, `none`.
     Quant(Quant),
+    /// `!`, `!!`.
+    Truth(Truth),
+    /// `cat`: string concatenation, associative, so adjacent literal
+    /// arguments may be joined at compile time.
+    Concat,
 }
 
 /// An equality comparison.
@@ -268,6 +274,35 @@ impl Logic {
     #[inline(always)]
     pub(crate) const fn absorbing(self) -> bool {
         matches!(self, Logic::Or)
+    }
+}
+
+/// A truthiness operator: `!` (negated) or `!!` (as is).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Truth {
+    Not,
+    Bool,
+}
+
+impl Truth {
+    /// The argument's truthiness, negated for `!`.
+    #[inline(always)]
+    pub(crate) const fn apply(self, truthy: bool) -> bool {
+        match self {
+            Truth::Not => !truthy,
+            Truth::Bool => truthy,
+        }
+    }
+
+    /// `self(inner(x))` as one operator: it negates when exactly one of
+    /// the two does (`!(!x)` is `!!x`, `!(!!x)` is `!x`).
+    #[inline]
+    pub(crate) const fn compose(self, inner: Truth) -> Truth {
+        if matches!(self, Truth::Not) != matches!(inner, Truth::Not) {
+            Truth::Not
+        } else {
+            Truth::Bool
+        }
     }
 }
 
@@ -412,6 +447,12 @@ pub(crate) const PURE: OpMeta = OpMeta {
     algebra: None,
     compile: None,
     display: None,
+};
+
+/// A string operator: its work is proportional to the bytes it reads.
+pub(crate) const STRING: OpMeta = OpMeta {
+    cost: Cost::Bytes,
+    ..PURE
 };
 
 /// An iterator: `args[0]` is the source and `args[1]` the per-element

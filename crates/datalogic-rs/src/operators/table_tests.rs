@@ -102,7 +102,7 @@ fn iterators_are_iter_rows() {
 /// its algebra is a deliberate edit here too. Every row not listed has none.
 #[test]
 fn algebra_is_pinned() {
-    use super::meta::{Algebra as A, ArithOp, DivOp, EqOp, Extremum, Logic, OrdOp, Quant};
+    use super::meta::{Algebra as A, ArithOp, DivOp, EqOp, Extremum, Logic, OrdOp, Quant, Truth};
     let expected = |op: OpCode| -> Option<A> {
         Some(match op {
             OpCode::Equals => A::Eq(EqOp::LOOSE),
@@ -113,6 +113,9 @@ fn algebra_is_pinned() {
             OpCode::GreaterThanEqual => A::Ord(OrdOp::Ge),
             OpCode::LessThan => A::Ord(OrdOp::Lt),
             OpCode::LessThanEqual => A::Ord(OrdOp::Le),
+            OpCode::Not => A::Truth(Truth::Not),
+            OpCode::BoolCast => A::Truth(Truth::Bool),
+            OpCode::Concat => A::Concat,
             OpCode::And => A::Logic(Logic::And),
             OpCode::Or => A::Logic(Logic::Or),
             OpCode::Add => A::Arith(ArithOp::Add),
@@ -183,6 +186,37 @@ fn each_rows_short_circuit_empty_sources() {
         checked += 1;
     }
     assert!(checked >= 5, "only {checked} rows checked");
+}
+
+/// Every boolean-combinator row (`and`, `or`, `!`, `!!`, found by their
+/// algebra) over fast-predicate leaves is itself cached as a fast predicate.
+#[test]
+fn combinator_predicates_take_the_fast_path() {
+    use super::meta::Algebra;
+    let engine = Engine::new();
+    let leaf = r#"{">": [{"var": "a"}, 1]}"#;
+    let mut checked = 0;
+    for &op in OpCode::ALL {
+        let args = match op.meta().algebra {
+            Some(Algebra::Logic(_)) => format!("[{leaf}, {leaf}]"),
+            Some(Algebra::Truth(_)) => format!("[{leaf}]"),
+            _ => continue,
+        };
+        let rule = format!(
+            r#"{{"filter": [{{"var": "xs"}}, {{"{}": {args}}}]}}"#,
+            op.as_str()
+        );
+        let logic = engine.compile(rule.as_str()).unwrap();
+        let CompiledNode::BuiltinOperator { args, .. } = &logic.root else {
+            panic!("{rule} did not compile to an operator node");
+        };
+        let CompiledNode::BuiltinOperator { predicate_hint, .. } = &args[1] else {
+            panic!("{rule}: predicate is not an operator node");
+        };
+        assert!(predicate_hint.is_some(), "{rule}: no fast predicate");
+        checked += 1;
+    }
+    assert_eq!(checked, 4);
 }
 
 /// Every comparison row's `{op: [var, literal]}` predicate is cached as a

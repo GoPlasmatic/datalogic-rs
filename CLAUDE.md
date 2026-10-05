@@ -67,7 +67,8 @@ are authoritative; link to them.
   JSONLOGIC_TEST_FILE=tests/suites/arithmetic/plus.json \
     cargo test -p datalogic-rs --all-features --test test_jsonlogic -- --nocapture
   ```
-- **Adding an operator?** One row in `operators/table.rs`, one function
+- **Adding an operator?** One row in `operators/table.rs` (metadata in
+  braces over the family's preset, `{ cost: Cost::Node }`), one function
   under `operators/<category>/`, one JSON suite under `tests/suites/`.
   OpCode, names, dispatch and the fold/CSE/scope classification are
   generated from the row. See the canonical step-by-step in

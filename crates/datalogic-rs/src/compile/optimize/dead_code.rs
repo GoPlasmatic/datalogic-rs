@@ -10,6 +10,7 @@
 use crate::Engine;
 use crate::OpCode;
 use crate::node::CompiledNode;
+use crate::operators::meta::Algebra;
 
 use super::helpers::is_truthy_literal;
 
@@ -23,12 +24,13 @@ pub(crate) fn eliminate(node: CompiledNode, engine: &Engine) -> (CompiledNode, b
         CompiledNode::BuiltinOperator {
             id, opcode, args, ..
         } => {
-            let rewritten = match opcode {
-                OpCode::If => eliminate_if(*id, args, engine),
-                // `and` short-circuits on a falsy literal (absorbing = false);
-                // `or` short-circuits on a truthy literal (absorbing = true).
-                OpCode::And => eliminate_bool_chain(*id, args, engine, false, OpCode::And),
-                OpCode::Or => eliminate_bool_chain(*id, args, engine, true, OpCode::Or),
+            let rewritten = match (opcode, opcode.algebra()) {
+                (OpCode::If, _) => eliminate_if(*id, args, engine),
+                // A short-circuiting chain (`and`, `or`): its absorbing
+                // literal ends it, its identity literal is stripped.
+                (_, Some(Algebra::Logic(logic))) => {
+                    eliminate_bool_chain(*id, args, engine, logic.absorbing(), *opcode)
+                }
                 _ => None,
             };
             match rewritten {

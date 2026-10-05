@@ -50,6 +50,11 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   two-operand nodes. `switch` / `match` accept at most a value, the case
   list and a default, as the engine reads. Found by the registry test
   against the catalogue's new argument counts.
+- **Nested `!` / `!!` always collapse to one operator.** The optimizer
+  already rewrote `!(!x)` to `!!x` and `!!(!!x)` to `!!x`; it now also
+  rewrites `!(!!x)` and `!!(!x)` to `!x`. Results are unchanged; a rule
+  with that shape shows the shorter form in `Logic::to_json()` and in
+  traces.
 - **Tensor error precedence.** When a tensor operator call has two
   problems, a different one may now be reported: a missing argument is
   reported before any argument is evaluated, and an error raised while

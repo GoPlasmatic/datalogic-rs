@@ -19,8 +19,8 @@
 //! # Row grammar
 //!
 //! ```text
-//! family Name (cfg-predicate) {
-//!     Variant ["name", "alias", ...] => shape impl::path [@ Kind(payload)], OpMeta-expr;
+//! family Name (cfg-predicate) = DEFAULT {
+//!     Variant ["name", "alias", ...] => shape impl::path [@ Kind(payload)] [{ field: value, ... [..BASE] }];
 //! }
 //!
 //! shape      := raw[arity]? | iter[arity]? | each[arity] | eager(Extractor, ...)
@@ -49,7 +49,7 @@
 //!
 //! **`@ Kind(payload)`** names the row's operation once: the row's `algebra`
 //! becomes `Algebra::Kind(payload)` and `payload` is passed to the body as
-//! its last argument (`raw` and `iter` rows). One body then serves every
+//! its last argument (every shape). One body then serves every
 //! row of the kind (`comparison::ordered` for `>`, `>=`, `<`, `<=`), and the
 //! constant that selects its behaviour cannot disagree with what the fast
 //! paths read. A row with `@` must not also set `algebra` in its `OpMeta`
@@ -57,6 +57,12 @@
 //!
 //! The `cfg` predicate is written once per family and applied to every row
 //! in the block, so a row cannot sit behind the wrong feature gate.
+//!
+//! **Metadata.** Each family names a default [`OpMeta`] preset
+//! (`= PURE`, `= TENSOR`, ...). A row without braces takes it as is; a row
+//! with `{ field: value, ... }` overrides those fields, and a trailing
+//! `..BASE` swaps the default for another preset
+//! (`{ on_empty_source: Some(singleton_empty_array), ..ITERATOR }`).
 //!
 //! # Adding an operator
 //!
@@ -66,7 +72,7 @@
 //!
 //! If the operator reads the data context, pushes a frame, has an effect,
 //! or treats missing arguments specially, declare it in the row's
-//! `OpMeta`; the fold, CSE and scope passes derive their classification
+//! braces; the fold, CSE and scope passes derive their classification
 //! from it (see [`super::meta`]).
 
 // Which variants, extractors and adapters a build uses depends on which
@@ -88,6 +94,8 @@ use crate::operators::array::IterArgKind;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
+#[cfg(feature = "ext-math")]
+use super::arithmetic::UnaryMathOp;
 #[cfg(feature = "datetime")]
 use super::datetime;
 #[cfg(feature = "error-handling")]
@@ -137,11 +145,12 @@ impl CatalogueEntry {
 macro_rules! operators {
     (
         $(
-            family $fam:ident ($gate:meta) {
+            family $fam:ident ($gate:meta) = $default:path {
                 $(
                     $v:ident [ $($name:literal),* ] => $shape:ident $( [ $($ar:tt)* ] )? $( ( $($ext:ty),* ) )?
                         $($f:ident)::+ $( ( $($karg:expr),* ) )?
-                        $( @ $alg:ident ( $payload:expr ) )? , $meta:expr ;
+                        $( @ $alg:ident ( $payload:expr ) )?
+                        $( { $($meta:tt)* } )? ;
                 )*
             }
         )*
@@ -183,7 +192,7 @@ macro_rules! operators {
             /// The row's declared facts.
             pub(crate) const fn meta(self) -> &'static OpMeta {
                 match self {
-                    $( $( #[cfg($gate)] OpCode::$v => { const META: OpMeta = operators!(@meta ($meta) $( $alg ($payload) )?); &META } )* )*
+                    $( $( #[cfg($gate)] OpCode::$v => { const META: OpMeta = operators!(@row_meta [$default] { $( $($meta)* )? } $( $alg ($payload) )?); &META } )* )*
                 }
             }
 
@@ -200,7 +209,7 @@ macro_rules! operators {
             #[inline(always)]
             pub(crate) fn algebra(self) -> Option<Algebra> {
                 const ALGEBRA: &[Option<Algebra>] = &[
-                    $( $( #[cfg($gate)] { const META: OpMeta = operators!(@meta ($meta) $( $alg ($payload) )?); META.algebra }, )* )*
+                    $( $( #[cfg($gate)] { const META: OpMeta = operators!(@row_meta [$default] { $( $($meta)* )? } $( $alg ($payload) )?); META.algebra }, )* )*
                 ];
                 ALGEBRA[self as usize]
             }
@@ -217,7 +226,7 @@ macro_rules! operators {
                     $( $(
                         #[cfg($gate)]
                         OpCode::$v => {
-                            const OP: Option<ArithOp> = match (operators!(@meta ($meta) $( $alg ($payload) )?)).algebra {
+                            const OP: Option<ArithOp> = match (operators!(@row_meta [$default] { $( $($meta)* )? } $( $alg ($payload) )?)).algebra {
                                 Some(Algebra::Arith(op)) => Some(op),
                                 _ => None,
                             };
@@ -290,6 +299,18 @@ macro_rules! operators {
     };
 
     // ── row metadata ──────────────────────────────────────────────────────
+    // A row's `{ field: value, ... }` over its family's default, or over
+    // the `..BASE` it names last. Parsed here rather than in the row
+    // pattern because an `expr` fragment cannot be followed by `..`.
+    (@row_meta [$default:path] { .. $base:path } $($rest:tt)*) => {
+        operators!(@meta (OpMeta { ..$base }) $($rest)*)
+    };
+    (@row_meta [$default:path] { $( $field:ident : $value:expr ),* $(,)? } $($rest:tt)*) => {
+        operators!(@meta (OpMeta { $( $field: $value, )* ..$default }) $($rest)*)
+    };
+    (@row_meta [$default:path] { $( $field:ident : $value:expr , )+ .. $base:path } $($rest:tt)*) => {
+        operators!(@meta (OpMeta { $( $field: $value, )+ ..$base }) $($rest)*)
+    };
     (@meta ($meta:expr)) => { $meta };
     (@meta ($meta:expr) $alg:ident ($payload:expr)) => {{
         const BASE: OpMeta = $meta;
@@ -362,277 +383,252 @@ macro_rules! operators {
         eager::each::<{ OpCode::$v as u8 }, _>($args, $iak, $ctx, $engine, $arena,
             |items, $args, $ctx, $engine, $arena| $($p)*(items, $args, $ctx, $engine, $arena $(, $k)* $(, $pl)?))
     };
-    (@call $v:ident eager { } ( ) [ $($p:tt)* ] [ ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
-        eager::call0::<{ OpCode::$v as u8 }, _, _>($args, $ctx, $engine, $arena, $($p)*)
+    (@call $v:ident eager { } ( $($a:ty),* ) [ $($p:tt)* ] [ ] [ ]
+        ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
+        eager::call::<{ OpCode::$v as u8 }, ( $($a,)* ), _, _>($args, $ctx, $engine, $arena, $($p)*)
     };
-    (@call $v:ident eager { } ( $a0:ty ) [ $($p:tt)* ] [ ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
-        eager::call1::<{ OpCode::$v as u8 }, $a0, _, _>($args, $ctx, $engine, $arena, $($p)*)
+    (@call $v:ident eager { } ( $($a:ty),* ) [ $($p:tt)* ] [ ] [ $k:expr ]
+        ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
+        eager::call::<{ OpCode::$v as u8 }, ( $($a,)* ), _, _>($args, $ctx, $engine, $arena,
+            eager::Bound($($p)*, $k))
     };
-    (@call $v:ident eager { } ( $a0:ty ) [ $($p:tt)* ] [ $($k:expr),+ ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
-        eager::call1::<{ OpCode::$v as u8 }, $a0, _, _>($args, $ctx, $engine, $arena,
-            |cx, v0| $($p)*(cx, v0, $($k),+))
-    };
-    (@call $v:ident eager { } ( $a0:ty, $a1:ty ) [ $($p:tt)* ] [ ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
-        eager::call2::<{ OpCode::$v as u8 }, $a0, $a1, _, _>($args, $ctx, $engine, $arena, $($p)*)
-    };
-    (@call $v:ident eager { } ( $a0:ty, $a1:ty ) [ $($p:tt)* ] [ $($k:expr),+ ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
-        eager::call2::<{ OpCode::$v as u8 }, $a0, $a1, _, _>($args, $ctx, $engine, $arena,
-            |cx, v0, v1| $($p)*(cx, v0, v1, $($k),+))
-    };
-    (@call $v:ident eager { } ( $a0:ty, $a1:ty, $a2:ty ) [ $($p:tt)* ] [ ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
-        eager::call3::<{ OpCode::$v as u8 }, $a0, $a1, $a2, _, _>($args, $ctx, $engine, $arena, $($p)*)
-    };
-    (@call $v:ident eager { } ( $a0:ty, $a1:ty, $a2:ty ) [ $($p:tt)* ] [ $($k:expr),+ ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
-        eager::call3::<{ OpCode::$v as u8 }, $a0, $a1, $a2, _, _>($args, $ctx, $engine, $arena,
-            |cx, v0, v1, v2| $($p)*(cx, v0, v1, v2, $($k),+))
-    };
-    (@call $v:ident eager { } ( $a0:ty, $a1:ty, $a2:ty, $a3:ty ) [ $($p:tt)* ] [ ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
-        eager::call4::<{ OpCode::$v as u8 }, $a0, $a1, $a2, $a3, _, _>($args, $ctx, $engine, $arena, $($p)*)
-    };
-    (@call $v:ident eager { } ( $a0:ty, $a1:ty, $a2:ty, $a3:ty ) [ $($p:tt)* ] [ $($k:expr),+ ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
-        eager::call4::<{ OpCode::$v as u8 }, $a0, $a1, $a2, $a3, _, _>($args, $ctx, $engine, $arena,
-            |cx, v0, v1, v2, v3| $($p)*(cx, v0, v1, v2, v3, $($k),+))
+    (@call $v:ident eager { } ( $($a:ty),* ) [ $($p:tt)* ] [ $k:expr ] [ ]
+        ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
+        eager::call::<{ OpCode::$v as u8 }, ( $($a,)* ), _, _>($args, $ctx, $engine, $arena,
+            eager::Bound($($p)*, $k))
     };
     (@call $v:ident $($rest:tt)*) => {
         compile_error!(concat!(
             "operator row `", stringify!($v),
-            "`: unknown shape, more than four eager arguments, `@` or `[arity]` on an eager row, or `each` without `[arity]`"
+            "`: unknown shape, more than six eager arguments, more than one bound argument, `[arity]` on an eager row, or `each` without `[arity]`"
         ))
     };
 }
 
 operators! {
-    family Core (all()) {
+    family Core (all()) = PURE {
         // ── variable access ──────────────────────────────────────────────
         // `var` is accepted as a synonym of `val`; the compile hook reads
         // the source name, because `var`'s second argument is a default
         // and `val`'s is a path segment.
-        Val ["val", "var"] => raw variable::evaluate_val,
-            OpMeta { reads_context: true, compile: Some(CompileHook::Args(hooks::val)), ..PURE };
+        Val ["val", "var"] => raw variable::evaluate_val
+            { reads_context: true, compile: Some(CompileHook::Args(hooks::val)) };
         // `{"var": [path, default]}` with a computed path. Internal: only
         // the `var` compile hook emits it; it renders back as `var`.
-        VarDefault [] => raw variable::evaluate_var_default,
-            OpMeta { reads_context: true, display: Some("var"), ..PURE };
+        VarDefault [] => raw variable::evaluate_var_default { reads_context: true, display: Some("var") };
 
         // ── comparison ───────────────────────────────────────────────────
-        Equals ["=="] => raw[2..] comparison::equals @ Eq(EqOp::LOOSE), PURE;
-        StrictEquals ["==="] => raw[2..] comparison::equals @ Eq(EqOp::STRICT), PURE;
-        NotEquals ["!="] => raw[2] comparison::not_equals @ Eq(EqOp::LOOSE_NE), PURE;
-        StrictNotEquals ["!=="] => raw[2] comparison::not_equals @ Eq(EqOp::STRICT_NE), PURE;
-        GreaterThan [">"] => raw[2..] comparison::ordered @ Ord(OrdOp::Gt), PURE;
-        GreaterThanEqual [">="] => raw[2..] comparison::ordered @ Ord(OrdOp::Ge), PURE;
-        LessThan ["<"] => raw[2..] comparison::ordered @ Ord(OrdOp::Lt), PURE;
-        LessThanEqual ["<="] => raw[2..] comparison::ordered @ Ord(OrdOp::Le), PURE;
+        Equals ["=="] => raw[2..] comparison::equals @ Eq(EqOp::LOOSE);
+        StrictEquals ["==="] => raw[2..] comparison::equals @ Eq(EqOp::STRICT);
+        NotEquals ["!="] => raw[2] comparison::not_equals @ Eq(EqOp::LOOSE_NE);
+        StrictNotEquals ["!=="] => raw[2] comparison::not_equals @ Eq(EqOp::STRICT_NE);
+        GreaterThan [">"] => raw[2..] comparison::ordered @ Ord(OrdOp::Gt);
+        GreaterThanEqual [">="] => raw[2..] comparison::ordered @ Ord(OrdOp::Ge);
+        LessThan ["<"] => raw[2..] comparison::ordered @ Ord(OrdOp::Lt);
+        LessThanEqual ["<="] => raw[2..] comparison::ordered @ Ord(OrdOp::Le);
 
         // ── logic and control (lazy) ─────────────────────────────────────
-        Not ["!"] => eager(Opt<Truthy>) logical::not, PURE;
-        BoolCast ["!!"] => eager(Opt<Truthy>) logical::bool_cast, PURE;
-        And ["and"] => raw[1..] logical::short_circuit @ Logic(Logic::And),
-            OpMeta { args_form: ArgsForm::ArrayOnly, on_missing: Miss::Return(singleton_null), ..PURE };
-        Or ["or"] => raw[1..] logical::short_circuit @ Logic(Logic::Or),
-            OpMeta { args_form: ArgsForm::ArrayOnly, on_missing: Miss::Return(singleton_null), ..PURE };
+        Not ["!"] => eager(Opt<Truthy>) logical::truth @ Truth(Truth::Not);
+        BoolCast ["!!"] => eager(Opt<Truthy>) logical::truth @ Truth(Truth::Bool);
+        And ["and"] => raw[1..] logical::short_circuit @ Logic(Logic::And)
+            { args_form: ArgsForm::ArrayOnly, on_missing: Miss::Return(singleton_null) };
+        Or ["or"] => raw[1..] logical::short_circuit @ Logic(Logic::Or)
+            { args_form: ArgsForm::ArrayOnly, on_missing: Miss::Return(singleton_null) };
         // `?:` is accepted as a synonym; the ternary is the 3-argument `if`.
-        If ["if", "?:"] => raw[1..] control::evaluate_if,
-            OpMeta { args_form: ArgsForm::ArrayOnly, on_missing: Miss::Return(singleton_null), ..PURE };
+        If ["if", "?:"] => raw[1..] control::evaluate_if
+            { args_form: ArgsForm::ArrayOnly, on_missing: Miss::Return(singleton_null) };
 
         // ── arithmetic ───────────────────────────────────────────────────
-        Add ["+"] => raw arithmetic::evaluate_add,
-            OpMeta { algebra: Some(Algebra::Arith(ArithOp::Add)), ..PURE };
-        Subtract ["-"] => raw[1..] arithmetic::evaluate_subtract,
-            OpMeta { algebra: Some(Algebra::Arith(ArithOp::Sub)), ..PURE };
-        Multiply ["*"] => raw arithmetic::evaluate_multiply,
-            OpMeta { algebra: Some(Algebra::Arith(ArithOp::Mul)), ..PURE };
-        Divide ["/"] => raw[1..] arithmetic::div_or_mod @ Div(DivOp::Divide), PURE;
-        Modulo ["%"] => raw[1..] arithmetic::div_or_mod @ Div(DivOp::Modulo), PURE;
+        // `+`, `-` and `*` keep separate bodies (their 0-, 1- and n-argument
+        // rules differ), so they declare their algebra without binding it.
+        Add ["+"] => raw arithmetic::evaluate_add { algebra: Some(Algebra::Arith(ArithOp::Add)) };
+        Subtract ["-"] => raw[1..] arithmetic::evaluate_subtract
+            { algebra: Some(Algebra::Arith(ArithOp::Sub)) };
+        Multiply ["*"] => raw arithmetic::evaluate_multiply { algebra: Some(Algebra::Arith(ArithOp::Mul)) };
+        Divide ["/"] => raw[1..] arithmetic::div_or_mod @ Div(DivOp::Divide);
+        Modulo ["%"] => raw[1..] arithmetic::div_or_mod @ Div(DivOp::Modulo);
         // `max` / `min` / `merge` disambiguate a literal array from an
         // argument list at runtime (`{"max": [[1, 2]]}`), so folding their
         // static form would bake in the wrong reading.
-        Max ["max"] => iter[1..] arithmetic::extremum @ Extremum(Extremum::Max),
-            OpMeta { fold: Fold::Never, ..PURE };
-        Min ["min"] => iter[1..] arithmetic::extremum @ Extremum(Extremum::Min),
-            OpMeta { fold: Fold::Never, ..PURE };
+        Max ["max"] => iter[1..] arithmetic::extremum @ Extremum(Extremum::Max) { fold: Fold::Never };
+        Min ["min"] => iter[1..] arithmetic::extremum @ Extremum(Extremum::Min) { fold: Fold::Never };
 
         // ── strings ──────────────────────────────────────────────────────
-        Concat ["cat"] => raw string::evaluate_concat, OpMeta { cost: Cost::Bytes, ..PURE };
-        Substr ["substr"] => eager(Str, Lenient<Int>, Lenient<Int>) string::substr,
-            OpMeta { on_missing: Miss::Return(singleton_empty_string), cost: Cost::Bytes, ..PURE };
-        In ["in"] => eager(Any, Any) string::in_,
-            OpMeta { on_missing: Miss::Return(singleton_false), cost: Cost::Bytes, ..PURE };
+        Concat ["cat"] => raw string::evaluate_concat { algebra: Some(Algebra::Concat), ..STRING };
+        Substr ["substr"] => eager(Str, Lenient<Int>, Lenient<Int>) string::substr
+            { on_missing: Miss::Return(singleton_empty_string), ..STRING };
+        In ["in"] => eager(Any, Any) string::in_ { on_missing: Miss::Return(singleton_false), ..STRING };
 
         // ── arrays ───────────────────────────────────────────────────────
-        Merge ["merge"] => raw array::evaluate_merge,
-            OpMeta { fold: Fold::Never, cost: Cost::PerItem, ..PURE };
+        Merge ["merge"] => raw array::evaluate_merge { fold: Fold::Never, cost: Cost::PerItem };
         // A null, missing or empty source: `[]` for `filter` / `map`; for
         // the quantifiers, `all` is deliberately not vacuously true.
-        Filter ["filter"] => each[2] array::evaluate_filter,
-            OpMeta { on_empty_source: Some(singleton_empty_array), ..ITERATOR };
-        Map ["map"] => each[2] array::evaluate_map,
-            OpMeta { on_empty_source: Some(singleton_empty_array), ..ITERATOR };
+        Filter ["filter"] => each[2] array::evaluate_filter
+            { on_empty_source: Some(singleton_empty_array), ..ITERATOR };
+        Map ["map"] => each[2] array::evaluate_map { on_empty_source: Some(singleton_empty_array), ..ITERATOR };
         // `reduce` evaluates its initial value before its source, and folds
         // `reduce(map(..))` without resolving the source, so it resolves
         // its own.
-        Reduce ["reduce"] => iter[2..=3] array::evaluate_reduce, ITERATOR;
-        All ["all"] => each[2] array::quantifier @ Quant(Quant::All),
-            OpMeta { on_empty_source: Some(singleton_false), ..ITERATOR };
-        Some ["some"] => each[2] array::quantifier @ Quant(Quant::Some),
-            OpMeta { on_empty_source: Some(singleton_false), ..ITERATOR };
-        None ["none"] => each[2] array::quantifier @ Quant(Quant::None),
-            OpMeta { on_empty_source: Some(singleton_true), ..ITERATOR };
+        Reduce ["reduce"] => iter[2..=3] array::evaluate_reduce { ..ITERATOR };
+        All ["all"] => each[2] array::quantifier @ Quant(Quant::All)
+            { on_empty_source: Some(singleton_false), ..ITERATOR };
+        Some ["some"] => each[2] array::quantifier @ Quant(Quant::Some)
+            { on_empty_source: Some(singleton_false), ..ITERATOR };
+        None ["none"] => each[2] array::quantifier @ Quant(Quant::None)
+            { on_empty_source: Some(singleton_true), ..ITERATOR };
 
         // ── missing values ───────────────────────────────────────────────
-        Missing ["missing"] => raw missing::evaluate_missing,
-            OpMeta { reads_context: true, compile: Some(CompileHook::Args(hooks::missing)), ..PURE };
-        MissingSome ["missing_some"] => raw[2] missing::evaluate_missing_some,
-            OpMeta {
-                reads_context: true,
-                on_missing: Miss::Return(singleton_empty_array),
-                compile: Some(CompileHook::Args(hooks::missing_some)),
-                ..PURE
-            };
+        Missing ["missing"] => raw missing::evaluate_missing
+            { reads_context: true, compile: Some(CompileHook::Args(hooks::missing)) };
+        MissingSome ["missing_some"] => raw[2] missing::evaluate_missing_some {
+            reads_context: true,
+            on_missing: Miss::Return(singleton_empty_array),
+            compile: Some(CompileHook::Args(hooks::missing_some)),
+        };
     }
 
-    family DateTime (feature = "datetime") {
-        Datetime ["datetime"] => eager(Any) datetime::datetime,
-            OpMeta { on_missing: Miss::Err("datetime requires an argument"), ..PURE };
-        Timestamp ["timestamp"] => eager(Any) datetime::timestamp,
-            OpMeta { on_missing: Miss::Err("timestamp requires an argument"), ..PURE };
-        ParseDate ["parse_date"] => eager(Any, Any, Lazy) datetime::parse_date,
-            OpMeta {
-                on_missing: Miss::Err("parse_date requires date string and format"),
-                compile: Some(CompileHook::Args(hooks::timezone_literal)),
-                ..PURE
-            };
-        FormatDate ["format_date"] => eager(Any, Any, Lazy) datetime::format_date,
-            OpMeta {
-                on_missing: Miss::Err("format_date requires datetime and format"),
-                compile: Some(CompileHook::Args(hooks::timezone_literal)),
-                ..PURE
-            };
-        DateDiff ["date_diff"] => eager(Any, Any, Any) datetime::date_diff,
-            OpMeta { on_missing: Miss::Err("date_diff requires two dates and a unit"), ..PURE };
-        Now ["now"] => eager() datetime::now, OpMeta { effect: Effect::Clock, ..PURE };
+    family DateTime (feature = "datetime") = PURE {
+        Datetime ["datetime"] => eager(Any) datetime::datetime
+            { on_missing: Miss::Err("datetime requires an argument") };
+        Timestamp ["timestamp"] => eager(Any) datetime::timestamp
+            { on_missing: Miss::Err("timestamp requires an argument") };
+        ParseDate ["parse_date"] => eager(Any, Any, Lazy) datetime::parse_date {
+            on_missing: Miss::Err("parse_date requires date string and format"),
+            compile: Some(CompileHook::Args(hooks::timezone_literal)),
+        };
+        FormatDate ["format_date"] => eager(Any, Any, Lazy) datetime::format_date {
+            on_missing: Miss::Err("format_date requires datetime and format"),
+            compile: Some(CompileHook::Args(hooks::timezone_literal)),
+        };
+        DateDiff ["date_diff"] => eager(Any, Any, Any) datetime::date_diff
+            { on_missing: Miss::Err("date_diff requires two dates and a unit") };
+        Now ["now"] => eager() datetime::now { effect: Effect::Clock };
     }
 
-    family ExtString (feature = "ext-string") {
-        Length ["length"] => eager(Any) array::length,
-            OpMeta { on_extra: Extra::InvalidArgs, ..PURE };
-        StartsWith ["starts_with"] => eager(Str, Str) string::starts_with, OpMeta { cost: Cost::Bytes, ..PURE };
-        EndsWith ["ends_with"] => eager(Str, Str) string::ends_with, OpMeta { cost: Cost::Bytes, ..PURE };
-        Upper ["upper"] => eager(Str) string::upper, OpMeta { cost: Cost::Bytes, ..PURE };
-        Lower ["lower"] => eager(Str) string::lower, OpMeta { cost: Cost::Bytes, ..PURE };
-        Trim ["trim"] => eager(Str) string::trim, OpMeta { cost: Cost::Bytes, ..PURE };
-        Split ["split"] => eager(Str, Str) string::split, OpMeta { cost: Cost::Bytes, ..PURE };
+    family ExtString (feature = "ext-string") = STRING {
+        Length ["length"] => eager(Any) array::length { cost: Cost::Node, on_extra: Extra::InvalidArgs };
+        StartsWith ["starts_with"] => eager(Str, Str) string::starts_with;
+        EndsWith ["ends_with"] => eager(Str, Str) string::ends_with;
+        Upper ["upper"] => eager(Str) string::upper;
+        Lower ["lower"] => eager(Str) string::lower;
+        Trim ["trim"] => eager(Str) string::trim;
+        Split ["split"] => eager(Str, Str) string::split;
     }
 
-    family ExtArray (feature = "ext-array") {
+    // The extension iterators ignore extra arguments, unlike the JSONLogic
+    // ones (`ITERATOR` rejects them).
+    family ExtArray (feature = "ext-array") = ITERATOR {
         // `sort`'s `args[1]` is the scalar direction flag; the key
         // expression at `args[2]` runs per element. It resolves its own
         // source: a null source gives `null`, an empty array `[]`.
-        Sort ["sort"] => iter[1..=3] array::evaluate_sort,
-            OpMeta { frames: Frames::At(2), cost: Cost::NLogN, on_extra: Extra::Ignore, ..ITERATOR };
-        Slice ["slice"] => raw[1..=4] array::evaluate_slice, OpMeta { cost: Cost::PerItem, ..PURE };
-        GroupBy ["group_by"] => each[2] array::evaluate_group_by,
-            OpMeta { on_extra: Extra::Ignore, on_empty_source: Some(singleton_empty_array), ..ITERATOR };
+        Sort ["sort"] => iter[1..=3] array::evaluate_sort
+            { frames: Frames::At(2), cost: Cost::NLogN, on_extra: Extra::Ignore };
+        Slice ["slice"] => raw[1..=4] array::evaluate_slice { cost: Cost::PerItem, ..PURE };
+        GroupBy ["group_by"] => each[2] array::evaluate_group_by
+            { on_extra: Extra::Ignore, on_empty_source: Some(singleton_empty_array) };
         // Without a key expression nothing runs under a frame, so
         // `distinct` folds like any pure operator.
-        Distinct ["distinct"] => each[1..=2] array::evaluate_distinct,
-            OpMeta {
-                cost: Cost::Quadratic,
-                on_extra: Extra::Ignore,
-                on_empty_source: Some(singleton_empty_array),
-                ..ITERATOR
-            };
+        Distinct ["distinct"] => each[1..=2] array::evaluate_distinct {
+            cost: Cost::Quadratic,
+            on_extra: Extra::Ignore,
+            on_empty_source: Some(singleton_empty_array),
+        };
     }
 
-    family ExtObject (feature = "ext-object") {
-        Keys ["keys"] => eager(Nullable<Obj>) object::keys, OpMeta { cost: Cost::PerItem, ..PURE };
-        Values ["values"] => eager(Nullable<Obj>) object::values, OpMeta { cost: Cost::PerItem, ..PURE };
-        Entries ["entries"] => eager(Nullable<Obj>) object::entries, OpMeta { cost: Cost::PerItem, ..PURE };
+    family ExtObject (feature = "ext-object") = PURE {
+        Keys ["keys"] => eager(Nullable<Obj>) object::keys { cost: Cost::PerItem };
+        Values ["values"] => eager(Nullable<Obj>) object::values { cost: Cost::PerItem };
+        Entries ["entries"] => eager(Nullable<Obj>) object::entries { cost: Cost::PerItem };
     }
 
-    family ExtControl (feature = "ext-control") {
+    family ExtControl (feature = "ext-control") = PURE {
         // No path names the current data itself, which always exists (the
         // compile hook resolves `{"exists": []}` that way before this row's
         // gate is reached).
-        Exists ["exists"] => raw[1..] variable::evaluate_exists,
-            OpMeta {
-                reads_context: true,
-                on_missing: Miss::Return(singleton_true),
-                compile: Some(CompileHook::Args(hooks::exists)),
-                ..PURE
-            };
-        Coalesce ["??"] => raw control::evaluate_coalesce, PURE;
-        Switch ["switch", "match"] => raw[2..=3] control::evaluate_switch,
-            OpMeta { on_missing: Miss::Return(singleton_null), ..PURE };
-        Type ["type"] => eager(Any) inspect::type_,
-            OpMeta { on_missing: Miss::Return(inspect::type_of_nothing), ..PURE };
+        Exists ["exists"] => raw[1..] variable::evaluate_exists {
+            reads_context: true,
+            on_missing: Miss::Return(singleton_true),
+            compile: Some(CompileHook::Args(hooks::exists)),
+        };
+        Coalesce ["??"] => raw control::evaluate_coalesce;
+        Switch ["switch", "match"] => raw[2..=3] control::evaluate_switch
+            { on_missing: Miss::Return(singleton_null) };
+        Type ["type"] => eager(Any) inspect::type_ { on_missing: Miss::Return(inspect::type_of_nothing) };
     }
 
-    family ErrorHandling (feature = "error-handling") {
-        Try ["try"] => raw[1..] error_handling::evaluate_try,
-            OpMeta {
-                effect: Effect::Catches,
-                frames: Frames::LastIfMulti,
-                on_missing: Miss::Return(singleton_null),
-                ..PURE
-            };
-        Throw ["throw"] => raw error_handling::evaluate_throw,
-            OpMeta { effect: Effect::Throws, compile: Some(CompileHook::Args(hooks::throw_literal)), ..PURE };
+    family ErrorHandling (feature = "error-handling") = PURE {
+        Try ["try"] => raw[1..] error_handling::evaluate_try {
+            effect: Effect::Catches,
+            frames: Frames::LastIfMulti,
+            on_missing: Miss::Return(singleton_null),
+        };
+        Throw ["throw"] => raw error_handling::evaluate_throw
+            { effect: Effect::Throws, compile: Some(CompileHook::Args(hooks::throw_literal)) };
     }
 
-    family ExtMath (feature = "ext-math") {
-        Abs ["abs"] => eager(StrictNum, Rest<StrictNum>) arithmetic::unary_math(arithmetic::UnaryMathOp::Abs), PURE;
-        Ceil ["ceil"] => eager(StrictNum, Rest<StrictNum>) arithmetic::unary_math(arithmetic::UnaryMathOp::Ceil), PURE;
-        Floor ["floor"] => eager(StrictNum, Rest<StrictNum>) arithmetic::unary_math(arithmetic::UnaryMathOp::Floor), PURE;
+    family ExtMath (feature = "ext-math") = PURE {
+        Abs ["abs"] => eager(StrictNum, Rest<StrictNum>) arithmetic::unary_math(UnaryMathOp::Abs);
+        Ceil ["ceil"] => eager(StrictNum, Rest<StrictNum>) arithmetic::unary_math(UnaryMathOp::Ceil);
+        Floor ["floor"] => eager(StrictNum, Rest<StrictNum>) arithmetic::unary_math(UnaryMathOp::Floor);
     }
 
-    family Tensor (feature = "tensor") {
+    family Tensor (feature = "tensor") = TENSOR {
         // Variant names carry a `Tensor` prefix so they never collide with
         // an existing opcode (`Concat` is `cat`, `Type` is `type`).
-        TensorMake ["tensor"] => eager(Any, Lazy) tensor::tensor,
-            OpMeta { compile: Some(CompileHook::Raw(hooks::tensor_wire_body)), ..TENSOR };
-        TensorZeros ["zeros"] => eager(ShapeArg, DTypeArg) tensor::zeros, TENSOR;
-        TensorFull ["full"] => eager(ShapeArg, DTypeArg, Any) tensor::full, TENSOR;
-        TensorScatter ["scatter"] => eager(Any, ShapeArg, DTypeArg, Opt<Any>) tensor::scatter, TENSOR;
-        TensorRleExpand ["rle_expand"] => eager(Any, ShapeArg, DTypeArg) tensor::rle_expand, TENSOR;
-        TensorOneHot ["one_hot"] => eager(Any, UsizeArg, DTypeArg) tensor::one_hot, TENSOR;
-        TensorStack ["stack"] => eager(Any, I64Arg) tensor::stack, TENSOR;
-        TensorConcat ["concat"] => eager(Any, I64Arg) tensor::concat, TENSOR;
-        TensorUnstack ["unstack"] => eager(TensorArg, I64Arg) tensor::unstack, TENSOR;
+        TensorMake ["tensor"] => eager(Any, Lazy) tensor::tensor
+            { compile: Some(CompileHook::Raw(hooks::tensor_wire_body)) };
+        TensorZeros ["zeros"] => eager(ShapeArg, DTypeArg) tensor::zeros;
+        TensorFull ["full"] => eager(ShapeArg, DTypeArg, Any) tensor::full;
+        TensorScatter ["scatter"] => eager(Any, ShapeArg, DTypeArg, Opt<Any>) tensor::scatter;
+        TensorRleExpand ["rle_expand"] => eager(Any, ShapeArg, DTypeArg) tensor::rle_expand;
+        TensorOneHot ["one_hot"] => eager(Any, UsizeArg, DTypeArg) tensor::one_hot;
+        TensorStack ["stack"] => eager(Any, I64Arg) tensor::stack;
+        TensorConcat ["concat"] => eager(Any, I64Arg) tensor::concat;
+        TensorUnstack ["unstack"] => eager(TensorArg, I64Arg) tensor::unstack;
         // `reshape` shares the input's payload and `shape` / `dtype` read the
         // header, so each charges a flat 1 rather than per element.
-        TensorReshape ["reshape"] => eager(TensorArg, ShapeArg) tensor::reshape,
-            OpMeta { cost: Cost::Node, ..TENSOR };
-        TensorTranspose ["transpose"] => eager(TensorArg, Opt<ShapeArg>) tensor::transpose, TENSOR;
-        TensorPad ["pad"] => eager(TensorArg, ShapeArg, ShapeArg, Opt<Any>) tensor::pad, TENSOR;
-        TensorCrop ["crop"] => eager(TensorArg, ShapeArg, ShapeArg) tensor::crop, TENSOR;
-        TensorCast ["cast"] => eager(TensorArg, DTypeArg) tensor::cast, TENSOR;
-        TensorNormalize ["normalize"] => eager(TensorArg, F64Arg, Opt<F64Arg>) tensor::normalize, TENSOR;
-        TensorArgmax ["argmax"] => eager(TensorArg, I64Arg) tensor::argmax, TENSOR;
-        TensorGather ["gather"] => eager(TensorArg, I64List, Opt<I64Arg>) tensor::gather, TENSOR;
-        TensorToList ["to_list"] => eager(TensorArg) tensor::to_list, TENSOR;
-        TensorShape ["shape"] => eager(TensorArg) tensor::shape, OpMeta { cost: Cost::Node, ..TENSOR };
-        TensorDtype ["dtype"] => eager(TensorArg) tensor::dtype, OpMeta { cost: Cost::Node, ..TENSOR };
+        TensorReshape ["reshape"] => eager(TensorArg, ShapeArg) tensor::reshape { cost: Cost::Node };
+        TensorTranspose ["transpose"] => eager(TensorArg, Opt<ShapeArg>) tensor::transpose;
+        TensorPad ["pad"] => eager(TensorArg, ShapeArg, ShapeArg, Opt<Any>) tensor::pad;
+        TensorCrop ["crop"] => eager(TensorArg, ShapeArg, ShapeArg) tensor::crop;
+        TensorCast ["cast"] => eager(TensorArg, DTypeArg) tensor::cast;
+        TensorNormalize ["normalize"] => eager(TensorArg, F64Arg, Opt<F64Arg>) tensor::normalize;
+        TensorArgmax ["argmax"] => eager(TensorArg, I64Arg) tensor::argmax;
+        TensorGather ["gather"] => eager(TensorArg, I64List, Opt<I64Arg>) tensor::gather;
+        TensorToList ["to_list"] => eager(TensorArg) tensor::to_list;
+        TensorShape ["shape"] => eager(TensorArg) tensor::shape { cost: Cost::Node };
+        TensorDtype ["dtype"] => eager(TensorArg) tensor::dtype { cost: Cost::Node };
     }
 
-    family Flagd (feature = "flagd") {
+    family Flagd (feature = "flagd") = PURE {
         // Without a bucketing expression, `fractional` reads
         // `$flagd.flagKey` and `targetingKey` from the root data.
         // Never memoised: CSE was introduced with an explicit exclusion
         // list (fractional, sem_ver, now, try, throw) and no soundness
         // argument was made for the flagd pair; a flag rule calls each
         // once, so there is nothing to gain from relaxing it.
-        Fractional ["fractional"] => raw[1..] flagd::evaluate_fractional,
-            OpMeta { reads_context: true, cse: Cse::Never, on_missing: Miss::Return(singleton_null), ..PURE };
+        Fractional ["fractional"] => raw[1..] flagd::evaluate_fractional
+            { reads_context: true, cse: Cse::Never, on_missing: Miss::Return(singleton_null) };
         // Pure given its arguments, so a fully literal call folds. Never
         // memoised, for the same reason as `fractional`.
-        SemVer ["sem_ver"] => eager(Any, Any, Any) flagd::sem_ver,
-            OpMeta {
-                on_missing: Miss::Return(singleton_null),
-                on_extra: Extra::Return(singleton_null),
-                cse: Cse::Never,
-                ..PURE
-            };
+        SemVer ["sem_ver"] => eager(Any, Any, Any) flagd::sem_ver {
+            on_missing: Miss::Return(singleton_null),
+            on_extra: Extra::Return(singleton_null),
+            cse: Cse::Never,
+        };
+    }
+}
+
+impl OpCode {
+    /// The row whose `algebra` is `algebra`, if one is compiled in. For
+    /// rewrites that produce an operator by what it computes (`!(!x)`
+    /// becomes whichever row computes `Truth::Bool`). A linear scan, so for
+    /// the compile-time passes only.
+    pub(crate) fn with_algebra(algebra: Algebra) -> Option<OpCode> {
+        OpCode::ALL
+            .iter()
+            .copied()
+            .find(|op| op.algebra() == Some(algebra))
     }
 }
 

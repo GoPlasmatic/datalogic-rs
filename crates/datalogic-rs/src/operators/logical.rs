@@ -1,19 +1,17 @@
 use crate::arena::{ContextStack, DataValue, truthy_arena};
 use crate::operators::eager::Cx;
-use crate::operators::meta::Logic;
+use crate::operators::meta::{Logic, Truth};
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
-/// `!`: the negated truthiness of the argument; `true` with none.
-#[inline]
-pub(crate) fn not(_cx: &mut Cx<'_, '_>, value: Option<bool>) -> Result<bool> {
-    Ok(!value.unwrap_or(false))
-}
-
-/// `!!`: the truthiness of the argument; `false` with none.
-#[inline]
-pub(crate) fn bool_cast(_cx: &mut Cx<'_, '_>, value: Option<bool>) -> Result<bool> {
-    Ok(value.unwrap_or(false))
+/// `!` / `!!`: the argument's truthiness, negated for `!`. No argument
+/// counts as falsy (`!` gives `true`, `!!` gives `false`).
+///
+/// `inline(always)`: a bound eager body that is not merged into its
+/// adapter adds a call layer (measured on `abs` / `ceil` / `floor`).
+#[inline(always)]
+pub(crate) fn truth(_cx: &mut Cx<'_, '_>, value: Option<bool>, op: Truth) -> Result<bool> {
+    Ok(op.apply(value.unwrap_or(false)))
 }
 
 /// `and` / `or`: evaluate left to right and return the first value whose

@@ -9,10 +9,11 @@
 //! pub(crate) fn ends_with<'a>(cx: &mut Cx<'_, 'a>, text: &'a str, suffix: &'a str) -> Result<bool>
 //! ```
 //!
-//! and the dispatch arm calls one of the `callN` adapters below, which
-//! does the plumbing every such operator used to write by hand:
-//!
-//! The extractors and result conversions live in [`super::extract`].
+//! and the dispatch arm calls the generic [`call`] adapter below with the
+//! extractors as a tuple ([`ExtractList`]) and the function as its
+//! [`Body`]. The adapter does the plumbing every such operator used to
+//! write by hand (the extractors and result conversions live in
+//! [`super::extract`]):
 //!
 //! 1. **Arity.** The row's `(min, max)` comes from the extractors' spans
 //!    ([`Arity::of`]). Too few arguments applies the row's
@@ -190,36 +191,112 @@ fn check_arity(
     Ok(None)
 }
 
-/// Generate `callN`: the adapter for an `eager` row with `N` extractors.
-///
-/// `OP` is the row's opcode discriminant. The row's metadata and arity
-/// are read through it in `const` blocks, so each adapter's policy checks
-/// are compile-time constants whether or not the adapter is inlined.
-macro_rules! eager_call {
-    ($name:ident; $($A:ident $raw:ident $val:ident $i:tt),*) => {
-        #[inline]
-        pub(crate) fn $name<'a, const OP: u8, $($A: Extract<'a>,)* R: IntoValue<'a>, F>(
-            args: &'a [CompiledNode],
-            ctx: &mut ContextStack<'a>,
-            engine: &Engine,
-            arena: &'a Bump,
-            body: F,
-        ) -> Result<&'a DataValue<'a>>
+/// An `eager` row's extractors as a tuple, `(Str, Lenient<Int>)`: fetch
+/// every argument, in order, then coerce every one, so a coercion failure on
+/// argument 0 never beats an error raised while evaluating argument 1.
+pub(crate) trait ExtractList<'a> {
+    /// Every position's fetched form.
+    type Raw;
+    /// What the body receives, one element per position.
+    type Out;
+    fn fetch(args: &'a [CompiledNode], cx: &mut Cx<'_, 'a>) -> Result<Self::Raw>;
+    fn coerce(raw: Self::Raw, cx: &mut Cx<'_, 'a>) -> Result<Self::Out>;
+}
+
+/// An `eager` row's body for extractors `L`: any
+/// `fn(&mut Cx, L0::Out, L1::Out, ...) -> Result<R>`, or one with a bound
+/// trailing argument ([`Bound`]).
+pub(crate) trait Body<'a, L: ExtractList<'a>, R> {
+    fn call(self, cx: &mut Cx<'_, 'a>, args: L::Out) -> Result<R>;
+}
+
+/// A body with one bound trailing argument: the row
+/// `eager(StrictNum, Rest<StrictNum>) arithmetic::unary_math(UnaryMathOp::Abs)`
+/// calls `unary_math(cx, v0, v1, UnaryMathOp::Abs)`. A struct rather than a
+/// closure, so nothing depends on LLVM inlining one.
+pub(crate) struct Bound<F, K>(pub(crate) F, pub(crate) K);
+
+/// Implement [`ExtractList`] and [`Body`] for one tuple arity.
+macro_rules! arity_impls {
+    ($($A:ident $raw:ident $val:ident $i:tt),*) => {
+        impl<'a, $($A: Extract<'a>),*> ExtractList<'a> for ($($A,)*) {
+            type Raw = ($($A::Raw,)*);
+            type Out = ($($A::Out,)*);
+            #[inline(always)]
+            #[allow(unused_variables)]
+            fn fetch(args: &'a [CompiledNode], cx: &mut Cx<'_, 'a>) -> Result<Self::Raw> {
+                Ok(($($A::fetch(args, $i, cx)?,)*))
+            }
+            #[inline(always)]
+            #[allow(unused_variables)]
+            fn coerce(raw: Self::Raw, cx: &mut Cx<'_, 'a>) -> Result<Self::Out> {
+                let ($($raw,)*) = raw;
+                Ok(($($A::coerce($raw, cx)?,)*))
+            }
+        }
+
+        impl<'a, F, R, $($A: Extract<'a>),*> Body<'a, ($($A,)*), R> for F
         where
             F: for<'c> FnOnce(&mut Cx<'c, 'a>, $($A::Out),*) -> Result<R>,
         {
-            let meta: &'static OpMeta = const { OpCode::ALL[OP as usize].meta() };
-            let arity: Arity = const { OpCode::ALL[OP as usize].arity() };
-            if let Some(early) = check_arity(args.len(), arity, meta)? {
-                return Ok(early);
+            #[inline(always)]
+            fn call(self, cx: &mut Cx<'_, 'a>, args: <($($A,)*) as ExtractList<'a>>::Out) -> Result<R> {
+                let ($($val,)*) = args;
+                self(cx, $($val),*)
             }
-            let mut cx = Cx::new(ctx, engine, arena);
-            $( let $raw = $A::fetch(args, $i, &mut cx)?; )*
-            $( let $val = $A::coerce($raw, &mut cx)?; )*
-            let out = body(&mut cx, $($val),*)?;
-            Ok(out.into_value(&mut cx))
+        }
+
+        impl<'a, F, K, R, $($A: Extract<'a>),*> Body<'a, ($($A,)*), R> for Bound<F, K>
+        where
+            F: for<'c> FnOnce(&mut Cx<'c, 'a>, $($A::Out,)* K) -> Result<R>,
+        {
+            #[inline(always)]
+            fn call(self, cx: &mut Cx<'_, 'a>, args: <($($A,)*) as ExtractList<'a>>::Out) -> Result<R> {
+                let ($($val,)*) = args;
+                (self.0)(cx, $($val,)* self.1)
+            }
         }
     };
+}
+
+arity_impls!();
+arity_impls!(A0 r0 v0 0);
+arity_impls!(A0 r0 v0 0, A1 r1 v1 1);
+arity_impls!(A0 r0 v0 0, A1 r1 v1 1, A2 r2 v2 2);
+arity_impls!(A0 r0 v0 0, A1 r1 v1 1, A2 r2 v2 2, A3 r3 v3 3);
+arity_impls!(A0 r0 v0 0, A1 r1 v1 1, A2 r2 v2 2, A3 r3 v3 3, A4 r4 v4 4);
+arity_impls!(A0 r0 v0 0, A1 r1 v1 1, A2 r2 v2 2, A3 r3 v3 3, A4 r4 v4 4, A5 r5 v5 5);
+
+/// The adapter for an `eager(..)` row: apply the row's arity policy,
+/// fetch and coerce its arguments through `L`, run the body, and convert
+/// the result.
+///
+/// `OP` is the row's opcode discriminant. The row's metadata and arity are
+/// read through it in `const` blocks, so each adapter's policy checks are
+/// compile-time constants whether or not the adapter is inlined.
+#[inline]
+pub(crate) fn call<'a, const OP: u8, L, R, B>(
+    args: &'a [CompiledNode],
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
+    arena: &'a Bump,
+    body: B,
+) -> Result<&'a DataValue<'a>>
+where
+    L: ExtractList<'a>,
+    R: IntoValue<'a>,
+    B: Body<'a, L, R>,
+{
+    let meta: &'static OpMeta = const { OpCode::ALL[OP as usize].meta() };
+    let arity: Arity = const { OpCode::ALL[OP as usize].arity() };
+    if let Some(early) = check_arity(args.len(), arity, meta)? {
+        return Ok(early);
+    }
+    let mut cx = Cx::new(ctx, engine, arena);
+    let raw = L::fetch(args, &mut cx)?;
+    let values = L::coerce(raw, &mut cx)?;
+    let out = body.call(&mut cx, values)?;
+    Ok(out.into_value(&mut cx))
 }
 
 /// The adapter for a `raw[..]` row: apply the row's declared arity and
@@ -324,9 +401,3 @@ where
     };
     body(items, args, ctx, engine, arena)
 }
-
-eager_call!(call0;);
-eager_call!(call1; A0 r0 v0 0);
-eager_call!(call2; A0 r0 v0 0, A1 r1 v1 1);
-eager_call!(call3; A0 r0 v0 0, A1 r1 v1 1, A2 r2 v2 2);
-eager_call!(call4; A0 r0 v0 0, A1 r1 v1 1, A2 r2 v2 2, A3 r3 v3 3);

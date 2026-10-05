@@ -37,8 +37,8 @@ pub(crate) fn fold(node: CompiledNode, engine: &Engine) -> (CompiledNode, bool) 
                     Some(new) => (new, true),
                     None => (node, false),
                 }
-            } else if *opcode == OpCode::Concat && args.len() >= 2 {
-                match try_fold_concat(*id, args) {
+            } else if opcode.algebra() == Some(Algebra::Concat) && args.len() >= 2 {
+                match try_fold_concat(*id, *opcode, args) {
                     Some(new) => (new, true),
                     None => (node, false),
                 }
@@ -111,7 +111,11 @@ fn try_partial_fold(
 
 /// Try to fold adjacent static strings in cat operator.
 /// `{"cat": ["hello ", "world", {"var": "x"}]}` → `{"cat": ["hello world", {"var": "x"}]}`
-fn try_fold_concat(outer_id: crate::node::NodeId, args: &[CompiledNode]) -> Option<CompiledNode> {
+fn try_fold_concat(
+    outer_id: crate::node::NodeId,
+    opcode: OpCode,
+    args: &[CompiledNode],
+) -> Option<CompiledNode> {
     // Bail before cloning unless two adjacent string literals exist — that
     // adjacency is the only thing that sets `folded_any` below.
     let has_adjacent_strings = args.windows(2).any(|w| {
@@ -177,7 +181,7 @@ fn try_fold_concat(outer_id: crate::node::NodeId, args: &[CompiledNode]) -> Opti
 
     Some(CompiledNode::BuiltinOperator {
         id: outer_id,
-        opcode: OpCode::Concat,
+        opcode,
         args: new_args.into_boxed_slice(),
         predicate_hint: None,
         iter_arg_kind: crate::operators::array::IterArgKind::General,

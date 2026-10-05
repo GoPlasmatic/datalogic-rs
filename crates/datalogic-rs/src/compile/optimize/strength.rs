@@ -1,69 +1,50 @@
 //! Strength reduction pass.
 //!
-//! Replaces expensive patterns with cheaper equivalents:
-//! - `{"!": [{"!": [X]}]}` → `{"!!": [X]}` (double negation → bool coerce)
-//! - `{"!!": [{"!!": [X]}]}` → `{"!!": [X]}` (idempotent bool coerce)
+//! Replaces expensive patterns with cheaper equivalents: nested
+//! truthiness operators collapse into one (`{"!": [{"!": [X]}]}` →
+//! `{"!!": [X]}`, `{"!": [{"!!": [X]}]}` → `{"!": [X]}`).
 
 use crate::OpCode;
 use crate::node::CompiledNode;
+use crate::operators::meta::Algebra;
 
 /// Apply strength reduction to a compiled node.
 ///
 /// Returns `(node, changed)` where `changed` is `true` if the pass rewrote
 /// the input. Used by the optimiser pipeline to drive fixpoint iteration.
+///
+/// Nested one-argument truthiness operators (rows with `Algebra::Truth`)
+/// collapse into the single operator their composition computes, applied
+/// to the inner argument: `!(!x)` → `!!x`, `!!(!!x)` → `!!x`,
+/// `!(!!x)` → `!x`, `!!(!x)` → `!x`.
 pub(crate) fn reduce(node: CompiledNode) -> (CompiledNode, bool) {
-    match &node {
-        CompiledNode::BuiltinOperator {
-            id, opcode, args, ..
-        } => match opcode {
-            OpCode::Not if args.len() == 1 => {
-                // Check if inner is also Not → collapse to BoolCast
-                if let CompiledNode::BuiltinOperator {
-                    opcode: OpCode::Not,
-                    args: inner_args,
-                    ..
-                } = &args[0]
-                    && inner_args.len() == 1
-                {
-                    return (
-                        CompiledNode::BuiltinOperator {
-                            id: *id,
-                            opcode: OpCode::BoolCast,
-                            args: inner_args.clone(),
-                            predicate_hint: None,
-                            iter_arg_kind: crate::operators::array::IterArgKind::General,
-                        },
-                        true,
-                    );
-                }
-                (node, false)
-            }
-            OpCode::BoolCast if args.len() == 1 => {
-                // Check if inner is also BoolCast → collapse (idempotent)
-                if let CompiledNode::BuiltinOperator {
-                    opcode: OpCode::BoolCast,
-                    args: inner_args,
-                    ..
-                } = &args[0]
-                    && inner_args.len() == 1
-                {
-                    return (
-                        CompiledNode::BuiltinOperator {
-                            id: *id,
-                            opcode: OpCode::BoolCast,
-                            args: inner_args.clone(),
-                            predicate_hint: None,
-                            iter_arg_kind: crate::operators::array::IterArgKind::General,
-                        },
-                        true,
-                    );
-                }
-                (node, false)
-            }
-            _ => (node, false),
-        },
-        _ => (node, false),
+    if let CompiledNode::BuiltinOperator {
+        id, opcode, args, ..
+    } = &node
+        && let Some(Algebra::Truth(outer)) = opcode.algebra()
+        && let [
+            CompiledNode::BuiltinOperator {
+                opcode: inner_opcode,
+                args: inner_args,
+                ..
+            },
+        ] = &args[..]
+        && let Some(Algebra::Truth(inner)) = inner_opcode.algebra()
+        && inner_args.len() == 1
+        && let Some(opcode) = OpCode::with_algebra(Algebra::Truth(outer.compose(inner)))
+    {
+        return (
+            CompiledNode::BuiltinOperator {
+                id: *id,
+                opcode,
+                args: inner_args.clone(),
+                predicate_hint: None,
+                iter_arg_kind: crate::operators::array::IterArgKind::General,
+            },
+            true,
+        );
     }
+    (node, false)
 }
 
 #[cfg(test)]
@@ -98,6 +79,41 @@ mod tests {
         } else {
             panic!("expected BuiltinOperator");
         }
+    }
+
+    /// Nested truthiness operators compose: the result negates when exactly
+    /// one of the two does, and keeps the inner argument.
+    #[test]
+    fn truth_compositions_collapse() {
+        use OpCode::{BoolCast, Not};
+        for (outer, inner, want) in [
+            (Not, Not, BoolCast),
+            (BoolCast, BoolCast, BoolCast),
+            (Not, BoolCast, Not),
+            (BoolCast, Not, Not),
+        ] {
+            let node = builtin(outer, vec![builtin(inner, vec![var_node("x")])]);
+            let (result, changed) = reduce(node);
+            assert!(changed, "{outer:?}({inner:?}(x))");
+            let CompiledNode::BuiltinOperator { opcode, args, .. } = &result else {
+                panic!("expected BuiltinOperator");
+            };
+            assert_eq!(*opcode, want, "{outer:?}({inner:?}(x))");
+            assert_eq!(args.len(), 1);
+            assert!(matches!(&args[0], CompiledNode::Var { .. }));
+        }
+    }
+
+    /// Only the one-argument forms compose: `{"!": [a, b]}` reads `a` only
+    /// but is left for the runtime arity policy.
+    #[test]
+    fn truth_with_other_arities_is_unchanged() {
+        let inner = builtin(OpCode::Not, vec![var_node("x")]);
+        let outer = builtin(OpCode::Not, vec![inner, var_node("y")]);
+        assert!(!reduce(outer).1);
+        let inner = builtin(OpCode::Not, vec![var_node("x"), var_node("y")]);
+        let outer = builtin(OpCode::Not, vec![inner]);
+        assert!(!reduce(outer).1);
     }
 
     #[test]

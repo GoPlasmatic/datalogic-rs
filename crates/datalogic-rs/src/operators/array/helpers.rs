@@ -4,7 +4,7 @@
 use crate::OpCode;
 use crate::arena::{ContextStack, DataValue, IterGuard};
 use crate::node::{MetadataHint, ReduceHint};
-use crate::operators::meta::{Algebra, ArithOp, EqOp, OrdOp};
+use crate::operators::meta::{Algebra, ArithOp, EqOp, Logic, OrdOp, Truth};
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 use std::ops::ControlFlow;
@@ -186,29 +186,30 @@ impl FastPredicate {
         if depth >= MAX_PREDICATE_DEPTH {
             return None;
         }
-        match opcode {
-            OpCode::And | OpCode::Or if !args.is_empty() => {
+        match (opcode, opcode.algebra()) {
+            (_, Some(Algebra::Logic(logic))) if !args.is_empty() => {
                 let preds: Option<Box<[FastPredicate]>> = args
                     .iter()
                     .map(|a| Self::detect_operand(a, depth + 1))
                     .collect();
                 let preds = preds?;
-                Some(if matches!(opcode, OpCode::And) {
-                    FastPredicate::AllOf(preds)
-                } else {
-                    FastPredicate::AnyOf(preds)
+                Some(match logic {
+                    Logic::And => FastPredicate::AllOf(preds),
+                    Logic::Or => FastPredicate::AnyOf(preds),
                 })
             }
             // `!` — truthiness negation. `!!` folds away entirely: the
             // consumer only reads the tree through truthiness.
-            OpCode::Not if args.len() == 1 => Some(FastPredicate::Not(Box::new(
-                Self::detect_operand(&args[0], depth + 1)?,
-            ))),
-            OpCode::BoolCast if args.len() == 1 => Self::detect_operand(&args[0], depth + 1),
+            (_, Some(Algebra::Truth(Truth::Not))) if args.len() == 1 => Some(FastPredicate::Not(
+                Box::new(Self::detect_operand(&args[0], depth + 1)?),
+            )),
+            (_, Some(Algebra::Truth(Truth::Bool))) if args.len() == 1 => {
+                Self::detect_operand(&args[0], depth + 1)
+            }
             // `in` with an all-string literal array: `in` compares elements
             // with strict equality, so a non-string needle is always false —
             // total semantics, no coercion involved.
-            OpCode::In if args.len() == 2 => {
+            (OpCode::In, _) if args.len() == 2 => {
                 let CompiledNode::Var {
                     scope_level: 0,
                     segments,

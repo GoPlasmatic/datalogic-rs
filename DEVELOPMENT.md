@@ -425,14 +425,19 @@ it declares. The module doc at the top of `table.rs` carries the row
 grammar.
 
 1. **Row.** Add a row inside the right `family` block. The family's `cfg`
-   gate applies to every row in it.
+   gate and its default metadata preset (`= STRING` here) apply to every
+   row in it.
 
    ```rust
-   family ExtString (feature = "ext-string") {
-       Repeat ["repeat"] => eager(Str, Lenient<Int>) string::repeat,
-           OpMeta { cost: Cost::Bytes, ..PURE };
+   family ExtString (feature = "ext-string") = STRING {
+       Repeat ["repeat"] => eager(Str, Lenient<Int>) string::repeat;
+       Length ["length"] => eager(Any) array::length { cost: Cost::Node, on_extra: Extra::InvalidArgs };
    }
    ```
+
+   A row without braces takes the family's preset as is. Braces override
+   fields, and a trailing `..BASE` starts from another preset instead:
+   `{ on_empty_source: Some(singleton_empty_array), ..ITERATOR }`.
 
    The shape is `eager(Extractor, ...)` for a fixed-arity operator
    (arguments evaluated and coerced for you), `raw` for one that evaluates
@@ -483,7 +488,8 @@ grammar.
    `Opt<T>`, `Lenient<T>`, `Lazy`, `Rest<T>`) lives in
    `operators/extract.rs`, with a table of what each one accepts;
    family-specific ones (the tensor family's) live with the family.
-3. **Declared facts.** The row's `OpMeta` (see `operators/meta.rs`) says
+3. **Declared facts.** The row's metadata (an `OpMeta`, see
+   `operators/meta.rs`) says
    whether the operator reads the data context (`reads_context`), has an
    effect (`Clock`, `Throws`, `Catches`), runs an argument under a pushed
    frame (`frames`), opts out of folding or CSE, and what its work is

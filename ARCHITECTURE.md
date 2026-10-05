@@ -209,8 +209,8 @@ from `optimize/mod.rs`.
 | Pass             | What it does                                                          | Where                     |
 |------------------|-----------------------------------------------------------------------|---------------------------|
 | `constant_fold`  | Pre-evaluates subtrees with no `Var` / `Missing` dependency           | `optimize/constant_fold.rs` |
-| `dead_code`      | Elides unreachable arms (`if` with constant condition, etc.)          | `optimize/dead_code.rs`     |
-| `strength`       | Strength reduction (`{"+": [x]}` → `x`, `{"*": [x]}` → `x`)           | `optimize/strength.rs`      |
+| `dead_code`      | Elides unreachable arms: `if` with a constant condition, and the identity / absorbing literals of a short-circuit chain (rows with `Logic` algebra: `and`, `or`) | `optimize/dead_code.rs`     |
+| `strength`       | Collapses nested truthiness operators (rows with `Truth` algebra): `!(!x)` → `!!x`, `!(!!x)` → `!x` | `optimize/strength.rs`      |
 | `cse`            | Memoizes structurally identical pure subtrees into per-evaluation slots (`Logic::cse_slot_count()`); never memoizes custom operators, `try` / `throw`, `now`, `fractional`, `sem_ver`, or the per-item bodies of iterating operators. Runs once after the fixpoint loop. | `optimize/cse.rs`           |
 | `scope`          | Resolves every `var` / `val` / `exists` reference to a compile-time `ScopeBinding` (`Root` / `Current` / `Ancestor`), so the runtime reads a precomputed frame target instead of probing `ctx.depth()`. Runs once after CSE; unconditional, so no-fold and traced compiles get the same resolution. | `compile/scope.rs`          |
 | `scope` (cont.)  | The same pass reports `Logic::needs_ancestor_frames`: whether any reference can reach past the innermost frame. When false (the common case: reaching an ancestor takes both two levels of iterator nesting and a level marker inside the inner one) evaluation skips maintaining the ancestor-frame list entirely. | `compile/scope.rs`          |
@@ -221,10 +221,14 @@ row (`operators/table.rs`) declares facts in its `OpMeta`
 (`Clock`, `Throws`, `Catches`), which argument positions run under a pushed
 context frame (iterator bodies, sort/group_by/distinct key expressions, a
 multi-arg `try`'s catch arm), explicit fold/CSE opt-outs, and its algebra
-(`+ - *`, the comparisons). Constant folding (`OpMeta::can_fold`), CSE
+(what it computes: `+ - *`, the comparisons, `and` / `or`, `!` / `!!`,
+`cat`, ...). Constant folding (`OpMeta::can_fold`), CSE
 (`cse_pure`, `is_iterator`) and scope resolution (`frames_for`, through
 `compile/scope.rs::frames_pushed_for_child`) derive their answers from those
-facts, and the `map` / `reduce` / `filter` fast paths read the algebra. **An
+facts. The `map` / `reduce` / `filter` fast paths, the fast-predicate
+detector, and the `dead_code`, `strength` and partial-fold rewrites key on
+the algebra rather than on opcodes, so a new row with the same algebra gets
+them unchanged. Only `if` is still matched by opcode, being one of a kind. **An
 operator that pushes a frame must declare it in its row**, or variable
 references beneath it resolve against the wrong frame; a debug-only oracle in
 `operators::variable` cross-checks every resolution against the runtime walk
