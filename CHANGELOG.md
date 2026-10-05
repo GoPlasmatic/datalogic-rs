@@ -188,6 +188,10 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   catalogue gave `switch` its real limit. Case, else-if and path-segment
   editors now run before the limit check, since they grow one argument
   rather than adding one.
+- The UI no longer carries a stale `@goplasmatic/datalogic-wasm` 5.4.0
+  devDependency; every build already resolved the package to the WASM built
+  from this tree. A build-time type check keeps the editor's hand-written
+  WASM interface in step with the generated typings.
 
 ### Deprecated
 

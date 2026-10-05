@@ -91,8 +91,9 @@ export function parseStructuredError(err: unknown, fallbackMessage: string): Str
 }
 
 // Mirrors `vendor/datalogic/web/datalogic_wasm.d.ts` for the surface this
-// hook uses. Kept hand-rolled so the file typechecks without depending on
-// the WASM .d.ts being regenerated.
+// hook uses. Hand-rolled so the library's published typings do not depend
+// on the WASM package; `__tests__/wasm-typings.test.ts` checks at build time
+// (`tsc -b`) that the generated `Engine` still satisfies it.
 export interface WasmEngineInstance {
   evalStr: (logic: string, data: string) => string;
   /**

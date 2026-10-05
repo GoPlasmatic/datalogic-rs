@@ -26,8 +26,9 @@
     "noFallthroughCasesInSwitch": true,
 
     /* Path aliases: mirror vite.lib.config.ts so the dts build resolves the
-       WASM dep to the vendored copy (refreshed by `sync-wasm`) rather than
-       the node_modules pin, which tracks the last published version. */
+       WASM dep to the vendored copy built from this tree (refreshed by
+       `sync-wasm`). There is no node_modules copy: the UI always runs
+       against the engine in this repository. */
     "paths": {
       "@/*": ["./src/*"],
       "@logic-editor/*": ["./src/components/logic-editor/*"],
