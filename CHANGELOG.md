@@ -65,6 +65,15 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   classified that way. Results are unchanged; the rule is simply
   evaluated at run time.
 
+### Fixed
+
+- **`filter` with a strict comparison against `null` now sees missing
+  fields.** `{"filter": [list, {"===": [{"var": "v"}, null]}]}` dropped the
+  items that have no `v` field (and `!==` kept them), although a missing
+  field reads as `null` everywhere else. Only `filter`'s
+  field-against-literal fast path was affected; `all` / `some` / `none`
+  and traced evaluation were already right.
+
 ## [5.7.1] - 2026-10-01
 
 ### Security

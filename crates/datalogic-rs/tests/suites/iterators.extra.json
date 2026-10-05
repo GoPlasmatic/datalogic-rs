@@ -534,5 +534,190 @@
         ]
       ]
     ]
+  },
+  "A missing field is var's implicit null in a strict comparison, on every path",
+  {
+    "description": "filter === null keeps items missing the field",
+    "rule": {
+      "filter": [
+        {
+          "var": "xs"
+        },
+        {
+          "===": [
+            {
+              "var": "v"
+            },
+            null
+          ]
+        }
+      ]
+    },
+    "data": {
+      "xs": [
+        {
+          "v": 1
+        },
+        {
+          "w": 2
+        },
+        {
+          "v": null
+        }
+      ]
+    },
+    "result": [
+      {
+        "w": 2
+      },
+      {
+        "v": null
+      }
+    ]
+  },
+  {
+    "description": "filter === null with the literal first keeps items missing the field",
+    "rule": {
+      "filter": [
+        {
+          "var": "xs"
+        },
+        {
+          "===": [
+            null,
+            {
+              "var": "v"
+            }
+          ]
+        }
+      ]
+    },
+    "data": {
+      "xs": [
+        {
+          "v": 1
+        },
+        {
+          "w": 2
+        },
+        {
+          "v": null
+        }
+      ]
+    },
+    "result": [
+      {
+        "w": 2
+      },
+      {
+        "v": null
+      }
+    ]
+  },
+  {
+    "description": "filter !== null drops items missing the field",
+    "rule": {
+      "filter": [
+        {
+          "var": "xs"
+        },
+        {
+          "!==": [
+            {
+              "var": "v"
+            },
+            null
+          ]
+        }
+      ]
+    },
+    "data": {
+      "xs": [
+        {
+          "v": 1
+        },
+        {
+          "w": 2
+        },
+        {
+          "v": null
+        }
+      ]
+    },
+    "result": [
+      {
+        "v": 1
+      }
+    ]
+  },
+  {
+    "description": "filter === null on a nested path with a missing parent",
+    "rule": {
+      "filter": [
+        {
+          "var": "xs"
+        },
+        {
+          "===": [
+            {
+              "var": "o.v"
+            },
+            null
+          ]
+        }
+      ]
+    },
+    "data": {
+      "xs": [
+        {
+          "o": {
+            "v": 1
+          }
+        },
+        {
+          "p": 1
+        },
+        {
+          "o": {}
+        }
+      ]
+    },
+    "result": [
+      {
+        "p": 1
+      },
+      {
+        "o": {}
+      }
+    ]
+  },
+  {
+    "description": "some === null sees an item missing the field",
+    "rule": {
+      "some": [
+        {
+          "var": "xs"
+        },
+        {
+          "===": [
+            {
+              "var": "v"
+            },
+            null
+          ]
+        }
+      ]
+    },
+    "data": {
+      "xs": [
+        {
+          "v": 1
+        },
+        {
+          "w": 2
+        }
+      ]
+    },
+    "result": true
   }
 ]

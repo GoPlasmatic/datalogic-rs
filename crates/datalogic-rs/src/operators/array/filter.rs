@@ -96,7 +96,9 @@ fn filter_strict_eq_field_fast_path<'a>(
         let item = src.get(i);
         let matches = match field.resolve(item) {
             Some(av) => av == invariant_val,
-            None => false,
+            // A missing field is `var`'s implicit null, which strictly
+            // equals a null invariant like any present null.
+            None => invariant_val.is_null(),
         };
         if matches == is_eq {
             results.push(*item);
