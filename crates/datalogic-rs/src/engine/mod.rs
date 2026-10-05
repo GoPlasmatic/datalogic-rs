@@ -518,6 +518,62 @@ impl Engine {
         Logic::compile_with(&owned, self)
     }
 
+    /// Compile `rule` in templating mode, whatever mode the engine was
+    /// built with: a multi-key object is an output template and an
+    /// unknown operator key is an output field, as on an engine built
+    /// [`with_templating(true)`](crate::EngineBuilder::with_templating).
+    /// The engine's custom operators, template key escape and folding
+    /// setting apply as usual.
+    ///
+    /// With [`Self::compile_strict`] this lets one engine, with one set of
+    /// custom operators, both check rules strictly and compile output
+    /// templates, instead of a host building an engine per mode.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::Engine;
+    ///
+    /// let engine = Engine::new();
+    /// let template = r#"{"user": {"var": "name"}, "source": "api"}"#;
+    /// assert!(engine.compile(template).is_err());
+    ///
+    /// let logic = engine.compile_template(template).unwrap();
+    /// let out = engine.session().eval_str(&logic, r#"{"name": "ana"}"#).unwrap();
+    /// assert_eq!(out, r#"{"user":"ana","source":"api"}"#);
+    /// ```
+    #[cfg(feature = "templating")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "templating")))]
+    pub fn compile_template<R: crate::IntoLogic>(&self, rule: R) -> Result<Logic> {
+        let owned = rule.into_owned_logic()?;
+        Logic::compile_in_mode(&owned, self, true)
+    }
+
+    /// Compile `rule` outside templating mode, whatever mode the engine
+    /// was built with: a multi-key object is an error, and an unknown
+    /// operator is not an output field, exactly as on an engine built
+    /// without templating. The engine's custom operators and folding
+    /// setting apply as usual.
+    ///
+    /// On an engine built without templating this is [`Self::compile`].
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # #[cfg(feature = "templating")] {
+    /// use datalogic_rs::Engine;
+    ///
+    /// let engine = Engine::builder().with_templating(true).build();
+    /// let typo = r#"{"user": {"var": "name"}, "sourec": "api"}"#;
+    /// assert!(engine.compile(typo).is_ok());          // an output template
+    /// assert!(engine.compile_strict(typo).is_err());  // not a rule
+    /// # }
+    /// ```
+    pub fn compile_strict<R: crate::IntoLogic>(&self, rule: R) -> Result<Logic> {
+        let owned = rule.into_owned_logic()?;
+        Logic::compile_in_mode(&owned, self, false)
+    }
+
     /// Compile and wrap in an [`Arc`](std::sync::Arc) in one call. Convenience for the
     /// dominant cross-thread-sharing pattern; equivalent to
     /// `Arc::new(engine.compile(rule)?)`.

@@ -35,12 +35,24 @@ impl Logic {
     /// off skips them so every operator survives in the tree. Used by
     /// [`Engine::compile`].
     pub(crate) fn compile_with(logic: &OwnedDataValue, engine: &Engine) -> Result<Self> {
+        Self::compile_in_mode(logic, engine, engine.is_templating_enabled())
+    }
+
+    /// [`Self::compile_with`] with the templating mode given by the caller
+    /// instead of read from the engine. Backs [`Engine::compile_template`]
+    /// and [`Engine::compile_strict`]; everything else (folding, escape,
+    /// custom operators) still comes from `engine`.
+    pub(crate) fn compile_in_mode(
+        logic: &OwnedDataValue,
+        engine: &Engine,
+        templating: bool,
+    ) -> Result<Self> {
         let ctx = if engine.constant_folding_enabled() {
             CompileCtx::new()
         } else {
             CompileCtx::no_fold()
         };
-        Self::compile_inner(logic, engine, ctx)
+        Self::compile_inner(logic, engine, templating, ctx)
     }
 
     /// Compile with the optimizer + constant-fold passes disabled
@@ -49,17 +61,22 @@ impl Logic {
     /// have full operator coverage even when the engine has folding on.
     #[cfg(feature = "trace")]
     pub(crate) fn compile_for_trace(logic: &OwnedDataValue, engine: &Engine) -> Result<Self> {
-        Self::compile_inner(logic, engine, CompileCtx::no_fold())
+        Self::compile_inner(
+            logic,
+            engine,
+            engine.is_templating_enabled(),
+            CompileCtx::no_fold(),
+        )
     }
 
     #[inline]
-    fn compile_inner(logic: &OwnedDataValue, engine: &Engine, mut ctx: CompileCtx) -> Result<Self> {
-        let mut root = walker::compile_node(
-            logic,
-            Some(engine),
-            engine.is_templating_enabled(),
-            &mut ctx,
-        )?;
+    fn compile_inner(
+        logic: &OwnedDataValue,
+        engine: &Engine,
+        templating: bool,
+        mut ctx: CompileCtx,
+    ) -> Result<Self> {
+        let mut root = walker::compile_node(logic, Some(engine), templating, &mut ctx)?;
         // CSE runs once over the finished tree, after the per-node fixpoint
         // optimizer (folded shapes are final) and before `Logic::new`'s
         // populate pass (so hints are derived through the wrappers). Gated

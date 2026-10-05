@@ -63,6 +63,14 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   operator of the build answers to (aliases included), where the custom
   operator would never run, with a `ConfigurationError` naming the
   built-in. `add_operator` is unchanged.
+- **`Engine::compile_template` and `Engine::compile_strict`** choose
+  the templating mode for one compile instead of for the engine. The
+  engine's custom operators, template key escape and folding setting
+  still apply, so one engine can check a condition strictly and compile
+  an output template, where a host used to build an engine per mode and
+  keep their operator registrations in step. A generated test checks
+  every suite case: each mode gives the same compiled rule and outcome as
+  an engine built in that mode.
 - **`Arc<T>` implements `CustomOperator`** (for any
   `T: CustomOperator + ?Sized`, `Arc<dyn CustomOperator>` included), so
   one operator instance and its state can be registered on several

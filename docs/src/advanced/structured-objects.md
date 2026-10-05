@@ -22,6 +22,22 @@ let engine = Engine::builder()
     .build();
 ```
 
+### Per compile
+
+Templating can also be chosen for one compile, on any engine:
+`engine.compile_template(rule)` compiles in templating mode and
+`engine.compile_strict(rule)` without it, whatever the engine was built
+with. The engine's custom operators, template key escape and folding
+setting still apply, so one engine can compile output templates and also
+reject a typo in a condition:
+
+```rust
+let engine = Engine::builder().add_operator("secret", SecretOp).build();
+
+let condition = engine.compile_strict(r#"{"==": [{"secret": "k"}, "x"]}"#)?;
+let template = engine.compile_template(r#"{"token": {"secret": "k"}, "v": 1}"#)?;
+```
+
 ## How It Works
 
 In normal mode, the engine treats unknown keys in a JSON object as errors

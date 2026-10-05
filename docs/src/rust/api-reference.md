@@ -78,7 +78,15 @@ Compile a JSONLogic rule into reusable [`Logic`](#logic).
 ```rust
 pub fn compile<R: IntoLogic>(&self, rule: R) -> Result<Logic>;
 pub fn compile_arc<R: IntoLogic>(&self, rule: R) -> Result<Arc<Logic>>;
+pub fn compile_strict<R: IntoLogic>(&self, rule: R) -> Result<Logic>;
+#[cfg(feature = "templating")]
+pub fn compile_template<R: IntoLogic>(&self, rule: R) -> Result<Logic>;
 ```
+
+`compile` uses the engine's templating mode. `compile_strict` and
+`compile_template` choose the mode for one compile instead, with the
+engine's custom operators, template key escape and folding setting, so
+one engine can check a rule strictly and compile an output template.
 
 `R: IntoLogic` accepts `&str` (JSON-parsed), `&String`,
 `&OwnedDataValue` / `OwnedDataValue`, and `&serde_json::Value` (gated
