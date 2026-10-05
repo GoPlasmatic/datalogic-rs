@@ -22,10 +22,11 @@ impl<'a, 'ctx> ContextRef<'a, 'ctx> {
         }
     }
 
-    /// Test-only: production metadata reads go through
+    /// Test-only, for the context tests (which need `serde_json`).
+    /// Production metadata reads go through
     /// [`super::ContextStack::metadata_at_level`], which resolves the frame a
     /// level names rather than assuming the current one.
-    #[cfg(test)]
+    #[cfg(all(test, feature = "serde_json"))]
     #[inline]
     pub(crate) fn get_index(&self) -> Option<usize> {
         match self {
@@ -35,7 +36,7 @@ impl<'a, 'ctx> ContextRef<'a, 'ctx> {
     }
 
     /// Test-only: see [`Self::get_index`].
-    #[cfg(test)]
+    #[cfg(all(test, feature = "serde_json"))]
     #[inline]
     pub(crate) fn get_key(&self) -> Option<&'a str> {
         match self {
