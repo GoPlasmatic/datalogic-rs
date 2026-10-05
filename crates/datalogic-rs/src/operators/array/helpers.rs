@@ -7,6 +7,7 @@ use crate::node::{MetadataHint, ReduceHint};
 use crate::operators::meta::{Algebra, ArithOp, EqOp, Logic, OrdOp, Truth};
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
+use datavalue::NumberValue;
 use std::ops::ControlFlow;
 
 /// Check if a compiled node is loop-invariant — i.e. whether hoisting it out
@@ -937,6 +938,48 @@ impl<'n> FieldCursor<'n> {
         } else {
             crate::arena::value::traverse_segments(item, self.segments)
         }
+    }
+}
+
+// =============================================================================
+// Exact arithmetic for the map fast paths
+// =============================================================================
+
+/// `a op b` with the binary arithmetic operators' representation rules,
+/// for one pair: integer math when both operands are exactly `i64` (whole
+/// floats included), promoting this result alone to `from_f64` on
+/// overflow; `from_f64` otherwise.
+///
+/// The `map` arithmetic fast paths compute element by element through
+/// this, never in a separate integer pass that restarts the whole
+/// collection in `f64` on the first overflow: that restart rounded exact
+/// neighbours past 2^53 (`i64::MIN + 3` came back as `i64::MIN`), the bug
+/// class of issue #61. Deliberately not `NumberValue::add` / `sub` / `mul`,
+/// which leave an overflowed whole result as `Float` where the operators
+/// collapse it back to `Integer`.
+#[inline(always)]
+pub(super) fn combine(
+    a: NumberValue,
+    b: NumberValue,
+    int_op: impl Fn(i64, i64) -> Option<i64>,
+    float_op: impl Fn(f64, f64) -> f64,
+) -> NumberValue {
+    match (a.as_i64(), b.as_i64()) {
+        (Some(x), Some(y)) => match int_op(x, y) {
+            Some(r) => NumberValue::from_i64(r),
+            None => NumberValue::from_f64(float_op(x as f64, y as f64)),
+        },
+        _ => NumberValue::from_f64(float_op(a.as_f64(), b.as_f64())),
+    }
+}
+
+/// [`combine`] for a runtime operation.
+#[inline(always)]
+pub(super) fn arith_number(op: ArithOp, a: NumberValue, b: NumberValue) -> NumberValue {
+    match op {
+        ArithOp::Add => combine(a, b, i64::checked_add, |x, y| x + y),
+        ArithOp::Sub => combine(a, b, i64::checked_sub, |x, y| x - y),
+        ArithOp::Mul => combine(a, b, i64::checked_mul, |x, y| x * y),
     }
 }
 

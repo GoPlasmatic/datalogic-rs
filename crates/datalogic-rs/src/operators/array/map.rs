@@ -5,9 +5,10 @@ use crate::node::PathSegment;
 use crate::operators::meta::ArithOp;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
-use datavalue::{NumberValue, OwnedDataValue};
+use datavalue::OwnedDataValue;
 use std::ops::ControlFlow;
 
+use super::helpers::arith_number;
 use super::helpers::{
     FieldCursor, FusedMapBody, Items, IterSrc, for_each_iter_array, for_each_iter_object,
 };
@@ -75,8 +76,10 @@ fn map_fused<'a>(
 /// dominant `{*: [{val:[]}, 2]}` style of arithmetic-with-literal map
 /// bodies seen in real workloads.
 ///
-/// Returns `None` if the literal isn't numeric or the data doesn't fit —
-/// caller falls through to the general path.
+/// Each element goes through [`arith_number`], so results match the
+/// arithmetic operators exactly. Returns `None` if the literal or any value
+/// is not a number, or a field is missing: the caller falls through to the
+/// general path, which owns coercion.
 #[inline]
 fn map_arith_var_lit<'a>(
     src: &IterSrc<'a>,
@@ -86,68 +89,13 @@ fn map_arith_var_lit<'a>(
     var_is_lhs: bool,
     arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
-    let lit_f = lit_value.as_f64()?;
-    let lit_i = lit_value.as_i64();
-    let len = src.len();
-
-    // Integer fast path. Aborts (without committing results) on the first
-    // overflow or non-integer input — caller falls through to f64.
-    if let Some(li) = lit_i
-        && let Some(av) = map_arith_var_lit_int(src, var_segs, li, op, var_is_lhs, len, arena)
-    {
-        return Some(av);
-    }
-
-    // f64 path.
-    let mut results = bvec::<DataValue<'a>>(arena, len);
-    for i in 0..len {
-        let item = src.get(i);
-        let val = if var_segs.is_empty() {
-            item
-        } else {
-            crate::arena::value::traverse_segments(item, var_segs)?
-        };
-        let item_f = val.as_f64()?;
-        let (a, b) = if var_is_lhs {
-            (item_f, lit_f)
-        } else {
-            (lit_f, item_f)
-        };
-        let r = op.apply_f64(a, b);
-        results.push(DataValue::Number(NumberValue::from_f64(r)));
-    }
-    Some(arena.alloc(DataValue::Array(results.into_bump_slice())))
-}
-
-/// Integer-only branch of [`map_arith_var_lit`]. Returns `None`
-/// (without allocating into the arena) on overflow or non-integer input so
-/// the caller's f64 path can take over.
-#[inline]
-fn map_arith_var_lit_int<'a>(
-    src: &IterSrc<'a>,
-    var_segs: &[PathSegment],
-    li: i64,
-    op: ArithOp,
-    var_is_lhs: bool,
-    len: usize,
-    arena: &'a Bump,
-) -> Option<&'a DataValue<'a>> {
-    let mut results = bvec::<DataValue<'a>>(arena, len);
-    for i in 0..len {
-        let item = src.get(i);
-        let val = if var_segs.is_empty() {
-            item
-        } else {
-            crate::arena::value::traverse_segments(item, var_segs)?
-        };
-        let item_i = val.as_i64()?;
-        let (a, b) = if var_is_lhs {
-            (item_i, li)
-        } else {
-            (li, item_i)
-        };
-        let r = op.checked_i64(a, b)?;
-        results.push(DataValue::Number(NumberValue::Integer(r)));
+    let lit = *lit_value.as_number()?;
+    let mut field = FieldCursor::new(var_segs);
+    let mut results = bvec::<DataValue<'a>>(arena, src.len());
+    for item in src.0 {
+        let v = *field.resolve(item)?.as_number()?;
+        let (a, b) = if var_is_lhs { (v, lit) } else { (lit, v) };
+        results.push(DataValue::Number(arith_number(op, a, b)));
     }
     Some(arena.alloc(DataValue::Array(results.into_bump_slice())))
 }
@@ -168,38 +116,13 @@ fn map_arith_var_var<'a>(
     b_segs: &[PathSegment],
     arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
-    let len = src.len();
     let mut a_field = FieldCursor::new(a_segs);
     let mut b_field = FieldCursor::new(b_segs);
-
-    // Integer pass. Aborts (without committing results) on the first
-    // overflow or non-integer operand — the f64 pass below takes over, and
-    // `NumberValue::from_f64`'s whole-value canonicalization keeps the two
-    // passes' outputs identical where they overlap.
-    'int_pass: {
-        let mut results = bvec::<DataValue<'a>>(arena, len);
-        for i in 0..len {
-            let item = src.get(i);
-            let a = a_field.resolve(item)?;
-            let b = b_field.resolve(item)?;
-            let (Some(ia), Some(ib)) = (a.as_i64(), b.as_i64()) else {
-                break 'int_pass;
-            };
-            let r = op.checked_i64(ia, ib);
-            let Some(r) = r else { break 'int_pass };
-            results.push(DataValue::Number(NumberValue::Integer(r)));
-        }
-        return Some(arena.alloc(DataValue::Array(results.into_bump_slice())));
-    }
-
-    // f64 pass — still Numbers only; anything else falls to the general path.
-    let mut results = bvec::<DataValue<'a>>(arena, len);
-    for i in 0..len {
-        let item = src.get(i);
-        let a_f = a_field.resolve(item)?.as_f64()?;
-        let b_f = b_field.resolve(item)?.as_f64()?;
-        let r = op.apply_f64(a_f, b_f);
-        results.push(DataValue::Number(NumberValue::from_f64(r)));
+    let mut results = bvec::<DataValue<'a>>(arena, src.len());
+    for item in src.0 {
+        let a = *a_field.resolve(item)?.as_number()?;
+        let b = *b_field.resolve(item)?.as_number()?;
+        results.push(DataValue::Number(arith_number(op, a, b)));
     }
     Some(arena.alloc(DataValue::Array(results.into_bump_slice())))
 }

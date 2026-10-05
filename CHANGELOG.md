@@ -74,6 +74,17 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   field-against-literal fast path was affected; `all` / `some` / `none`
   and traced evaluation were already right.
 
+- **`map` arithmetic stays exact next to an overflowing element.** A
+  `map` whose body is `+`, `-` or `*` on a field and a literal, or on two
+  fields, computed the whole array in `f64` as soon as one element
+  overflowed `i64`, rounding exact neighbours past 2^53:
+  `{"map": [list, {"+": [{"var": "x"}, {"var": "y"}]}]}` turned
+  `i64::MIN + 3` into `i64::MIN`, and `{"-": [{"var": ""}, i64::MAX]}`
+  returned `i64::MIN` for every element. Each element is now computed
+  exactly as the arithmetic operators compute it. This also affected
+  `reduce` over such a `map` when the fold could not be fused (for
+  example with a non-number initial value).
+
 ### Performance
 
 - **`filter`, `all`, `some` and `none` over a comparison predicate are

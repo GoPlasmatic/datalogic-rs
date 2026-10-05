@@ -222,5 +222,194 @@
     },
     "data": {"multiplier": 5},
     "result": [5, 10, 15]
+  },
+  "Arithmetic map bodies keep each element exact when another element overflows (fast path matches the operators)",
+  {
+    "description": "map x + y: an overflowing row does not round its neighbours",
+    "rule": {
+      "map": [
+        {
+          "var": "xs"
+        },
+        {
+          "+": [
+            {
+              "var": "x"
+            },
+            {
+              "var": "y"
+            }
+          ]
+        }
+      ]
+    },
+    "data": {
+      "xs": [
+        {
+          "x": 9223372036854775807,
+          "y": 3
+        },
+        {
+          "x": 1,
+          "y": 3
+        },
+        {
+          "x": -9223372036854775808,
+          "y": 3
+        },
+        {
+          "x": -1,
+          "y": 3
+        }
+      ]
+    },
+    "result": [
+      9.223372036854776e+18,
+      4,
+      -9223372036854775805,
+      2
+    ]
+  },
+  {
+    "description": "map value - i64::MAX stays exact where it fits",
+    "rule": {
+      "map": [
+        {
+          "var": "xs"
+        },
+        {
+          "-": [
+            {
+              "var": ""
+            },
+            9223372036854775807
+          ]
+        }
+      ]
+    },
+    "data": {
+      "xs": [
+        1,
+        2,
+        -4
+      ]
+    },
+    "result": [
+      -9223372036854775806,
+      -9223372036854775805,
+      -9223372036854775808
+    ]
+  },
+  {
+    "description": "map i64::MAX - value with the literal first",
+    "rule": {
+      "map": [
+        {
+          "var": "xs"
+        },
+        {
+          "-": [
+            9223372036854775807,
+            {
+              "var": ""
+            }
+          ]
+        }
+      ]
+    },
+    "data": {
+      "xs": [
+        1,
+        -4
+      ]
+    },
+    "result": [
+      9223372036854775806,
+      9.223372036854776e+18
+    ]
+  },
+  {
+    "description": "map value * i64::MAX keeps the exact first product",
+    "rule": {
+      "map": [
+        {
+          "var": "xs"
+        },
+        {
+          "*": [
+            {
+              "var": ""
+            },
+            9223372036854775807
+          ]
+        }
+      ]
+    },
+    "data": {
+      "xs": [
+        1,
+        2
+      ]
+    },
+    "result": [
+      9223372036854775807,
+      1.8446744073709552e+19
+    ]
+  },
+  {
+    "description": "reduce over map x + y with a non-number initial value",
+    "rule": {
+      "reduce": [
+        {
+          "map": [
+            {
+              "var": "xs"
+            },
+            {
+              "+": [
+                {
+                  "var": "x"
+                },
+                {
+                  "var": "y"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "-": [
+            {
+              "var": "current"
+            },
+            {
+              "var": "accumulator"
+            }
+          ]
+        },
+        "5"
+      ]
+    },
+    "data": {
+      "xs": [
+        {
+          "x": 9223372036854775807,
+          "y": 3
+        },
+        {
+          "x": 1,
+          "y": 3
+        },
+        {
+          "x": -9223372036854775808,
+          "y": 3
+        },
+        {
+          "x": -1,
+          "y": 3
+        }
+      ]
+    },
+    "result": -1
   }
 ]
