@@ -5,7 +5,7 @@ use crate::operators::comparison::compare_equals;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
-use super::helpers::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
+use super::helpers::{Items, IterSrc};
 
 /// `distinct: [array]` (dedup by value) or `distinct: [array, key_expr]`
 /// (dedup by computed key). First occurrence wins in both forms, so output
@@ -23,28 +23,16 @@ use super::helpers::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
 /// which is what lets `opcode_is_static` classify it as fold-eligible.
 #[inline]
 pub(crate) fn evaluate_distinct<'a>(
+    items: Items<'a>,
     args: &'a [CompiledNode],
-    iter_arg_kind: IterArgKind,
     ctx: &mut ContextStack<'a>,
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
-        ResolvedInput::Iterable(s) => s,
-        ResolvedInput::Empty => return Ok(crate::arena::singletons::singleton_empty_array()),
-        ResolvedInput::Bridge(av) => {
-            // Bridge is never Array/Null (see ResolvedInput::Bridge), so a
-            // distinct input reaching here is a scalar or object.
-            debug_assert!(!matches!(av, DataValue::Array(_) | DataValue::Null));
-            return Err(crate::Error::invalid_args());
-        }
+    // An object or scalar source has nothing to deduplicate.
+    let Items::Array(src) = items else {
+        return Err(crate::Error::invalid_args());
     };
-
-    let len = src.len();
-    if len == 0 {
-        return Ok(crate::arena::singletons::singleton_empty_array());
-    }
-
     if args.len() < 2 {
         return distinct_by_value(&src, ctx, engine, arena);
     }

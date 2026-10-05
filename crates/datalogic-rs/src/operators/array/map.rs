@@ -9,35 +9,27 @@ use datavalue::{NumberValue, OwnedDataValue};
 use std::ops::ControlFlow;
 
 use super::helpers::{
-    FieldCursor, FusedMapBody, IterArgKind, IterSrc, ResolvedInput, for_each_iter_array,
-    for_each_iter_object, resolve_iter_input,
+    FieldCursor, FusedMapBody, Items, IterSrc, for_each_iter_array, for_each_iter_object,
 };
 
-/// `map`. Borrows input from root scope when possible. Body fast path for
-/// var/field-extract re-borrows the arena item per output entry with zero
-/// iteration allocs. Other body shapes evaluate the body via arena dispatch
-/// per item.
+/// `map`: the body's value for each item (or object pair). A scalar source
+/// is mapped as a one-item collection. Body fast path for var/field-extract
+/// re-borrows the arena item per output entry with zero iteration allocs;
+/// other body shapes evaluate the body via arena dispatch per item.
 #[inline]
 pub(crate) fn evaluate_map<'a>(
+    items: Items<'a>,
     args: &'a [CompiledNode],
-    iter_arg_kind: IterArgKind,
     ctx: &mut ContextStack<'a>,
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let body = &args[1];
-    let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
-        ResolvedInput::Iterable(s) => s,
-        ResolvedInput::Empty => return Ok(crate::arena::singletons::singleton_empty_array()),
-        ResolvedInput::Bridge(av) => {
-            return map_arena_bridge(av, body, ctx, engine, arena);
-        }
+    let src = match items {
+        Items::Array(src) => src,
+        Items::Object(pairs) => return map_bridge_object(pairs, body, ctx, engine, arena),
+        Items::Scalar(value) => return map_bridge_single(value, body, ctx, engine, arena),
     };
-
-    let len = src.len();
-    if len == 0 {
-        return Ok(crate::arena::singletons::singleton_empty_array());
-    }
 
     // Fast paths bypass `run_iter_body`, so they skip the tracer's
     // per-iteration markers. Only enter them when no tracer is attached.
@@ -256,28 +248,7 @@ fn map_general<'a>(
     Ok(arena.alloc(DataValue::Array(results.into_bump_slice())))
 }
 
-/// Map Bridge case — Object inputs iterate (key, value) pairs; inline arena
-/// Array inputs (e.g. literal `[1,2,3]` arg) iterate items; other shapes are
-/// treated as a single-element collection.
-#[inline]
-fn map_arena_bridge<'a>(
-    input: &'a DataValue<'a>,
-    body: &'a CompiledNode,
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    debug_assert!(
-        !matches!(input, DataValue::Array(_) | DataValue::Null),
-        "Bridge is never Array/Null (see ResolvedInput::Bridge)"
-    );
-    match input {
-        DataValue::Object(pairs) => map_bridge_object(pairs, body, ctx, engine, arena),
-        // Single-element collection (number, string, bool primitive input).
-        _ => map_bridge_single(input, body, ctx, engine, arena),
-    }
-}
-
+/// An object source: the body's value for each `(key, value)` pair.
 #[inline]
 fn map_bridge_object<'a>(
     pairs: &'a [(&'a str, DataValue<'a>)],
@@ -294,6 +265,7 @@ fn map_bridge_object<'a>(
     Ok(arena.alloc(DataValue::Array(results.into_bump_slice())))
 }
 
+/// A scalar source, mapped as a one-item collection.
 #[inline]
 fn map_bridge_single<'a>(
     input: &'a DataValue<'a>,

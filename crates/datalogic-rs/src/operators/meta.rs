@@ -49,6 +49,9 @@ pub(crate) struct OpMeta {
     /// Rows with a declared maximum: what happens when there are more
     /// arguments than the row reads.
     pub on_extra: Extra,
+    /// `each` rows: the result for a null, missing or empty-array source,
+    /// returned without running the body.
+    pub on_empty_source: Option<Singleton>,
     /// What the operator computes, for the fast paths that specialise on it
     /// (`map` / `reduce` arithmetic bodies, `filter` comparisons, constant
     /// folding's associative set).
@@ -405,6 +408,7 @@ pub(crate) const PURE: OpMeta = OpMeta {
     cost: Cost::Node,
     on_missing: Miss::InvalidArgs,
     on_extra: Extra::Ignore,
+    on_empty_source: None,
     algebra: None,
     compile: None,
     display: None,

@@ -7,34 +7,26 @@ use bumpalo::Bump;
 use std::ops::ControlFlow;
 
 use super::helpers::{
-    FastPredicate, FieldCursor, IterArgKind, IterSrc, ResolvedInput, for_each_iter_array,
-    for_each_iter_object, resolve_iter_input, try_extract_filter_field_cmp,
+    FastPredicate, FieldCursor, Items, IterSrc, for_each_iter_array, for_each_iter_object,
+    try_extract_filter_field_cmp,
 };
 
-/// `filter`. Fast path: input collection resolves at root scope (the dominant
-/// pattern in real workloads). Bridge path handles non-borrowable inputs.
+/// `filter`: the items (or object pairs) whose predicate is truthy. A
+/// scalar source is an error.
 #[inline]
 pub(crate) fn evaluate_filter<'a>(
+    items: Items<'a>,
     args: &'a [CompiledNode],
-    iter_arg_kind: IterArgKind,
     ctx: &mut ContextStack<'a>,
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    // Resolve input via unified helper (root borrow OR upstream arena op).
-    let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
-        ResolvedInput::Iterable(s) => s,
-        ResolvedInput::Empty => return Ok(crate::arena::singletons::singleton_empty_array()),
-        ResolvedInput::Bridge(av) => {
-            return filter_arena_bridge(av, &args[1], ctx, engine, arena);
-        }
-    };
-
     let predicate = &args[1];
-    let len = src.len();
-    if len == 0 {
-        return Ok(crate::arena::singletons::singleton_empty_array());
-    }
+    let src = match items {
+        Items::Array(src) => src,
+        Items::Object(pairs) => return filter_bridge_object(pairs, predicate, ctx, engine, arena),
+        Items::Scalar(_) => return Err(crate::Error::invalid_args()),
+    };
 
     // Fast paths bypass `run_iter_body` and skip tracer markers. Defer to the
     // general path when a tracer is attached.
@@ -167,28 +159,8 @@ fn filter_general<'a>(
     Ok(arena.alloc(DataValue::Array(results.into_bump_slice())))
 }
 
-/// Filter Bridge case — input is an Object, an inline arena Array (e.g. a
-/// literal `[1,2,3]` arg) or a non-array primitive. Object inputs iterate
-/// `(key, value)` pairs into a new arena `Object`; arena Array inputs iterate
-/// items into a new arena `Array`; other shapes are an error.
-#[inline]
-fn filter_arena_bridge<'a>(
-    input: &'a DataValue<'a>,
-    predicate: &'a CompiledNode,
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    debug_assert!(
-        !matches!(input, DataValue::Array(_) | DataValue::Null),
-        "Bridge is never Array/Null (see ResolvedInput::Bridge)"
-    );
-    match input {
-        DataValue::Object(pairs) => filter_bridge_object(pairs, predicate, ctx, engine, arena),
-        _ => Err(crate::Error::invalid_args()),
-    }
-}
-
+/// An object source: the `(key, value)` pairs whose predicate is truthy, as
+/// a new object.
 #[inline]
 fn filter_bridge_object<'a>(
     pairs: &'a [(&'a str, DataValue<'a>)],

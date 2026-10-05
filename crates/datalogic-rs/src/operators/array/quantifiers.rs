@@ -7,10 +7,7 @@ use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 use std::ops::ControlFlow;
 
-use super::helpers::{
-    FastPredicate, IterArgKind, ResolvedInput, for_each_iter_array, for_each_iter_object,
-    resolve_iter_input,
-};
+use super::helpers::{FastPredicate, Items, for_each_iter_array, for_each_iter_object};
 
 impl Quant {
     /// The predicate result that settles the answer early: `false` for
@@ -21,7 +18,9 @@ impl Quant {
     }
 
     /// The answer for an empty collection. `all` is deliberately not
-    /// vacuously true.
+    /// vacuously true. A null or empty-array source is answered by the
+    /// row's `on_empty_source`, which must agree; this covers an empty
+    /// object and a scalar source.
     #[inline(always)]
     fn empty_result(self) -> bool {
         matches!(self, Quant::None)
@@ -37,29 +36,24 @@ impl Quant {
     }
 }
 
-/// `all` / `some` / `none`: test the predicate against each item, stopping
-/// at the first that settles the answer.
+/// `all` / `some` / `none`: test the predicate against each item (or
+/// object pair), stopping at the first that settles the answer. A scalar
+/// source counts as empty.
 #[inline]
 pub(crate) fn quantifier<'a>(
+    items: Items<'a>,
     args: &'a [CompiledNode],
-    iter_arg_kind: IterArgKind,
     ctx: &mut ContextStack<'a>,
     engine: &Engine,
     arena: &'a Bump,
     op: Quant,
 ) -> Result<&'a DataValue<'a>> {
     let predicate = &args[1];
-    let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
-        ResolvedInput::Iterable(s) => s,
-        ResolvedInput::Empty => return Ok(singleton_bool(op.empty_result())),
-        ResolvedInput::Bridge(av) => {
-            return quantifier_arena_bridge(av, predicate, op, ctx, engine, arena);
-        }
+    let src = match items {
+        Items::Array(src) => src,
+        Items::Object(pairs) => return quantifier_object(pairs, predicate, op, ctx, engine, arena),
+        Items::Scalar(_) => return Ok(singleton_bool(op.empty_result())),
     };
-
-    if src.is_empty() {
-        return Ok(singleton_bool(op.empty_result()));
-    }
 
     // Fast predicate path — no context push, no clones. Detection is
     // hoisted to compile time and cached on the predicate node, so we
@@ -102,43 +96,33 @@ pub(crate) fn quantifier<'a>(
     Ok(singleton_bool(op.finalize(found_short)))
 }
 
-/// Quantifier Bridge case — Object inputs iterate (key, value) pairs. The
-/// Bridge variant is only produced for non-null, non-array values
-/// (`value_as_iter` routes Null to Empty and Array to Iterable), so every
-/// other shape is treated as empty.
+/// An object source: the predicate runs per `(key, value)` pair.
 #[inline]
-fn quantifier_arena_bridge<'a>(
-    input: &'a DataValue<'a>,
+fn quantifier_object<'a>(
+    pairs: &'a [(&'a str, DataValue<'a>)],
     predicate: &'a CompiledNode,
     op: Quant,
     ctx: &mut ContextStack<'a>,
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    match input {
-        DataValue::Object(pairs) => {
-            if pairs.is_empty() {
-                return Ok(singleton_bool(op.empty_result()));
-            }
-            let mut found_short = false;
-            for_each_iter_object(
-                pairs,
-                predicate,
-                ctx,
-                engine,
-                arena,
-                |_, _item, _key, av| {
-                    if crate::arena::truthy_arena(av, engine) == op.short_circuit_on() {
-                        found_short = true;
-                        return Ok(ControlFlow::Break(()));
-                    }
-                    Ok(ControlFlow::Continue(()))
-                },
-            )?;
-            Ok(singleton_bool(op.finalize(found_short)))
-        }
-        // Anything else (scalars, strings) — treated as empty. Null and Array
-        // never reach the Bridge variant, so they are not handled here.
-        _ => Ok(singleton_bool(op.empty_result())),
+    if pairs.is_empty() {
+        return Ok(singleton_bool(op.empty_result()));
     }
+    let mut found_short = false;
+    for_each_iter_object(
+        pairs,
+        predicate,
+        ctx,
+        engine,
+        arena,
+        |_, _item, _key, av| {
+            if crate::arena::truthy_arena(av, engine) == op.short_circuit_on() {
+                found_short = true;
+                return Ok(ControlFlow::Break(()));
+            }
+            Ok(ControlFlow::Continue(()))
+        },
+    )?;
+    Ok(singleton_bool(op.finalize(found_short)))
 }

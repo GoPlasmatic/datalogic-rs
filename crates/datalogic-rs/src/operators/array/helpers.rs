@@ -562,6 +562,19 @@ pub(crate) enum ResolvedInput<'a> {
     Bridge(&'a DataValue<'a>),
 }
 
+/// An `each` row's source, resolved by the generated adapter: a null,
+/// missing or empty-array source never reaches the body (the row's
+/// `on_empty_source` answers it).
+pub(crate) enum Items<'a> {
+    /// A non-empty array.
+    Array(IterSrc<'a>),
+    /// An object, possibly empty: iterated as `(key, value)` pairs or
+    /// rejected, per operator.
+    Object(&'a [(&'a str, DataValue<'a>)]),
+    /// Any other value (number, string, bool, datetime, ...).
+    Scalar(&'a DataValue<'a>),
+}
+
 /// Compile-time classification of an iterator op's `args[0]` shape.
 /// Stored on the parent `BuiltinOperator` (filter/map/all/some/none/reduce
 /// /merge/min/max) and consulted by `resolve_iter_input` so the runtime

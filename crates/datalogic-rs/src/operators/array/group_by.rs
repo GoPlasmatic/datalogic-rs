@@ -5,7 +5,7 @@ use crate::operators::comparison::compare_equals;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
-use super::helpers::{IterArgKind, ResolvedInput, resolve_iter_input};
+use super::helpers::Items;
 
 /// `group_by: [array, key_expr]` → array of `{key, items}` objects.
 ///
@@ -24,27 +24,17 @@ use super::helpers::{IterArgKind, ResolvedInput, resolve_iter_input};
 /// general mechanism.
 #[inline]
 pub(crate) fn evaluate_group_by<'a>(
+    items: Items<'a>,
     args: &'a [CompiledNode],
-    iter_arg_kind: IterArgKind,
     ctx: &mut ContextStack<'a>,
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
-        ResolvedInput::Iterable(s) => s,
-        ResolvedInput::Empty => return Ok(crate::arena::singletons::singleton_empty_array()),
-        ResolvedInput::Bridge(av) => {
-            // Bridge is never Array/Null (see ResolvedInput::Bridge), so a
-            // group_by input reaching here is a scalar or object: not groupable.
-            debug_assert!(!matches!(av, DataValue::Array(_) | DataValue::Null));
-            return Err(crate::Error::invalid_args());
-        }
+    // An object or scalar source is not groupable.
+    let Items::Array(src) = items else {
+        return Err(crate::Error::invalid_args());
     };
-
     let len = src.len();
-    if len == 0 {
-        return Ok(crate::arena::singletons::singleton_empty_array());
-    }
 
     let key_expr = &args[1];
 

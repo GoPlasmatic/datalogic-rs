@@ -141,6 +141,50 @@ fn algebra_is_pinned() {
     }
 }
 
+/// The rows whose source the generated `each` adapter resolves, pinned.
+/// `sort` (null and `[]` give different results), `reduce` (evaluates its
+/// initial value first) and `min` / `max` (variadic form) resolve their own.
+#[test]
+fn each_rows_are_pinned() {
+    let mut each: Vec<&str> = OpCode::ALL
+        .iter()
+        .filter(|op| op.catalogue_entry().shape == "each")
+        .map(|op| op.as_str())
+        .collect();
+    each.sort_unstable();
+    let mut want = vec!["all", "filter", "map", "none", "some"];
+    if cfg!(feature = "ext-array") {
+        want.extend(["distinct", "group_by"]);
+    }
+    want.sort_unstable();
+    assert_eq!(each, want);
+}
+
+/// Every `each` row answers a null, missing or empty-array source with its
+/// declared `on_empty_source`, and never runs its body to get there (the
+/// body here throws).
+#[test]
+fn each_rows_short_circuit_empty_sources() {
+    let engine = Engine::builder().with_constant_folding(false).build();
+    let mut checked = 0;
+    for &op in OpCode::ALL {
+        if op.catalogue_entry().shape != "each" {
+            continue;
+        }
+        let empty = op
+            .meta()
+            .on_empty_source
+            .expect("an `each` row declares `on_empty_source`");
+        let want = render(Ok(empty().to_owned()));
+        for source in ["null", "[]", r#"{"var": "nope"}"#, r#"{"val": "nope"}"#] {
+            let rule = format!(r#"{{"{}": [{source}, {{"throw": "ran"}}]}}"#, op.as_str());
+            assert_eq!(outcome(&engine, &rule), want, "{rule}");
+        }
+        checked += 1;
+    }
+    assert!(checked >= 5, "only {checked} rows checked");
+}
+
 /// Every comparison row's `{op: [var, literal]}` predicate is cached as a
 /// fast predicate, so `filter` / `all` / `some` / `none` over it never
 /// dispatch per element. Keyed on the row's algebra, so a comparison row

@@ -76,9 +76,10 @@ are authoritative; link to them.
   `fn op<'a>(cx: &mut Cx<'_, 'a>, a: &'a str, ...) -> Result<impl IntoValue>`.
   `raw` rows take
   `(args: &'a [CompiledNode], ctx: &mut ContextStack<'a>, engine: &Engine, arena: &'a Bump) -> Result<&'a DataValue<'a>>`;
-  `iter` rows add `iter_arg_kind: IterArgKind` after `args`; a row
+  `iter` rows add `iter_arg_kind: IterArgKind` after `args`; `each` rows
+  take `items: Items<'a>` first (the resolved, non-empty source); a row
   written `@ Kind(payload)` passes `payload` last. Declare the argument
-  count on the row (`raw[2..]`, `iter[2]`), not in the body.
+  count on the row (`raw[2..]`, `each[2]`), not in the body.
 - **Test-suite JSON format:** array of test-case objects with
   `description`, `rule`, `data`, and either `result` or `error`. Strings
   in the array are skipped (used as section headers). Full schema in

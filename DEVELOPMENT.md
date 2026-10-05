@@ -436,12 +436,19 @@ grammar.
 
    The shape is `eager(Extractor, ...)` for a fixed-arity operator
    (arguments evaluated and coerced for you), `raw` for one that evaluates
-   its own arguments (lazy, control flow, variadic), or `iter` for one
-   that iterates `args[0]` (it also receives the cached `IterArgKind`).
+   its own arguments (lazy, control flow, variadic), `each` for an
+   iterator over `args[0]`, or `iter` for an iterator that resolves its
+   source itself (it receives the cached `IterArgKind`). An `each` row
+   declares `on_empty_source`, the result for a null, missing or empty
+   array source; the generated arm returns it without calling the body,
+   and the body receives the rest as `Items` (a non-empty array, an
+   object, or a scalar) followed by `args`. Use `iter` only when that
+   does not fit (`sort` answers null and `[]` differently, `reduce`
+   evaluates its initial value first, `min` / `max` are variadic).
    Names are canonical first, then aliases; `[]` makes an internal opcode
    (give it a `display` name).
 
-   A `raw` or `iter` row declares how many arguments it reads in
+   A `raw`, `iter` or `each` row declares how many arguments it reads in
    brackets, `raw[2]`, `raw[2..]` or `iter[2..=3]`, and the generated arm
    applies the row's `on_missing` / `on_extra` before the body runs, so
    the body never checks the count itself (it may still branch on it).
@@ -467,7 +474,8 @@ grammar.
 
    `raw` and `iter` bodies keep the four-parameter signature
    (`args, ctx, engine, arena`, plus `iter_arg_kind` after `args` for
-   `iter`, plus the `@` payload last). Arity for an `eager` row comes from
+   `iter`, plus the `@` payload last); an `each` body takes
+   `items: Items` before `args`. Arity for an `eager` row comes from
    its extractors: a missing
    argument raises `InvalidArguments` and extras are ignored unless the
    row's `on_missing` / `on_extra` say otherwise. The extractor set

@@ -1,5 +1,5 @@
-//! Row adapters: typed rows for fixed-arity operators, and the arity gate
-//! for `raw[..]` / `iter[..]` rows.
+//! Row adapters: typed rows for fixed-arity operators, the arity gate for
+//! `raw[..]` / `iter[..]` rows, and source resolution for `each[..]` rows.
 //!
 //! A table row such as `eager(Str, Str) string::ends_with` declares the
 //! operator's signature as a list of argument extractors. The body is a
@@ -34,9 +34,9 @@
 use bumpalo::Bump;
 
 use super::extract::{Extract, IntoValue};
-use super::meta::{Extra, Miss, OpMeta};
+use super::meta::{Extra, Miss, OpMeta, Singleton};
 use crate::arena::{ContextStack, DataValue};
-use crate::operators::array::IterArgKind;
+use crate::operators::array::{Items, IterArgKind, ResolvedInput, resolve_iter_input};
 use crate::{CompiledNode, Engine, Error, OpCode, Result};
 
 // ---------------------------------------------------------------------------
@@ -275,6 +275,54 @@ where
         return Ok(early);
     }
     body(args, iter_arg_kind, ctx, engine, arena)
+}
+
+/// The adapter for an `each[..]` row: apply the declared arity, resolve
+/// `args[0]` as the iteration source, answer a null, missing or empty-array
+/// source with the row's `on_empty_source`, and hand the body the rest.
+///
+/// The source is resolved (and its items charged) before the body runs,
+/// exactly as the iterator bodies did themselves.
+#[inline]
+pub(crate) fn each<'a, const OP: u8, F>(
+    args: &'a [CompiledNode],
+    iter_arg_kind: IterArgKind,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
+    arena: &'a Bump,
+    body: F,
+) -> Result<&'a DataValue<'a>>
+where
+    F: for<'c> FnOnce(
+        Items<'a>,
+        &'a [CompiledNode],
+        &'c mut ContextStack<'a>,
+        &'c Engine,
+        &'a Bump,
+    ) -> Result<&'a DataValue<'a>>,
+{
+    let meta: &'static OpMeta = const { OpCode::ALL[OP as usize].meta() };
+    let arity: Arity = const {
+        let arity = OpCode::ALL[OP as usize].arity();
+        assert!(arity.min >= 1, "an `each` row reads at least its source");
+        arity
+    };
+    let on_empty: Singleton = const {
+        match OpCode::ALL[OP as usize].meta().on_empty_source {
+            Some(value) => value,
+            None => panic!("an `each` row must declare `on_empty_source`"),
+        }
+    };
+    if let Some(early) = check_arity(args.len(), arity, meta)? {
+        return Ok(early);
+    }
+    let items = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
+        ResolvedInput::Iterable(src) if !src.is_empty() => Items::Array(src),
+        ResolvedInput::Iterable(_) | ResolvedInput::Empty => return Ok(on_empty()),
+        ResolvedInput::Bridge(DataValue::Object(pairs)) => Items::Object(pairs),
+        ResolvedInput::Bridge(value) => Items::Scalar(value),
+    };
+    body(items, args, ctx, engine, arena)
 }
 
 eager_call!(call0;);

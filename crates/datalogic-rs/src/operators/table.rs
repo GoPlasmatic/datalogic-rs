@@ -11,7 +11,7 @@
 //! | `OpCode::as_str` | the first name, or the row's `display` for an internal opcode |
 //! | [`builtin_operator_names`] | the names column, in table order |
 //! | `OpCode::meta` | the `OpMeta` column |
-//! | `OpCode::iterates_arg0` | the `iter` shape |
+//! | `OpCode::iterates_arg0` | the `iter` and `each` shapes |
 //! | `OpCode::arity` | the `eager` signature, or a `raw` / `iter` row's `[arity]` ([`Arity::ANY`] without one) |
 //! | [`dispatch_builtin`] | the shape and impl columns |
 //! | [`CATALOGUE`] | every row in the source, compiled in or not |
@@ -23,7 +23,7 @@
 //!     Variant ["name", "alias", ...] => shape impl::path [@ Kind(payload)], OpMeta-expr;
 //! }
 //!
-//! shape      := raw[arity]? | iter[arity]? | eager(Extractor, ...)
+//! shape      := raw[arity]? | iter[arity]? | each[arity] | eager(Extractor, ...)
 //! arity      := n | min.. | min..=max
 //! impl::path := a::b::f | a::b::f(extra-arg, ...)
 //! ```
@@ -36,6 +36,12 @@
 //! - **`iter`**: `f(args, iter_arg_kind, ctx, engine, arena)`. Also receives
 //!   the iteration-source classification the populate pass cached for
 //!   `args[0]` (and only `iter` rows get one classified).
+//! - **`each[arity]`**: `f(items, args, ctx, engine, arena, extra...)`. An
+//!   iterator whose source the generated arm resolves (see [`eager::each`]):
+//!   a null, missing or empty-array `args[0]` returns the row's
+//!   `on_empty_source` without calling `f`, and `f` receives the rest as
+//!   [`Items`](super::array::Items) (a non-empty array, an object, or a
+//!   scalar), plus every argument for its body and options.
 //! - **`eager(E0, E1, ...)`**: `f(cx, e0, e1, ..., extra...)`, a plain typed function.
 //!   The generated adapter (see [`super::eager`]) checks arity against the
 //!   row's `on_missing` / `on_extra` policy, evaluates every present
@@ -317,12 +323,14 @@ macro_rules! operators {
 
     // ── shape-derived facts ───────────────────────────────────────────────
     (@is_iter iter) => { true };
+    (@is_iter each) => { true };
     (@is_iter $other:ident) => { false };
 
     (@arity raw) => { Arity::ANY };
     (@arity iter) => { Arity::ANY };
     (@arity raw [ $($r:tt)* ]) => { operators!(@range $($r)*) };
     (@arity iter [ $($r:tt)* ]) => { operators!(@range $($r)*) };
+    (@arity each [ $($r:tt)* ]) => { operators!(@range $($r)*) };
     (@range $n:literal) => { Arity::exactly($n) };
     (@range $lo:literal ..) => { Arity::at_least($lo) };
     (@range $lo:literal ..= $hi:literal) => { Arity::between($lo, $hi) };
@@ -348,6 +356,11 @@ macro_rules! operators {
         ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
         eager::iter::<{ OpCode::$v as u8 }, _>($args, $iak, $ctx, $engine, $arena,
             |$args, $iak, $ctx, $engine, $arena| $($p)*($args, $iak, $ctx, $engine, $arena $(, $k)* $(, $pl)?))
+    };
+    (@call $v:ident each { [ $($ar:tt)* ] } [ $($p:tt)* ] [ $($k:expr),* ] [ $($pl:expr)? ]
+        ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
+        eager::each::<{ OpCode::$v as u8 }, _>($args, $iak, $ctx, $engine, $arena,
+            |items, $args, $ctx, $engine, $arena| $($p)*(items, $args, $ctx, $engine, $arena $(, $k)* $(, $pl)?))
     };
     (@call $v:ident eager { } ( ) [ $($p:tt)* ] [ ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
         eager::call0::<{ OpCode::$v as u8 }, _, _>($args, $ctx, $engine, $arena, $($p)*)
@@ -383,7 +396,7 @@ macro_rules! operators {
     (@call $v:ident $($rest:tt)*) => {
         compile_error!(concat!(
             "operator row `", stringify!($v),
-            "`: unknown shape, more than four eager arguments, `@` or `[arity]` on an eager row"
+            "`: unknown shape, more than four eager arguments, `@` or `[arity]` on an eager row, or `each` without `[arity]`"
         ))
     };
 }
@@ -449,12 +462,22 @@ operators! {
         // ── arrays ───────────────────────────────────────────────────────
         Merge ["merge"] => raw array::evaluate_merge,
             OpMeta { fold: Fold::Never, cost: Cost::PerItem, ..PURE };
-        Filter ["filter"] => iter[2] array::evaluate_filter, ITERATOR;
-        Map ["map"] => iter[2] array::evaluate_map, ITERATOR;
+        // A null, missing or empty source: `[]` for `filter` / `map`; for
+        // the quantifiers, `all` is deliberately not vacuously true.
+        Filter ["filter"] => each[2] array::evaluate_filter,
+            OpMeta { on_empty_source: Some(singleton_empty_array), ..ITERATOR };
+        Map ["map"] => each[2] array::evaluate_map,
+            OpMeta { on_empty_source: Some(singleton_empty_array), ..ITERATOR };
+        // `reduce` evaluates its initial value before its source, and folds
+        // `reduce(map(..))` without resolving the source, so it resolves
+        // its own.
         Reduce ["reduce"] => iter[2..=3] array::evaluate_reduce, ITERATOR;
-        All ["all"] => iter[2] array::quantifier @ Quant(Quant::All), ITERATOR;
-        Some ["some"] => iter[2] array::quantifier @ Quant(Quant::Some), ITERATOR;
-        None ["none"] => iter[2] array::quantifier @ Quant(Quant::None), ITERATOR;
+        All ["all"] => each[2] array::quantifier @ Quant(Quant::All),
+            OpMeta { on_empty_source: Some(singleton_false), ..ITERATOR };
+        Some ["some"] => each[2] array::quantifier @ Quant(Quant::Some),
+            OpMeta { on_empty_source: Some(singleton_false), ..ITERATOR };
+        None ["none"] => each[2] array::quantifier @ Quant(Quant::None),
+            OpMeta { on_empty_source: Some(singleton_true), ..ITERATOR };
 
         // ── missing values ───────────────────────────────────────────────
         Missing ["missing"] => raw missing::evaluate_missing,
@@ -503,16 +526,22 @@ operators! {
 
     family ExtArray (feature = "ext-array") {
         // `sort`'s `args[1]` is the scalar direction flag; the key
-        // expression at `args[2]` runs per element.
+        // expression at `args[2]` runs per element. It resolves its own
+        // source: a null source gives `null`, an empty array `[]`.
         Sort ["sort"] => iter[1..=3] array::evaluate_sort,
             OpMeta { frames: Frames::At(2), cost: Cost::NLogN, on_extra: Extra::Ignore, ..ITERATOR };
         Slice ["slice"] => raw[1..=4] array::evaluate_slice, OpMeta { cost: Cost::PerItem, ..PURE };
-        GroupBy ["group_by"] => iter[2] array::evaluate_group_by,
-            OpMeta { on_extra: Extra::Ignore, ..ITERATOR };
+        GroupBy ["group_by"] => each[2] array::evaluate_group_by,
+            OpMeta { on_extra: Extra::Ignore, on_empty_source: Some(singleton_empty_array), ..ITERATOR };
         // Without a key expression nothing runs under a frame, so
         // `distinct` folds like any pure operator.
-        Distinct ["distinct"] => iter[1..=2] array::evaluate_distinct,
-            OpMeta { cost: Cost::Quadratic, on_extra: Extra::Ignore, ..ITERATOR };
+        Distinct ["distinct"] => each[1..=2] array::evaluate_distinct,
+            OpMeta {
+                cost: Cost::Quadratic,
+                on_extra: Extra::Ignore,
+                on_empty_source: Some(singleton_empty_array),
+                ..ITERATOR
+            };
     }
 
     family ExtObject (feature = "ext-object") {
