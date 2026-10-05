@@ -152,6 +152,37 @@ impl Logic {
         matches!(self.root, CompiledNode::Value { .. })
     }
 
+    /// What this rule reads, which operators it uses, and whether its
+    /// result is a function of its data.
+    ///
+    /// Computed from the compiled tree on each call (one walk, no
+    /// evaluation), so it describes the rule after the optimizer: a branch
+    /// constant folding removed is not read. See [`crate::Facts`] for what
+    /// each answer covers.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::Engine;
+    ///
+    /// let engine = Engine::new();
+    /// let rule = engine
+    ///     .compile(r#"{"if": [{"var": "user.vip"}, {"map": [{"var": "cart"}, {"var": "price"}]}, []]}"#)
+    ///     .unwrap();
+    /// let facts = rule.facts();
+    ///
+    /// // `price` is read from each cart item, which `cart` already covers.
+    /// let reads: Vec<String> = facts.reads().iter().map(|p| p.to_string()).collect();
+    /// assert_eq!(reads, ["cart", "user.vip"]);
+    /// assert!(facts.reads_complete());
+    ///
+    /// assert_eq!(facts.operators(), ["if", "map", "val"]);
+    /// assert!(facts.is_deterministic());
+    /// ```
+    pub fn facts(&self) -> crate::Facts {
+        crate::facts::collect(&self.root)
+    }
+
     /// Number of shared-subexpression memo slots the compiler assigned to
     /// this rule.
     ///

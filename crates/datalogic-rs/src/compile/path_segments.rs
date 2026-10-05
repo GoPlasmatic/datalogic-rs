@@ -17,7 +17,7 @@ pub(super) fn str_to_segment(s: &str) -> PathSegment {
 }
 
 /// Parse a dot-separated path into pre-parsed segments.
-pub(super) fn parse_path_segments(path: &str) -> Vec<PathSegment> {
+pub(crate) fn parse_path_segments(path: &str) -> Vec<PathSegment> {
     if path.is_empty() {
         return Vec::new();
     }

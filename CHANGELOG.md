@@ -22,6 +22,23 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   from the same table that drives compilation and dispatch, so it cannot
   drift from what the engine does. New public types: `OperatorInfo`,
   `ScopedArg` (both `#[non_exhaustive]`).
+- **`Logic::facts()`** reports what a compiled rule reads, which
+  operators it uses, and whether its result is a function of its data,
+  from one walk over the compiled tree. `reads()` lists the data paths
+  read from the root as `DataPath` segment lists (sorted, with any path a
+  shorter one covers dropped); reads inside iterator bodies and `try`
+  catch arms resolve against the element or the error and are left out,
+  while a level marker that climbs back to the root is kept.
+  `has_computed_reads()` flags a path only known at runtime, and
+  `reads_complete()` says whether `reads()` is everything the rule can
+  read (no computed path, no custom operator). `operators()` lists
+  canonical built-in names, matching `Engine::operators()`;
+  `custom_operators()` the custom ones; `is_deterministic()` is false for
+  `now` and any custom operator. The facts describe the rule after the
+  optimizer, so a folded branch is neither read nor listed. A generated
+  test checks every suite case: evaluating against data pruned to the
+  reported reads gives the same outcome. New public types: `Facts`,
+  `DataPath`.
 - **`all-operators` feature** enables every operator family. The
   bindings and the benchmark now depend on it instead of listing the
   families one by one.

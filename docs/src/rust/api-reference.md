@@ -193,7 +193,13 @@ pub fn config(&self) -> &EvaluationConfig
 pub fn has_custom_operator(&self, name: &str) -> bool
 pub fn custom_operator_names(&self) -> impl Iterator<Item = &str>
 pub fn builtin_operator_names(&self) -> impl Iterator<Item = &'static str>
+pub fn operators(&self) -> impl Iterator<Item = OperatorInfo>
 ```
+
+`operators()` describes each built-in operator as its table row declares
+it: canonical name and aliases, family and gating feature, argument
+counts, whether it reads the data context, its effect, its cost class,
+and which argument (if any) runs under a pushed frame.
 
 `builtin_operator_names()` reports every built-in key this build resolves
 as an operator: the baseline set plus whichever extension families were
@@ -246,6 +252,42 @@ The compiled, reusable rule tree. Output of `Engine::compile`.
 - `resolve_node_ids(&self, ids: &[u32]) -> Vec<PathStep>`: translate
   the breadcrumb of a structured `Error` into the source path of the
   failing node.
+- `facts(&self) -> Facts`: what the rule reads, which operators it uses,
+  and whether its result is a function of its data. One walk over the
+  compiled tree, no evaluation.
+
+### Facts
+
+```rust
+let rule = engine.compile(r#"{"if": [{"var": "user.vip"},
+    {"map": [{"var": "cart"}, {"var": "price"}]}, []]}"#)?;
+let facts = rule.facts();
+
+facts.reads();               // [cart, user.vip]: `DataPath`s from the root
+facts.has_computed_reads();  // false: no path is computed at runtime
+facts.reads_complete();      // true: `reads()` is everything the rule can read
+facts.reads_data();          // true
+facts.operators();           // ["if", "map", "val"]: canonical names
+facts.custom_operators();    // []
+facts.is_deterministic();    // true: no `now`, no custom operator
+```
+
+- **Reads are root reads.** An iterator body reads the current element
+  and a `try` catch arm the caught error, so those reads are not listed;
+  the iterator's source is, and it covers them. A level marker that climbs
+  back to the root (`{"val": [[1], "rate"]}` inside one `map`) is listed.
+- **Covered reads are dropped.** Reading `user` observes `user.name`, so
+  only `user` is listed. The empty path is the whole data context.
+- **Segments, not dotted strings.** `{"var": "a.b"}` reads `["a", "b"]`;
+  `{"val": "a.b"}` reads the single key `["a.b"]`. `DataPath`'s `Display`
+  joins with dots, so use `segments()` when keys may contain them.
+- **Complete or a lower bound.** A computed path
+  (`{"var": {"var": "key"}}`) sets `has_computed_reads()`, and a custom
+  operator can read the whole context through `EvalContext::root_input`;
+  either makes `reads_complete()` false.
+- **The compiled rule, after the optimizer.** A branch constant folding
+  removed is not read and a folded operator is not listed, so an engine
+  built `with_constant_folding(false)` can report more for the same rule.
 
 ---
 

@@ -21,6 +21,8 @@ mod path_segments;
 pub(crate) mod scope;
 mod walker;
 
+pub(crate) use path_segments::parse_path_segments;
+
 use datavalue::OwnedDataValue;
 
 use crate::node::{CompileCtx, Logic};
