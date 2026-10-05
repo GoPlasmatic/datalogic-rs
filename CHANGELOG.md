@@ -33,6 +33,11 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ### Changed
 
+- **`ErrorKind::BudgetExceeded` exists in every build.** The variant
+  was compiled in only with the `budget` feature, so code outside
+  datalogic had to match on `Error::tag() == "BudgetExceeded"`. It is now
+  always present (`ErrorKind` is `#[non_exhaustive]`, so this is
+  additive); only the `budget` feature raises it.
 - **One declarative operator table.** Every built-in operator is now one
   row in `operators/table.rs` plus one function. The `OpCode` enum, name
   lookup, dispatch arms, `builtin_operator_names()`, and the constant

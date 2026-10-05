@@ -181,7 +181,6 @@ pub(crate) fn evaluate_try<'a>(
                 // falling into the next arm makes that final even when
                 // the catch arm is a literal, which would otherwise
                 // return without dispatching (and so without charging).
-                #[cfg(feature = "budget")]
                 if matches!(e.kind, crate::ErrorKind::BudgetExceeded { .. }) {
                     return Err(e);
                 }

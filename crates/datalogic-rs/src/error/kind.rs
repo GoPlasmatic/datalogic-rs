@@ -44,13 +44,14 @@ pub enum ErrorKind {
     },
     /// Invalid operator configuration
     ConfigurationError(Cow<'static, str>),
-    /// The evaluation's operation budget was exhausted. Raised by the
-    /// `budget` feature; see [`crate::EvaluationConfig::ops_budget`].
+    /// The evaluation's operation budget was exhausted. Raised only when
+    /// the `budget` feature is on (see `EvaluationConfig::ops_budget`), but
+    /// the variant is present in every build, so code that matches on it
+    /// compiles whichever features the engine was built with.
     ///
     /// Terminal: the counter stays past its ceiling once this fires, so
     /// every subsequent charge fails as well and a `try` arm cannot
     /// recover from it.
-    #[cfg(feature = "budget")]
     BudgetExceeded {
         /// The ceiling that was crossed.
         budget: u64,

@@ -184,7 +184,6 @@ pub(crate) fn in_<'a>(
                         break;
                     }
                     Ok(false) => {}
-                    #[cfg(feature = "budget")]
                     Err(e) if matches!(e.kind, crate::ErrorKind::BudgetExceeded { .. }) => {
                         return Err(e);
                     }

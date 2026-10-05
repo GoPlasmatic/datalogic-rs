@@ -136,7 +136,6 @@ impl Error {
             ErrorKind::FormatError(_) => "FormatError",
             ErrorKind::IndexOutOfBounds { .. } => "IndexOutOfBounds",
             ErrorKind::ConfigurationError(_) => "ConfigurationError",
-            #[cfg(feature = "budget")]
             ErrorKind::BudgetExceeded { .. } => "BudgetExceeded",
         }
     }

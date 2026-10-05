@@ -10,7 +10,7 @@ operation budget is the alternative: a counter the engine increments as
 it works, and a ceiling it refuses to cross.
 
 ```rust,ignore
-use datalogic_rs::{Engine, EvaluationConfig};
+use datalogic_rs::{Engine, ErrorKind, EvaluationConfig};
 
 let engine = Engine::builder()
     .with_config(EvaluationConfig::default().with_ops_budget(Some(100_000)))
@@ -20,10 +20,15 @@ let engine = Engine::builder()
 // not run.
 match engine.eval_str(tenant_rule, payload) {
     Ok(result) => serve(result),
-    Err(e) if e.tag() == "BudgetExceeded" => reject_as_too_expensive(e),
+    Err(e) if matches!(e.kind, ErrorKind::BudgetExceeded { .. }) => reject_as_too_expensive(e),
     Err(e) => report(e),
 }
 ```
+
+`ErrorKind::BudgetExceeded` is present in every build, with or without
+the `budget` feature, so a library can match on it without mirroring the
+feature set of whoever builds the engine. Only the `budget` feature
+raises it.
 
 ## Why a count and not a timeout
 
