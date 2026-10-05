@@ -445,8 +445,8 @@ fn declared_arity_is_pinned() {
 /// arms they reach, `throw` builds its payload from a literal, the
 /// arithmetic operators reject a literal array argument, and `slice`
 /// returns for a null collection before evaluating its other arguments.
-/// The comparisons, `and` / `or` and `fractional` would fit an `eager`
-/// signature but measured slower as one (phase 2, P6); moving them needs a
+/// The comparisons, `and` / `or`, `merge` and `fractional` would fit an
+/// `eager` signature but measured slower as one (phase 2, P6); moving them needs a
 /// new benchmark result, not just a passing suite. Everything else is
 /// `eager`, `each` or `iter`.
 #[test]
@@ -467,6 +467,7 @@ fn raw_rows_are_pinned() {
         "If",
         "LessThan",
         "LessThanEqual",
+        "Merge",
         "Modulo",
         "Multiply",
         "NotEquals",

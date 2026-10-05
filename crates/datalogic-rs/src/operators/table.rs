@@ -465,7 +465,8 @@ operators! {
         In ["in"] => eager(Any, Any) string::in_ { on_missing: Miss::Return(singleton_false), ..STRING };
 
         // ── arrays ───────────────────────────────────────────────────────
-        Merge ["merge"] => eager(Rest<Any>) array::merge { fold: Fold::Never, cost: Cost::PerItem };
+        // `merge` measured +3% slower through the eager adapter (phase 2, P6).
+        Merge ["merge"] => raw array::evaluate_merge { fold: Fold::Never, cost: Cost::PerItem };
         // A null, missing or empty source: `[]` for `filter` / `map`; for
         // the quantifiers, `all` is deliberately not vacuously true.
         Filter ["filter"] => each[2] array::evaluate_filter
