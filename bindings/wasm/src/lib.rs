@@ -145,25 +145,6 @@ fn input_err_to_js(stage: &str, message: impl std::fmt::Display) -> JsValue {
     build_js_error("ParseError", &message, &input_err_to_json(stage, &message))
 }
 
-/// JSON type name for `TypeMismatch` messages. Wording is copied from the
-/// C ABI binding (`bindings/c/src/session.rs`) so every wrapper reports
-/// the same thing for the same result.
-fn type_of(v: &DataValue<'_>) -> &'static str {
-    if v.is_null() {
-        "null"
-    } else if v.is_bool() {
-        "boolean"
-    } else if v.is_number() {
-        "number"
-    } else if v.is_string() {
-        "string"
-    } else if v.is_array() {
-        "array"
-    } else {
-        "object"
-    }
-}
-
 /// Build the thrown JS `Error` for a typed-evaluation result of the wrong
 /// type: `name` / `type` are `"TypeMismatch"`, mirroring the C ABI's
 /// `DATALOGIC_STATUS_TYPE_MISMATCH` status + `"TypeMismatch"` tag.
@@ -195,18 +176,8 @@ fn type_mismatch_err_to_js(message: &str) -> JsValue {
 /// truncated — a budget of `0.5` means the caller has confused this with
 /// a duration or a fraction.
 fn resolve_budget(engine: &RsEngine, budget: Option<f64>) -> Result<u64, JsValue> {
-    let explicit = match budget {
-        None => None,
-        Some(n) if n.is_finite() && n >= 1.0 && n.fract() == 0.0 && n <= MAX_SAFE_BUDGET => {
-            Some(n as u64)
-        }
-        Some(_) => {
-            return Err(input_err_to_js(
-                "parse-budget",
-                "budget must be a whole number of operations >= 1",
-            ));
-        }
-    };
+    let explicit = datalogic_bind::budget_from_f64(budget)
+        .map_err(|msg| input_err_to_js("parse-budget", msg))?;
     Ok(engine.resolve_ops_budget(explicit))
 }
 
@@ -245,9 +216,6 @@ fn metered_in<'a>(
         .map_err(|e| engine_err_to_js(&e))?;
     Ok(metered_envelope(metered.value, metered.ops))
 }
-
-/// Largest budget a JS number can carry without losing integer precision.
-const MAX_SAFE_BUDGET: f64 = 9_007_199_254_740_991.0;
 
 /// `{"result": <value>, "ops": <n>}` — built by concatenation because the
 /// result is already a JSON string and re-parsing it to re-serialise it
@@ -325,6 +293,10 @@ pub fn builtin_operator_names() -> Vec<String> {
 /// example `"ParseError"`), `message` is human-readable, and the
 /// structured fields (`type`, `operator`, `node_ids`, variant extras,
 /// `detailJson`) ride along as own properties.
+///
+/// @deprecated Build an `Engine` once and use `engine.evalStr(logic, data)`
+/// (or `compile` + `Rule.evaluate`); `templating` is an `Engine` option.
+/// Removed in 6.0.
 #[wasm_bindgen]
 pub fn evaluate(logic: &str, data: &str, templating: bool) -> Result<String, JsValue> {
     make_engine(templating, None, None)
@@ -355,52 +327,14 @@ pub fn evaluate(logic: &str, data: &str, templating: bool) -> Result<String, JsV
 /// Uses default engine settings. To trace with a custom
 /// [`EvaluationConfig`] or custom operators, build an [`Engine`] and call
 /// [`Engine::evaluate_with_trace`].
+///
+/// @deprecated Use `engine.evaluateWithTrace(logic, data)` on an `Engine`,
+/// which also honours its config and custom operators. Removed in 6.0.
 #[wasm_bindgen(js_name = evaluateWithTrace)]
 pub fn evaluate_with_trace(logic: &str, data: &str, templating: bool) -> Result<String, JsValue> {
     let engine = make_engine(templating, None, None);
     let run = engine.trace().eval_str(logic, data);
-    Ok(traced_run_to_json(&run))
-}
-
-/// Render a [`datalogic_rs::TracedRun`] into the JS wire shape. Mirrors the
-/// historical `TracedResult` JSON layout: `{ result, expression_tree, steps,
-/// error?, structured_error? }`.
-fn traced_run_to_json(run: &datalogic_rs::TracedRun<String>) -> String {
-    #[derive(Serialize)]
-    struct Wire<'a> {
-        result: serde_json::Value,
-        expression_tree: &'a datalogic_rs::ExpressionNode,
-        steps: &'a [datalogic_rs::ExecutionStep],
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        structured_error: Option<&'a Error>,
-    }
-
-    let result_json: serde_json::Value;
-    let mut error_msg: Option<String> = None;
-    let mut error_struct: Option<&Error> = None;
-    match &run.result {
-        Ok(s) => {
-            // The String is already JSON; surface it as the parsed value when
-            // possible, falling back to a JSON string otherwise.
-            result_json = serde_json::from_str::<serde_json::Value>(s.as_str())
-                .unwrap_or_else(|_| serde_json::Value::String(s.to_string()));
-        }
-        Err(e) => {
-            result_json = serde_json::Value::Null;
-            error_msg = Some(e.to_string());
-            error_struct = Some(e);
-        }
-    }
-    serde_json::to_string(&Wire {
-        result: result_json,
-        expression_tree: &run.expression_tree,
-        steps: &run.steps,
-        error: error_msg,
-        structured_error: error_struct,
-    })
-    .unwrap_or_default()
+    Ok(datalogic_bind::traced_run_json(&run))
 }
 
 /// A compiled JSONLogic rule that can be evaluated multiple times.
@@ -411,6 +345,9 @@ fn traced_run_to_json(run: &datalogic_rs::TracedRun<String>) -> String {
 /// `CompiledRule` builds its own engine internally and therefore does **not**
 /// support custom operators. For custom operators, use [`Engine`] +
 /// [`Engine::compile`] instead.
+///
+/// @deprecated Use `new Engine(options).compile(logic)`, which returns a
+/// `Rule` with the same methods and shares the engine. Removed in 6.0.
 #[wasm_bindgen]
 pub struct CompiledRule {
     engine: RsEngine,
@@ -522,14 +459,7 @@ impl CustomOperator for JsOperator {
         // 1. Serialize args as a JSON array. `DataValue::to_json_string`
         //    handles all leaf types; we just need to wrap with `[...]` and
         //    insert commas.
-        let mut json = String::from("[");
-        for (i, a) in args.iter().enumerate() {
-            if i > 0 {
-                json.push(',');
-            }
-            json.push_str(&a.to_json_string());
-        }
-        json.push(']');
+        let json = datalogic_bind::args_json(args);
 
         // 2. Invoke the JS callback synchronously. WASM JS calls are sync
         //    by definition.
@@ -557,14 +487,7 @@ impl CustomOperator for JsOperator {
 
         // 4. Parse the returned JSON into the eval arena so the borrowed
         //    `DataValue` stays valid for the rest of the evaluation.
-        let arena_str = arena.alloc_str(&ret_str);
-        let parsed = DataValue::from_str(arena_str, arena).map_err(|e| {
-            Error::custom_message(format!(
-                "custom operator '{}' returned invalid JSON: {}",
-                self.name, e
-            ))
-        })?;
-        Ok(arena.alloc(parsed))
+        datalogic_bind::parse_result(&self.name, &ret_str, arena)
     }
 }
 
@@ -617,19 +540,29 @@ pub struct Engine {
 impl Engine {
     #[wasm_bindgen(constructor)]
     pub fn new(options: JsValue) -> Result<Engine, JsValue> {
-        let (templating, key_escape, custom_ops, config) = parse_engine_options(&options)?;
+        let options = parse_engine_options(&options)?;
         let mut builder = RsEngine::builder();
-        if templating {
+        if options.templating {
             builder = builder.with_templating(true);
         }
-        if let Some(prefix) = key_escape {
+        if let Some(prefix) = options.key_escape {
             builder = builder.with_template_key_escape(prefix);
         }
-        if let Some(config) = config {
+        if let Some(config) = options.config {
             builder = builder.with_config(config);
         }
-        for (name, callback) in custom_ops {
-            builder = builder.add_operator(name.clone(), JsOperator { name, callback });
+        for (name, callback) in options.custom_ops {
+            let op = JsOperator {
+                name: name.clone(),
+                callback,
+            };
+            builder = if options.strict_names {
+                builder
+                    .try_add_operator(name, op)
+                    .map_err(|e| engine_err_to_js(&e))?
+            } else {
+                builder.add_operator(name, op)
+            };
         }
         Ok(Engine {
             inner: Arc::new(builder.build()),
@@ -646,6 +579,75 @@ impl Engine {
             engine: self.inner.clone(),
             compiled,
         })
+    }
+
+    /// Compile `logic` in templating mode, whatever this engine was built
+    /// with: a multi-key object is an output template and an unknown key an
+    /// output field.
+    #[wasm_bindgen(js_name = compileTemplate)]
+    pub fn compile_template(&self, logic: &str) -> Result<Rule, JsValue> {
+        let compiled = self
+            .inner
+            .compile_template(logic)
+            .map_err(|e| engine_err_to_js(&e))?;
+        Ok(self.rule(compiled))
+    }
+
+    /// Compile `logic` outside templating mode, whatever this engine was
+    /// built with: a multi-key object or an unknown operator is an error.
+    #[wasm_bindgen(js_name = compileStrict)]
+    pub fn compile_strict(&self, logic: &str) -> Result<Rule, JsValue> {
+        let compiled = self
+            .inner
+            .compile_strict(logic)
+            .map_err(|e| engine_err_to_js(&e))?;
+        Ok(self.rule(compiled))
+    }
+
+    /// Compile `logic`, refusing it if `check` finds any error.
+    ///
+    /// # Throws
+    /// An `Error` named `CompileError` whose `diagnostics` property holds
+    /// every problem (the same objects `check` returns).
+    #[wasm_bindgen(js_name = compileChecked)]
+    pub fn compile_checked(&self, logic: &str) -> Result<Rule, JsValue> {
+        let compiled = self.inner.compile_checked(logic).map_err(|e| {
+            let diagnostics = datalogic_bind::diagnostics_json(&e.diagnostics);
+            build_js_error(
+                "CompileError",
+                &e.to_string(),
+                &format!(r#"{{"type":"CompileError","diagnostics":{diagnostics}}}"#),
+            )
+        })?;
+        Ok(self.rule(compiled))
+    }
+
+    /// Every problem this engine can see in `logic` before it runs, as a
+    /// JSON array of `{code, severity, message, pointer, operator}`.
+    /// `mode` is `"engine"` (default), `"strict"` or `"template"`.
+    pub fn check(&self, logic: &str, mode: Option<String>) -> Result<String, JsValue> {
+        let mode = datalogic_bind::check_mode(mode.as_deref())
+            .map_err(|msg| input_err_to_js("parse-mode", msg))?;
+        Ok(datalogic_bind::diagnostics_json(
+            &self.inner.check(logic, mode),
+        ))
+    }
+
+    /// Every built-in operator this engine evaluates, as a JSON array:
+    /// `name`, `aliases`, `family`, `feature`, `min_args`, `max_args`,
+    /// `reads_context`, `effect`, `cost` and `scoped_arg` (the schema of
+    /// the docs' `operators.json`).
+    pub fn operators(&self) -> String {
+        datalogic_bind::operators_json(&self.inner)
+    }
+
+    /// Whether the JSON `value` is truthy under this engine's configured
+    /// truthiness. Under the default rules an empty object is falsy, like
+    /// an empty array.
+    pub fn truthy(&self, value: &str) -> Result<bool, JsValue> {
+        let parsed = datalogic_rs::ParsedData::from_json(value)
+            .map_err(|e| input_err_to_js("parse-value", e))?;
+        Ok(self.inner.truthy_of(&parsed))
     }
 
     /// One-shot: compile `logic` and evaluate against `data` in a single
@@ -711,7 +713,7 @@ impl Engine {
     #[wasm_bindgen(js_name = evaluateWithTrace)]
     pub fn evaluate_with_trace(&self, logic: &str, data: &str) -> String {
         let run = self.inner.trace().eval_str(logic, data);
-        traced_run_to_json(&run)
+        datalogic_bind::traced_run_json(&run)
     }
 
     /// Names of the custom operators registered on this engine via
@@ -726,6 +728,15 @@ impl Engine {
     }
 }
 
+impl Engine {
+    fn rule(&self, logic: Logic) -> Rule {
+        Rule {
+            engine: self.inner.clone(),
+            compiled: Arc::new(logic),
+        }
+    }
+}
+
 /// A rule compiled against a specific [`Engine`] — preserves access to that
 /// engine's custom operators.
 #[wasm_bindgen]
@@ -736,6 +747,13 @@ pub struct Rule {
 
 #[wasm_bindgen]
 impl Rule {
+    /// What the rule reads and calls, as JSON: `{reads, computed_reads,
+    /// reads_complete, reads_data, operators, custom_operators,
+    /// deterministic}`. `reads` lists each root path as its segments.
+    pub fn facts(&self) -> String {
+        datalogic_bind::facts_json(&self.compiled.facts())
+    }
+
     /// Evaluate the compiled rule against `data` (a JSON string).
     pub fn evaluate(&self, data: &str) -> Result<String, JsValue> {
         evaluate_in(&self.engine, &self.compiled, data, &Bump::new())
@@ -875,22 +893,56 @@ impl Session {
             .evaluate(&rule.compiled, &*data.parsed, &self.arena)
             .map_err(|e| engine_err_to_js(&e))?;
         av.as_bool().ok_or_else(|| {
-            type_mismatch_err_to_js(&format!("result is not a boolean (got {})", type_of(av)))
+            type_mismatch_err_to_js(&format!(
+                "result is not a boolean (got {})",
+                datalogic_bind::type_of(av)
+            ))
         })
     }
 
-    /// Evaluate and read the result as a number (JS has one number
-    /// type; any JSON number is accepted). A non-number result throws
-    /// an `Error` named `TypeMismatch`.
+    /// Evaluate and read the result as a number (any JSON number). A
+    /// non-number result throws an `Error` named `TypeMismatch`.
+    ///
+    /// @deprecated Use `evaluateFloat`, the name every binding shares.
+    /// Removed in 6.0.
     #[wasm_bindgen(js_name = evaluateNumber)]
     pub fn evaluate_number(&mut self, rule: &Rule, data: &DataHandle) -> Result<f64, JsValue> {
+        self.evaluate_float(rule, data)
+    }
+
+    /// Evaluate and read the result as an integer: a whole JSON number a
+    /// JS number holds exactly (|n| <= 2^53 - 1). Anything else throws an
+    /// `Error` named `TypeMismatch`.
+    #[wasm_bindgen(js_name = evaluateInt)]
+    pub fn evaluate_int(&mut self, rule: &Rule, data: &DataHandle) -> Result<f64, JsValue> {
+        self.arena.reset();
+        let av = self
+            .engine
+            .evaluate(&rule.compiled, &*data.parsed, &self.arena)
+            .map_err(|e| engine_err_to_js(&e))?;
+        match av.as_i64() {
+            Some(i) if i.unsigned_abs() < (1u64 << 53) => Ok(i as f64),
+            _ => Err(type_mismatch_err_to_js(&format!(
+                "result is not a safe integer (got {})",
+                datalogic_bind::type_of(av)
+            ))),
+        }
+    }
+
+    /// Evaluate and read the result as a number (any JSON number). A
+    /// non-number result throws an `Error` named `TypeMismatch`.
+    #[wasm_bindgen(js_name = evaluateFloat)]
+    pub fn evaluate_float(&mut self, rule: &Rule, data: &DataHandle) -> Result<f64, JsValue> {
         self.arena.reset();
         let av = self
             .engine
             .evaluate(&rule.compiled, &*data.parsed, &self.arena)
             .map_err(|e| engine_err_to_js(&e))?;
         av.as_f64().ok_or_else(|| {
-            type_mismatch_err_to_js(&format!("result is not a number (got {})", type_of(av)))
+            type_mismatch_err_to_js(&format!(
+                "result is not a number (got {})",
+                datalogic_bind::type_of(av)
+            ))
         })
     }
 
@@ -1232,19 +1284,15 @@ fn outcomes_to_js(outcomes: &[BatchOutcome]) -> Result<Array, JsValue> {
 /// object. Anything missing falls back to the zero value (no templating,
 /// no ops, default config).
 #[allow(clippy::type_complexity)]
-fn parse_engine_options(
-    options: &JsValue,
-) -> Result<
-    (
-        bool,
-        Option<char>,
-        Vec<(String, Function)>,
-        Option<EvaluationConfig>,
-    ),
-    JsValue,
-> {
+fn parse_engine_options(options: &JsValue) -> Result<EngineOptions, JsValue> {
     if options.is_null() || options.is_undefined() {
-        return Ok((false, None, Vec::new(), None));
+        return Ok(EngineOptions {
+            templating: false,
+            key_escape: None,
+            custom_ops: Vec::new(),
+            config: None,
+            strict_names: false,
+        });
     }
     let obj: &Object = options
         .dyn_ref::<Object>()
@@ -1274,7 +1322,35 @@ fn parse_engine_options(
         Err(_) => None,
     };
 
-    Ok((templating, key_escape, custom_ops, config))
+    let strict_names = match Reflect::get(obj, &JsValue::from_str("strictOperatorNames")) {
+        Ok(v) if v.is_undefined() || v.is_null() => false,
+        Ok(v) => v.as_bool().ok_or_else(|| {
+            input_err_to_js(
+                "parse-options",
+                "options.strictOperatorNames must be a boolean",
+            )
+        })?,
+        Err(_) => false,
+    };
+
+    Ok(EngineOptions {
+        templating,
+        key_escape,
+        custom_ops,
+        config,
+        strict_names,
+    })
+}
+
+/// What `parse_engine_options` reads.
+struct EngineOptions {
+    templating: bool,
+    key_escape: Option<char>,
+    custom_ops: Vec<(String, Function)>,
+    config: Option<EvaluationConfig>,
+    /// `strictOperatorNames`: refuse a custom operator named like a
+    /// built-in.
+    strict_names: bool,
 }
 
 fn parse_custom_operators(v: &JsValue) -> Result<Vec<(String, Function)>, JsValue> {

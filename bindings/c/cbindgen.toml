@@ -47,6 +47,8 @@ header = """/* SPDX-License-Identifier: Apache-2.0
 [export]
 prefix = ""
 item_types = ["constants", "enums", "structs", "opaque", "typedefs", "functions"]
+# Not in any signature (modes cross as `uint32_t`), so named explicitly.
+include = ["DatalogicMode"]
 
 # Rust types use Rust naming conventions; rename to C-style at the
 # boundary so consumers see `datalogic_engine`, not `Engine`.
@@ -63,6 +65,7 @@ item_types = ["constants", "enums", "structs", "opaque", "typedefs", "functions"
 "Slice" = "datalogic_slice"
 "OpResult" = "datalogic_op_result"
 "DatalogicOpFn" = "datalogic_op_fn"
+"DatalogicMode" = "datalogic_mode"
 
 [enum]
 rename_variants = "ScreamingSnakeCase"

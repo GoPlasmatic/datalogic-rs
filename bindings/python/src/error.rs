@@ -51,6 +51,27 @@ create_exception!(
     "Raised when an operator fails at evaluation time. Carries .error_type, .operator, .node_ids, and (when resolvable) .path."
 );
 
+create_exception!(
+    datalogic_py,
+    CompileError,
+    DataLogicError,
+    "Raised by Engine.compile_checked when the rule has errors. Carries .diagnostics: a list of {code, severity, message, pointer, operator} dicts."
+);
+
+/// A rule `compile_checked` refused, as a [`CompileError`] carrying
+/// `.diagnostics`.
+pub fn compile_error_to_pyerr(py: Python<'_>, err: &datalogic_rs::CompileError) -> PyErr {
+    let pyerr = CompileError::new_err(err.to_string());
+    let _ = pyerr.value(py).setattr("error_type", "CompileError");
+    if let Ok(diagnostics) = serde_json::from_str::<serde_json::Value>(
+        &datalogic_bind::diagnostics_json(&err.diagnostics),
+    ) && let Ok(obj) = crate::conv::value_to_pyobject(py, &diagnostics)
+    {
+        let _ = pyerr.value(py).setattr("diagnostics", obj);
+    }
+    pyerr
+}
+
 /// Convert any [`datalogic_rs::Error`] into the right Python exception
 /// instance, attaching structured attributes. When `compiled` is provided
 /// the breadcrumb is resolved into a list of step dicts attached as `.path`.

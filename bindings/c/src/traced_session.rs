@@ -102,53 +102,7 @@ pub unsafe extern "C" fn datalogic_traced_session_evaluate(
             Err(e) => return unsafe { fail(err, e) },
         };
         let run = session.engine.trace().eval_str(rule_src, data);
-        unsafe { *out = Buf::from_vec(traced_run_to_json(&run).into_bytes()) };
+        unsafe { *out = Buf::from_vec(datalogic_bind::traced_run_json(&run).into_bytes()) };
         Status::Ok
     })
-}
-
-/// Render a [`datalogic_rs::TracedRun`] into the cross-binding wire
-/// JSON shape: `{result, expression_tree, steps, error?,
-/// structured_error?}`. Mirrors the WASM binding's `traced_run_to_json`
-/// so consumers see one shape across every language.
-fn traced_run_to_json(run: &datalogic_rs::TracedRun<String>) -> String {
-    use serde::Serialize;
-
-    #[derive(Serialize)]
-    struct Wire<'a> {
-        result: serde_json::Value,
-        expression_tree: &'a datalogic_rs::ExpressionNode,
-        steps: &'a [datalogic_rs::ExecutionStep],
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        structured_error: Option<&'a datalogic_rs::Error>,
-    }
-
-    let result_json: serde_json::Value;
-    let mut error_msg: Option<String> = None;
-    let mut error_struct: Option<&datalogic_rs::Error> = None;
-    match &run.result {
-        Ok(s) => {
-            // The String is already JSON; parse it back to a Value when
-            // possible so consumers don't double-decode. Fall back to a
-            // JSON string for the rare case where the engine result
-            // wasn't well-formed JSON.
-            result_json = serde_json::from_str::<serde_json::Value>(s.as_str())
-                .unwrap_or_else(|_| serde_json::Value::String(s.to_string()));
-        }
-        Err(e) => {
-            result_json = serde_json::Value::Null;
-            error_msg = Some(e.to_string());
-            error_struct = Some(e);
-        }
-    }
-    serde_json::to_string(&Wire {
-        result: result_json,
-        expression_tree: &run.expression_tree,
-        steps: &run.steps,
-        error: error_msg,
-        structured_error: error_struct,
-    })
-    .unwrap_or_default()
 }

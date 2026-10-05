@@ -42,6 +42,7 @@ cd "$ROOT"
 # entry further down).
 FILES=(
   "toml:crates/datalogic-rs/Cargo.toml"
+  "toml:crates/datalogic-bind/Cargo.toml"
   "toml:bindings/python/Cargo.toml"
   "toml:bindings/wasm/Cargo.toml"
   "toml:bindings/c/Cargo.toml"

@@ -23,6 +23,9 @@ class DatalogicException extends RuntimeException
         public readonly ?string $errorType = null,
         public readonly ?string $operatorName = null,
         public readonly ?string $pathJson = null,
+        public readonly ?string $nodeIdsJson = null,
+        /** errorType `CompileError` only: every problem found, as a JSON array. */
+        public readonly ?string $diagnosticsJson = null,
     ) {
         parent::__construct($message);
     }
@@ -52,11 +55,13 @@ class DatalogicException extends RuntimeException
         $tag  = Native::copyBytes($ffi->datalogic_error_tag($errOut, $addr), $len->cdata);
         $op   = Native::copyBytes($ffi->datalogic_error_operator($errOut, $addr), $len->cdata);
         $path = Native::copyBytes($ffi->datalogic_error_path_json($errOut, $addr), $len->cdata);
+        $ids  = Native::copyBytes($ffi->datalogic_error_node_ids_json($errOut, $addr), $len->cdata);
+        $diag = Native::copyBytes($ffi->datalogic_error_diagnostics_json($errOut, $addr), $len->cdata);
         $ffi->datalogic_error_free($errOut);
 
         $message = ($msg === null || $msg === '') ? $fallback : $msg;
         return $status === Native::STATUS_PARSE
-            ? new ParseException($message, $tag, $op, $path)
-            : new EvaluateException($message, $tag, $op, $path);
+            ? new ParseException($message, $tag, $op, $path, $ids, $diag)
+            : new EvaluateException($message, $tag, $op, $path, $ids, $diag);
     }
 }

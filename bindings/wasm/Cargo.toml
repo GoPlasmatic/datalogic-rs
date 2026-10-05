@@ -45,6 +45,8 @@ crate-type = ["cdylib", "rlib"]
 # `upper`/`lower`/`trim`/`split`/`starts_with`/`ends_with`, `sort`,
 # `slice`, `exists`, `abs`/`ceil`/`floor`) needs the matching feature here
 # or it returns `UnknownOperator` at runtime.
+# Wire formats and plumbing shared with the other bindings.
+datalogic-bind = { path = "../../crates/datalogic-bind" }
 datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features = [
     "all-operators",
     # This package is wasm-bindgen based, i.e. always hosted by JS, so the

@@ -8,7 +8,7 @@
 # to `pyproject.toml` and is named after `[tool.maturin] module-name`.
 
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, final
+from typing import Any, Literal, TypedDict, final
 
 __all__ = [
     "Engine",
@@ -19,6 +19,7 @@ __all__ = [
     "DataLogicError",
     "ParseError",
     "EvaluateError",
+    "CompileError",
     "apply",
     "__version__",
 ]
@@ -54,6 +55,46 @@ class ParseError(DataLogicError):
 class EvaluateError(DataLogicError):
     """Raised when an operator fails at evaluation time."""
 
+class Diagnostic(TypedDict):
+    """One problem :meth:`Engine.check` found, located by an RFC 6901
+    JSON Pointer into the rule."""
+
+    code: str
+    severity: Literal["error", "warning"]
+    message: str
+    pointer: str
+    operator: str | None
+
+class CompileError(DataLogicError):
+    """Raised by :meth:`Engine.compile_checked` when the rule has errors."""
+
+    diagnostics: list[Diagnostic]
+
+class OperatorInfo(TypedDict):
+    """One built-in operator, as :meth:`Engine.operators` lists it."""
+
+    name: str
+    aliases: list[str]
+    family: str
+    feature: str | None
+    min_args: int
+    max_args: int | None
+    reads_context: bool
+    effect: str
+    cost: str
+    scoped_arg: int | Literal["last"] | None
+
+class RuleFacts(TypedDict):
+    """What :meth:`Rule.facts` reports about a compiled rule."""
+
+    reads: list[list[str]]
+    computed_reads: bool
+    reads_complete: bool
+    reads_data: bool
+    operators: list[str]
+    custom_operators: list[str]
+    deterministic: bool
+
 def apply(rule: Any, data: Any) -> Any:
     """Compile ``rule`` and evaluate against ``data`` in one call.
 
@@ -76,9 +117,32 @@ class Engine:
         templating: bool = False,
         custom_operators: Mapping[str, Callable[[str], str]] | None = None,
         config: Mapping[str, Any] | str | None = None,
+        strict_operator_names: bool = False,
+        template_key_escape: str | None = None,
     ) -> Engine: ...
     def compile(self, rule: Any) -> Rule:
         """Compile a JSONLogic rule (dict/list/scalar, or a JSON str)."""
+
+    def compile_template(self, rule: Any) -> Rule:
+        """Compile ``rule`` in templating mode, whatever the engine's mode."""
+
+    def compile_strict(self, rule: Any) -> Rule:
+        """Compile ``rule`` outside templating mode, whatever the engine's mode."""
+
+    def compile_checked(self, rule: Any) -> Rule:
+        """Compile ``rule``, raising :class:`CompileError` if :meth:`check`
+        finds any error."""
+
+    def check(
+        self, rule: Any, mode: Literal["engine", "strict", "template"] | None = None
+    ) -> list[Diagnostic]:
+        """Every problem the engine can see in ``rule`` before it runs."""
+
+    def operators(self) -> list[OperatorInfo]:
+        """Every built-in operator this engine evaluates."""
+
+    def truthy(self, value: Any) -> bool:
+        """Whether ``value`` is truthy under the engine's configured rules."""
 
     def eval(self, rule: Any, data: Any) -> Any:
         """One-shot: compile ``rule`` and evaluate against ``data``."""
@@ -119,6 +183,9 @@ class Rule:
     Thread-safe: share one instance across threads and call
     :meth:`evaluate` in parallel.
     """
+
+    def facts(self) -> RuleFacts:
+        """What the compiled rule reads and calls."""
 
     def evaluate(self, data: Any) -> Any:
         """Evaluate against ``data`` (dict/list/scalar, or a JSON str)."""

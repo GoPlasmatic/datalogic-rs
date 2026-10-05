@@ -70,6 +70,43 @@ public final class Session implements AutoCloseable {
     }
 
     /**
+     * Evaluate {@code rule} against {@code dataJson} under an operation
+     * budget and report what it cost. {@code budget} 0 means the engine's
+     * configured {@code ops_budget}, or unbounded when it has none. Crossing
+     * it throws an {@link EvaluateException} with error type
+     * {@code "BudgetExceeded"}.
+     */
+    public Metered evaluateMetered(Rule rule, String dataJson, long budget) {
+        if (rule == null) throw new NullPointerException("rule");
+        if (dataJson == null) throw new NullPointerException("dataJson");
+        if (budget < 0) throw new IllegalArgumentException("budget must be >= 0");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment data = DatalogicNative.utf8(arena, dataJson);
+            MemorySegment outPtr = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment outLen = arena.allocate(ValueLayout.JAVA_LONG);
+            MemorySegment outOps = arena.allocate(ValueLayout.JAVA_LONG);
+            MemorySegment errSlot = arena.allocate(ValueLayout.ADDRESS);
+            int status;
+            try {
+                status = (int) DatalogicNative.SESSION_EVALUATE_METERED.invokeExact(
+                        handle(), rule.handle(), data, data.byteSize(), budget,
+                        outPtr, outLen, outOps, errSlot);
+            } catch (Throwable t) {
+                throw DatalogicException.propagate(t);
+            }
+            if (status != DatalogicNative.STATUS_OK) {
+                throw DatalogicException.fromNative(status, errSlot, "session evaluate failed");
+            }
+            String value = DatalogicNative.readUtf8(
+                    outPtr.get(ValueLayout.ADDRESS, 0), outLen.get(ValueLayout.JAVA_LONG, 0));
+            return new Metered(value, outOps.get(ValueLayout.JAVA_LONG, 0));
+        } finally {
+            Reference.reachabilityFence(rule);
+            Reference.reachabilityFence(this);
+        }
+    }
+
+    /**
      * Evaluate {@code rule} against a pre-parsed {@link DataHandle} —
      * the hot path: zero parse work per call.
      */

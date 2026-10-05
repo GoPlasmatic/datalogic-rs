@@ -36,6 +36,23 @@ final class Rule
     }
 
     /**
+     * What the rule reads and calls, as JSON: `{reads, computed_reads,
+     * reads_complete, reads_data, operators, custom_operators,
+     * deterministic}`, each read path as its segments.
+     */
+    public function facts(): string
+    {
+        $ffi = Native::ffi();
+        $buf = $ffi->new('datalogic_buf');
+        $err = Native::newErrorOut();
+        $rc = $ffi->datalogic_rule_facts($this->handle(), FFI::addr($buf), FFI::addr($err));
+        if ($rc !== Native::STATUS_OK) {
+            throw DatalogicException::fromNative($rc, $err, 'facts failed');
+        }
+        return Native::takeBuf($buf);
+    }
+
+    /**
      * Evaluate against a JSON string or a pre-parsed {@see DataHandle};
      * returns the JSON-string result. Passing a `DataHandle` skips the
      * per-call data parse — the hot path when one payload feeds many

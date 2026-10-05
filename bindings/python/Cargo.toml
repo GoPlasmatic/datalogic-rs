@@ -32,6 +32,8 @@ name = "datalogic_py"
 # required because the binding converts Python dicts ↔ `serde_json::Value`
 # via `pythonize`; the rest mirrors the WASM binding's surface so a rule
 # valid in the JS/UI playground also runs from Python.
+# Wire formats and plumbing shared with the other bindings.
+datalogic-bind = { path = "../../crates/datalogic-bind" }
 datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features = [
     "serde_json",
     "all-operators",

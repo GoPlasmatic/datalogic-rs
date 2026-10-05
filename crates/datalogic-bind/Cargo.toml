@@ -1,0 +1,19 @@
+[package]
+name = "datalogic-bind"
+version = "5.8.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Shared wire formats and plumbing for the datalogic-rs language bindings"
+# Internal to the bindings for now: each binding builds it from the tree
+# (maturin carries path dependencies into the sdist), so it is not published.
+publish = false
+
+[dependencies]
+datalogic-rs = { path = "../datalogic-rs", version = "5.8", features = ["serde_json", "trace"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+
+[dev-dependencies]
+datalogic-rs = { path = "../datalogic-rs", version = "5.8", features = ["serde_json", "trace", "all-operators", "templating"] }

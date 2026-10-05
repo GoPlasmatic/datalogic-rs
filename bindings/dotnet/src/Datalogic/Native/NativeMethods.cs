@@ -87,6 +87,9 @@ internal static partial class NativeMethods
     /// </summary>
     internal const uint AbiVersion = 2;
 
+    /// <summary>The additions to v2 this binding calls (see <c>datalogic_abi_minor</c>).</summary>
+    internal const uint AbiMinor = 1;
+
     // =============== Meta ===============
 
     [LibraryImport(LibraryName, EntryPoint = "datalogic_abi_version")]
@@ -325,6 +328,84 @@ internal static partial class NativeMethods
 
     [LibraryImport(LibraryName, EntryPoint = "datalogic_error_path_json")]
     internal static unsafe partial byte* datalogic_error_path_json(IntPtr err, out nuint len_out);
+
+    [LibraryImport(LibraryName, EntryPoint = "datalogic_error_node_ids_json")]
+    internal static unsafe partial byte* datalogic_error_node_ids_json(IntPtr err, out nuint len_out);
+
+    [LibraryImport(LibraryName, EntryPoint = "datalogic_error_diagnostics_json")]
+    internal static unsafe partial byte* datalogic_error_diagnostics_json(IntPtr err, out nuint len_out);
+
+    // =============== ABI v2 minor 1: modes, checks, introspection ===============
+
+    [LibraryImport(LibraryName, EntryPoint = "datalogic_abi_minor")]
+    internal static partial uint datalogic_abi_minor();
+
+    [LibraryImport(LibraryName, EntryPoint = "datalogic_engine_compile_mode")]
+    internal static unsafe partial DatalogicStatus datalogic_engine_compile_mode(
+        IntPtr engine,
+        byte* rule_json,
+        nuint rule_len,
+        uint mode,
+        out IntPtr out_rule,
+        ref IntPtr err);
+
+    [LibraryImport(LibraryName, EntryPoint = "datalogic_engine_compile_checked")]
+    internal static unsafe partial DatalogicStatus datalogic_engine_compile_checked(
+        IntPtr engine,
+        byte* rule_json,
+        nuint rule_len,
+        out IntPtr out_rule,
+        ref IntPtr err);
+
+    [LibraryImport(LibraryName, EntryPoint = "datalogic_engine_check")]
+    internal static unsafe partial DatalogicStatus datalogic_engine_check(
+        IntPtr engine,
+        byte* rule_json,
+        nuint rule_len,
+        uint mode,
+        out DatalogicBuf @out,
+        ref IntPtr err);
+
+    [LibraryImport(LibraryName, EntryPoint = "datalogic_engine_operators")]
+    internal static partial DatalogicStatus datalogic_engine_operators(
+        IntPtr engine,
+        out DatalogicBuf @out,
+        ref IntPtr err);
+
+    [LibraryImport(LibraryName, EntryPoint = "datalogic_engine_truthy")]
+    internal static unsafe partial DatalogicStatus datalogic_engine_truthy(
+        IntPtr engine,
+        byte* value_json,
+        nuint value_len,
+        out int @out,
+        ref IntPtr err);
+
+    [LibraryImport(LibraryName, EntryPoint = "datalogic_rule_facts")]
+    internal static partial DatalogicStatus datalogic_rule_facts(
+        IntPtr rule,
+        out DatalogicBuf @out,
+        ref IntPtr err);
+
+    [LibraryImport(LibraryName, EntryPoint = "datalogic_session_evaluate_metered")]
+    internal static unsafe partial DatalogicStatus datalogic_session_evaluate_metered(
+        IntPtr session,
+        IntPtr rule,
+        byte* data_json,
+        nuint data_len,
+        ulong budget,
+        out byte* out_ptr,
+        out nuint out_len,
+        out ulong out_ops,
+        ref IntPtr err);
+
+    [LibraryImport(LibraryName, EntryPoint = "datalogic_engine_builder_set_template_key_escape")]
+    internal static partial DatalogicStatus datalogic_engine_builder_set_template_key_escape(
+        IntPtr builder,
+        uint codepoint,
+        ref IntPtr err);
+
+    [LibraryImport(LibraryName, EntryPoint = "datalogic_engine_builder_set_strict_operator_names")]
+    internal static partial void datalogic_engine_builder_set_strict_operator_names(IntPtr builder, int enabled);
 
     // =============== Managed helpers ===============
 

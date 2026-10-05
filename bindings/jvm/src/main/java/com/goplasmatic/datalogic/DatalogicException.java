@@ -22,6 +22,8 @@ public class DatalogicException extends RuntimeException {
     private final String errorType;
     private final String operatorName;
     private final String pathJson;
+    private String nodeIdsJson;
+    private String diagnosticsJson;
 
     DatalogicException(String message, String errorType, String operatorName, String pathJson) {
         super(message);
@@ -29,6 +31,16 @@ public class DatalogicException extends RuntimeException {
         this.operatorName = operatorName;
         this.pathJson = pathJson;
     }
+
+    /** The compiled-node breadcrumb, leaf to root, as a JSON array of ids, or null. */
+    public String nodeIdsJson() { return nodeIdsJson; }
+
+    /**
+     * Error type {@code "CompileError"} only (from
+     * {@link Engine#compileChecked(String)}): every problem found, as a JSON
+     * array of {@code {code, severity, message, pointer, operator}}; else null.
+     */
+    public String diagnosticsJson() { return diagnosticsJson; }
 
     /** Stable error tag from the engine (e.g. "ParseError", "Thrown", "NaN", "TypeMismatch"). */
     public String errorType() { return errorType; }
@@ -72,6 +84,8 @@ public class DatalogicException extends RuntimeException {
         String tag = null;
         String operator = null;
         String path = null;
+        String nodeIds = null;
+        String diagnostics = null;
 
         MemorySegment err = errSlot.get(ValueLayout.ADDRESS, 0);
         if (err.address() != 0) {
@@ -83,16 +97,21 @@ public class DatalogicException extends RuntimeException {
                 tag = DatalogicNative.errorField(DatalogicNative.ERROR_TAG, err, scratch);
                 operator = DatalogicNative.errorField(DatalogicNative.ERROR_OPERATOR, err, scratch);
                 path = DatalogicNative.errorField(DatalogicNative.ERROR_PATH_JSON, err, scratch);
+                nodeIds = DatalogicNative.errorField(DatalogicNative.ERROR_NODE_IDS_JSON, err, scratch);
+                diagnostics = DatalogicNative.errorField(DatalogicNative.ERROR_DIAGNOSTICS_JSON, err, scratch);
             } finally {
                 DatalogicNative.freeError(err);
             }
         }
 
-        return switch (status) {
+        DatalogicException e = switch (status) {
             case DatalogicNative.STATUS_PARSE -> new ParseException(message, tag, operator, path);
             case DatalogicNative.STATUS_EVAL, DatalogicNative.STATUS_TYPE_MISMATCH ->
                     new EvaluateException(message, tag, operator, path);
             default -> new DatalogicException(message, tag, operator, path);
         };
+        e.nodeIdsJson = nodeIds;
+        e.diagnosticsJson = diagnostics;
+        return e;
     }
 }

@@ -48,6 +48,18 @@
 #define DATALOGIC_ABI_VERSION 2
 
 /**
+ * Additions to the v2 surface, counted from 0. A wrapper that calls
+ * entry points added in minor `n` checks `datalogic_abi_minor() >= n` at
+ * load, alongside the exact [`DATALOGIC_ABI_VERSION`] check.
+ *
+ * - 1 (5.8): per-compile modes and `compile_checked`, `check`,
+ *   `operators`, `truthy`, rule facts, metered session evaluation, the
+ *   template-key escape and strict operator names on the builder, and
+ *   error diagnostics and node ids.
+ */
+#define DATALOGIC_ABI_MINOR 1
+
+/**
  * Coarse, branchable outcome of a fallible call.
  *
  * The fine-grained engine tag (e.g. `"Thrown"`, `"ArithmeticError"`,
@@ -85,6 +97,38 @@ typedef enum {
    */
   DATALOGIC_STATUS_INTERNAL = 5,
 } datalogic_status;
+
+/**
+ * How [`datalogic_engine_compile_mode`] and [`datalogic_engine_check`]
+ * read a rule. Passed as a `uint32_t`.
+ */
+enum datalogic_mode
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+  : uint32_t
+#endif // defined(__cplusplus) || __STDC_VERSION__ >= 202311L
+ {
+  /**
+   * The engine's own mode, as `datalogic_engine_compile` reads it.
+   */
+  DATALOGIC_MODE_ENGINE = 0,
+  /**
+   * Outside templating mode: a multi-key object or an unknown operator
+   * is an error.
+   */
+  DATALOGIC_MODE_STRICT = 1,
+  /**
+   * In templating mode: a multi-key object is an output template and
+   * an unknown key an output field.
+   */
+  DATALOGIC_MODE_TEMPLATE = 2,
+};
+#ifndef __cplusplus
+#if __STDC_VERSION__ >= 202311L
+typedef enum datalogic_mode datalogic_mode;
+#else
+typedef uint32_t datalogic_mode;
+#endif // __STDC_VERSION__ >= 202311L
+#endif // __cplusplus
 
 /**
  * Immutable parsed JSON document (`struct datalogic_data`).
@@ -198,6 +242,11 @@ extern "C" {
  uint32_t datalogic_abi_version(void);
 
 /**
+ * Runtime counterpart of [`DATALOGIC_ABI_MINOR`].
+ */
+ uint32_t datalogic_abi_minor(void);
+
+/**
  * Return the binding's crate version as a static, NUL-terminated UTF-8
  * string (the one deliberate NUL-terminated survivor — it's a literal
  * for `printf`-style consumption).
@@ -270,6 +319,35 @@ extern "C" {
  * `builder` must be `NULL` or a valid builder handle.
  */
  void datalogic_engine_builder_set_templating(datalogic_engine_builder *builder, int32_t enabled);
+
+/**
+ * Set the template-key escape: the character (`codepoint`, a Unicode
+ * scalar value) that marks a template key as a literal output field. Only
+ * meaningful with templating on.
+ *
+ * # Safety
+ *
+ * `builder` must be `NULL` or a valid builder handle; `err` follows the
+ * crate-wide error out-param contract.
+ */
+
+datalogic_status datalogic_engine_builder_set_template_key_escape(datalogic_engine_builder *builder,
+                                                                  uint32_t codepoint,
+                                                                  datalogic_error **err);
+
+/**
+ * When `enabled != 0`, a later [`datalogic_engine_builder_add_operator`]
+ * with a name a built-in answers to (`length`, `var`, an alias such as
+ * `?:`) fails with tag `ConfigurationError` instead of registering an
+ * operator that would never run. Set it before adding operators.
+ *
+ * # Safety
+ *
+ * `builder` must be `NULL` or a valid builder handle.
+ */
+
+void datalogic_engine_builder_set_strict_operator_names(datalogic_engine_builder *builder,
+                                                        int32_t enabled);
 
 /**
  * Set the engine's evaluation configuration from a JSON object.
@@ -527,6 +605,125 @@ datalogic_status datalogic_engine_apply(const datalogic_engine *engine,
  const uint8_t *datalogic_error_path_json(const datalogic_error *err, size_t *len_out);
 
 /**
+ * `CompileError` only: every diagnostic the check found, as a JSON array
+ * of `{code, severity, message, pointer, operator}`. Borrowed from the
+ * handle; `NULL` (with `*len_out = 0`) for any other error.
+ *
+ * # Safety
+ *
+ * `err` must be `NULL` or a valid error handle; `len_out` must be `NULL`
+ * or writable.
+ */
+ const uint8_t *datalogic_error_diagnostics_json(const datalogic_error *err, size_t *len_out);
+
+/**
+ * The error's compiled-node breadcrumb, leaf to root, as a JSON array of
+ * ids (the ids `datalogic_error_path_json` resolves). Borrowed from the
+ * handle; `NULL` when the error carries none.
+ *
+ * # Safety
+ *
+ * `err` must be `NULL` or a valid error handle; `len_out` must be `NULL`
+ * or writable.
+ */
+ const uint8_t *datalogic_error_node_ids_json(const datalogic_error *err, size_t *len_out);
+
+/**
+ * [`crate::datalogic_engine_compile`] in an explicit [`DatalogicMode`]
+ * (`mode` 0, 1 or 2), whatever mode the engine was built with.
+ *
+ * # Safety
+ *
+ * As [`crate::datalogic_engine_compile`].
+ */
+
+datalogic_status datalogic_engine_compile_mode(const datalogic_engine *engine,
+                                               const uint8_t *rule_json,
+                                               size_t rule_len,
+                                               uint32_t mode,
+                                               datalogic_rule **out_rule,
+                                               datalogic_error **err);
+
+/**
+ * Compile a rule, refusing it if [`datalogic_engine_check`] finds any
+ * error. A refusal returns `DATALOGIC_STATUS_PARSE` with tag
+ * `"CompileError"`; read every diagnostic with
+ * [`crate::datalogic_error_diagnostics_json`].
+ *
+ * # Safety
+ *
+ * As [`crate::datalogic_engine_compile`].
+ */
+
+datalogic_status datalogic_engine_compile_checked(const datalogic_engine *engine,
+                                                  const uint8_t *rule_json,
+                                                  size_t rule_len,
+                                                  datalogic_rule **out_rule,
+                                                  datalogic_error **err);
+
+/**
+ * Every problem the engine can see in a rule before it runs, as a JSON
+ * array of `{code, severity, message, pointer, operator}` in `*out`
+ * (release via [`crate::datalogic_buf_free`]). Finding problems is not a
+ * failure: the call returns `DATALOGIC_STATUS_OK` with them in the array.
+ *
+ * # Safety
+ *
+ * `engine` must be a valid handle; the rule bytes must reference
+ * `rule_len` readable bytes; `out` must be writable.
+ */
+
+datalogic_status datalogic_engine_check(const datalogic_engine *engine,
+                                        const uint8_t *rule_json,
+                                        size_t rule_len,
+                                        uint32_t mode,
+                                        datalogic_buf *out,
+                                        datalogic_error **err);
+
+/**
+ * Every built-in operator the engine evaluates, as a JSON array (the
+ * schema of the docs' `operators.json`) in `*out`.
+ *
+ * # Safety
+ *
+ * `engine` must be a valid handle; `out` must be writable.
+ */
+
+datalogic_status datalogic_engine_operators(const datalogic_engine *engine,
+                                            datalogic_buf *out,
+                                            datalogic_error **err);
+
+/**
+ * Whether a JSON value is truthy under the engine's configured
+ * truthiness; `*out` is 1 or 0.
+ *
+ * # Safety
+ *
+ * `engine` must be a valid handle; the value bytes must reference
+ * `value_len` readable bytes; `out` must be writable.
+ */
+
+datalogic_status datalogic_engine_truthy(const datalogic_engine *engine,
+                                         const uint8_t *value_json,
+                                         size_t value_len,
+                                         int32_t *out,
+                                         datalogic_error **err);
+
+/**
+ * What a compiled rule reads and calls, as JSON in `*out`:
+ * `{reads, computed_reads, reads_complete, reads_data, operators,
+ * custom_operators, deterministic}`, with each read path as its segments.
+ *
+ * # Safety
+ *
+ * `rule` must be a valid handle; `out` must be writable.
+ */
+
+datalogic_status datalogic_rule_facts(const datalogic_rule *rule,
+                                      datalogic_buf *out,
+                                      datalogic_error **err);
+
+/**
  * Release a rule handle. Safe to call with `NULL`.
  *
  * # Safety
@@ -623,6 +820,28 @@ datalogic_status datalogic_session_evaluate(datalogic_session *session,
                                             const uint8_t **out_ptr,
                                             size_t *out_len,
                                             datalogic_error **err);
+
+/**
+ * [`datalogic_session_evaluate`] under an operation budget, reporting
+ * what the evaluation cost in `*out_ops`. `budget` 0 means the engine's
+ * configured `ops_budget`, or unbounded when it has none. Crossing the
+ * budget fails with tag `"BudgetExceeded"`. The result follows the same
+ * borrow rule as `datalogic_session_evaluate`.
+ *
+ * # Safety
+ *
+ * As [`datalogic_session_evaluate`]; `out_ops` must be writable.
+ */
+
+datalogic_status datalogic_session_evaluate_metered(datalogic_session *session,
+                                                    const datalogic_rule *rule,
+                                                    const uint8_t *data_json,
+                                                    size_t data_len,
+                                                    uint64_t budget,
+                                                    const uint8_t **out_ptr,
+                                                    size_t *out_len,
+                                                    uint64_t *out_ops,
+                                                    datalogic_error **err);
 
 /**
  * Same as [`datalogic_session_evaluate`] with a parsed-data handle

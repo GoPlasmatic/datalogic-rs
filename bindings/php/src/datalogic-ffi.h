@@ -72,6 +72,7 @@ typedef int32_t (*datalogic_op_fn)(const uint8_t *args_json,
 
 /* --- Meta --- */
 uint32_t datalogic_abi_version(void);
+uint32_t datalogic_abi_minor(void);
 const char *datalogic_version(void);
 void datalogic_buf_free(datalogic_buf buf);
 
@@ -93,6 +94,11 @@ datalogic_status datalogic_engine_builder_add_operator(datalogic_engine_builder 
                                                        datalogic_op_fn callback,
                                                        void *user_data,
                                                        datalogic_error **err);
+datalogic_status datalogic_engine_builder_set_template_key_escape(datalogic_engine_builder *builder,
+                                                                  uint32_t codepoint,
+                                                                  datalogic_error **err);
+void datalogic_engine_builder_set_strict_operator_names(datalogic_engine_builder *builder,
+                                                        int32_t enabled);
 datalogic_engine *datalogic_engine_builder_build(datalogic_engine_builder *builder);
 
 /* --- Data handles (parse once, evaluate many) --- */
@@ -119,6 +125,32 @@ datalogic_status datalogic_engine_apply(const datalogic_engine *engine,
                                         datalogic_buf *out,
                                         datalogic_error **err);
 datalogic_session *datalogic_engine_session(const datalogic_engine *engine);
+/* mode: 0 engine, 1 strict, 2 template (datalogic_mode in datalogic.h). */
+datalogic_status datalogic_engine_compile_mode(const datalogic_engine *engine,
+                                               const char *rule_json,
+                                               size_t rule_len,
+                                               uint32_t mode,
+                                               datalogic_rule **out_rule,
+                                               datalogic_error **err);
+datalogic_status datalogic_engine_compile_checked(const datalogic_engine *engine,
+                                                  const char *rule_json,
+                                                  size_t rule_len,
+                                                  datalogic_rule **out_rule,
+                                                  datalogic_error **err);
+datalogic_status datalogic_engine_check(const datalogic_engine *engine,
+                                        const char *rule_json,
+                                        size_t rule_len,
+                                        uint32_t mode,
+                                        datalogic_buf *out,
+                                        datalogic_error **err);
+datalogic_status datalogic_engine_operators(const datalogic_engine *engine,
+                                            datalogic_buf *out,
+                                            datalogic_error **err);
+datalogic_status datalogic_engine_truthy(const datalogic_engine *engine,
+                                         const char *value_json,
+                                         size_t value_len,
+                                         int32_t *out,
+                                         datalogic_error **err);
 
 /* --- Errors (owned handles; accessors borrow until _free) --- */
 void datalogic_error_free(datalogic_error *err);
@@ -127,6 +159,8 @@ const uint8_t *datalogic_error_message(const datalogic_error *err, size_t *len_o
 const uint8_t *datalogic_error_tag(const datalogic_error *err, size_t *len_out);
 const uint8_t *datalogic_error_operator(const datalogic_error *err, size_t *len_out);
 const uint8_t *datalogic_error_path_json(const datalogic_error *err, size_t *len_out);
+const uint8_t *datalogic_error_diagnostics_json(const datalogic_error *err, size_t *len_out);
+const uint8_t *datalogic_error_node_ids_json(const datalogic_error *err, size_t *len_out);
 
 /* --- Rules --- */
 void datalogic_rule_free(datalogic_rule *rule);
@@ -135,6 +169,9 @@ datalogic_status datalogic_rule_evaluate(const datalogic_rule *rule,
                                          size_t data_len,
                                          datalogic_buf *out,
                                          datalogic_error **err);
+datalogic_status datalogic_rule_facts(const datalogic_rule *rule,
+                                      datalogic_buf *out,
+                                      datalogic_error **err);
 datalogic_status datalogic_rule_evaluate_data(const datalogic_rule *rule,
                                               const datalogic_data *data,
                                               datalogic_buf *out,
@@ -151,6 +188,15 @@ datalogic_status datalogic_session_evaluate(datalogic_session *session,
                                             const uint8_t **out_ptr,
                                             size_t *out_len,
                                             datalogic_error **err);
+datalogic_status datalogic_session_evaluate_metered(datalogic_session *session,
+                                                   const datalogic_rule *rule,
+                                                   const char *data_json,
+                                                   size_t data_len,
+                                                   uint64_t budget,
+                                                   const uint8_t **out_ptr,
+                                                   size_t *out_len,
+                                                   uint64_t *out_ops,
+                                                   datalogic_error **err);
 datalogic_status datalogic_session_evaluate_data(datalogic_session *session,
                                                  const datalogic_rule *rule,
                                                  const datalogic_data *data,

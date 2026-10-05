@@ -56,6 +56,36 @@ public sealed class EngineBuilder
     }
 
     /// <summary>
+    /// Set the character that marks a template key as a literal output field rather than
+    /// an operator call: with <c>'$'</c>, <c>{"$type": ...}</c> emits the key
+    /// <c>type</c>. Only meaningful with templating.
+    /// </summary>
+    public EngineBuilder WithTemplateKeyEscape(char escape)
+    {
+        EnsureFresh();
+        var err = IntPtr.Zero;
+        var status = NativeMethods.datalogic_engine_builder_set_template_key_escape(_handle, escape, ref err);
+        if (status != DatalogicStatus.Ok)
+        {
+            throw DatalogicException.FromNative(status, err, "set_template_key_escape failed");
+        }
+        return this;
+    }
+
+    /// <summary>
+    /// When <paramref name="enabled"/>, a later <see cref="AddOperator"/> with a name a
+    /// built-in answers to (<c>length</c>, <c>var</c>, an alias such as <c>?:</c>) throws
+    /// with <c>ErrorType</c> <c>"ConfigurationError"</c> instead of registering an
+    /// operator that would never run. Call it first.
+    /// </summary>
+    public EngineBuilder WithStrictOperatorNames(bool enabled)
+    {
+        EnsureFresh();
+        NativeMethods.datalogic_engine_builder_set_strict_operator_names(_handle, enabled ? 1 : 0);
+        return this;
+    }
+
+    /// <summary>
     /// Set the engine's evaluation configuration from a JSON object
     /// string, parsed by the core crate's shared config parser (the same
     /// wire format every binding uses). All keys are optional; an

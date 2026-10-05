@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/datalogic-rs",
+    "crates/datalogic-bind",
     "tools/benchmark",
 ]
 # `bindings/wasm` defines its own `[workspace]` so wasm-pack can apply its

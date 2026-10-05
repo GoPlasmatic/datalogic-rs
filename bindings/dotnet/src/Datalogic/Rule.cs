@@ -28,6 +28,23 @@ public sealed class Rule : IDisposable
     }
 
     /// <summary>
+    /// What the rule reads and calls, as JSON: <c>{reads, computed_reads, reads_complete,
+    /// reads_data, operators, custom_operators, deterministic}</c>, each read path as its
+    /// segments.
+    /// </summary>
+    public string Facts()
+    {
+        var err = IntPtr.Zero;
+        var status = NativeMethods.datalogic_rule_facts(Handle, out var buf, ref err);
+        if (status != DatalogicStatus.Ok)
+        {
+            throw DatalogicException.FromNative(status, err, "facts failed");
+        }
+        GC.KeepAlive(this);
+        return NativeMethods.TakeBufUtf8(buf);
+    }
+
+    /// <summary>
     /// Evaluate against <paramref name="dataJson"/> and return the result
     /// as a JSON-string.
     /// </summary>

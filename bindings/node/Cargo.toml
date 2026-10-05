@@ -39,6 +39,8 @@ datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features =
 # improved async / class ergonomics. `napi9` enables Node 18+ ABI. The
 # `serde-json` feature wires the `serde_json::Value` ↔ `JsUnknown` bridge
 # we lean on in conv.rs.
+# Wire formats and plumbing shared with the other bindings.
+datalogic-bind = { path = "../../crates/datalogic-bind" }
 napi = { version = "3", default-features = false, features = ["napi9", "serde-json"] }
 napi-derive = "3"
 serde = { version = "1.0", features = ["derive"] }

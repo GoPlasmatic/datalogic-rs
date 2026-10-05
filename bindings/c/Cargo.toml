@@ -30,6 +30,8 @@ name = "datalogic_c"
 # `datalogic_traced_session_*` in `src/traced_session.rs`; `flagd` exposes
 # `fractional` + `sem_ver` to every downstream consumer (Go, Java, .NET,
 # PHP).
+# Wire formats and plumbing shared with the other bindings.
+datalogic-bind = { path = "../../crates/datalogic-bind" }
 datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features = [
     "serde_json",
     "all-operators",

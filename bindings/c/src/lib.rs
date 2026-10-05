@@ -26,6 +26,7 @@ mod builder;
 mod data;
 mod engine;
 mod error;
+mod introspect;
 mod rule;
 mod session;
 mod traced_session;
@@ -34,6 +35,7 @@ pub use builder::*;
 pub use data::*;
 pub use engine::*;
 pub use error::*;
+pub use introspect::*;
 pub use rule::*;
 pub use session::*;
 pub use traced_session::*;
@@ -50,6 +52,22 @@ pub const DATALOGIC_ABI_VERSION: u32 = 2;
 #[unsafe(no_mangle)]
 pub extern "C" fn datalogic_abi_version() -> u32 {
     DATALOGIC_ABI_VERSION
+}
+
+/// Additions to the v2 surface, counted from 0. A wrapper that calls
+/// entry points added in minor `n` checks `datalogic_abi_minor() >= n` at
+/// load, alongside the exact [`DATALOGIC_ABI_VERSION`] check.
+///
+/// - 1 (5.8): per-compile modes and `compile_checked`, `check`,
+///   `operators`, `truthy`, rule facts, metered session evaluation, the
+///   template-key escape and strict operator names on the builder, and
+///   error diagnostics and node ids.
+pub const DATALOGIC_ABI_MINOR: u32 = 1;
+
+/// Runtime counterpart of [`DATALOGIC_ABI_MINOR`].
+#[unsafe(no_mangle)]
+pub extern "C" fn datalogic_abi_minor() -> u32 {
+    DATALOGIC_ABI_MINOR
 }
 
 /// Return the binding's crate version as a static, NUL-terminated UTF-8

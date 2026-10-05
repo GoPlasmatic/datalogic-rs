@@ -55,6 +55,45 @@ public final class EngineBuilder {
     }
 
     /**
+     * Set the character that marks a template key as a literal output field
+     * rather than an operator call: with {@code '$'}, {@code {"$type": ...}}
+     * emits the key {@code type}. Only meaningful with templating.
+     */
+    public EngineBuilder withTemplateKeyEscape(int codePoint) {
+        ensureFresh();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment errSlot = arena.allocate(ValueLayout.ADDRESS);
+            int status;
+            try {
+                status = (int) DatalogicNative.BUILDER_SET_TEMPLATE_KEY_ESCAPE.invokeExact(
+                        handle, codePoint, errSlot);
+            } catch (Throwable t) {
+                throw DatalogicException.propagate(t);
+            }
+            if (status != DatalogicNative.STATUS_OK) {
+                throw DatalogicException.fromNative(status, errSlot, "set_template_key_escape failed");
+            }
+        }
+        return this;
+    }
+
+    /**
+     * When {@code enabled}, a later {@link #addOperator} with a name a
+     * built-in answers to ({@code length}, {@code var}, an alias such as
+     * {@code ?:}) throws with error type {@code "ConfigurationError"} instead
+     * of registering an operator that would never run. Call it first.
+     */
+    public EngineBuilder withStrictOperatorNames(boolean enabled) {
+        ensureFresh();
+        try {
+            DatalogicNative.BUILDER_SET_STRICT_OPERATOR_NAMES.invokeExact(handle, enabled ? 1 : 0);
+        } catch (Throwable t) {
+            throw DatalogicException.propagate(t);
+        }
+        return this;
+    }
+
+    /**
      * Set the engine's evaluation configuration from a JSON object
      * string, parsed by the core crate's shared config parser (the same
      * wire format every binding uses). All keys are optional; an

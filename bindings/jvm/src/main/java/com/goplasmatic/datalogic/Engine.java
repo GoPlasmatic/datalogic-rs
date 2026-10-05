@@ -104,6 +104,136 @@ public class Engine implements AutoCloseable {
         }
     }
 
+    /** Compile {@code ruleJson} in templating mode, whatever this engine's mode. */
+    public Rule compileTemplate(String ruleJson) {
+        return compileMode(ruleJson, CompileMode.TEMPLATE);
+    }
+
+    /** Compile {@code ruleJson} outside templating mode, whatever this engine's mode. */
+    public Rule compileStrict(String ruleJson) {
+        return compileMode(ruleJson, CompileMode.STRICT);
+    }
+
+    /** Compile {@code ruleJson} in {@code mode}, whatever mode this engine was built with. */
+    public Rule compileMode(String ruleJson, CompileMode mode) {
+        if (ruleJson == null) throw new NullPointerException("ruleJson");
+        if (mode == null) throw new NullPointerException("mode");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment rule = DatalogicNative.utf8(arena, ruleJson);
+            MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment errSlot = arena.allocate(ValueLayout.ADDRESS);
+            int status;
+            try {
+                status = (int) DatalogicNative.ENGINE_COMPILE_MODE.invokeExact(
+                        handle(), rule, rule.byteSize(), mode.code(), out, errSlot);
+            } catch (Throwable t) {
+                throw DatalogicException.propagate(t);
+            }
+            if (status != DatalogicNative.STATUS_OK) {
+                throw DatalogicException.fromNative(status, errSlot, "compile failed");
+            }
+            return new Rule(out.get(ValueLayout.ADDRESS, 0), this);
+        }
+    }
+
+    /**
+     * Compile {@code ruleJson}, refusing it if {@link #check} finds any
+     * error: throws a {@link ParseException} with error type
+     * {@code "CompileError"} whose {@link DatalogicException#diagnosticsJson()}
+     * lists every problem.
+     */
+    public Rule compileChecked(String ruleJson) {
+        if (ruleJson == null) throw new NullPointerException("ruleJson");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment rule = DatalogicNative.utf8(arena, ruleJson);
+            MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
+            MemorySegment errSlot = arena.allocate(ValueLayout.ADDRESS);
+            int status;
+            try {
+                status = (int) DatalogicNative.ENGINE_COMPILE_CHECKED.invokeExact(
+                        handle(), rule, rule.byteSize(), out, errSlot);
+            } catch (Throwable t) {
+                throw DatalogicException.propagate(t);
+            }
+            if (status != DatalogicNative.STATUS_OK) {
+                throw DatalogicException.fromNative(status, errSlot, "compile failed");
+            }
+            return new Rule(out.get(ValueLayout.ADDRESS, 0), this);
+        }
+    }
+
+    /**
+     * Every problem this engine can see in {@code ruleJson} before it runs,
+     * as a JSON array of {@code {code, severity, message, pointer, operator}}.
+     * Finding problems does not throw: they are in the array.
+     */
+    public String check(String ruleJson, CompileMode mode) {
+        if (ruleJson == null) throw new NullPointerException("ruleJson");
+        if (mode == null) throw new NullPointerException("mode");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment rule = DatalogicNative.utf8(arena, ruleJson);
+            MemorySegment buf = arena.allocate(DatalogicNative.BUF_LAYOUT);
+            MemorySegment errSlot = arena.allocate(ValueLayout.ADDRESS);
+            int status;
+            try {
+                status = (int) DatalogicNative.ENGINE_CHECK.invokeExact(
+                        handle(), rule, rule.byteSize(), mode.code(), buf, errSlot);
+            } catch (Throwable t) {
+                throw DatalogicException.propagate(t);
+            }
+            if (status != DatalogicNative.STATUS_OK) {
+                throw DatalogicException.fromNative(status, errSlot, "check failed");
+            }
+            return DatalogicNative.takeOwnedBuf(buf);
+        }
+    }
+
+    /**
+     * Every built-in operator this engine evaluates, as a JSON array in the
+     * schema of the docs' {@code operators.json}.
+     */
+    public String operators() {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buf = arena.allocate(DatalogicNative.BUF_LAYOUT);
+            MemorySegment errSlot = arena.allocate(ValueLayout.ADDRESS);
+            int status;
+            try {
+                status = (int) DatalogicNative.ENGINE_OPERATORS.invokeExact(handle(), buf, errSlot);
+            } catch (Throwable t) {
+                throw DatalogicException.propagate(t);
+            }
+            if (status != DatalogicNative.STATUS_OK) {
+                throw DatalogicException.fromNative(status, errSlot, "operators failed");
+            }
+            return DatalogicNative.takeOwnedBuf(buf);
+        }
+    }
+
+    /**
+     * Whether the JSON {@code valueJson} is truthy under this engine's
+     * configured truthiness. Under the default rules an empty object is
+     * falsy, like an empty array.
+     */
+    public boolean truthy(String valueJson) {
+        if (valueJson == null) throw new NullPointerException("valueJson");
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment value = DatalogicNative.utf8(arena, valueJson);
+            MemorySegment out = arena.allocate(ValueLayout.JAVA_INT);
+            MemorySegment errSlot = arena.allocate(ValueLayout.ADDRESS);
+            int status;
+            try {
+                status = (int) DatalogicNative.ENGINE_TRUTHY.invokeExact(
+                        handle(), value, value.byteSize(), out, errSlot);
+            } catch (Throwable t) {
+                throw DatalogicException.propagate(t);
+            }
+            if (status != DatalogicNative.STATUS_OK) {
+                throw DatalogicException.fromNative(status, errSlot, "truthy failed");
+            }
+            return out.get(ValueLayout.JAVA_INT, 0) != 0;
+        }
+    }
+
     /**
      * One-shot: compile and evaluate in a single call, returning the
      * result as a JSON-string. For repeated evaluations of the same rule,

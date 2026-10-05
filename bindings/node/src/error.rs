@@ -79,6 +79,28 @@ pub fn engine_error_value(
 /// not of the requested type. Mirrors the C ABI's
 /// `DATALOGIC_STATUS_TYPE_MISMATCH` (no operator, no path — the failure
 /// is at the result boundary, not inside the rule).
+/// A rule `compileChecked` refused: an Error named `CompileError` whose
+/// `diagnostics` holds every problem the check found.
+pub fn compile_error(env: &Env, err: &datalogic_rs::CompileError) -> napi::Error {
+    let message = err.to_string();
+    let build = || -> Option<napi::Error> {
+        let mut obj = env
+            .create_error(napi::Error::from_reason(message.clone()))
+            .ok()?;
+        obj.set_named_property("name", "CompileError").ok()?;
+        obj.set_named_property("errorType", "CompileError").ok()?;
+        let diagnostics: Value =
+            serde_json::from_str(&datalogic_bind::diagnostics_json(&err.diagnostics)).ok()?;
+        obj.set_named_property("diagnostics", diagnostics).ok()?;
+        env.throw(obj).ok()?;
+        Some(napi::Error::new(
+            napi::Status::PendingException,
+            String::new(),
+        ))
+    };
+    build().unwrap_or_else(|| napi::Error::from_reason(message.clone()))
+}
+
 pub fn type_mismatch_error(env: &Env, message: &str) -> napi::Error {
     let attrs = ErrorAttrs {
         name: "EvaluateError",

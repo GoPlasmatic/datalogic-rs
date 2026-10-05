@@ -1,0 +1,45 @@
+[
+  "# Every binding runs this file through its own API (see bindings/BINDINGS.md, 'Scenarios'). Each case is one call: `call` names it, `engine` holds the constructor options, and exactly one of `result`, `error` (the error type), `diagnostics` ([code, pointer] pairs) or `facts` (a subset of the facts object) is the expectation.",
+
+  "## evaluate: compile in the engine's mode, evaluate, compare the JSON result",
+  {"description": "plain rule", "call": "evaluate", "rule": {"+": [{"var": "a"}, 2]}, "data": {"a": 1}, "result": 3},
+  {"description": "a thrown error carries its type", "call": "evaluate", "rule": {"+": ["x", 1]}, "data": null, "error": "Thrown"},
+  {"description": "an unknown operator", "call": "evaluate", "rule": {"bogus": []}, "data": null, "error": "InvalidOperator"},
+  {"description": "a missing variable is null by default", "call": "evaluate", "rule": {"var": "nope"}, "data": {}, "result": null},
+  {"description": "missing_var error mode", "call": "evaluate", "engine": {"config": {"missing_var": "error"}}, "rule": {"var": "nope"}, "data": {}, "error": "VariableNotFound"},
+  {"description": "a template on a templating engine", "call": "evaluate", "engine": {"templating": true}, "rule": {"out": {"var": "a"}, "k": 1}, "data": {"a": 5}, "result": {"out": 5, "k": 1}},
+  {"description": "an escaped template key", "call": "evaluate", "engine": {"templating": true, "template_key_escape": "$"}, "rule": {"$type": {"var": "a"}, "k": 1}, "data": {"a": 5}, "result": {"type": 5, "k": 1}},
+
+  "## compile_template / compile_strict: the mode per compile",
+  {"description": "a template on a strict engine", "call": "compile_template", "rule": {"user": {"var": "name"}, "n": 1}, "data": {"name": "ana"}, "result": {"user": "ana", "n": 1}},
+  {"description": "strict on a templating engine", "call": "compile_strict", "engine": {"templating": true}, "rule": {"user": {"var": "name"}, "n": 1}, "data": null, "error": "InvalidOperator"},
+  {"description": "strict still compiles a rule", "call": "compile_strict", "engine": {"templating": true}, "rule": {"var": "a"}, "data": {"a": [1]}, "result": [1]},
+
+  "## compile_checked: refuse any error diagnostic",
+  {"description": "refused", "call": "compile_checked", "rule": {"if": [{"bogus": 1}, {"map": [1]}]}, "data": null, "error": "CompileError"},
+  {"description": "accepted", "call": "compile_checked", "rule": {"+": [1, {"var": "x"}]}, "data": {"x": 2}, "result": 3},
+  {"description": "warnings alone are accepted", "call": "compile_checked", "rule": {"!": [false, 1]}, "data": null, "result": true},
+
+  "## check: diagnostics as [code, pointer]",
+  {"description": "two errors in rule order", "call": "check", "rule": {"if": [true, {"vr": "x"}, {"map": [1]}]}, "diagnostics": [["UnknownOperator", "/if/1"], ["ArgumentCount", "/if/2"]]},
+  {"description": "a clean rule", "call": "check", "rule": {"and": [true, {"var": "x"}]}, "diagnostics": []},
+  {"description": "strict mode on a template", "call": "check", "mode": "strict", "engine": {"templating": true}, "rule": {"a": 1, "b": 2}, "diagnostics": [["NotAnOperator", ""]]},
+  {"description": "template mode accepts it", "call": "check", "mode": "template", "rule": {"a": 1, "b": 2}, "diagnostics": []},
+  {"description": "a pointer escapes `/`", "call": "check", "rule": {"/": [1, {"bogus": 2}]}, "diagnostics": [["UnknownOperator", "/~1/1"]]},
+
+  "## truthy: the engine's truthiness",
+  {"description": "empty object", "call": "truthy", "value": {}, "result": false},
+  {"description": "empty array", "call": "truthy", "value": [], "result": false},
+  {"description": "non-empty object", "call": "truthy", "value": {"a": 1}, "result": true},
+  {"description": "the string zero", "call": "truthy", "value": "0", "result": true},
+  {"description": "python truthiness", "call": "truthy", "engine": {"config": {"truthy_evaluator": "python"}}, "value": "", "result": false},
+
+  "## facts: what a compiled rule reads",
+  {"description": "root reads and operators", "call": "facts", "rule": {"+": [{"var": "a.b"}, {"var": "c"}]}, "facts": {"reads": [["a", "b"], ["c"]], "operators": ["+", "val"], "reads_complete": true, "deterministic": true}},
+  {"description": "a clock read is not deterministic", "call": "facts", "rule": {"now": []}, "facts": {"deterministic": false}},
+  {"description": "a computed path", "call": "facts", "rule": {"var": {"cat": ["a", "b"]}}, "facts": {"computed_reads": true, "reads_complete": false}},
+
+  "## metered: an operation budget",
+  {"description": "within budget", "call": "metered", "rule": {"map": [{"var": "xs"}, {"+": [{"var": ""}, 1]}]}, "data": {"xs": [1, 2, 3]}, "budget": 1000, "result": [2, 3, 4]},
+  {"description": "over budget", "call": "metered", "rule": {"map": [{"var": "xs"}, {"+": [{"var": ""}, 1]}]}, "data": {"xs": [1, 2, 3]}, "budget": 2, "error": "BudgetExceeded"}
+]

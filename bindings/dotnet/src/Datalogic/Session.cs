@@ -36,6 +36,42 @@ public sealed class Session : IDisposable
     }
 
     /// <summary>
+    /// Evaluate <paramref name="rule"/> against <paramref name="dataJson"/> under an
+    /// operation budget and report what it cost. <paramref name="budget"/> 0 means the
+    /// engine's configured <c>ops_budget</c>, or unbounded when it has none. Crossing it
+    /// throws an <see cref="EvaluateException"/> with <c>ErrorType</c>
+    /// <c>"BudgetExceeded"</c>.
+    /// </summary>
+    public MeteredResult EvaluateMetered(Rule rule, string dataJson, ulong budget = 0)
+    {
+        ArgumentNullException.ThrowIfNull(rule);
+        ArgumentNullException.ThrowIfNull(dataJson);
+        unsafe
+        {
+            using var dataU8 = Utf8Input.From(dataJson, stackalloc byte[Utf8Input.StackBufferSize]);
+            var err = IntPtr.Zero;
+            DatalogicStatus status;
+            byte* outPtr;
+            nuint outLen;
+            ulong ops;
+            fixed (byte* dp = dataU8.Span)
+            {
+                status = NativeMethods.datalogic_session_evaluate_metered(
+                    Handle, rule.Handle, dp, (nuint)dataU8.Span.Length, budget,
+                    out outPtr, out outLen, out ops, ref err);
+            }
+            if (status != DatalogicStatus.Ok)
+            {
+                throw DatalogicException.FromNative(status, err, "session evaluate failed");
+            }
+            var result = NativeMethods.BorrowedUtf8(outPtr, outLen);
+            GC.KeepAlive(this);
+            GC.KeepAlive(rule);
+            return new MeteredResult(result, ops);
+        }
+    }
+
+    /// <summary>
     /// Evaluate <paramref name="rule"/> against <paramref name="dataJson"/>
     /// using this session's reusable arena.
     /// </summary>

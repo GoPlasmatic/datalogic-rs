@@ -111,6 +111,136 @@ public sealed class Engine : IDisposable
         }
     }
 
+    /// <summary>Compile <paramref name="ruleJson"/> in templating mode, whatever this engine's mode.</summary>
+    public Rule CompileTemplate(string ruleJson) => CompileMode(ruleJson, Datalogic.CompileMode.Template);
+
+    /// <summary>Compile <paramref name="ruleJson"/> outside templating mode, whatever this engine's mode.</summary>
+    public Rule CompileStrict(string ruleJson) => CompileMode(ruleJson, Datalogic.CompileMode.Strict);
+
+    /// <summary>Compile <paramref name="ruleJson"/> in <paramref name="mode"/>, whatever this engine's mode.</summary>
+    public Rule CompileMode(string ruleJson, CompileMode mode)
+    {
+        ArgumentNullException.ThrowIfNull(ruleJson);
+        unsafe
+        {
+            using var ruleU8 = Utf8Input.From(ruleJson, stackalloc byte[Utf8Input.StackBufferSize]);
+            var err = IntPtr.Zero;
+            DatalogicStatus status;
+            IntPtr rulePtr;
+            fixed (byte* rp = ruleU8.Span)
+            {
+                status = NativeMethods.datalogic_engine_compile_mode(
+                    Handle, rp, (nuint)ruleU8.Span.Length, (uint)mode, out rulePtr, ref err);
+            }
+            if (status != DatalogicStatus.Ok)
+            {
+                throw DatalogicException.FromNative(status, err, "compile failed");
+            }
+            GC.KeepAlive(this);
+            return new Rule(rulePtr);
+        }
+    }
+
+    /// <summary>
+    /// Compile <paramref name="ruleJson"/>, refusing it if <see cref="Check"/> finds any
+    /// error: throws a <see cref="ParseException"/> with <c>ErrorType</c>
+    /// <c>"CompileError"</c> whose <see cref="DatalogicException.DiagnosticsJson"/> lists them.
+    /// </summary>
+    public Rule CompileChecked(string ruleJson)
+    {
+        ArgumentNullException.ThrowIfNull(ruleJson);
+        unsafe
+        {
+            using var ruleU8 = Utf8Input.From(ruleJson, stackalloc byte[Utf8Input.StackBufferSize]);
+            var err = IntPtr.Zero;
+            DatalogicStatus status;
+            IntPtr rulePtr;
+            fixed (byte* rp = ruleU8.Span)
+            {
+                status = NativeMethods.datalogic_engine_compile_checked(
+                    Handle, rp, (nuint)ruleU8.Span.Length, out rulePtr, ref err);
+            }
+            if (status != DatalogicStatus.Ok)
+            {
+                throw DatalogicException.FromNative(status, err, "compile failed");
+            }
+            GC.KeepAlive(this);
+            return new Rule(rulePtr);
+        }
+    }
+
+    /// <summary>
+    /// Every problem this engine can see in <paramref name="ruleJson"/> before it runs,
+    /// as a JSON array of <c>{code, severity, message, pointer, operator}</c>. Finding
+    /// problems does not throw: they are in the array.
+    /// </summary>
+    public string Check(string ruleJson, CompileMode mode = Datalogic.CompileMode.Engine)
+    {
+        ArgumentNullException.ThrowIfNull(ruleJson);
+        unsafe
+        {
+            using var ruleU8 = Utf8Input.From(ruleJson, stackalloc byte[Utf8Input.StackBufferSize]);
+            var err = IntPtr.Zero;
+            DatalogicStatus status;
+            DatalogicBuf buf;
+            fixed (byte* rp = ruleU8.Span)
+            {
+                status = NativeMethods.datalogic_engine_check(
+                    Handle, rp, (nuint)ruleU8.Span.Length, (uint)mode, out buf, ref err);
+            }
+            if (status != DatalogicStatus.Ok)
+            {
+                throw DatalogicException.FromNative(status, err, "check failed");
+            }
+            GC.KeepAlive(this);
+            return NativeMethods.TakeBufUtf8(buf);
+        }
+    }
+
+    /// <summary>
+    /// Every built-in operator this engine evaluates, as a JSON array in the schema of
+    /// the docs' <c>operators.json</c>.
+    /// </summary>
+    public string Operators()
+    {
+        var err = IntPtr.Zero;
+        var status = NativeMethods.datalogic_engine_operators(Handle, out var buf, ref err);
+        if (status != DatalogicStatus.Ok)
+        {
+            throw DatalogicException.FromNative(status, err, "operators failed");
+        }
+        GC.KeepAlive(this);
+        return NativeMethods.TakeBufUtf8(buf);
+    }
+
+    /// <summary>
+    /// Whether the JSON <paramref name="valueJson"/> is truthy under this engine's
+    /// configured truthiness. Under the default rules an empty object is falsy, like an
+    /// empty array.
+    /// </summary>
+    public bool Truthy(string valueJson)
+    {
+        ArgumentNullException.ThrowIfNull(valueJson);
+        unsafe
+        {
+            using var valueU8 = Utf8Input.From(valueJson, stackalloc byte[Utf8Input.StackBufferSize]);
+            var err = IntPtr.Zero;
+            DatalogicStatus status;
+            int result;
+            fixed (byte* vp = valueU8.Span)
+            {
+                status = NativeMethods.datalogic_engine_truthy(
+                    Handle, vp, (nuint)valueU8.Span.Length, out result, ref err);
+            }
+            if (status != DatalogicStatus.Ok)
+            {
+                throw DatalogicException.FromNative(status, err, "truthy failed");
+            }
+            GC.KeepAlive(this);
+            return result != 0;
+        }
+    }
+
     /// <summary>
     /// One-shot: compile and evaluate in a single call, returning the
     /// result as a JSON-string. Prefer <see cref="Compile"/> +

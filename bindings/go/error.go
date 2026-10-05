@@ -31,6 +31,13 @@ type Error struct {
 	// string, matching the Python binding's `.path` attribute. Empty
 	// when the failing call didn't have a compiled Rule in scope.
 	PathJSON string
+	// NodeIDsJSON is the compiled-node breadcrumb, leaf to root, as a
+	// JSON array of ids. Empty when the error carries none.
+	NodeIDsJSON string
+	// DiagnosticsJSON is set for Type "CompileError" (from
+	// Engine.CompileChecked): every problem found, as a JSON array of
+	// {code, severity, message, pointer, operator}.
+	DiagnosticsJSON string
 }
 
 // Error implements the `error` interface.
@@ -68,6 +75,12 @@ func takeError(cerr *C.datalogic_error) *Error {
 	}
 	if p := C.datalogic_error_path_json(cerr, &n); p != nil {
 		e.PathJSON = goStringN(p, n)
+	}
+	if p := C.datalogic_error_node_ids_json(cerr, &n); p != nil {
+		e.NodeIDsJSON = goStringN(p, n)
+	}
+	if p := C.datalogic_error_diagnostics_json(cerr, &n); p != nil {
+		e.DiagnosticsJSON = goStringN(p, n)
 	}
 	return e
 }

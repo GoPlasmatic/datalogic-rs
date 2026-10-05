@@ -79,6 +79,41 @@ final class Session
     }
 
     /**
+     * Evaluate under an operation budget and report what it cost:
+     * `['value' => <json>, 'ops' => <int>]`. `$budget` 0 means the engine's
+     * configured `ops_budget`, or unbounded when it has none. Crossing it
+     * throws an EvaluateException with errorType `BudgetExceeded`.
+     *
+     * @return array{value: string, ops: int}
+     */
+    public function evaluateMetered(Rule $rule, string $dataJson, int $budget = 0): array
+    {
+        $ffi = Native::ffi();
+        $outPtr = $ffi->new('const uint8_t*');
+        $outLen = $ffi->new('size_t');
+        $outOps = $ffi->new('uint64_t');
+        $err = Native::newErrorOut();
+        $rc = $ffi->datalogic_session_evaluate_metered(
+            $this->handle(),
+            $rule->handle(),
+            $dataJson,
+            strlen($dataJson),
+            $budget,
+            FFI::addr($outPtr),
+            FFI::addr($outLen),
+            FFI::addr($outOps),
+            FFI::addr($err),
+        );
+        if ($rc !== Native::STATUS_OK) {
+            throw DatalogicException::fromNative($rc, $err, 'session evaluate failed');
+        }
+        return [
+            'value' => Native::copyBytes($outPtr, $outLen->cdata) ?? '',
+            'ops' => $outOps->cdata,
+        ];
+    }
+
+    /**
      * Evaluate and read the result as a strict JSON boolean. Any other
      * result type throws (errorType `"TypeMismatch"`); for JSONLogic
      * truthiness coercion use {@see Session::evaluateTruthy()}.

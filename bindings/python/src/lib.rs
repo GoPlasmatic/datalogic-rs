@@ -17,7 +17,7 @@ use pyo3::types::PyAny;
 
 use crate::data::DataHandle;
 use crate::engine::{Engine, Rule, compile_inner, evaluate_value};
-use crate::error::{DataLogicError, EvaluateError, ParseError};
+use crate::error::{CompileError, DataLogicError, EvaluateError, ParseError};
 use crate::session::{BatchItemError, Session};
 
 /// Top-level convenience: compile ``rule`` and evaluate against ``data``
@@ -46,6 +46,7 @@ fn datalogic_py(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("DataLogicError", py.get_type::<DataLogicError>())?;
     m.add("ParseError", py.get_type::<ParseError>())?;
     m.add("EvaluateError", py.get_type::<EvaluateError>())?;
+    m.add("CompileError", py.get_type::<CompileError>())?;
 
     m.add_function(wrap_pyfunction!(apply, m)?)?;
 

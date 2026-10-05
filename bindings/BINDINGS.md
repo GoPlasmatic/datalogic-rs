@@ -206,6 +206,60 @@ commit, and pushes a `bindings/go/v<version>` tag pointing at that
 commit. Only the tag is pushed: the synthetic commit is reachable
 exclusively through it, and `main` stays binary-free.
 
+## Shared wire formats (`crates/datalogic-bind`)
+
+The four Rust-level bindings (`wasm`, `node`, `python`, `c`) depend on
+`crates/datalogic-bind`, which defines every JSON document a binding hands
+to its host: the traced-run envelope, the operator catalogue (the schema
+of `docs/src/operators/operators.json`), rule facts and check diagnostics,
+plus the custom-operator argument/result bridge, the typed-result type
+names and the JS budget validation. A format changes in one place and
+every host sees the same bytes; the Go, JVM, .NET and PHP wrappers reach
+the same formats through the C ABI. The crate is not published: it is
+built from the tree like core.
+
+## API names across bindings
+
+One concept, one name, cased for the language. Where a language's own
+type names would make the shared name misleading, the binding keeps the
+idiomatic spelling (a Java or C# `Int` is 32-bit, so those bindings say
+`Long` / `Int64`).
+
+| Concept | Rust | Python | Node / WASM | Go | JVM | .NET | PHP | C ABI |
+|---|---|---|---|---|---|---|---|---|
+| Compile | `compile` | `compile` | `compile` | `Compile` | `compile` | `Compile` | `compile` | `datalogic_engine_compile` |
+| Template / strict compile | `compile_template` / `compile_strict` | same | `compileTemplate` / `compileStrict` | `CompileTemplate` / `CompileStrict` | `compileTemplate` / `compileStrict` | `CompileTemplate` / `CompileStrict` | `compileTemplate` / `compileStrict` | `datalogic_engine_compile_mode` |
+| Checked compile | `compile_checked` | `compile_checked` | `compileChecked` | `CompileChecked` | `compileChecked` | `CompileChecked` | `compileChecked` | `datalogic_engine_compile_checked` |
+| Diagnostics | `check` | `check` | `check` | `Check` | `check` | `Check` | `check` | `datalogic_engine_check` |
+| Operator catalogue | `operators` | `operators` | `operators` | `Operators` | `operators` | `Operators` | `operators` | `datalogic_engine_operators` |
+| Rule facts | `Logic::facts` | `Rule.facts` | `Rule.facts` | `Rule.Facts` | `Rule.facts` | `Rule.Facts` | `Rule::facts` | `datalogic_rule_facts` |
+| Truthiness | `truthy_of` | `truthy` | `truthy` | `Truthy` | `truthy` | `Truthy` | `truthy` | `datalogic_engine_truthy` |
+| Typed results | n/a | `evaluate_bool` / `_int` / `_float` / `_truthy` | `evaluateBool` / `Int` / `Float` / `Truthy` | `EvaluateBool` / `Int64` / `Float64` / `Truthy` | `evaluateBool` / `Long` / `Double` / `Truthy` | `EvaluateBool` / `Int64` / `Double` / `Truthy` | `evaluateBool` / `Int` / `Float` / `Truthy` | `datalogic_session_evaluate_bool` / `_i64` / `_f64` / `_truthy` |
+| Metered | `evaluate_metered` | `evaluate_metered` | `evaluateMetered` | `EvaluateMetered` | `evaluateMetered` | `EvaluateMetered` | `evaluateMetered` | `datalogic_session_evaluate_metered` |
+| Refuse a built-in name | `try_add_operator` | `strict_operator_names=True` | `strictOperatorNames` | `StrictOperatorNames` | `withStrictOperatorNames` | `WithStrictOperatorNames` | `withStrictOperatorNames` | `datalogic_engine_builder_set_strict_operator_names` |
+| Error type | `Error::code` | `.error_type` | `.errorType` | `.Type` | `errorType()` | `.ErrorType` | `->errorType` | `datalogic_error_tag` |
+
+Deprecated in 5.8 and removed in 6.0: the WASM `CompiledRule` class and
+the free `evaluate(logic, data, templating)` / `evaluateWithTrace(...,
+templating)` functions (use an `Engine`), and `evaluateNumber` in Node and
+WASM (use `evaluateFloat`).
+
+## Scenarios (`bindings/scenarios/api.json`)
+
+One file of API-level cases that every binding runs through its own
+public API: compile modes, checked compiles, diagnostics, truthiness,
+facts, metering and engine options, each with its expected result or
+error type. The runners are `python/tests/test_scenarios.py`,
+`node/__test__/scenarios.test.mjs`, `wasm/tests/scenarios.rs`,
+`c/tests/scenarios.rs`, `go/scenarios_test.go`,
+`jvm/.../ScenariosTest.java`, `dotnet/.../ScenarioTests.cs` and
+`php/tests/ScenariosTest.php`. A new API item is not done until it has a
+scenario and all eight runners pass it.
+
+`bindings/c/tests/header_sync.rs` keeps the hand-written declarations in
+step with the generated `include/datalogic.h`: PHP's FFI header (names and
+parameter counts), the JVM's downcall handles and .NET's imports.
+
 ## Open candidates
 
 Bindings that haven't landed yet:

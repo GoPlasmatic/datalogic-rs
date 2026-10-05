@@ -47,6 +47,15 @@ public final class DatalogicNative {
     /** The C ABI generation this binding is compiled against. */
     public static final int EXPECTED_ABI_VERSION = 2;
 
+    /** The additions to v2 this binding calls (see `datalogic_abi_minor`). */
+    public static final int EXPECTED_ABI_MINOR = 1;
+
+    // =============== modes (datalogic_mode) ===============
+
+    public static final int MODE_ENGINE = 0;
+    public static final int MODE_STRICT = 1;
+    public static final int MODE_TEMPLATE = 2;
+
     // =============== status codes (datalogic_status) ===============
 
     public static final int STATUS_OK = 0;
@@ -94,6 +103,8 @@ public final class DatalogicNative {
 
     public static final MethodHandle ABI_VERSION =
             dh("datalogic_abi_version", FunctionDescriptor.of(ValueLayout.JAVA_INT));
+    public static final MethodHandle ABI_MINOR =
+            dh("datalogic_abi_minor", FunctionDescriptor.of(ValueLayout.JAVA_INT));
     public static final MethodHandle VERSION =
             dh("datalogic_version", FunctionDescriptor.of(ValueLayout.ADDRESS));
     /** Takes the `datalogic_buf` struct BY VALUE. */
@@ -114,6 +125,25 @@ public final class DatalogicNative {
             FunctionDescriptor.of(ValueLayout.JAVA_INT,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T,
                     ValueLayout.ADDRESS, SIZE_T, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    public static final MethodHandle ENGINE_COMPILE_MODE = dh("datalogic_engine_compile_mode",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T, ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    public static final MethodHandle ENGINE_COMPILE_CHECKED = dh("datalogic_engine_compile_checked",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    public static final MethodHandle ENGINE_CHECK = dh("datalogic_engine_check",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T, ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    public static final MethodHandle ENGINE_OPERATORS = dh("datalogic_engine_operators",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    public static final MethodHandle ENGINE_TRUTHY = dh("datalogic_engine_truthy",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     public static final MethodHandle ENGINE_SESSION = dh("datalogic_engine_session",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     public static final MethodHandle ENGINE_TRACED_SESSION = dh("datalogic_engine_traced_session",
@@ -134,6 +164,13 @@ public final class DatalogicNative {
             FunctionDescriptor.of(ValueLayout.JAVA_INT,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    public static final MethodHandle BUILDER_SET_TEMPLATE_KEY_ESCAPE =
+            dh("datalogic_engine_builder_set_template_key_escape",
+                    FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                            ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+    public static final MethodHandle BUILDER_SET_STRICT_OPERATOR_NAMES =
+            dh("datalogic_engine_builder_set_strict_operator_names",
+                    FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
     public static final MethodHandle BUILDER_BUILD = dh("datalogic_engine_builder_build",
             FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
@@ -162,6 +199,9 @@ public final class DatalogicNative {
             FunctionDescriptor.of(ValueLayout.JAVA_INT,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    public static final MethodHandle RULE_FACTS = dh("datalogic_rule_facts",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     public static final MethodHandle RULE_EVALUATE_DATA = dh("datalogic_rule_evaluate_data",
             FunctionDescriptor.of(ValueLayout.JAVA_INT,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS,
@@ -179,6 +219,11 @@ public final class DatalogicNative {
             FunctionDescriptor.of(ValueLayout.JAVA_INT,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    public static final MethodHandle SESSION_EVALUATE_METERED = dh("datalogic_session_evaluate_metered",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T,
+                    ValueLayout.JAVA_LONG, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
     public static final MethodHandle SESSION_EVALUATE_DATA = dh("datalogic_session_evaluate_data",
             FunctionDescriptor.of(ValueLayout.JAVA_INT,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS,
@@ -225,6 +270,10 @@ public final class DatalogicNative {
     public static final MethodHandle ERROR_TAG = dh("datalogic_error_tag", ERROR_ACCESSOR_DESC);
     public static final MethodHandle ERROR_OPERATOR = dh("datalogic_error_operator", ERROR_ACCESSOR_DESC);
     public static final MethodHandle ERROR_PATH_JSON = dh("datalogic_error_path_json", ERROR_ACCESSOR_DESC);
+    public static final MethodHandle ERROR_NODE_IDS_JSON =
+            dh("datalogic_error_node_ids_json", ERROR_ACCESSOR_DESC);
+    public static final MethodHandle ERROR_DIAGNOSTICS_JSON =
+            dh("datalogic_error_diagnostics_json", ERROR_ACCESSOR_DESC);
 
     // The ABI assert runs after the handles above exist (each dh() call
     // already proved its symbol resolves; this proves the *semantics*
@@ -232,6 +281,17 @@ public final class DatalogicNative {
     // they fail at the dh() stage with the missing-symbol message).
     static {
         int abi = abiVersion();
+        int minor;
+        try {
+            minor = (int) ABI_MINOR.invokeExact();
+        } catch (Throwable t) {
+            throw propagate(t);
+        }
+        if (abi == EXPECTED_ABI_VERSION && minor < EXPECTED_ABI_MINOR) {
+            throw new UnsatisfiedLinkError(
+                    "datalogic native library implements C ABI v2." + minor + ", but this binding needs v2."
+                            + EXPECTED_ABI_MINOR + " — align the JAR and native library versions.");
+        }
         if (abi != EXPECTED_ABI_VERSION) {
             throw new UnsatisfiedLinkError(
                     "datalogic native library reports C ABI version " + abi + ", but this binding requires "

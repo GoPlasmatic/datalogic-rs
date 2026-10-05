@@ -130,7 +130,8 @@ jobs:
           }
 
           # Cargo.toml `version = "..."` for each Rust-side binding.
-          for crate in bindings/python/Cargo.toml \
+          for crate in crates/datalogic-bind/Cargo.toml \
+                       bindings/python/Cargo.toml \
                        bindings/wasm/Cargo.toml \
                        bindings/c/Cargo.toml \
                        bindings/node/Cargo.toml; do

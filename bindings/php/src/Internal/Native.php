@@ -42,6 +42,13 @@ final class Native
     /** The C ABI generation this binding is written against. */
     public const ABI_VERSION = 2;
 
+    /** The additions to v2 this binding calls (see `datalogic_abi_minor`). */
+    public const ABI_MINOR = 1;
+
+    public const MODE_ENGINE = 0;
+    public const MODE_STRICT = 1;
+    public const MODE_TEMPLATE = 2;
+
     /* datalogic_status values (mirrors the datalogic_status enum). */
     public const STATUS_OK = 0;
     public const STATUS_INVALID_ARG = 1;
@@ -65,7 +72,7 @@ final class Native
         }
         $ffi = self::fromPreloadedScope()
             ?? FFI::cdef(self::declarations(), self::locateLibrary());
-        self::assertAbiVersion($ffi->datalogic_abi_version());
+        self::assertAbiVersion($ffi->datalogic_abi_version(), $ffi->datalogic_abi_minor());
         return self::$ffi = $ffi;
     }
 
@@ -86,8 +93,16 @@ final class Native
      *
      * @throws \RuntimeException on an ABI generation mismatch
      */
-    public static function assertAbiVersion(int $got): void
+    public static function assertAbiVersion(int $got, int $minor = self::ABI_MINOR): void
     {
+        if ($got === self::ABI_VERSION && $minor < self::ABI_MINOR) {
+            throw new \RuntimeException(sprintf(
+                'libdatalogic_c implements C ABI v2.%d but this package needs v2.%d. ' .
+                'Rebuild/upgrade the native library (bindings/c) to match this package.',
+                $minor,
+                self::ABI_MINOR,
+            ));
+        }
         if ($got !== self::ABI_VERSION) {
             throw new \RuntimeException(sprintf(
                 'libdatalogic_c ABI version mismatch: binding requires v%d, library reports v%d. ' .
@@ -171,7 +186,7 @@ final class Native
         if ($ffi === null) {
             throw new \RuntimeException('FFI::load failed for the datalogic header');
         }
-        self::assertAbiVersion($ffi->datalogic_abi_version());
+        self::assertAbiVersion($ffi->datalogic_abi_version(), $ffi->datalogic_abi_minor());
         return $ffi;
     }
 

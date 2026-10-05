@@ -21,6 +21,13 @@ public class DatalogicException : Exception
     public string? PathJson { get; }
     /// <summary>Coarse status the failing native call returned.</summary>
     public EvaluationStatus Status { get; }
+    /// <summary>The compiled-node breadcrumb, leaf to root, as a JSON array of ids, or null.</summary>
+    public string? NodeIdsJson { get; internal set; }
+    /// <summary>
+    /// <c>ErrorType == "CompileError"</c> only (from <see cref="Engine.CompileChecked"/>):
+    /// every problem found, as a JSON array of <c>{code, severity, message, pointer, operator}</c>.
+    /// </summary>
+    public string? DiagnosticsJson { get; internal set; }
 
     internal DatalogicException(
         string message,
@@ -47,7 +54,7 @@ public class DatalogicException : Exception
     internal static DatalogicException FromNative(DatalogicStatus status, IntPtr err, string fallback)
     {
         var message = fallback;
-        string? tag = null, op = null, path = null;
+        string? tag = null, op = null, path = null, nodeIds = null, diagnostics = null;
         if (err != IntPtr.Zero)
         {
             try
@@ -61,6 +68,8 @@ public class DatalogicException : Exception
                     tag = Read(NativeMethods.datalogic_error_tag(err, out len), len);
                     op = Read(NativeMethods.datalogic_error_operator(err, out len), len);
                     path = Read(NativeMethods.datalogic_error_path_json(err, out len), len);
+                    nodeIds = Read(NativeMethods.datalogic_error_node_ids_json(err, out len), len);
+                    diagnostics = Read(NativeMethods.datalogic_error_diagnostics_json(err, out len), len);
                 }
             }
             finally
@@ -68,7 +77,10 @@ public class DatalogicException : Exception
                 NativeMethods.datalogic_error_free(err);
             }
         }
-        return Create((EvaluationStatus)status, tag, message, op, path);
+        var ex = Create((EvaluationStatus)status, tag, message, op, path);
+        ex.NodeIdsJson = nodeIds;
+        ex.DiagnosticsJson = diagnostics;
+        return ex;
     }
 
     /// <summary>

@@ -113,6 +113,9 @@ pub type DatalogicOpFn = Option<
 /// builder consumes `self` on every method) and put it back.
 pub struct EngineBuilder {
     inner: Option<datalogic_rs::EngineBuilder>,
+    /// Refuse an operator named like a built-in (see
+    /// [`datalogic_engine_builder_set_strict_operator_names`]).
+    strict_names: bool,
 }
 
 /// Construct a new engine builder. Release the handle via
@@ -124,6 +127,7 @@ pub extern "C" fn datalogic_engine_builder_new() -> *mut EngineBuilder {
     ffi_guard(std::ptr::null_mut(), || {
         Box::into_raw(Box::new(EngineBuilder {
             inner: Some(RsEngine::builder()),
+            strict_names: false,
         }))
     })
 }
@@ -158,6 +162,57 @@ pub unsafe extern "C" fn datalogic_engine_builder_set_templating(
     };
     if let Some(b) = handle.inner.take() {
         handle.inner = Some(b.with_templating(enabled != 0));
+    }
+}
+
+/// Set the template-key escape: the character (`codepoint`, a Unicode
+/// scalar value) that marks a template key as a literal output field. Only
+/// meaningful with templating on.
+///
+/// # Safety
+///
+/// `builder` must be `NULL` or a valid builder handle; `err` follows the
+/// crate-wide error out-param contract.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn datalogic_engine_builder_set_template_key_escape(
+    builder: *mut EngineBuilder,
+    codepoint: u32,
+    err: *mut *mut Error,
+) -> Status {
+    guard_status(err, || {
+        let Some(handle) = (unsafe { builder.as_mut() }) else {
+            return unsafe { fail(err, Error::invalid_arg("engine builder pointer is null")) };
+        };
+        let Some(c) = char::from_u32(codepoint) else {
+            return unsafe {
+                fail(
+                    err,
+                    Error::invalid_arg("codepoint is not a Unicode scalar value"),
+                )
+            };
+        };
+        if let Some(b) = handle.inner.take() {
+            handle.inner = Some(b.with_template_key_escape(c));
+        }
+        Status::Ok
+    })
+}
+
+/// When `enabled != 0`, a later [`datalogic_engine_builder_add_operator`]
+/// with a name a built-in answers to (`length`, `var`, an alias such as
+/// `?:`) fails with tag `ConfigurationError` instead of registering an
+/// operator that would never run. Set it before adding operators.
+///
+/// # Safety
+///
+/// `builder` must be `NULL` or a valid builder handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn datalogic_engine_builder_set_strict_operator_names(
+    builder: *mut EngineBuilder,
+    enabled: i32,
+) {
+    if let Some(handle) = unsafe { builder.as_mut() } {
+        handle.strict_names = enabled != 0;
     }
 }
 
@@ -246,14 +301,30 @@ pub unsafe extern "C" fn datalogic_engine_builder_add_operator(
         };
         let name_owned = name_str.to_string();
         if let Some(b) = handle.inner.take() {
-            handle.inner = Some(b.add_operator(
-                name_owned.clone(),
-                CCustomOperator {
-                    name: name_owned,
-                    callback,
-                    user_data: AtomicPtr::new(user_data),
-                },
-            ));
+            let op = CCustomOperator {
+                name: name_owned.clone(),
+                callback,
+                user_data: AtomicPtr::new(user_data),
+            };
+            if handle.strict_names {
+                // `try_add_operator` consumes the builder; on refusal the
+                // registrations so far are kept by rebuilding without it.
+                if crate::builtin_answers_to(&name_owned) {
+                    handle.inner = Some(b);
+                    return unsafe {
+                        fail(
+                            err,
+                            Error::from_engine(
+                                &datalogic_rs::Error::configuration_error(format!(
+                                    "custom operator `{name_owned}` would never run: a built-in operator answers to that name"
+                                )),
+                                None,
+                            ),
+                        )
+                    };
+                }
+            }
+            handle.inner = Some(b.add_operator(name_owned, op));
         }
         Status::Ok
     })

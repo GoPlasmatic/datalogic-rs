@@ -46,6 +46,17 @@ pub struct Error {
     tag: String,
     operator: Option<String>,
     path_json: Option<String>,
+    /// Detail most errors lack, boxed so the handle stays small.
+    extra: Option<Box<Extra>>,
+}
+
+/// The rarer error detail, behind one allocation.
+#[derive(Default)]
+struct Extra {
+    /// The error's node-id breadcrumb, leaf to root, as a JSON array.
+    node_ids_json: Option<String>,
+    /// `CompileError` only: the diagnostics, as a JSON array.
+    diagnostics_json: Option<String>,
 }
 
 impl Error {
@@ -66,6 +77,29 @@ impl Error {
             tag,
             operator: err.operator().map(str::to_owned),
             path_json: compiled.and_then(|c| serialize_path(err, c)),
+            extra: (!err.node_ids().is_empty()).then(|| {
+                Box::new(Extra {
+                    node_ids_json: Some(serde_json::to_string(err.node_ids()).unwrap_or_default()),
+                    diagnostics_json: None,
+                })
+            }),
+        }
+    }
+
+    /// A rule `compile_checked` refused: status `Parse`, tag
+    /// `"CompileError"`, the diagnostics readable through
+    /// [`datalogic_error_diagnostics_json`].
+    pub(crate) fn from_compile(err: &datalogic_rs::CompileError) -> Self {
+        Self {
+            status: Status::Parse,
+            message: err.to_string(),
+            tag: "CompileError".to_string(),
+            operator: None,
+            path_json: None,
+            extra: Some(Box::new(Extra {
+                node_ids_json: None,
+                diagnostics_json: Some(datalogic_bind::diagnostics_json(&err.diagnostics)),
+            })),
         }
     }
 
@@ -76,6 +110,7 @@ impl Error {
             tag: "InvalidArgument".to_string(),
             operator: None,
             path_json: None,
+            extra: None,
         }
     }
 
@@ -86,6 +121,7 @@ impl Error {
             tag: "TypeMismatch".to_string(),
             operator: None,
             path_json: None,
+            extra: None,
         }
     }
 
@@ -96,6 +132,7 @@ impl Error {
             tag: "InternalError".to_string(),
             operator: None,
             path_json: None,
+            extra: None,
         }
     }
 
@@ -261,4 +298,42 @@ pub unsafe extern "C" fn datalogic_error_path_json(
     len_out: *mut usize,
 ) -> *const u8 {
     unsafe { str_out(err.as_ref().and_then(|e| e.path_json.as_deref()), len_out) }
+}
+
+/// `CompileError` only: every diagnostic the check found, as a JSON array
+/// of `{code, severity, message, pointer, operator}`. Borrowed from the
+/// handle; `NULL` (with `*len_out = 0`) for any other error.
+///
+/// # Safety
+///
+/// `err` must be `NULL` or a valid error handle; `len_out` must be `NULL`
+/// or writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn datalogic_error_diagnostics_json(
+    err: *const Error,
+    len_out: *mut usize,
+) -> *const u8 {
+    let s = unsafe { err.as_ref() }
+        .and_then(|e| e.extra.as_ref())
+        .and_then(|x| x.diagnostics_json.as_deref());
+    unsafe { str_out(s, len_out) }
+}
+
+/// The error's compiled-node breadcrumb, leaf to root, as a JSON array of
+/// ids (the ids `datalogic_error_path_json` resolves). Borrowed from the
+/// handle; `NULL` when the error carries none.
+///
+/// # Safety
+///
+/// `err` must be `NULL` or a valid error handle; `len_out` must be `NULL`
+/// or writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn datalogic_error_node_ids_json(
+    err: *const Error,
+    len_out: *mut usize,
+) -> *const u8 {
+    let s = unsafe { err.as_ref() }
+        .and_then(|e| e.extra.as_ref())
+        .and_then(|x| x.node_ids_json.as_deref());
+    unsafe { str_out(s, len_out) }
 }

@@ -963,3 +963,110 @@ fn test_tensor_operators_are_priced_by_the_elements_they_move() {
             .is_err()
     );
 }
+
+// ── 5.8 introspection: check, compileChecked, operators, facts, modes ──
+
+fn json(s: &str) -> serde_json::Value {
+    serde_json::from_str(s).unwrap()
+}
+
+#[wasm_bindgen_test]
+fn test_check_reports_problems_with_pointers() {
+    let engine = Engine::new(JsValue::UNDEFINED).unwrap();
+    let diags = json(
+        &engine
+            .check(r#"{"if": [true, {"vr": "x"}, {"map": [1]}]}"#, None)
+            .unwrap(),
+    );
+    assert_eq!(diags[0]["code"], "UnknownOperator");
+    assert_eq!(diags[0]["pointer"], "/if/1");
+    assert_eq!(diags[1]["code"], "ArgumentCount");
+    assert_eq!(engine.check(r#"{"+": [1, 2]}"#, None).unwrap(), "[]");
+    let template = r#"{"a": {"var": "x"}, "b": 1}"#;
+    assert_eq!(
+        engine.check(template, Some("template".into())).unwrap(),
+        "[]"
+    );
+    assert!(engine.check(template, Some("loose".into())).is_err());
+}
+
+#[wasm_bindgen_test]
+fn test_compile_checked_throws_with_diagnostics() {
+    let engine = Engine::new(JsValue::UNDEFINED).unwrap();
+    let err = engine
+        .compile_checked(r#"{"if": [{"bogus": 1}, {"map": [1]}]}"#)
+        .err()
+        .unwrap();
+    let name = Reflect::get(&err, &JsValue::from_str("name")).unwrap();
+    assert_eq!(name.as_string().as_deref(), Some("CompileError"));
+    let diags = Reflect::get(&err, &JsValue::from_str("diagnostics")).unwrap();
+    assert_eq!(Array::from(&diags).length(), 2);
+    let rule = engine
+        .compile_checked(r#"{"+": [1, {"var": "x"}]}"#)
+        .unwrap();
+    assert_eq!(rule.evaluate(r#"{"x": 2}"#).unwrap(), "3");
+}
+
+#[wasm_bindgen_test]
+fn test_operators_and_facts() {
+    let engine = Engine::new(JsValue::UNDEFINED).unwrap();
+    let ops = json(&engine.operators());
+    let names: Vec<&str> = ops
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| o["name"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"map") && names.contains(&"val"));
+    let rule = engine
+        .compile(r#"{"+": [{"var": "a.b"}, {"var": "c"}]}"#)
+        .unwrap();
+    let facts = json(&rule.facts());
+    assert_eq!(facts["reads"], json(r#"[["a", "b"], ["c"]]"#));
+    assert_eq!(facts["deterministic"], true);
+}
+
+#[wasm_bindgen_test]
+fn test_compile_modes_and_truthy() {
+    let engine = Engine::new(JsValue::UNDEFINED).unwrap();
+    let template = r#"{"user": {"var": "name"}, "source": "api"}"#;
+    assert!(engine.compile(template).is_err());
+    let rule = engine.compile_template(template).unwrap();
+    assert_eq!(
+        rule.evaluate(r#"{"name": "ana"}"#).unwrap(),
+        r#"{"user":"ana","source":"api"}"#
+    );
+    let templating = Engine::new(build_options(true, &[])).unwrap();
+    assert!(templating.compile_strict(template).is_err());
+    assert!(!engine.truthy("{}").unwrap());
+    assert!(engine.truthy(r#"{"a": 1}"#).unwrap());
+    assert!(engine.truthy("not json").is_err());
+}
+
+#[wasm_bindgen_test]
+fn test_strict_operator_names() {
+    let op = Function::new_with_args("args", "return '1'");
+    let opts = build_options(false, &[("length", op.clone())]);
+    Reflect::set(
+        &opts,
+        &JsValue::from_str("strictOperatorNames"),
+        &JsValue::TRUE,
+    )
+    .unwrap();
+    let err = Engine::new(opts).err().unwrap();
+    let name = Reflect::get(&err, &JsValue::from_str("name")).unwrap();
+    assert_eq!(name.as_string().as_deref(), Some("ConfigurationError"));
+    assert!(Engine::new(build_options(false, &[("length", op)])).is_ok());
+}
+
+#[wasm_bindgen_test]
+fn test_typed_int_and_float() {
+    let engine = Engine::new(JsValue::UNDEFINED).unwrap();
+    let mut session = engine.session();
+    let data = DataHandle::new(r#"{"x": 3, "y": 1.5}"#).unwrap();
+    let x = engine.compile(r#"{"var": "x"}"#).unwrap();
+    let y = engine.compile(r#"{"var": "y"}"#).unwrap();
+    assert_eq!(session.evaluate_int(&x, &data).unwrap(), 3.0);
+    assert_eq!(session.evaluate_float(&y, &data).unwrap(), 1.5);
+    assert!(session.evaluate_int(&y, &data).is_err());
+}

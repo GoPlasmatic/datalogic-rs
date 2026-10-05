@@ -12,7 +12,6 @@ use datalogic_rs::{
 use napi::bindgen_prelude::*;
 use napi::sys;
 use napi::{Env, Task};
-use serde::Serialize;
 use serde_json::Value;
 
 use crate::data::DataHandle;
@@ -55,6 +54,11 @@ pub struct EngineOptions {
     /// one-character string throws at construction with
     /// `errorType: "InvalidArguments"`.
     pub template_key_escape: Option<String>,
+    /// When `true`, a custom operator named like a built-in (`length`,
+    /// `var`, an alias such as `?:`) throws at construction with
+    /// `errorType: "ConfigurationError"` instead of being registered and
+    /// never running. Defaults to `false`.
+    pub strict_operator_names: Option<bool>,
 }
 
 /// An evaluation's result paired with what it cost, returned by the
@@ -117,13 +121,14 @@ impl Engine {
         options: Option<EngineOptions>,
         custom_operators: Option<HashMap<String, FunctionRef<String, String>>>,
     ) -> Result<Self> {
-        let (templating, config, key_escape) = match options {
+        let (templating, config, key_escape, strict_names) = match options {
             Some(o) => (
                 o.templating.unwrap_or(false),
                 o.config,
                 o.template_key_escape,
+                o.strict_operator_names.unwrap_or(false),
             ),
-            None => (false, None, None),
+            None => (false, None, None, false),
         };
         let mut builder = if templating {
             RsEngine::builder().with_templating(true)
@@ -158,15 +163,19 @@ impl Engine {
             let env_raw = env.raw();
             let thread_id = std::thread::current().id();
             for (name, callback) in map {
-                builder = builder.add_operator(
-                    name.clone(),
-                    NodeOperator {
-                        name,
-                        callback,
-                        env_raw,
-                        thread_id,
-                    },
-                );
+                let op = NodeOperator {
+                    name: name.clone(),
+                    callback,
+                    env_raw,
+                    thread_id,
+                };
+                builder = if strict_names {
+                    builder
+                        .try_add_operator(name, op)
+                        .map_err(|e| engine_error(&env, &e, None))?
+                } else {
+                    builder.add_operator(name, op)
+                };
             }
         }
         Ok(Self {
@@ -183,6 +192,81 @@ impl Engine {
             engine: self.inner.clone(),
             logic,
         })
+    }
+
+    /// Compile `rule` in templating mode, whatever this engine was built
+    /// with: a multi-key object is an output template and an unknown key an
+    /// output field.
+    #[napi]
+    pub fn compile_template(&self, env: Env, rule: Value) -> Result<Rule> {
+        let logic = with_rule(rule, |r| match r {
+            RuleSrc::Text(s) => self.inner.compile_template(s),
+            RuleSrc::Json(v) => self.inner.compile_template(v),
+        })
+        .map_err(|e| engine_error(&env, &e, None))?;
+        Ok(self.rule(logic))
+    }
+
+    /// Compile `rule` outside templating mode, whatever this engine was
+    /// built with: a multi-key object or an unknown operator is an error.
+    #[napi]
+    pub fn compile_strict(&self, env: Env, rule: Value) -> Result<Rule> {
+        let logic = with_rule(rule, |r| match r {
+            RuleSrc::Text(s) => self.inner.compile_strict(s),
+            RuleSrc::Json(v) => self.inner.compile_strict(v),
+        })
+        .map_err(|e| engine_error(&env, &e, None))?;
+        Ok(self.rule(logic))
+    }
+
+    /// Compile `rule`, refusing it if `check` finds any error. Throws
+    /// `errorType: "CompileError"` with a `diagnostics` array.
+    #[napi]
+    pub fn compile_checked(&self, env: Env, rule: Value) -> Result<Rule> {
+        let logic = with_rule(rule, |r| match r {
+            RuleSrc::Text(s) => self.inner.compile_checked(s),
+            RuleSrc::Json(v) => self.inner.compile_checked(v),
+        })
+        .map_err(|e| crate::error::compile_error(&env, &e))?;
+        Ok(self.rule(logic))
+    }
+
+    /// Every problem this engine can see in `rule` before it runs, as an
+    /// array of `{code, severity, message, pointer, operator}`. `mode` is
+    /// `"engine"` (default), `"strict"` or `"template"`.
+    #[napi(
+        ts_return_type = "Array<{ code: string; severity: 'error' | 'warning'; message: string; pointer: string; operator: string | null }>"
+    )]
+    pub fn check(&self, env: Env, rule: Value, mode: Option<String>) -> Result<Value> {
+        let mode = datalogic_bind::check_mode(mode.as_deref())
+            .map_err(|msg| engine_error(&env, &DlError::invalid_arguments(msg), None))?;
+        let diagnostics = match &rule {
+            Value::String(s) => self.inner.check(s.as_str(), mode),
+            other => self.inner.check(other, mode),
+        };
+        Ok(
+            serde_json::from_str(&datalogic_bind::diagnostics_json(&diagnostics))
+                .unwrap_or(Value::Array(Vec::new())),
+        )
+    }
+
+    /// Every built-in operator this engine evaluates: name, aliases,
+    /// family, gating feature, argument counts, whether it reads the data,
+    /// its effect, its cost class and which argument runs per element.
+    #[napi(
+        ts_return_type = "Array<{ name: string; aliases: string[]; family: string; feature: string | null; min_args: number; max_args: number | null; reads_context: boolean; effect: string; cost: string; scoped_arg: number | 'last' | null }>"
+    )]
+    pub fn operators(&self) -> Value {
+        serde_json::from_str(&datalogic_bind::operators_json(&self.inner))
+            .unwrap_or(Value::Array(Vec::new()))
+    }
+
+    /// Whether `value` is truthy under this engine's configured
+    /// truthiness. Under the default rules an empty object is falsy, like
+    /// an empty array.
+    #[napi]
+    pub fn truthy(&self, value: Value) -> bool {
+        self.inner.truthy_of(&value)
     }
 
     /// One-shot evaluation. Compiles `rule` against `data` and returns
@@ -221,7 +305,7 @@ impl Engine {
     #[napi]
     pub fn evaluate_with_trace(&self, logic: String, data: String) -> Result<String> {
         let run = self.inner.trace().eval_str(logic.as_str(), data.as_str());
-        Ok(traced_run_to_json(&run))
+        Ok(datalogic_bind::traced_run_json(&run))
     }
 
     /// One-shot metered evaluation: compile `rule`, evaluate it against
@@ -276,6 +360,28 @@ impl Engine {
     }
 }
 
+impl Engine {
+    fn rule(&self, logic: Logic) -> Rule {
+        Rule {
+            engine: self.inner.clone(),
+            logic: Arc::new(logic),
+        }
+    }
+}
+
+/// A rule as the host passed it: JSON text, or a JS value.
+enum RuleSrc<'a> {
+    Text(&'a str),
+    Json(&'a Value),
+}
+
+fn with_rule<T>(rule: Value, f: impl FnOnce(RuleSrc<'_>) -> T) -> T {
+    match &rule {
+        Value::String(s) => f(RuleSrc::Text(s)),
+        other => f(RuleSrc::Json(other)),
+    }
+}
+
 /// A compiled JSONLogic rule.
 ///
 /// Hold one and call `evaluate()` against many data inputs without
@@ -295,6 +401,18 @@ impl Rule {
 
 #[napi]
 impl Rule {
+    /// What the rule reads and calls, from a walk of the compiled rule:
+    /// `{reads, computed_reads, reads_complete, reads_data, operators,
+    /// custom_operators, deterministic}`. `reads` lists each root path as
+    /// its segments.
+    #[napi(
+        ts_return_type = "{ reads: string[][]; computed_reads: boolean; reads_complete: boolean; reads_data: boolean; operators: string[]; custom_operators: string[]; deterministic: boolean }"
+    )]
+    pub fn facts(&self) -> Value {
+        serde_json::from_str(&datalogic_bind::facts_json(&self.logic.facts()))
+            .unwrap_or(Value::Null)
+    }
+
     /// Evaluate against `data` and return the result as a JS value.
     #[napi]
     pub fn evaluate(&self, env: Env, data: Value) -> Result<Value> {
@@ -472,14 +590,7 @@ impl CustomOperator for NodeOperator {
         }
 
         // 1. Build the args JSON array.
-        let mut json = String::from("[");
-        for (i, a) in args.iter().enumerate() {
-            if i > 0 {
-                json.push(',');
-            }
-            json.push_str(&a.to_json_string());
-        }
-        json.push(']');
+        let json = datalogic_bind::args_json(args);
 
         // 2. Borrow the JS function back through the stored env and call it.
         let env = Env::from_raw(self.env_raw);
@@ -494,14 +605,7 @@ impl CustomOperator for NodeOperator {
         })?;
 
         // 3. Parse the returned JSON into the arena.
-        let arena_str = arena.alloc_str(&ret_str);
-        let parsed = DataValue::from_str(arena_str, arena).map_err(|e| {
-            DlError::custom_message(format!(
-                "custom operator '{}' returned invalid JSON: {}",
-                self.name, e
-            ))
-        })?;
-        Ok(arena.alloc(parsed))
+        datalogic_bind::parse_result(&self.name, &ret_str, arena)
     }
 }
 
@@ -521,47 +625,6 @@ fn parse_config(env: &Env, config: Value) -> Result<EvaluationConfig> {
         }
     };
     EvaluationConfig::from_json_str(&json).map_err(|e| engine_error(env, &e, None))
-}
-
-/// Render a [`datalogic_rs::TracedRun`] into the JS wire shape shared
-/// with the WASM binding: `{ result, expression_tree, steps, error?,
-/// structured_error? }`.
-fn traced_run_to_json(run: &datalogic_rs::TracedRun<String>) -> String {
-    #[derive(Serialize)]
-    struct Wire<'a> {
-        result: Value,
-        expression_tree: &'a datalogic_rs::ExpressionNode,
-        steps: &'a [datalogic_rs::ExecutionStep],
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        structured_error: Option<&'a DlError>,
-    }
-
-    let result_json: Value;
-    let mut error_msg: Option<String> = None;
-    let mut error_struct: Option<&DlError> = None;
-    match &run.result {
-        Ok(s) => {
-            // The String is already JSON; surface it as the parsed value
-            // when possible, falling back to a JSON string otherwise.
-            result_json = serde_json::from_str::<Value>(s.as_str())
-                .unwrap_or_else(|_| Value::String(s.to_string()));
-        }
-        Err(e) => {
-            result_json = Value::Null;
-            error_msg = Some(e.to_string());
-            error_struct = Some(e);
-        }
-    }
-    serde_json::to_string(&Wire {
-        result: result_json,
-        expression_tree: &run.expression_tree,
-        steps: &run.steps,
-        error: error_msg,
-        structured_error: error_struct,
-    })
-    .unwrap_or_default()
 }
 
 pub(crate) fn compile_inner(env: &Env, engine: &Arc<RsEngine>, rule: Value) -> Result<Arc<Logic>> {
@@ -606,23 +669,8 @@ pub(crate) fn evaluate_value(
 /// truncated — a budget of `0.5` means the caller has confused this with
 /// a duration or a fraction.
 fn resolve_budget(env: &Env, engine: &Arc<RsEngine>, budget: Option<f64>) -> Result<u64> {
-    /// Largest budget a JS number carries without losing integer precision.
-    const MAX_SAFE_BUDGET: f64 = 9_007_199_254_740_991.0;
-    let explicit = match budget {
-        None => None,
-        Some(n) if n.is_finite() && n >= 1.0 && n.fract() == 0.0 && n <= MAX_SAFE_BUDGET => {
-            Some(n as u64)
-        }
-        Some(_) => {
-            return Err(engine_error(
-                env,
-                &datalogic_rs::Error::invalid_arguments(
-                    "budget must be a whole number of operations >= 1",
-                ),
-                None,
-            ));
-        }
-    };
+    let explicit = datalogic_bind::budget_from_f64(budget)
+        .map_err(|msg| engine_error(env, &datalogic_rs::Error::invalid_arguments(msg), None))?;
     Ok(engine.resolve_ops_budget(explicit))
 }
 

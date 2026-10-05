@@ -25,6 +25,22 @@ internal static class NativeInit
                 + "under bindings/c/, point the DATALOGIC_NATIVE_LIB environment variable at a matching build, "
                 + "or upgrade/reinstall the NuGet package so the managed and native halves match.");
         }
+        uint minor;
+        try
+        {
+            minor = NativeMethods.datalogic_abi_minor();
+        }
+        catch (EntryPointNotFoundException)
+        {
+            minor = 0;
+        }
+        if (minor < NativeMethods.AbiMinor)
+        {
+            throw new InvalidOperationException(
+                $"The loaded '{NativeMethods.LibraryName}' native library implements datalogic C ABI v2.{minor}, "
+                + $"but this version of Goplasmatic.Datalogic needs v2.{NativeMethods.AbiMinor}. "
+                + "Rebuild bindings/c or upgrade the NuGet package so the managed and native halves match.");
+        }
     }
 
     /// <summary>

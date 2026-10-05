@@ -13,8 +13,8 @@
 
 use std::sync::Arc;
 
+use datalogic_rs::Engine as RsEngine;
 use datalogic_rs::bumpalo::Bump;
-use datalogic_rs::{DataValue, Engine as RsEngine};
 use napi::Env;
 use napi::bindgen_prelude::*;
 use serde_json::{Value, json};
@@ -22,24 +22,6 @@ use serde_json::{Value, json};
 use crate::data::DataHandle;
 use crate::engine::Rule;
 use crate::error::{engine_error, type_mismatch_error};
-
-/// JSON type name for TypeMismatch messages (same wording as the C
-/// ABI's `type_of` in `bindings/c/src/session.rs`).
-fn type_of(v: &DataValue<'_>) -> &'static str {
-    if v.is_null() {
-        "null"
-    } else if v.is_bool() {
-        "boolean"
-    } else if v.is_number() {
-        "number"
-    } else if v.is_string() {
-        "string"
-    } else if v.is_array() {
-        "array"
-    } else {
-        "object"
-    }
-}
 
 /// One item's outcome rendered in the `Promise.allSettled` shape the
 /// batch entry points return: `{status: "fulfilled", value}` or
@@ -176,17 +158,52 @@ impl Session {
         av.as_bool().ok_or_else(|| {
             type_mismatch_error(
                 &env,
-                &format!("result is not a boolean (got {})", type_of(av)),
+                &format!(
+                    "result is not a boolean (got {})",
+                    datalogic_bind::type_of(av)
+                ),
             )
         })
     }
 
     /// Evaluate `rule` and return the result as a number. Accepts any
-    /// JSON number (JS has a single number type, so there is no
-    /// separate integer variant); any other result type throws an
-    /// `EvaluateError` with `errorType: "TypeMismatch"`.
+    /// JSON number; any other result type throws an `EvaluateError` with
+    /// `errorType: "TypeMismatch"`.
+    ///
+    /// @deprecated Use `evaluateFloat`, the name every binding shares.
+    /// Removed in 6.0.
     #[napi]
     pub fn evaluate_number(&mut self, env: Env, rule: &Rule, handle: &DataHandle) -> Result<f64> {
+        self.evaluate_float(env, rule, handle)
+    }
+
+    /// Evaluate `rule` and return the result as an integer: a whole JSON
+    /// number that a JS number holds exactly (|n| <= 2^53 - 1). Anything
+    /// else throws an `EvaluateError` with `errorType: "TypeMismatch"`.
+    #[napi]
+    pub fn evaluate_int(&mut self, env: Env, rule: &Rule, handle: &DataHandle) -> Result<f64> {
+        self.arena.reset();
+        let av = self
+            .engine
+            .evaluate(rule.logic(), &handle.parsed, &self.arena)
+            .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?;
+        match av.as_i64() {
+            Some(i) if i.unsigned_abs() < (1u64 << 53) => Ok(i as f64),
+            _ => Err(type_mismatch_error(
+                &env,
+                &format!(
+                    "result is not a safe integer (got {})",
+                    datalogic_bind::type_of(av)
+                ),
+            )),
+        }
+    }
+
+    /// Evaluate `rule` and return the result as a number. Accepts any
+    /// JSON number; any other result type throws an `EvaluateError` with
+    /// `errorType: "TypeMismatch"`.
+    #[napi]
+    pub fn evaluate_float(&mut self, env: Env, rule: &Rule, handle: &DataHandle) -> Result<f64> {
         self.arena.reset();
         let av = self
             .engine
@@ -195,7 +212,10 @@ impl Session {
         av.as_f64().ok_or_else(|| {
             type_mismatch_error(
                 &env,
-                &format!("result is not a number (got {})", type_of(av)),
+                &format!(
+                    "result is not a number (got {})",
+                    datalogic_bind::type_of(av)
+                ),
             )
         })
     }

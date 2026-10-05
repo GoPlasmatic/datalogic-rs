@@ -48,6 +48,43 @@ final class EngineBuilder
     }
 
     /**
+     * Set the character that marks a template key as a literal output field
+     * rather than an operator call: with `'$'`, `{"$type": ...}` emits the
+     * key `type`. Only meaningful with templating.
+     */
+    public function withTemplateKeyEscape(string $escape): self
+    {
+        $this->ensureFresh();
+        if (mb_strlen($escape) !== 1) {
+            throw new \InvalidArgumentException('escape must be exactly one character');
+        }
+        $ffi = Native::ffi();
+        $err = Native::newErrorOut();
+        $rc = $ffi->datalogic_engine_builder_set_template_key_escape(
+            $this->handle,
+            mb_ord($escape),
+            FFI::addr($err),
+        );
+        if ($rc !== Native::STATUS_OK) {
+            throw DatalogicException::fromNative($rc, $err, 'set_template_key_escape failed');
+        }
+        return $this;
+    }
+
+    /**
+     * When enabled, a later addOperator() with a name a built-in answers to
+     * (`length`, `var`, an alias such as `?:`) throws with errorType
+     * `ConfigurationError` instead of registering an operator that would
+     * never run. Call it first.
+     */
+    public function withStrictOperatorNames(bool $enabled): self
+    {
+        $this->ensureFresh();
+        Native::ffi()->datalogic_engine_builder_set_strict_operator_names($this->handle, $enabled ? 1 : 0);
+        return $this;
+    }
+
+    /**
      * Set the engine's evaluation configuration from a JSON object
      * string, parsed by the core crate's shared config parser (the same
      * wire format every binding uses). All keys are optional; an

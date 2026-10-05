@@ -79,24 +79,6 @@ impl Session {
     }
 }
 
-/// JSON type name for TypeMismatch messages — keep the wording aligned
-/// with `type_of` in `bindings/c/src/session.rs`.
-fn type_of(v: &DataValue<'_>) -> &'static str {
-    if v.is_null() {
-        "null"
-    } else if v.is_bool() {
-        "boolean"
-    } else if v.is_number() {
-        "number"
-    } else if v.is_string() {
-        "string"
-    } else if v.is_array() {
-        "array"
-    } else {
-        "object"
-    }
-}
-
 /// Per-item failure inside :meth:`Session.evaluate_batch` /
 /// :meth:`Session.evaluate_many`. Item failures never raise — the batch
 /// result list holds a ``BatchItemError`` in the failed item's slot
@@ -306,7 +288,10 @@ impl Session {
             av.as_bool().ok_or_else(|| {
                 evaluate_error_with_type(
                     py,
-                    format!("result is not a boolean (got {})", type_of(av)),
+                    format!(
+                        "result is not a boolean (got {})",
+                        datalogic_bind::type_of(av)
+                    ),
                     "TypeMismatch",
                 )
             })
@@ -321,7 +306,10 @@ impl Session {
             av.as_i64().ok_or_else(|| {
                 evaluate_error_with_type(
                     py,
-                    format!("result is not an integer number (got {})", type_of(av)),
+                    format!(
+                        "result is not an integer number (got {})",
+                        datalogic_bind::type_of(av)
+                    ),
                     "TypeMismatch",
                 )
             })
@@ -336,7 +324,10 @@ impl Session {
             av.as_f64().ok_or_else(|| {
                 evaluate_error_with_type(
                     py,
-                    format!("result is not a number (got {})", type_of(av)),
+                    format!(
+                        "result is not a number (got {})",
+                        datalogic_bind::type_of(av)
+                    ),
                     "TypeMismatch",
                 )
             })

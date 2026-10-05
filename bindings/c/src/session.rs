@@ -42,23 +42,6 @@ impl Session {
     }
 }
 
-/// JSON type name for TypeMismatch messages.
-fn type_of(v: &DataValue<'_>) -> &'static str {
-    if v.is_null() {
-        "null"
-    } else if v.is_bool() {
-        "boolean"
-    } else if v.is_number() {
-        "number"
-    } else if v.is_string() {
-        "string"
-    } else if v.is_array() {
-        "array"
-    } else {
-        "object"
-    }
-}
-
 /// Shared head of every session entry point: deref the handles, verify
 /// the rule belongs to the session's engine.
 unsafe fn check_pair<'s>(
@@ -177,6 +160,67 @@ pub unsafe extern "C" fn datalogic_session_evaluate(
     })
 }
 
+/// [`datalogic_session_evaluate`] under an operation budget, reporting
+/// what the evaluation cost in `*out_ops`. `budget` 0 means the engine's
+/// configured `ops_budget`, or unbounded when it has none. Crossing the
+/// budget fails with tag `"BudgetExceeded"`. The result follows the same
+/// borrow rule as `datalogic_session_evaluate`.
+///
+/// # Safety
+///
+/// As [`datalogic_session_evaluate`]; `out_ops` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn datalogic_session_evaluate_metered(
+    session: *mut Session,
+    rule: *const Rule,
+    data_json: *const u8,
+    data_len: usize,
+    budget: u64,
+    out_ptr: *mut *const u8,
+    out_len: *mut usize,
+    out_ops: *mut u64,
+    err: *mut *mut Error,
+) -> Status {
+    guard_status(err, || {
+        let (session, rule) = match unsafe { check_pair(session, rule) } {
+            Ok(pair) => pair,
+            Err(e) => return unsafe { fail(err, e) },
+        };
+        if out_ptr.is_null() || out_len.is_null() || out_ops.is_null() {
+            return unsafe {
+                fail(
+                    err,
+                    Error::invalid_arg("out_ptr/out_len/out_ops pointer is null"),
+                )
+            };
+        }
+        let data = match unsafe { str_from_raw("data_json", data_json, data_len) } {
+            Ok(s) => s,
+            Err(e) => return unsafe { fail(err, e) },
+        };
+        let Session {
+            engine,
+            arena,
+            result_buf,
+        } = session;
+        arena.reset();
+        result_buf.clear();
+        let budget = engine.resolve_ops_budget((budget != 0).then_some(budget));
+        match engine.evaluate_metered(&rule.logic, data, &*arena, budget) {
+            Ok(metered) => {
+                metered.value.write_json_into(result_buf);
+                unsafe {
+                    *out_ptr = result_buf.as_ptr();
+                    *out_len = result_buf.len();
+                    *out_ops = metered.ops;
+                }
+                Status::Ok
+            }
+            Err(e) => unsafe { fail(err, Error::from_engine(&e, Some(&rule.logic))) },
+        }
+    })
+}
+
 /// Same as [`datalogic_session_evaluate`] with a parsed-data handle
 /// instead of JSON text — the hot path: zero parse work per call.
 ///
@@ -252,7 +296,10 @@ pub unsafe extern "C" fn datalogic_session_evaluate_bool(
     unsafe {
         typed_eval(session, rule, data, out, err, |av, _| {
             av.as_bool().map(|b| b as i32).ok_or_else(|| {
-                Error::type_mismatch(format!("result is not a boolean (got {})", type_of(av)))
+                Error::type_mismatch(format!(
+                    "result is not a boolean (got {})",
+                    datalogic_bind::type_of(av)
+                ))
             })
         })
     }
@@ -278,7 +325,7 @@ pub unsafe extern "C" fn datalogic_session_evaluate_i64(
             av.as_i64().ok_or_else(|| {
                 Error::type_mismatch(format!(
                     "result is not an integer number (got {})",
-                    type_of(av)
+                    datalogic_bind::type_of(av)
                 ))
             })
         })
@@ -302,7 +349,10 @@ pub unsafe extern "C" fn datalogic_session_evaluate_f64(
     unsafe {
         typed_eval(session, rule, data, out, err, |av, _| {
             av.as_f64().ok_or_else(|| {
-                Error::type_mismatch(format!("result is not a number (got {})", type_of(av)))
+                Error::type_mismatch(format!(
+                    "result is not a number (got {})",
+                    datalogic_bind::type_of(av)
+                ))
             })
         })
     }

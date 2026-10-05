@@ -63,19 +63,45 @@ impl Engine {
     ///     ``truthy_evaluator``, ``numeric_coercion``, and
     ///     ``max_recursion_depth``. Unknown keys or values raise
     ///     :class:`EvaluateError` with the engine's message.
+    /// :param template_key_escape: one character that marks a template key
+    ///     as a literal output field: with ``"$"``, ``{"$type": ...}`` emits
+    ///     the key ``type`` instead of calling the ``type`` operator. Only
+    ///     meaningful with ``templating``.
+    /// :param strict_operator_names: when ``True``, a custom operator named
+    ///     like a built-in (``"length"``, ``"var"``, an alias such as
+    ///     ``"?:"``) raises :class:`EvaluateError` (``error_type ==
+    ///     "ConfigurationError"``) instead of being registered and never
+    ///     running.
     #[new]
-    #[pyo3(signature = (*, templating = false, custom_operators = None, config = None))]
+    #[pyo3(signature = (*, templating = false, custom_operators = None, config = None, strict_operator_names = false, template_key_escape = None))]
     fn new(
         py: Python<'_>,
         templating: bool,
         custom_operators: Option<HashMap<String, Py<PyAny>>>,
         config: Option<&Bound<'_, PyAny>>,
+        strict_operator_names: bool,
+        template_key_escape: Option<&str>,
     ) -> PyResult<Self> {
         let mut builder = if templating {
             RsEngine::builder().with_templating(true)
         } else {
             RsEngine::builder()
         };
+        if let Some(prefix) = template_key_escape {
+            let mut chars = prefix.chars();
+            match (chars.next(), chars.next()) {
+                (Some(c), None) => builder = builder.with_template_key_escape(c),
+                _ => {
+                    return Err(engine_error_to_pyerr(
+                        py,
+                        &DlError::invalid_arguments(
+                            "template_key_escape must be exactly one character",
+                        ),
+                        None,
+                    ));
+                }
+            }
+        }
         if let Some(cfg) = config {
             // Accept a JSON string as-is; anything else (normally a dict)
             // is serialised to JSON first. Both forms funnel into the
@@ -92,7 +118,17 @@ impl Engine {
         }
         if let Some(map) = custom_operators {
             for (name, callback) in map {
-                builder = builder.add_operator(name.clone(), PyOperator { name, callback });
+                let op = PyOperator {
+                    name: name.clone(),
+                    callback,
+                };
+                builder = if strict_operator_names {
+                    builder
+                        .try_add_operator(name, op)
+                        .map_err(|e| engine_error_to_pyerr(py, &e, None))?
+                } else {
+                    builder.add_operator(name, op)
+                };
             }
         }
         Ok(Self {
@@ -110,6 +146,76 @@ impl Engine {
             engine: self.inner.clone(),
             logic,
         })
+    }
+
+    /// Compile ``rule`` in templating mode, whatever this engine was built
+    /// with: a multi-key object is an output template and an unknown key
+    /// an output field.
+    fn compile_template(&self, py: Python<'_>, rule: &Bound<'_, PyAny>) -> PyResult<Rule> {
+        let logic = with_rule(py, rule, |r| match r {
+            RuleSrc::Text(s) => self.inner.compile_template(s),
+            RuleSrc::Json(v) => self.inner.compile_template(v),
+        })?
+        .map_err(|e| engine_error_to_pyerr(py, &e, None))?;
+        Ok(self.rule(logic))
+    }
+
+    /// Compile ``rule`` outside templating mode, whatever this engine was
+    /// built with: a multi-key object or an unknown operator is an error.
+    fn compile_strict(&self, py: Python<'_>, rule: &Bound<'_, PyAny>) -> PyResult<Rule> {
+        let logic = with_rule(py, rule, |r| match r {
+            RuleSrc::Text(s) => self.inner.compile_strict(s),
+            RuleSrc::Json(v) => self.inner.compile_strict(v),
+        })?
+        .map_err(|e| engine_error_to_pyerr(py, &e, None))?;
+        Ok(self.rule(logic))
+    }
+
+    /// Compile ``rule``, refusing it if :meth:`check` finds any error.
+    /// Raises :class:`CompileError`, whose ``.diagnostics`` lists them.
+    fn compile_checked(&self, py: Python<'_>, rule: &Bound<'_, PyAny>) -> PyResult<Rule> {
+        let logic = with_rule(py, rule, |r| match r {
+            RuleSrc::Text(s) => self.inner.compile_checked(s),
+            RuleSrc::Json(v) => self.inner.compile_checked(v),
+        })?
+        .map_err(|e| crate::error::compile_error_to_pyerr(py, &e))?;
+        Ok(self.rule(logic))
+    }
+
+    /// Every problem this engine can see in ``rule`` before it runs, as a
+    /// list of ``{"code", "severity", "message", "pointer", "operator"}``
+    /// dicts. ``mode`` is ``"engine"`` (default), ``"strict"`` or
+    /// ``"template"``.
+    #[pyo3(signature = (rule, mode = None))]
+    fn check(
+        &self,
+        py: Python<'_>,
+        rule: &Bound<'_, PyAny>,
+        mode: Option<&str>,
+    ) -> PyResult<Py<PyAny>> {
+        let mode = datalogic_bind::check_mode(mode)
+            .map_err(|msg| engine_error_to_pyerr(py, &DlError::invalid_arguments(msg), None))?;
+        let diagnostics = with_rule(py, rule, |r| match r {
+            RuleSrc::Text(s) => self.inner.check(s, mode),
+            RuleSrc::Json(v) => self.inner.check(v, mode),
+        })?;
+        json_to_py(py, &datalogic_bind::diagnostics_json(&diagnostics))
+    }
+
+    /// Every built-in operator this engine evaluates, as a list of dicts:
+    /// ``name``, ``aliases``, ``family``, ``feature``, ``min_args``,
+    /// ``max_args``, ``reads_context``, ``effect``, ``cost`` and
+    /// ``scoped_arg``.
+    fn operators(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        json_to_py(py, &datalogic_bind::operators_json(&self.inner))
+    }
+
+    /// Whether ``value`` is truthy under this engine's configured
+    /// truthiness. Under the default rules an empty dict is falsy, like an
+    /// empty list.
+    fn truthy(&self, py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<bool> {
+        let value = dict_to_value(py, value)?;
+        Ok(self.inner.truthy_of(&value))
     }
 
     /// One-shot evaluation. Compiles ``rule`` against ``data`` and returns
@@ -189,7 +295,7 @@ impl Engine {
             let run = engine
                 .trace()
                 .eval_str(logic_owned.as_str(), data_owned.as_str());
-            traced_run_to_json(&run)
+            datalogic_bind::traced_run_json(&run)
         }))
     }
 
@@ -213,6 +319,40 @@ impl Engine {
 /// re-parsing. ``Rule`` is thread-safe — share the same instance across
 /// worker threads to evaluate in parallel; the binding releases the GIL
 /// around each Rust evaluate call.
+impl Engine {
+    fn rule(&self, logic: Logic) -> Rule {
+        Rule {
+            engine: self.inner.clone(),
+            logic: Arc::new(logic),
+        }
+    }
+}
+
+/// A rule as the caller passed it: JSON text, or a Python value.
+enum RuleSrc<'a> {
+    Text(&'a str),
+    Json(&'a Value),
+}
+
+fn with_rule<T>(
+    py: Python<'_>,
+    rule: &Bound<'_, PyAny>,
+    f: impl FnOnce(RuleSrc<'_>) -> T,
+) -> PyResult<T> {
+    if let Ok(s) = rule.cast::<PyString>() {
+        return Ok(f(RuleSrc::Text(s.to_str()?)));
+    }
+    let value = dict_to_value(py, rule)?;
+    Ok(f(RuleSrc::Json(&value)))
+}
+
+/// Parse a JSON wire string from `datalogic_bind` into Python objects.
+fn json_to_py(py: Python<'_>, json: &str) -> PyResult<Py<PyAny>> {
+    let value: Value =
+        serde_json::from_str(json).map_err(|e| crate::error::parse_error(py, e.to_string()))?;
+    value_to_pyobject(py, &value)
+}
+
 #[pyclass(name = "Rule", module = "datalogic_py", frozen)]
 pub struct Rule {
     engine: Arc<RsEngine>,
@@ -231,6 +371,14 @@ impl Rule {
 
 #[pymethods]
 impl Rule {
+    /// What the rule reads and calls, from a walk of the compiled rule: a
+    /// dict with ``reads`` (each root path as a list of segments),
+    /// ``computed_reads``, ``reads_complete``, ``reads_data``,
+    /// ``operators``, ``custom_operators`` and ``deterministic``.
+    fn facts(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        json_to_py(py, &datalogic_bind::facts_json(&self.logic.facts()))
+    }
+
     /// Evaluate against ``data`` and return the result as a Python value.
     ///
     /// :param data: a Python ``dict``/``list``/scalar, or a ``str``
@@ -331,14 +479,7 @@ impl CustomOperator for PyOperator {
         arena: &'a Bump,
     ) -> DlResult<&'a DataValue<'a>> {
         // 1. Build the args JSON array.
-        let mut json = String::from("[");
-        for (i, a) in args.iter().enumerate() {
-            if i > 0 {
-                json.push(',');
-            }
-            json.push_str(&a.to_json_string());
-        }
-        json.push(']');
+        let json = datalogic_bind::args_json(args);
 
         // 2. Acquire the GIL and call the Python callable. `Python::attach`
         //    re-acquires the GIL even if the surrounding evaluation
@@ -358,61 +499,11 @@ impl CustomOperator for PyOperator {
 
         // 3. Parse the returned JSON into the eval arena so the borrowed
         //    `DataValue` outlives this call.
-        let arena_str = arena.alloc_str(&result_str);
-        let parsed = DataValue::from_str(arena_str, arena).map_err(|e| {
-            DlError::custom_message(format!(
-                "custom operator '{}' returned invalid JSON: {}",
-                self.name, e
-            ))
-        })?;
-        Ok(arena.alloc(parsed))
+        datalogic_bind::parse_result(&self.name, &result_str, arena)
     }
 }
 
 // ---------------- shared helpers ----------------
-
-/// Render a [`datalogic_rs::TracedRun`] into the wire shape shared with the
-/// WASM binding's `evaluateWithTrace`: `{ result, expression_tree, steps,
-/// error?, structured_error? }`. Keep this key-for-key aligned with
-/// `traced_run_to_json` in `bindings/wasm/src/lib.rs`; the React debugger
-/// consumes both.
-fn traced_run_to_json(run: &datalogic_rs::TracedRun<String>) -> String {
-    #[derive(serde::Serialize)]
-    struct Wire<'a> {
-        result: Value,
-        expression_tree: &'a datalogic_rs::ExpressionNode,
-        steps: &'a [datalogic_rs::ExecutionStep],
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        structured_error: Option<&'a DlError>,
-    }
-
-    let result_json: Value;
-    let mut error_msg: Option<String> = None;
-    let mut error_struct: Option<&DlError> = None;
-    match &run.result {
-        Ok(s) => {
-            // The String is already JSON; surface it as the parsed value
-            // when possible, falling back to a JSON string otherwise.
-            result_json = serde_json::from_str::<Value>(s.as_str())
-                .unwrap_or_else(|_| Value::String(s.to_string()));
-        }
-        Err(e) => {
-            result_json = Value::Null;
-            error_msg = Some(e.to_string());
-            error_struct = Some(e);
-        }
-    }
-    serde_json::to_string(&Wire {
-        result: result_json,
-        expression_tree: &run.expression_tree,
-        steps: &run.steps,
-        error: error_msg,
-        structured_error: error_struct,
-    })
-    .unwrap_or_default()
-}
 
 pub(crate) fn compile_inner(
     py: Python<'_>,

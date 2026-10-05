@@ -94,6 +94,119 @@ class Engine
         return new Rule($out);
     }
 
+    /** Compile `$ruleJson` in templating mode, whatever this engine's mode. */
+    public function compileTemplate(string $ruleJson): Rule
+    {
+        return $this->compileMode($ruleJson, Native::MODE_TEMPLATE);
+    }
+
+    /** Compile `$ruleJson` outside templating mode, whatever this engine's mode. */
+    public function compileStrict(string $ruleJson): Rule
+    {
+        return $this->compileMode($ruleJson, Native::MODE_STRICT);
+    }
+
+    /**
+     * Compile `$ruleJson` in `$mode` (`Native::MODE_ENGINE`, `MODE_STRICT`
+     * or `MODE_TEMPLATE`), whatever mode this engine was built with.
+     */
+    public function compileMode(string $ruleJson, int $mode): Rule
+    {
+        $ffi = Native::ffi();
+        $out = $ffi->new('datalogic_rule*');
+        $err = Native::newErrorOut();
+        $rc = $ffi->datalogic_engine_compile_mode(
+            $this->handle(),
+            $ruleJson,
+            strlen($ruleJson),
+            $mode,
+            FFI::addr($out),
+            FFI::addr($err),
+        );
+        if ($rc !== Native::STATUS_OK) {
+            throw DatalogicException::fromNative($rc, $err, 'compile failed');
+        }
+        return new Rule($out);
+    }
+
+    /**
+     * Compile `$ruleJson`, refusing it if {@see Engine::check()} finds any
+     * error: throws a ParseException with errorType `CompileError` whose
+     * `diagnosticsJson` lists every problem.
+     */
+    public function compileChecked(string $ruleJson): Rule
+    {
+        $ffi = Native::ffi();
+        $out = $ffi->new('datalogic_rule*');
+        $err = Native::newErrorOut();
+        $rc = $ffi->datalogic_engine_compile_checked(
+            $this->handle(),
+            $ruleJson,
+            strlen($ruleJson),
+            FFI::addr($out),
+            FFI::addr($err),
+        );
+        if ($rc !== Native::STATUS_OK) {
+            throw DatalogicException::fromNative($rc, $err, 'compile failed');
+        }
+        return new Rule($out);
+    }
+
+    /**
+     * Every problem this engine can see in `$ruleJson` before it runs, as a
+     * JSON array of `{code, severity, message, pointer, operator}`.
+     */
+    public function check(string $ruleJson, int $mode = Native::MODE_ENGINE): string
+    {
+        $ffi = Native::ffi();
+        $buf = $ffi->new('datalogic_buf');
+        $err = Native::newErrorOut();
+        $rc = $ffi->datalogic_engine_check(
+            $this->handle(),
+            $ruleJson,
+            strlen($ruleJson),
+            $mode,
+            FFI::addr($buf),
+            FFI::addr($err),
+        );
+        if ($rc !== Native::STATUS_OK) {
+            throw DatalogicException::fromNative($rc, $err, 'check failed');
+        }
+        return Native::takeBuf($buf);
+    }
+
+    /** Every built-in operator, as a JSON array in the schema of the docs' operators.json. */
+    public function operators(): string
+    {
+        $ffi = Native::ffi();
+        $buf = $ffi->new('datalogic_buf');
+        $err = Native::newErrorOut();
+        $rc = $ffi->datalogic_engine_operators($this->handle(), FFI::addr($buf), FFI::addr($err));
+        if ($rc !== Native::STATUS_OK) {
+            throw DatalogicException::fromNative($rc, $err, 'operators failed');
+        }
+        return Native::takeBuf($buf);
+    }
+
+    /** Whether the JSON `$valueJson` is truthy under this engine's configured truthiness. */
+    public function truthy(string $valueJson): bool
+    {
+        $ffi = Native::ffi();
+        $out = $ffi->new('int32_t');
+        $err = Native::newErrorOut();
+        $rc = $ffi->datalogic_engine_truthy(
+            $this->handle(),
+            $valueJson,
+            strlen($valueJson),
+            FFI::addr($out),
+            FFI::addr($err),
+        );
+        if ($rc !== Native::STATUS_OK) {
+            throw DatalogicException::fromNative($rc, $err, 'truthy failed');
+        }
+        return $out->cdata !== 0;
+    }
+
     /**
      * One-shot: compile and evaluate in a single call, returning the
      * JSON-string result.

@@ -106,6 +106,34 @@ func (b *EngineBuilder) Templating(on bool) *EngineBuilder {
 	return b
 }
 
+// TemplateKeyEscape sets the character that marks a template key as a
+// literal output field rather than an operator call: with '$',
+// {"$type": ...} emits the key "type". Only meaningful with Templating.
+func (b *EngineBuilder) TemplateKeyEscape(r rune) *EngineBuilder {
+	var cerr *C.datalogic_error
+	rc := C.datalogic_engine_builder_set_template_key_escape(b.ptr, C.uint32_t(r), &cerr)
+	if rc != C.DATALOGIC_STATUS_OK {
+		err := takeError(cerr)
+		if b.err == nil {
+			b.err = err
+		}
+	}
+	return b
+}
+
+// StrictOperatorNames makes a later AddOperator with a name a built-in
+// answers to (`length`, `var`, an alias such as `?:`) fail Build with
+// Type "ConfigurationError" instead of registering an operator that
+// would never run. Call it before AddOperator.
+func (b *EngineBuilder) StrictOperatorNames(on bool) *EngineBuilder {
+	var v C.int32_t
+	if on {
+		v = 1
+	}
+	C.datalogic_engine_builder_set_strict_operator_names(b.ptr, v)
+	return b
+}
+
 // SetConfigJSON sets the engine's evaluation configuration from a JSON
 // object string, parsed by the core crate's shared config parser (the
 // same wire format every binding uses). All keys are optional; an

@@ -31,6 +31,30 @@ public final class Rule implements AutoCloseable {
         return h;
     }
 
+    /**
+     * What the rule reads and calls, as JSON: {@code {reads, computed_reads,
+     * reads_complete, reads_data, operators, custom_operators,
+     * deterministic}}, each read path as its segments.
+     */
+    public String facts() {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buf = arena.allocate(DatalogicNative.BUF_LAYOUT);
+            MemorySegment errSlot = arena.allocate(ValueLayout.ADDRESS);
+            int status;
+            try {
+                status = (int) DatalogicNative.RULE_FACTS.invokeExact(handle(), buf, errSlot);
+            } catch (Throwable t) {
+                throw DatalogicException.propagate(t);
+            }
+            if (status != DatalogicNative.STATUS_OK) {
+                throw DatalogicException.fromNative(status, errSlot, "facts failed");
+            }
+            return DatalogicNative.takeOwnedBuf(buf);
+        } finally {
+            Reference.reachabilityFence(this);
+        }
+    }
+
     /** Evaluate against {@code dataJson}; returns the result JSON-string. */
     public String evaluate(String dataJson) {
         if (dataJson == null) throw new NullPointerException("dataJson");

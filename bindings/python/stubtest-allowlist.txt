@@ -5,3 +5,10 @@
 # stubbed) at the package root, so the inner module needs no stub of
 # its own.
 datalogic_py.datalogic_py
+
+# Typing-only shapes of the dicts `check`, `operators` and `Rule.facts`
+# return. They exist in the stub for type checkers and are not runtime
+# names.
+datalogic_py.Diagnostic
+datalogic_py.OperatorInfo
+datalogic_py.RuleFacts

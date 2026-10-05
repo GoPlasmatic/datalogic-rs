@@ -141,6 +141,47 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   table, and the React editor's registry test checks its picker entries
   and argument counts against the catalogue.
 
+### Added (bindings)
+
+- **The 5.8 API in every binding.** WASM, Node, Python, Go, JVM, .NET and
+  PHP gain the per-compile templating mode (`compileTemplate` /
+  `compileStrict`), `compileChecked` (failing with error type
+  `CompileError` and its diagnostics), `check` with a mode, the operator
+  catalogue (`operators`, the schema of `docs/src/operators/operators.json`),
+  rule facts (`Rule.facts`), the engine's `truthy`, and an option that
+  refuses a custom operator named like a built-in (`strictOperatorNames`
+  and its per-language spellings). Errors also carry their node-id
+  breadcrumb. Python gains `template_key_escape`, which the other bindings
+  already had.
+- **C ABI v2, minor 1.** New entry points: `datalogic_engine_compile_mode`,
+  `datalogic_engine_compile_checked`, `datalogic_engine_check`,
+  `datalogic_engine_operators`, `datalogic_engine_truthy`,
+  `datalogic_rule_facts`, `datalogic_session_evaluate_metered`,
+  `datalogic_engine_builder_set_template_key_escape`,
+  `datalogic_engine_builder_set_strict_operator_names`,
+  `datalogic_error_diagnostics_json`, `datalogic_error_node_ids_json` and
+  `datalogic_abi_minor()`. Existing symbols are unchanged, so v2 wrappers
+  keep working; a wrapper that calls the new ones checks
+  `datalogic_abi_minor() >= 1` at load. The mode enum is exported as
+  `datalogic_mode`.
+- **`evaluateInt` / `evaluateFloat` in Node and WASM**, the typed-result
+  names the other bindings use. `evaluateNumber` is deprecated.
+- **One JSON wire format per document.** The bindings share
+  `crates/datalogic-bind` (not published), which defines the traced-run,
+  catalogue, facts and diagnostics JSON and the custom-operator bridge,
+  replacing four copies of the trace serialiser and the type-name helper.
+- **A scenario suite every binding runs** (`bindings/scenarios/api.json`),
+  and a test that keeps PHP's FFI header and the JVM and .NET native
+  declarations in step with the generated `datalogic.h`.
+
+### Deprecated
+
+- The WASM `CompiledRule` class and the free `evaluate(logic, data,
+  templating)` and `evaluateWithTrace(logic, data, templating)` functions:
+  build an `Engine` and use its `compile`, `evalStr` and
+  `evaluateWithTrace`. `evaluateNumber` in Node and WASM: use
+  `evaluateFloat`. All are removed in 6.0.
+
 ### Changed
 
 - **A custom operator call no longer looks its operator up by name.** The
