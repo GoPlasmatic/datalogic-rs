@@ -187,7 +187,8 @@ impl EngineBuilder {
     /// JSONLogic operator (`+`, `if`, `var`, `map`, …), the built-in is
     /// dispatched and the registered custom op is never reached. To
     /// extend the operator set, choose a name that doesn't parse as a
-    /// built-in.
+    /// built-in, or register through [`Self::try_add_operator`], which
+    /// refuses such a name instead.
     #[inline]
     #[must_use = "builder methods return a new builder; chain into `.build()`"]
     pub fn add_operator<T>(mut self, name: impl Into<String>, operator: T) -> Self
@@ -196,6 +197,53 @@ impl EngineBuilder {
     {
         self.operators.insert(name.into(), Box::new(operator));
         self
+    }
+
+    /// [`Self::add_operator`], refusing a name a built-in operator of this
+    /// build answers to (a canonical name or an alias such as `var` or
+    /// `?:`), where the custom operator would never run.
+    ///
+    /// Only operators compiled into this build count: without the
+    /// `datetime` feature, `now` is a free name.
+    ///
+    /// # Errors
+    ///
+    /// [`crate::ErrorKind::ConfigurationError`] naming the built-in that
+    /// would win.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::{CustomOperator, DataValue, Engine, Result, operator::EvalContext};
+    ///
+    /// struct Answer;
+    /// impl CustomOperator for Answer {
+    ///     fn evaluate<'a>(
+    ///         &self,
+    ///         _args: &[&'a DataValue<'a>],
+    ///         _ctx: &mut EvalContext<'_, 'a>,
+    ///         arena: &'a bumpalo::Bump,
+    ///     ) -> Result<&'a DataValue<'a>> {
+    ///         Ok(arena.alloc(DataValue::from_f64(42.0)))
+    ///     }
+    /// }
+    ///
+    /// assert!(Engine::builder().try_add_operator("answer", Answer).is_ok());
+    /// let err = Engine::builder().try_add_operator("if", Answer).err().unwrap();
+    /// assert_eq!(err.tag(), "ConfigurationError");
+    /// ```
+    pub fn try_add_operator<T>(self, name: impl Into<String>, operator: T) -> crate::Result<Self>
+    where
+        T: CustomOperator + 'static,
+    {
+        let name = name.into();
+        if let Ok(builtin) = name.parse::<crate::OpCode>() {
+            return Err(crate::Error::configuration_error(format!(
+                "custom operator `{name}` would never run: the built-in operator `{}` answers to that name",
+                builtin.as_str()
+            )));
+        }
+        Ok(self.add_operator(name, operator))
     }
 
     /// Finalise the builder into an immutable [`Engine`] engine.

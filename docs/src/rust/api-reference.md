@@ -242,8 +242,13 @@ EngineBuilder::new()
     .with_constant_folding(true)            // default; disable to keep every operator visible
     .add_operator("name", MyOp)             // typed operator
     .add_operator("dyn", boxed_op)          // also accepts Box<dyn CustomOperator>
+    .try_add_operator("other", OtherOp)?    // Err if a built-in answers to the name
     .build();
 ```
+
+`add_operator` accepts any name, but a built-in always wins, so an
+operator registered as `if` or `var` never runs. `try_add_operator`
+refuses such a name with a `ConfigurationError`.
 
 `with_template_key_escape(prefix)` is unset by default. With it, the
 engine strips exactly one leading `prefix` from every template key and

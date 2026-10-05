@@ -166,6 +166,25 @@ echo $engine->apply('{"double": [21]}', '{}'); // "42"
 
 </div>
 
+### Names a built-in already answers to
+
+Built-ins always win: an operator registered as `if`, `var` or any other
+built-in name (aliases included) is accepted by `add_operator` and never
+runs. In Rust, `try_add_operator` refuses such a name instead, with a
+`ConfigurationError` naming the built-in that would win:
+
+```rust
+let engine = Engine::builder()
+    .try_add_operator("double", DoubleOperator)?   // a free name
+    .build();
+
+assert!(Engine::builder().try_add_operator("if", DoubleOperator).is_err());
+```
+
+Only operators compiled into the build count, so without the `datetime`
+feature `now` is a free name. `Engine::builtin_operator_names()` lists the
+names that are taken.
+
 ## Reading Argument Types
 
 `DataValue<'a>` is the arena-resident value tree, re-exported from the

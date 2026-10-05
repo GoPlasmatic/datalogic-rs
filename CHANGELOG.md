@@ -59,6 +59,10 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   falsy, like an empty array, and a configured `TruthyEvaluator` applies.
   Tested against the engine's own `!!` for every representation and
   evaluator.
+- **`EngineBuilder::try_add_operator`** refuses a name that a built-in
+  operator of the build answers to (aliases included), where the custom
+  operator would never run, with a `ConfigurationError` naming the
+  built-in. `add_operator` is unchanged.
 - **`all-operators` feature** enables every operator family. The
   bindings and the benchmark now depend on it instead of listing the
   families one by one.
