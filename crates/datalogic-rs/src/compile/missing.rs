@@ -1,7 +1,7 @@
 //! Compilation for `missing` and `missing_some` — pre-parse static path
 //! arguments so runtime evaluation can skip the parser.
 
-use datavalue::{NumberValue, OwnedDataValue};
+use datavalue::OwnedDataValue;
 
 use crate::node::{
     CompileCtx, CompiledMissingArg, CompiledMissingData, CompiledMissingMin, CompiledMissingPaths,
@@ -56,11 +56,9 @@ pub(super) fn compile_missing_some(
         Some(CompiledNode::Value {
             value: OwnedDataValue::Number(n),
             ..
-        }) => match n {
-            NumberValue::Integer(v) if v >= 0 => CompiledMissingMin::Now(v as usize),
-            NumberValue::Integer(_) => CompiledMissingMin::Now(0),
-            NumberValue::Float(f) => CompiledMissingMin::Now(f.max(0.0) as usize),
-        },
+        }) => CompiledMissingMin::Now(crate::operators::missing::min_present(
+            &datavalue::DataValue::Number(n),
+        )),
         Some(other) => CompiledMissingMin::Later(other),
         None => CompiledMissingMin::Now(1),
     };

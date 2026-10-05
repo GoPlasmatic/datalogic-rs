@@ -147,18 +147,17 @@ fn computed_path_in_iterator_body() {
     assert_eq!(dotted(&f), ["xs"]);
 }
 
-/// Folding resolves a path computed from literals, so it is a plain read on
-/// the default path and a computed one without folding.
+/// A path computed from literals stays computed with folding on: it looks
+/// for a key spelled with the dot before walking, which a literal path
+/// never does, so folding it into a literal would change what it reads.
 #[test]
-fn folded_path_is_static() {
+fn path_computed_from_literals_stays_computed() {
     let rule = r#"{"var": {"cat": ["a", ".", "b"]}}"#;
-    let f = facts(&Engine::new(), rule);
-    assert_eq!(dotted(&f), ["a.b"]);
-    assert!(!f.has_computed_reads());
-
-    let f = facts(&no_fold(), rule);
-    assert!(f.has_computed_reads());
-    assert!(f.reads().is_empty());
+    for engine in [Engine::new(), no_fold()] {
+        let f = facts(&engine, rule);
+        assert!(f.has_computed_reads());
+        assert!(f.reads().is_empty());
+    }
 }
 
 // ── scoped arguments ────────────────────────────────────────────────────

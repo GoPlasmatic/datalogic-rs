@@ -167,13 +167,11 @@ fn sort_fast_path_var_extractor<'a>(
             crate::arena::value::traverse_segments(src.get(i), segments),
         )
     }));
+    // A missing field reads as `null`, as the key expression would on the
+    // general path, so it ties with a present `null` and keeps its place.
+    let null = crate::arena::singletons::singleton_null();
     keyed.sort_by(|(_, ka), (_, kb)| {
-        let cmp = match (ka, kb) {
-            (Some(a), Some(b)) => compare_values(a, b),
-            (Some(_), None) => Ordering::Greater,
-            (None, Some(_)) => Ordering::Less,
-            (None, None) => Ordering::Equal,
-        };
+        let cmp = compare_values(ka.unwrap_or(null), kb.unwrap_or(null));
         if ascending { cmp } else { cmp.reverse() }
     });
     let slice = arena.alloc_slice_fill_iter(keyed.iter().map(|&(i, _)| *src.get(i)));

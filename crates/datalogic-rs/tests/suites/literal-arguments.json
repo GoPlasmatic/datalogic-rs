@@ -1,0 +1,153 @@
+[
+  "# Literal and computed arguments",
+  "A few operators read whether an argument is written as a literal. An expression in that position is computed even when it reads no data, so constant folding cannot turn it into a literal and change what the rule means.",
+  {
+    "description": "A single literal array is not a sum",
+    "rule": { "+": [[1, 2]] },
+    "data": null,
+    "error": { "type": "NaN" }
+  },
+  {
+    "description": "A single computed array is summed, even with no data in it",
+    "rule": { "+": [{ "distinct": [null] }] },
+    "data": null,
+    "result": 0
+  },
+  {
+    "description": "A single computed array is multiplied",
+    "rule": { "*": [{ "merge": [[2], [3]] }] },
+    "data": null,
+    "result": 6
+  },
+  {
+    "description": "A computed array from a constant branch is summed",
+    "rule": { "+": [{ "if": [true, [-1, -3], 0] }] },
+    "data": null,
+    "result": -4
+  },
+  {
+    "description": "max of a single computed array",
+    "rule": { "max": [{ "merge": [[1], [5]] }] },
+    "data": null,
+    "result": 5
+  },
+  {
+    "description": "min of a single computed array",
+    "rule": { "min": [{ "if": [true, [4, 2], 0] }] },
+    "data": null,
+    "result": 2
+  },
+  {
+    "description": "max of a single literal array is an error",
+    "rule": { "max": [[1, 5]] },
+    "data": null,
+    "error": { "type": "Invalid Arguments" }
+  },
+  "# var and val paths",
+  {
+    "description": "A literal var path walks its dots",
+    "rule": { "var": "a.b" },
+    "data": { "a.b": 7, "a": { "b": 1 } },
+    "result": 1
+  },
+  {
+    "description": "A computed var path prefers a key spelled with the dot",
+    "rule": { "var": { "cat": ["a", ".b"] } },
+    "data": { "a.b": 7, "a": { "b": 1 } },
+    "result": 7
+  },
+  {
+    "description": "A computed var path with a default",
+    "rule": { "var": [{ "cat": ["a", ".b"] }, 0] },
+    "data": { "a.b": 7 },
+    "result": 7
+  },
+  {
+    "description": "A literal val key is one key, dots included",
+    "rule": { "val": "o.a" },
+    "data": { "o": { "a": 1 } },
+    "result": null
+  },
+  {
+    "description": "A computed val path walks its dots",
+    "rule": { "val": [{ "cat": ["o", ".a"] }] },
+    "data": { "o": { "a": 1 } },
+    "result": 1
+  },
+  "# sort sources",
+  {
+    "description": "A literal null source is an error",
+    "rule": { "sort": [null] },
+    "data": null,
+    "error": { "type": "Invalid Arguments" }
+  },
+  {
+    "description": "A computed null source is null",
+    "rule": { "sort": [{ "if": [true, null, 1] }] },
+    "data": null,
+    "result": null
+  },
+  "# switch case tables",
+  {
+    "description": "A computed case table is not read",
+    "rule": { "switch": [1, { "if": [true, [[1, "one"]], 0] }, "none"] },
+    "data": null,
+    "result": "none"
+  },
+  {
+    "description": "A computed case in a literal table is not read",
+    "rule": { "switch": ["x", [{ "if": [true, ["x", "X"], 0] }, ["y", "Y"]], "none"] },
+    "data": null,
+    "result": "none"
+  },
+  {
+    "description": "A literal case still matches",
+    "rule": { "switch": ["y", [{ "if": [true, ["x", "X"], 0] }, ["y", "Y"]], "none"] },
+    "data": null,
+    "result": "Y"
+  },
+  "# slice bounds",
+  {
+    "description": "A literal fractional bound is not an index",
+    "rule": { "slice": [[1, 2, 3, 4], 1.5] },
+    "data": null,
+    "error": { "type": "NaN" }
+  },
+  {
+    "description": "A computed fractional bound is not an index",
+    "rule": { "slice": [[1, 2, 3, 4], { "/": [3, 2] }] },
+    "data": null,
+    "error": { "type": "NaN" }
+  },
+  {
+    "description": "A whole float bound is an index",
+    "rule": { "slice": [[1, 2, 3, 4], 2.0] },
+    "data": null,
+    "result": [3, 4]
+  },
+  "# missing_some minimums",
+  {
+    "description": "A fractional minimum rounds up: 2.5 present means 3",
+    "rule": { "missing_some": [2.5, ["a", "b", "c"]] },
+    "data": { "a": 1, "b": 2 },
+    "result": ["c"]
+  },
+  {
+    "description": "A computed fractional minimum rounds up the same way",
+    "rule": { "missing_some": [{ "/": [5, 2] }, ["a", "b", "c"]] },
+    "data": { "a": 1, "b": 2 },
+    "result": ["c"]
+  },
+  {
+    "description": "A fractional minimum that is met",
+    "rule": { "missing_some": [1.5, ["a", "b", "c"]] },
+    "data": { "a": 1, "b": 2 },
+    "result": []
+  },
+  {
+    "description": "A negative minimum is met by nothing",
+    "rule": { "missing_some": [-1.5, ["a", "b"]] },
+    "data": {},
+    "result": []
+  }
+]

@@ -134,10 +134,15 @@ fn extract_opt_i64_arena<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<Option<i64>> {
+    // A literal skips the dispatch but reads exactly as the evaluated value
+    // below: a fractional number is not an index, written or computed.
     if let CompiledNode::Value { value, .. } = node {
         return match value {
-            datavalue::OwnedDataValue::Number(n) => Ok(n.as_i64()),
             datavalue::OwnedDataValue::Null => Ok(None),
+            datavalue::OwnedDataValue::Number(n) => match n.as_i64() {
+                Some(i) => Ok(Some(i)),
+                None => Err(Error::invalid_arguments("NaN")),
+            },
             _ => Err(Error::invalid_arguments("NaN")),
         };
     }

@@ -63,5 +63,6 @@
   "tensor/construct.json",
   "tensor/shape.json",
   "tensor/read.json",
-  "tensor/value.json"
+  "tensor/value.json",
+  "literal-arguments.json"
 ]

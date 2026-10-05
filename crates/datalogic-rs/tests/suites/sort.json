@@ -219,6 +219,24 @@
       {"id": 1, "value": 10}
     ]
   },
+  {
+    "description": "A missing key and a null key tie, so they keep their input order",
+    "rule": { "sort": [{"val": "rows"}, true, {"val": "k"}] },
+    "data": { "rows": [{"id": 1, "k": null}, {"id": 2}] },
+    "result": [{"id": 1, "k": null}, {"id": 2}]
+  },
+  {
+    "description": "The tie holds descending too",
+    "rule": { "sort": [{"val": "rows"}, false, {"val": "k"}] },
+    "data": { "rows": [{"id": 1}, {"id": 2, "k": null}, {"id": 3, "k": 1}] },
+    "result": [{"id": 3, "k": 1}, {"id": 1}, {"id": 2, "k": null}]
+  },
+  {
+    "description": "A computed key reads a missing field as null too",
+    "rule": { "sort": [{"val": "rows"}, true, {"if": [true, {"val": "k"}, 0]}] },
+    "data": { "rows": [{"id": 1, "k": null}, {"id": 2}] },
+    "result": [{"id": 1, "k": null}, {"id": 2}]
+  },
   "# Error handling",
   {
     "description": "Sort missing variable returns null",

@@ -12,7 +12,7 @@ use crate::node::{CompileCtx, CompiledNode, node_is_static};
 use crate::{Engine, Result};
 
 use super::optimize;
-use crate::operators::meta::{ArgsForm, CompileHook, HookArgs, Hooked};
+use crate::operators::meta::{ArgsForm, CompileHook, HookArgs, Hooked, LiteralArgs};
 
 /// Compile a single value into a [`CompiledNode`].
 ///
@@ -46,7 +46,7 @@ fn compile_node_inner(
         }
         OwnedDataValue::Object(pairs) if pairs.len() == 1 => {
             let (op_name, args_value) = &pairs[0];
-            compile_operator_invocation(op_name, args_value, engine, templating, ctx)
+            compile_operator_invocation(op_name, args_value, engine, templating, true, ctx)
         }
         OwnedDataValue::Array(arr) => compile_array(arr, engine, templating, ctx),
         _ => Ok(CompiledNode::value_with_id(
@@ -93,11 +93,16 @@ fn compile_multi_key_object(
 /// Single-key object: an operator invocation. Routes to either the builtin
 /// path (when the key parses as an `OpCode`) or the custom-operator /
 /// templating-mode path.
+///
+/// `fold` is false for an argument the parent reads as written (see
+/// [`compile_as_written`]): the call is then neither optimized nor folded
+/// itself, though its own arguments still are.
 fn compile_operator_invocation(
     op_name: &str,
     args_value: &OwnedDataValue,
     engine: Option<&Engine>,
     templating: bool,
+    fold: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
     // The escape check runs *before* operator resolution — that ordering is
@@ -115,7 +120,7 @@ fn compile_operator_invocation(
     }
 
     if let Ok(opcode) = op_name.parse::<OpCode>() {
-        return compile_builtin(op_name, opcode, args_value, engine, templating, ctx);
+        return compile_builtin(op_name, opcode, args_value, engine, templating, fold, ctx);
     }
 
     #[cfg(feature = "templating")]
@@ -149,6 +154,7 @@ fn compile_builtin(
     args_value: &OwnedDataValue,
     engine: Option<&Engine>,
     templating: bool,
+    fold: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
     let meta = opcode.meta();
@@ -162,7 +168,7 @@ fn compile_builtin(
         return Ok(node);
     }
 
-    let mut args = compile_args(args_value, engine, templating, ctx)?;
+    let mut args = compile_builtin_args(meta.literal_args, args_value, engine, templating, ctx)?;
 
     if let Some(CompileHook::Args(hook)) = meta.compile {
         let hook_args = HookArgs {
@@ -192,6 +198,7 @@ fn compile_builtin(
     // operator folded right after this consumes it structurally (e.g.
     // `evaluate_switch`'s folded-case-table arms).
     if let Some(eng) = engine
+        && fold
         && !ctx.skip_fold()
     {
         node = optimize::optimize(node, eng);
@@ -314,6 +321,83 @@ fn compile_array(
     }
 
     Ok(node)
+}
+
+/// Compile a built-in's arguments. A position whose literal shape the
+/// operator reads ([`LiteralArgs`]) is compiled [as written](compile_as_written).
+fn compile_builtin_args(
+    literal: LiteralArgs,
+    value: &OwnedDataValue,
+    engine: Option<&Engine>,
+    templating: bool,
+    ctx: &mut CompileCtx,
+) -> Result<Box<[CompiledNode]>> {
+    if literal == LiteralArgs::None {
+        return compile_args(value, engine, templating, ctx);
+    }
+    let items = match value {
+        OwnedDataValue::Array(arr) => arr.as_slice(),
+        other => std::slice::from_ref(other),
+    };
+    let len = items.len();
+    items
+        .iter()
+        .enumerate()
+        .map(|(i, v)| {
+            if literal.reads(i, len) {
+                compile_as_written(v, engine, templating, ctx)
+            } else {
+                compile_node(v, engine, templating, ctx)
+            }
+        })
+        .collect::<Result<Vec<_>>>()
+        .map(Vec::into_boxed_slice)
+}
+
+/// Whether `value` holds an operator call or template anywhere outside a
+/// nested call: what makes an argument an expression rather than a
+/// literal.
+fn has_expression(value: &OwnedDataValue) -> bool {
+    match value {
+        OwnedDataValue::Object(pairs) => !pairs.is_empty(),
+        OwnedDataValue::Array(items) => items.iter().any(has_expression),
+        _ => false,
+    }
+}
+
+/// Compile an argument so that its node says whether it was written as a
+/// literal. A call keeps its own node instead of folding into a `Value`,
+/// and an array holding an expression stays an `Array` node, so an
+/// operator that reads literal shape sees a literal only where the rule
+/// has one. Everything below the root still optimizes and folds.
+fn compile_as_written(
+    value: &OwnedDataValue,
+    engine: Option<&Engine>,
+    templating: bool,
+    ctx: &mut CompileCtx,
+) -> Result<CompiledNode> {
+    if !has_expression(value) {
+        return compile_node(value, engine, templating, ctx);
+    }
+    ctx.enter()?;
+    let result = match value {
+        OwnedDataValue::Object(pairs) if pairs.len() == 1 => {
+            let (op_name, args_value) = &pairs[0];
+            compile_operator_invocation(op_name, args_value, engine, templating, false, ctx)
+        }
+        OwnedDataValue::Array(items) => items
+            .iter()
+            .map(|v| compile_as_written(v, engine, templating, ctx))
+            .collect::<Result<Vec<_>>>()
+            .map(|nodes| CompiledNode::Array {
+                id: Some(ctx.next_id()),
+                nodes: nodes.into_boxed_slice(),
+            }),
+        // A template is never folded into a literal.
+        other => compile_node_inner(other, engine, templating, ctx),
+    };
+    ctx.leave();
+    result
 }
 
 /// Compile operator arguments — an array is iterated; anything else is

@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc d637b7c753f8a0a28bb34c0c734cbf2e2b1f40a90b7e7ef1578e941258803329 # shrinks to rule = Object {"+": Array [Object {"distinct": Array [Null]}]}, data = Object {"a.b": Number(7), "b": Bool(true), "f": Number(0), "n": Number(0), "o": Object {"a": Object {"b": Number(0)}, "k": Number(0)}, "objs": Array [], "s": String("ab"), "xs": Array [], "z": Null}
+cc ee64c5eac0345909d1ecefadc34129364d1da98c03de3b4d50d84047b4a2cb4d # shrinks to rule = Object {"try": Array [Object {"/": Array [Object {"val": Array [Object {"merge": Array [Array [Array [Number(1)], String("x")], Array [Array [Number(2)], String("y")]]}]}, Null]}, Object {"cat": Array [String("caught "), Object {"var": String("type")}]}]}, data = Object {"a.b": Number(7), "b": Bool(true), "f": Number(0), "n": Number(0), "o": Object {"a": Object {"b": Number(0)}, "k": Number(0)}, "objs": Array [], "s": String("ab"), "xs": Array [], "z": Null}

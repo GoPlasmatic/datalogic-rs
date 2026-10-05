@@ -83,6 +83,41 @@ in the operator table is called by no rule in any suite, and
 `operators/table_tests.rs`) when a foldable operator has no case with
 literal arguments, or folding one changes its result.
 
+## Reference oracle
+
+`oracle/mod.rs` is a second, deliberately unoptimised reading of the rules:
+it walks the rule JSON with its own frame stack and implements every
+operator that decides which expression runs or what data it sees (`var` /
+`val` / `exists` / `missing`, the control-flow operators, every iterator,
+`try` / `throw`, templates). Operators that only compute a value from their
+arguments are handed to an engine built without constant folding, with
+each argument expression replaced by a slot that calls back into the
+oracle, so no argument the operator sees has been through the optimizer.
+
+`oracle_test.rs` checks the engine against it:
+
+- `every_suite_case_agrees_with_the_oracle`: every suite case, on the
+  default engine and on one without constant folding.
+- `generated_rules_agree_with_the_oracle` and
+  `generated_templates_agree_with_the_oracle`: proptest rules biased toward
+  the shapes the optimizer rewrites (field comparisons in `filter`, `map`
+  and `reduce` arithmetic, `reduce` over `map`, `sort` on a field, repeated
+  and literal subtrees), over data with missing, null and mistyped fields.
+  512 cases each by default; `PROPTEST_CASES` raises it.
+- `delegation_is_sound`: an operator the oracle does not implement must not
+  push a frame, read the current data or catch errors.
+- `explore_disagreements` (ignored): prints every disagreement in a large
+  deterministic sample instead of stopping at the first.
+
+```bash
+cargo test -p datalogic-rs --all-features --test oracle_test
+ORACLE_EXPLORE=100000 cargo test -p datalogic-rs --all-features \
+  --test oracle_test explore -- --ignored --nocapture
+```
+
+A disagreement is a bug in the engine or in the oracle. Fix it, and pin
+the rule as a suite case.
+
 ## Reduced-feature builds
 
 The index is feature-agnostic (it lists every suite), but a build without,

@@ -52,7 +52,7 @@ pub(crate) fn missing_some<'a>(
     paths_av: &'a DataValue<'a>,
 ) -> Result<&'a DataValue<'a>> {
     let (ctx, arena) = (&mut *cx.ctx, cx.arena);
-    let min_present = min_av.as_i64().unwrap_or(1).max(0) as usize;
+    let min_present = min_present(min_av);
     let lookup = lookup_data(ctx);
 
     let mut missing: bumpalo::collections::Vec<'a, DataValue<'a>> =
@@ -152,7 +152,7 @@ pub(crate) fn evaluate_compiled_missing_some<'a>(
         CompiledMissingMin::Now(n) => *n,
         CompiledMissingMin::Later(node) => {
             let av = engine.dispatch_node(node, ctx, arena)?;
-            av.as_i64().unwrap_or(1).max(0) as usize
+            min_present(av)
         }
     };
 
@@ -209,6 +209,21 @@ pub(crate) fn evaluate_compiled_missing_some<'a>(
             }
             Ok(arena.alloc(DataValue::Array(missing.into_bump_slice())))
         }
+    }
+}
+
+/// How many paths `missing_some` needs present: its first argument, rounded
+/// up (at least 2.5 present means 3), and never below 0. Anything but a
+/// number needs 1.
+#[inline]
+pub(crate) fn min_present(av: &DataValue<'_>) -> usize {
+    match av {
+        DataValue::Number(n) => match n.as_i64() {
+            Some(i) => i.max(0) as usize,
+            // `as` saturates: a huge minimum is never met, NaN needs none.
+            None => n.as_f64().ceil().max(0.0) as usize,
+        },
+        _ => 1,
     }
 }
 

@@ -151,6 +151,12 @@
     "result": null
   },
   {
+    "description": "A null collection is null without evaluating the bounds",
+    "rule": { "slice": [null, {"throw": "bound"}, {"var": "nope"}] },
+    "data": {},
+    "result": null
+  },
+  {
     "description": "Slice with step = 0 throws error (invalid step)",
     "rule": { "slice": [{"val": "array"}, 0, 5, 0] },
     "data": { "array": [1, 2, 3, 4, 5] },

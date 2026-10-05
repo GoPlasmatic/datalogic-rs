@@ -413,8 +413,11 @@ operators! {
         // `var` is accepted as a synonym of `val`; the compile hook reads
         // the source name, because `var`'s second argument is a default
         // and `val`'s is a path segment.
-        Val ["val", "var"] => raw variable::evaluate_val
-            { reads_context: true, compile: Some(CompileHook::Args(hooks::val)) };
+        Val ["val", "var"] => raw variable::evaluate_val {
+            reads_context: true,
+            compile: Some(CompileHook::Args(hooks::val)),
+            literal_args: LiteralArgs::All,
+        };
         // `{"var": [path, default]}` with a computed path. Internal: only
         // the `var` compile hook emits it; it renders back as `var`.
         VarDefault [] => raw variable::evaluate_var_default { reads_context: true, display: Some("var") };
@@ -446,17 +449,23 @@ operators! {
         // ── arithmetic ───────────────────────────────────────────────────
         // `+`, `-` and `*` keep separate bodies (their 0-, 1- and n-argument
         // rules differ), so they declare their algebra without binding it.
-        Add ["+"] => raw arithmetic::evaluate_add { algebra: Some(Algebra::Arith(ArithOp::Add)) };
+        // A one-argument `+` / `*` / `max` / `min` rejects a literal array and
+        // folds a computed one.
+        Add ["+"] => raw arithmetic::evaluate_add
+            { algebra: Some(Algebra::Arith(ArithOp::Add)), literal_args: LiteralArgs::Sole };
         Subtract ["-"] => raw[1..] arithmetic::evaluate_subtract
             { algebra: Some(Algebra::Arith(ArithOp::Sub)) };
-        Multiply ["*"] => raw arithmetic::evaluate_multiply { algebra: Some(Algebra::Arith(ArithOp::Mul)) };
+        Multiply ["*"] => raw arithmetic::evaluate_multiply
+            { algebra: Some(Algebra::Arith(ArithOp::Mul)), literal_args: LiteralArgs::Sole };
         Divide ["/"] => raw[1..] arithmetic::div_or_mod @ Div(DivOp::Divide);
         Modulo ["%"] => raw[1..] arithmetic::div_or_mod @ Div(DivOp::Modulo);
         // `max` / `min` / `merge` disambiguate a literal array from an
         // argument list at runtime (`{"max": [[1, 2]]}`), so folding their
         // static form would bake in the wrong reading.
-        Max ["max"] => iter[1..] arithmetic::extremum @ Extremum(Extremum::Max) { fold: Fold::Never };
-        Min ["min"] => iter[1..] arithmetic::extremum @ Extremum(Extremum::Min) { fold: Fold::Never };
+        Max ["max"] => iter[1..] arithmetic::extremum @ Extremum(Extremum::Max)
+            { fold: Fold::Never, literal_args: LiteralArgs::Sole };
+        Min ["min"] => iter[1..] arithmetic::extremum @ Extremum(Extremum::Min)
+            { fold: Fold::Never, literal_args: LiteralArgs::Sole };
 
         // ── strings ──────────────────────────────────────────────────────
         Concat ["cat"] => eager(Rest<Any>) string::concat { algebra: Some(Algebra::Concat), ..STRING };
@@ -526,9 +535,16 @@ operators! {
     family ExtArray (feature = "ext-array") = ITERATOR {
         // `sort`'s `args[1]` is the scalar direction flag; the key
         // expression at `args[2]` runs per element. It resolves its own
-        // source: a null source gives `null`, an empty array `[]`.
-        Sort ["sort"] => iter[1..=3] array::evaluate_sort
-            { frames: Frames::At(2), cost: Cost::NLogN, on_extra: Extra::Ignore };
+        // source: a null source gives `null`, an empty array `[]`, and a
+        // literal `null` is an error.
+        Sort ["sort"] => iter[1..=3] array::evaluate_sort {
+            frames: Frames::At(2),
+            cost: Cost::NLogN,
+            on_extra: Extra::Ignore,
+            literal_args: LiteralArgs::At(0),
+        };
+        // Stays `raw`: a null collection returns null without evaluating its
+        // bounds, which an `eager` row (every argument first) would not.
         Slice ["slice"] => raw[1..=4] array::evaluate_slice { cost: Cost::PerItem, ..PURE };
         GroupBy ["group_by"] => each[2] array::evaluate_group_by
             { on_extra: Extra::Ignore, on_empty_source: Some(singleton_empty_array) };
@@ -557,8 +573,9 @@ operators! {
             compile: Some(CompileHook::Args(hooks::exists)),
         };
         Coalesce ["??"] => eager(Rest<Any>) control::coalesce;
+        // Only a literal case table of literal pairs is read.
         Switch ["switch", "match"] => raw[2..=3] control::evaluate_switch
-            { on_missing: Miss::Return(singleton_null) };
+            { on_missing: Miss::Return(singleton_null), literal_args: LiteralArgs::At(1) };
         Type ["type"] => eager(Any) inspect::type_ { on_missing: Miss::Return(inspect::type_of_nothing) };
     }
 

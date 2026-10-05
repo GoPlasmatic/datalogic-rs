@@ -62,6 +62,12 @@ pub(crate) struct OpMeta {
     pub compile: Option<CompileHook>,
     /// Render name for an internal opcode that no operator name maps to.
     pub display: Option<&'static str>,
+    /// Argument positions whose literal *shape* the body or compile hook
+    /// reads (a literal array, a literal `null`, a literal path). An
+    /// expression in such a position is compiled without folding its own
+    /// node, so folding cannot turn it into a literal and change what the
+    /// rule means.
+    pub literal_args: LiteralArgs,
 }
 
 /// Which argument spellings the operator accepts.
@@ -99,6 +105,35 @@ pub(crate) enum Frames {
     /// The last argument of a call with two or more runs under the
     /// caught-error frame (`try`'s catch arm).
     LastIfMulti,
+}
+
+/// Argument positions whose literal shape an operator reads. See
+/// [`OpMeta::literal_args`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LiteralArgs {
+    /// No position: a literal and a computed argument mean the same.
+    None,
+    /// Every position (`val` / `var` read literal path segments).
+    All,
+    /// The only argument of a one-argument call (`+`, `*`, `max`, `min`
+    /// reject a literal array there and fold a computed one).
+    Sole,
+    /// This position (`sort` rejects a literal `null` source; `switch`
+    /// reads only a literal case table of literal pairs).
+    At(u8),
+}
+
+impl LiteralArgs {
+    /// Whether argument `index` of a call with `len` arguments is read for
+    /// its literal shape.
+    pub(crate) const fn reads(self, index: usize, len: usize) -> bool {
+        match self {
+            LiteralArgs::None => false,
+            LiteralArgs::All => true,
+            LiteralArgs::Sole => len == 1,
+            LiteralArgs::At(i) => index == i as usize,
+        }
+    }
 }
 
 /// Override for constant folding.
@@ -459,6 +494,7 @@ pub(crate) const PURE: OpMeta = OpMeta {
     algebra: None,
     compile: None,
     display: None,
+    literal_args: LiteralArgs::None,
 };
 
 /// A string operator: its work is proportional to the bytes it reads.

@@ -126,6 +126,35 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ### Fixed
 
+- **Constant folding no longer changes what a rule means.** A few
+  operators read whether an argument is written as a literal: a single
+  literal array is an error for `+`, `*`, `max` and `min` but a computed
+  one is summed or scanned; `sort` rejects a literal `null` source but
+  returns `null` for a computed one; a literal `var` / `val` path is split
+  differently from a computed one; `switch` reads only a literal case
+  table. Folding turned an expression with no data reads into a literal
+  first, so `{"+": [{"if": [true, [1, 2], 0]}]}` was `NaN` on the default
+  engine and `3` with folding off or in a trace, and
+  `{"var": {"cat": ["a", ".b"]}}` read `a` then `b` instead of the key
+  `"a.b"`. Those positions are now declared in the operator table
+  (`literal_args`) and an expression there keeps its own node; everything
+  inside it still folds. `Logic::facts()` follows: a path computed from
+  literals is reported as computed.
+- **`sort` by a field reads a missing field as `null`.** With a plain
+  `{"var": ..}` key, an element without the field sorted before one whose
+  field is `null`; with any other key expression they tied and kept their
+  input order. They now tie on both paths.
+- **A fractional `slice` bound is an error whether written or computed.**
+  A literal `1.5` was silently ignored while a computed one raised `NaN`;
+  both raise `NaN` now. Whole floats (`2.0`) are still indices.
+- **A fractional `missing_some` minimum rounds up.** `2.5` means at least 3
+  present, as JSONLogic's `present >= need` reads it. A literal minimum was
+  truncated and a computed one fell back to 1.
+
+These were found by a new reference interpreter in the test suite
+(`tests/oracle/`), which evaluates rules without any optimization and is
+compared with the engine on every suite case and on generated rules.
+
 - **`filter` with a strict comparison against `null` now sees missing
   fields.** `{"filter": [list, {"===": [{"var": "v"}, null]}]}` dropped the
   items that have no `v` field (and `!==` kept them), although a missing
