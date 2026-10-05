@@ -9,10 +9,12 @@
 //! Re-exports below preserve the pre-split `crate::error::*` import paths so
 //! callers elsewhere in the crate are unaffected by the file split.
 
+mod code;
 mod kind;
 mod path;
 mod serde;
 
+pub use code::{ErrorCode, UnknownErrorCode};
 pub use kind::{CustomErrorSource, ErrorKind};
 pub(crate) use path::ErrorPath;
 // Only `try`'s catch arm renders a kind outside this module.
@@ -122,22 +124,14 @@ impl Error {
     }
 
     /// Get a stable string tag for the error kind. Stable across releases.
+    /// The name of [`Self::code`].
     pub fn tag(&self) -> &'static str {
-        match self.kind {
-            ErrorKind::InvalidOperator(_) => "InvalidOperator",
-            ErrorKind::InvalidArguments(_) => "InvalidArguments",
-            ErrorKind::VariableNotFound(_) => "VariableNotFound",
-            ErrorKind::InvalidContextLevel(_) => "InvalidContextLevel",
-            ErrorKind::TypeError(_) => "TypeError",
-            ErrorKind::ArithmeticError(_) => "ArithmeticError",
-            ErrorKind::Custom(_) => "Custom",
-            ErrorKind::ParseError(_) => "ParseError",
-            ErrorKind::Thrown(_) => "Thrown",
-            ErrorKind::FormatError(_) => "FormatError",
-            ErrorKind::IndexOutOfBounds { .. } => "IndexOutOfBounds",
-            ErrorKind::ConfigurationError(_) => "ConfigurationError",
-            ErrorKind::BudgetExceeded { .. } => "BudgetExceeded",
-        }
+        self.code().as_str()
+    }
+
+    /// What kind of error this is, without its payload. See [`ErrorCode`].
+    pub fn code(&self) -> ErrorCode {
+        self.kind.code()
     }
 
     /// Attach the outermost operator name and return self.

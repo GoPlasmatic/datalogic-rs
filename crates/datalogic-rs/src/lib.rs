@@ -190,7 +190,7 @@ pub use engine::Engine;
 #[cfg(feature = "budget")]
 #[cfg_attr(docsrs, doc(cfg(feature = "budget")))]
 pub use engine::Metered;
-pub use error::{CustomErrorSource, Error, ErrorKind};
+pub use error::{CustomErrorSource, Error, ErrorCode, ErrorKind, UnknownErrorCode};
 pub use eval_input::{EvalInput, OwnedInput};
 pub use facts::{DataPath, Facts};
 pub use logic_input::IntoLogic;

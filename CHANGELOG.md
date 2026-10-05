@@ -59,6 +59,14 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   falsy, like an empty array, and a configured `TruthyEvaluator` applies.
   Tested against the engine's own `!!` for every representation and
   evaluator.
+- **`Error::code()`** returns an `ErrorCode`, the error's kind without its
+  payload: one variant per `ErrorKind` variant, `Copy`, `Eq`, `Hash`,
+  present in every build. `ErrorCode::as_str()` is the name `Error::tag()`
+  has always returned (`tag()` is now defined through it), it parses back
+  with `FromStr`, and `ErrorCode::ALL` lists every code, so a host can
+  switch on the kind instead of comparing tag strings. `ErrorKind::code()`
+  gives the same for a bare kind. New public types: `ErrorCode`,
+  `UnknownErrorCode`.
 - **`EngineBuilder::try_add_operator`** refuses a name that a built-in
   operator of the build answers to (aliases included), where the custom
   operator would never run, with a `ConfigurationError` naming the
