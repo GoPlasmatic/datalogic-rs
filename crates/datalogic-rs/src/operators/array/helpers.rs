@@ -4,7 +4,7 @@
 use crate::OpCode;
 use crate::arena::{ContextStack, DataValue, IterGuard};
 use crate::node::{MetadataHint, ReduceHint};
-use crate::operators::meta::{Algebra, ArithOp, OrdOp};
+use crate::operators::meta::{Algebra, ArithOp, EqOp, OrdOp};
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 use std::ops::ControlFlow;
@@ -284,20 +284,20 @@ impl FastPredicate {
                 let var_path: Box<[crate::node::PathSegment]> = segments.clone();
 
                 match opcode.algebra() {
-                    Some(Algebra::Eq {
+                    Some(Algebra::Eq(EqOp {
                         strict: true,
                         negate,
-                    }) => {
+                    })) => {
                         return Some(FastPredicate::StrictEq {
                             var_path,
                             literal: literal.clone(),
                             negate,
                         });
                     }
-                    Some(Algebra::Eq {
+                    Some(Algebra::Eq(EqOp {
                         strict: false,
                         negate,
-                    }) => {
+                    })) => {
                         // For loose equality with numeric literals, we can use a fast
                         // numeric comparison (loose == is same as strict for numbers)
                         if let Some(lit_f) = literal.as_f64() {

@@ -40,11 +40,11 @@ mod min_max;
 mod unary_math;
 
 pub(crate) use basic::{evaluate_add, evaluate_multiply, evaluate_subtract};
-pub(crate) use div_mod::{DivOp, div_or_mod};
+pub(crate) use div_mod::div_or_mod;
 /// Shared with `operators::array::reduce` so its fast paths fold through the
 /// same integer/float promotion the binary operators use.
 pub(crate) use helpers::try_int_op;
-pub(crate) use min_max::{evaluate_max, evaluate_min};
+pub(crate) use min_max::extremum;
 
 #[cfg(feature = "ext-math")]
 pub(crate) use unary_math::{UnaryMathOp, unary_math};

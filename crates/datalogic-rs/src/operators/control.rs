@@ -14,10 +14,6 @@ pub(crate) fn evaluate_if<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Ok(crate::arena::singletons::singleton_null());
-    }
-
     if args.len() == 3 {
         let cond = engine.dispatch_node(&args[0], ctx, arena)?;
         let idx = if truthy_arena(cond, engine) { 1 } else { 2 };
@@ -48,9 +44,6 @@ pub(crate) fn evaluate_coalesce<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Ok(crate::arena::singletons::singleton_null());
-    }
     for arg in args {
         let v = engine.dispatch_node(arg, ctx, arena)?;
         if !matches!(v, DataValue::Null) {
@@ -69,9 +62,6 @@ pub(crate) fn evaluate_switch<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     use crate::operators::comparison::compare_equals;
-    if args.len() < 2 {
-        return Ok(crate::arena::singletons::singleton_null());
-    }
     let disc_av = engine.dispatch_node(&args[0], ctx, arena)?;
 
     match &args[1] {

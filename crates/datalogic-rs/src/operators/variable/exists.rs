@@ -75,10 +75,6 @@ pub(crate) fn evaluate_exists<'a>(
     engine: &crate::Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Ok(crate::arena::singletons::singleton_false());
-    }
-
     let cur = current_data(ctx);
 
     if args.len() == 1 {

@@ -132,10 +132,6 @@ pub(crate) fn evaluate_fractional<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Ok(crate::arena::singletons::singleton_null());
-    }
-
     // Evaluate the first arg eagerly; its shape tells us which call form
     // we're in.
     let first = engine.dispatch_node(&args[0], ctx, arena)?;

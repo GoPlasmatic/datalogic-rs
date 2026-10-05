@@ -121,10 +121,12 @@ export const comparisonOperators: Record<string, Operator> = {
     category: 'comparison',
     description: 'Loose inequality comparison (with type coercion)',
     arity: {
-      type: 'chainable',
+      type: 'binary',
       min: 2,
+      max: 2,
       args: [
-        { name: 'value', label: 'Value', type: 'any', required: true, repeatable: true },
+        { name: 'left', label: 'Left', type: 'any', required: true },
+        { name: 'right', label: 'Right', type: 'any', required: true },
       ],
     },
     help: {
@@ -157,7 +159,6 @@ export const comparisonOperators: Record<string, Operator> = {
       icon: 'scale',
       shortLabel: '!=',
       nodeType: 'vertical',
-      addArgumentLabel: 'Add Comparison',
     },
   },
 
@@ -167,10 +168,12 @@ export const comparisonOperators: Record<string, Operator> = {
     category: 'comparison',
     description: 'Strict inequality comparison (no type coercion)',
     arity: {
-      type: 'chainable',
+      type: 'binary',
       min: 2,
+      max: 2,
       args: [
-        { name: 'value', label: 'Value', type: 'any', required: true, repeatable: true },
+        { name: 'left', label: 'Left', type: 'any', required: true },
+        { name: 'right', label: 'Right', type: 'any', required: true },
       ],
     },
     help: {
@@ -198,7 +201,6 @@ export const comparisonOperators: Record<string, Operator> = {
       icon: 'scale',
       shortLabel: '!==',
       nodeType: 'vertical',
-      addArgumentLabel: 'Add Comparison',
     },
   },
 

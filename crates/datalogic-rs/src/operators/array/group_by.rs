@@ -30,11 +30,6 @@ pub(crate) fn evaluate_group_by<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    // The key expression is mandatory — a keyless group_by has no meaning.
-    if args.len() < 2 {
-        return Err(crate::Error::invalid_args());
-    }
-
     let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(crate::arena::singletons::singleton_empty_array()),

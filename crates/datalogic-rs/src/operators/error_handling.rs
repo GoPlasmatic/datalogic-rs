@@ -149,9 +149,6 @@ pub(crate) fn evaluate_try<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Ok(crate::arena::singletons::singleton_null());
-    }
     if args.len() == 1 {
         return engine.dispatch_node(&args[0], ctx, arena);
     }

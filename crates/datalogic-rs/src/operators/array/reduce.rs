@@ -24,10 +24,6 @@ pub(crate) fn evaluate_reduce<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 || args.len() > 3 {
-        return Err(crate::Error::invalid_args());
-    }
-
     let body = &args[1];
     let initial: &'a DataValue<'a> = if args.len() == 3 {
         engine.dispatch_node(&args[2], ctx, arena)?

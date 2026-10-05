@@ -1,5 +1,5 @@
-//! `/` and `%` — division and modulo. Shares the unified
-//! [`div_or_mod`] entry point with a [`DivOp`] discriminator.
+//! `/` and `%`: division and modulo. Both rows bind the unified
+//! [`div_or_mod`] entry point with their [`DivOp`].
 
 use crate::arena::{ContextStack, DataValue, coerce_to_number_cfg};
 use crate::config::DivisionByZeroHandling;
@@ -8,13 +8,7 @@ use bumpalo::Bump;
 use datavalue::NumberValue;
 
 use super::helpers::alloc_number;
-
-/// `/` vs `%` discriminant for the unified divide/modulo entry point.
-#[derive(Clone, Copy)]
-pub(crate) enum DivOp {
-    Divide,
-    Modulo,
-}
+use crate::operators::meta::DivOp;
 
 impl DivOp {
     #[inline]
@@ -50,9 +44,6 @@ pub(crate) fn div_or_mod<'a>(
     arena: &'a Bump,
     op: DivOp,
 ) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Err(crate::Error::invalid_args());
-    }
     if args.len() == 1 {
         return one_arg_div_mod(&args[0], ctx, engine, arena, op);
     }

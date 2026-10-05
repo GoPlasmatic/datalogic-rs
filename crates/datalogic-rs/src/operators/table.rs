@@ -12,7 +12,7 @@
 //! | [`builtin_operator_names`] | the names column, in table order |
 //! | `OpCode::meta` | the `OpMeta` column |
 //! | `OpCode::iterates_arg0` | the `iter` shape |
-//! | `OpCode::arity` | the `eager` signature (`raw` / `iter` rows report [`Arity::ANY`]) |
+//! | `OpCode::arity` | the `eager` signature, or a `raw` / `iter` row's `[arity]` ([`Arity::ANY`] without one) |
 //! | [`dispatch_builtin`] | the shape and impl columns |
 //! | [`CATALOGUE`] | every row in the source, compiled in or not |
 //!
@@ -20,15 +20,19 @@
 //!
 //! ```text
 //! family Name (cfg-predicate) {
-//!     Variant ["name", "alias", ...] => shape impl::path, OpMeta-expr;
+//!     Variant ["name", "alias", ...] => shape impl::path [@ Kind(payload)], OpMeta-expr;
 //! }
 //!
-//! shape      := raw | iter | eager(Extractor, ...)
-//! impl::path := a::b::f | a::b::f(extra-arg, ...)     (extra args: raw and eager rows)
+//! shape      := raw[arity]? | iter[arity]? | eager(Extractor, ...)
+//! arity      := n | min.. | min..=max
+//! impl::path := a::b::f | a::b::f(extra-arg, ...)
 //! ```
 //!
 //! - **`raw`**: `f(args, ctx, engine, arena, extra...)`. The body evaluates
-//!   its own arguments (lazy and control-flow operators, variadics).
+//!   its own arguments (lazy and control-flow operators, variadics). With
+//!   `[arity]`, the generated arm first applies the row's `on_missing` /
+//!   `on_extra` policy (see [`eager::raw`]), so the body can index any
+//!   position below the minimum; without it, the body takes any count.
 //! - **`iter`**: `f(args, iter_arg_kind, ctx, engine, arena)`. Also receives
 //!   the iteration-source classification the populate pass cached for
 //!   `args[0]` (and only `iter` rows get one classified).
@@ -36,6 +40,14 @@
 //!   The generated adapter (see [`super::eager`]) checks arity against the
 //!   row's `on_missing` / `on_extra` policy, evaluates every present
 //!   argument, coerces each through its extractor, and converts the result.
+//!
+//! **`@ Kind(payload)`** names the row's operation once: the row's `algebra`
+//! becomes `Algebra::Kind(payload)` and `payload` is passed to the body as
+//! its last argument (`raw` and `iter` rows). One body then serves every
+//! row of the kind (`comparison::ordered` for `>`, `>=`, `<`, `<=`), and the
+//! constant that selects its behaviour cannot disagree with what the fast
+//! paths read. A row with `@` must not also set `algebra` in its `OpMeta`
+//! (a compile error).
 //!
 //! The `cfg` predicate is written once per family and applied to every row
 //! in the block, so a row cannot sit behind the wrong feature gate.
@@ -61,6 +73,9 @@ use super::extract::{
     self, Any, Int, Lazy, Lenient, Nullable, Obj, Opt, Rest, Str, StrictNum, Truthy,
 };
 use super::meta::*;
+use crate::arena::singletons::{
+    singleton_empty_array, singleton_empty_string, singleton_false, singleton_null, singleton_true,
+};
 use crate::arena::{ContextStack, DataValue};
 use crate::compile::hooks;
 use crate::operators::array::IterArgKind;
@@ -98,7 +113,8 @@ pub struct CatalogueEntry {
     pub variant: &'static str,
     /// Canonical name first, then aliases. Empty for an internal opcode.
     pub names: &'static [&'static str],
-    /// The row's shape, as written (`raw`, `iter`, `eager(Str, Str)`).
+    /// The row's shape keyword and `eager` signature, as written (`raw`,
+    /// `iter`, `eager(Str, Str)`). A declared `[arity]` is reported by `OpCode::arity`.
     pub shape: &'static str,
 }
 
@@ -117,8 +133,9 @@ macro_rules! operators {
         $(
             family $fam:ident ($gate:meta) {
                 $(
-                    $v:ident [ $($name:literal),* ] => $shape:ident $( ( $($ext:ty),* ) )?
-                        $($f:ident)::+ $( ( $($karg:expr),* ) )? , $meta:expr ;
+                    $v:ident [ $($name:literal),* ] => $shape:ident $( [ $($ar:tt)* ] )? $( ( $($ext:ty),* ) )?
+                        $($f:ident)::+ $( ( $($karg:expr),* ) )?
+                        $( @ $alg:ident ( $payload:expr ) )? , $meta:expr ;
                 )*
             }
         )*
@@ -160,7 +177,7 @@ macro_rules! operators {
             /// The row's declared facts.
             pub(crate) const fn meta(self) -> &'static OpMeta {
                 match self {
-                    $( $( #[cfg($gate)] OpCode::$v => { const META: OpMeta = $meta; &META } )* )*
+                    $( $( #[cfg($gate)] OpCode::$v => { const META: OpMeta = operators!(@meta ($meta) $( $alg ($payload) )?); &META } )* )*
                 }
             }
 
@@ -177,7 +194,7 @@ macro_rules! operators {
             #[inline(always)]
             pub(crate) fn algebra(self) -> Option<Algebra> {
                 const ALGEBRA: &[Option<Algebra>] = &[
-                    $( $( #[cfg($gate)] { const META: OpMeta = $meta; META.algebra }, )* )*
+                    $( $( #[cfg($gate)] { const META: OpMeta = operators!(@meta ($meta) $( $alg ($payload) )?); META.algebra }, )* )*
                 ];
                 ALGEBRA[self as usize]
             }
@@ -194,7 +211,7 @@ macro_rules! operators {
                     $( $(
                         #[cfg($gate)]
                         OpCode::$v => {
-                            const OP: Option<ArithOp> = match ($meta).algebra {
+                            const OP: Option<ArithOp> = match (operators!(@meta ($meta) $( $alg ($payload) )?)).algebra {
                                 Some(Algebra::Arith(op)) => Some(op),
                                 _ => None,
                             };
@@ -231,7 +248,7 @@ macro_rules! operators {
             /// signature. `raw` and `iter` rows check their own.
             pub(crate) const fn arity(self) -> Arity {
                 match self {
-                    $( $( #[cfg($gate)] OpCode::$v => operators!(@arity $shape $( ( $($ext),* ) )?), )* )*
+                    $( $( #[cfg($gate)] OpCode::$v => operators!(@arity $shape $( [ $($ar)* ] )? $( ( $($ext),* ) )?), )* )*
                 }
             }
         }
@@ -258,13 +275,24 @@ macro_rules! operators {
                 $( $(
                     #[cfg($gate)]
                     OpCode::$v => operators!(
-                        @call $v $shape $( ( $($ext),* ) )? [ $($f)::+ ] [ $( $($karg),* )? ]
+                        @call $v $shape { $( [ $($ar)* ] )? } $( ( $($ext),* ) )? [ $($f)::+ ] [ $( $($karg),* )? ] [ $($payload)? ]
                         (args, iter_arg_kind, ctx, engine, arena)
                     ),
                 )* )*
             }
         }
     };
+
+    // ── row metadata ──────────────────────────────────────────────────────
+    (@meta ($meta:expr)) => { $meta };
+    (@meta ($meta:expr) $alg:ident ($payload:expr)) => {{
+        const BASE: OpMeta = $meta;
+        assert!(
+            BASE.algebra.is_none(),
+            "a row with `@ Kind(payload)` must not also set `algebra`"
+        );
+        OpMeta { algebra: Some(Algebra::$alg($payload)), ..BASE }
+    }};
 
     // ── catalogue entry ───────────────────────────────────────────────────
     (@entry $fam:ident ($gate:meta) $v:ident [ $($name:literal),* ] $shape:ident $( ( $($ext:ty),* ) )?) => {
@@ -293,54 +321,69 @@ macro_rules! operators {
 
     (@arity raw) => { Arity::ANY };
     (@arity iter) => { Arity::ANY };
+    (@arity raw [ $($r:tt)* ]) => { operators!(@range $($r)*) };
+    (@arity iter [ $($r:tt)* ]) => { operators!(@range $($r)*) };
+    (@range $n:literal) => { Arity::exactly($n) };
+    (@range $lo:literal ..) => { Arity::at_least($lo) };
+    (@range $lo:literal ..= $hi:literal) => { Arity::between($lo, $hi) };
     (@arity eager ( $($e:ty),* )) => {
         const { Arity::of(&[ $( <$e as extract::Extract<'static>>::SPAN ),* ]) }
     };
 
     // ── dispatch arm bodies ───────────────────────────────────────────────
-    (@call $v:ident raw [ $($p:tt)* ] [ $($k:expr),* ]
+    (@call $v:ident raw { } [ $($p:tt)* ] [ $($k:expr),* ] [ $($pl:expr)? ]
         ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
-        $($p)*($args, $ctx, $engine, $arena $(, $k)*)
+        $($p)*($args, $ctx, $engine, $arena $(, $k)* $(, $pl)?)
     };
-    (@call $v:ident iter [ $($p:tt)* ] [ ]
+    (@call $v:ident raw { [ $($ar:tt)* ] } [ $($p:tt)* ] [ $($k:expr),* ] [ $($pl:expr)? ]
         ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
-        $($p)*($args, $iak, $ctx, $engine, $arena)
+        eager::raw::<{ OpCode::$v as u8 }, _>($args, $ctx, $engine, $arena,
+            |$args, $ctx, $engine, $arena| $($p)*($args, $ctx, $engine, $arena $(, $k)* $(, $pl)?))
     };
-    (@call $v:ident eager ( ) [ $($p:tt)* ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
+    (@call $v:ident iter { } [ $($p:tt)* ] [ $($k:expr),* ] [ $($pl:expr)? ]
+        ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
+        $($p)*($args, $iak, $ctx, $engine, $arena $(, $k)* $(, $pl)?)
+    };
+    (@call $v:ident iter { [ $($ar:tt)* ] } [ $($p:tt)* ] [ $($k:expr),* ] [ $($pl:expr)? ]
+        ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
+        eager::iter::<{ OpCode::$v as u8 }, _>($args, $iak, $ctx, $engine, $arena,
+            |$args, $iak, $ctx, $engine, $arena| $($p)*($args, $iak, $ctx, $engine, $arena $(, $k)* $(, $pl)?))
+    };
+    (@call $v:ident eager { } ( ) [ $($p:tt)* ] [ ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
         eager::call0::<{ OpCode::$v as u8 }, _, _>($args, $ctx, $engine, $arena, $($p)*)
     };
-    (@call $v:ident eager ( $a0:ty ) [ $($p:tt)* ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
+    (@call $v:ident eager { } ( $a0:ty ) [ $($p:tt)* ] [ ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
         eager::call1::<{ OpCode::$v as u8 }, $a0, _, _>($args, $ctx, $engine, $arena, $($p)*)
     };
-    (@call $v:ident eager ( $a0:ty ) [ $($p:tt)* ] [ $($k:expr),+ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
+    (@call $v:ident eager { } ( $a0:ty ) [ $($p:tt)* ] [ $($k:expr),+ ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
         eager::call1::<{ OpCode::$v as u8 }, $a0, _, _>($args, $ctx, $engine, $arena,
             |cx, v0| $($p)*(cx, v0, $($k),+))
     };
-    (@call $v:ident eager ( $a0:ty, $a1:ty ) [ $($p:tt)* ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
+    (@call $v:ident eager { } ( $a0:ty, $a1:ty ) [ $($p:tt)* ] [ ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
         eager::call2::<{ OpCode::$v as u8 }, $a0, $a1, _, _>($args, $ctx, $engine, $arena, $($p)*)
     };
-    (@call $v:ident eager ( $a0:ty, $a1:ty ) [ $($p:tt)* ] [ $($k:expr),+ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
+    (@call $v:ident eager { } ( $a0:ty, $a1:ty ) [ $($p:tt)* ] [ $($k:expr),+ ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
         eager::call2::<{ OpCode::$v as u8 }, $a0, $a1, _, _>($args, $ctx, $engine, $arena,
             |cx, v0, v1| $($p)*(cx, v0, v1, $($k),+))
     };
-    (@call $v:ident eager ( $a0:ty, $a1:ty, $a2:ty ) [ $($p:tt)* ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
+    (@call $v:ident eager { } ( $a0:ty, $a1:ty, $a2:ty ) [ $($p:tt)* ] [ ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
         eager::call3::<{ OpCode::$v as u8 }, $a0, $a1, $a2, _, _>($args, $ctx, $engine, $arena, $($p)*)
     };
-    (@call $v:ident eager ( $a0:ty, $a1:ty, $a2:ty ) [ $($p:tt)* ] [ $($k:expr),+ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
+    (@call $v:ident eager { } ( $a0:ty, $a1:ty, $a2:ty ) [ $($p:tt)* ] [ $($k:expr),+ ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
         eager::call3::<{ OpCode::$v as u8 }, $a0, $a1, $a2, _, _>($args, $ctx, $engine, $arena,
             |cx, v0, v1, v2| $($p)*(cx, v0, v1, v2, $($k),+))
     };
-    (@call $v:ident eager ( $a0:ty, $a1:ty, $a2:ty, $a3:ty ) [ $($p:tt)* ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
+    (@call $v:ident eager { } ( $a0:ty, $a1:ty, $a2:ty, $a3:ty ) [ $($p:tt)* ] [ ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
         eager::call4::<{ OpCode::$v as u8 }, $a0, $a1, $a2, $a3, _, _>($args, $ctx, $engine, $arena, $($p)*)
     };
-    (@call $v:ident eager ( $a0:ty, $a1:ty, $a2:ty, $a3:ty ) [ $($p:tt)* ] [ $($k:expr),+ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
+    (@call $v:ident eager { } ( $a0:ty, $a1:ty, $a2:ty, $a3:ty ) [ $($p:tt)* ] [ $($k:expr),+ ] [ ] ($args:ident, $iak:ident, $ctx:ident, $engine:ident, $arena:ident)) => {
         eager::call4::<{ OpCode::$v as u8 }, $a0, $a1, $a2, $a3, _, _>($args, $ctx, $engine, $arena,
             |cx, v0, v1, v2, v3| $($p)*(cx, v0, v1, v2, v3, $($k),+))
     };
     (@call $v:ident $($rest:tt)*) => {
         compile_error!(concat!(
             "operator row `", stringify!($v),
-            "`: unknown shape, more than four eager arguments, or extra arguments on an iter row"
+            "`: unknown shape, more than four eager arguments, `@` or `[arity]` on an eager row"
         ))
     };
 }
@@ -359,68 +402,70 @@ operators! {
             OpMeta { reads_context: true, display: Some("var"), ..PURE };
 
         // ── comparison ───────────────────────────────────────────────────
-        Equals ["=="] => raw comparison::evaluate_equals,
-            OpMeta { algebra: Some(Algebra::Eq { strict: false, negate: false }), ..PURE };
-        StrictEquals ["==="] => raw comparison::evaluate_strict_equals,
-            OpMeta { algebra: Some(Algebra::Eq { strict: true, negate: false }), ..PURE };
-        NotEquals ["!="] => raw comparison::evaluate_not_equals,
-            OpMeta { algebra: Some(Algebra::Eq { strict: false, negate: true }), ..PURE };
-        StrictNotEquals ["!=="] => raw comparison::evaluate_strict_not_equals,
-            OpMeta { algebra: Some(Algebra::Eq { strict: true, negate: true }), ..PURE };
-        GreaterThan [">"] => raw comparison::evaluate_greater_than,
-            OpMeta { algebra: Some(Algebra::Ord(OrdOp::Gt)), ..PURE };
-        GreaterThanEqual [">="] => raw comparison::evaluate_greater_than_equal,
-            OpMeta { algebra: Some(Algebra::Ord(OrdOp::Ge)), ..PURE };
-        LessThan ["<"] => raw comparison::evaluate_less_than,
-            OpMeta { algebra: Some(Algebra::Ord(OrdOp::Lt)), ..PURE };
-        LessThanEqual ["<="] => raw comparison::evaluate_less_than_equal,
-            OpMeta { algebra: Some(Algebra::Ord(OrdOp::Le)), ..PURE };
+        Equals ["=="] => raw[2..] comparison::equals @ Eq(EqOp::LOOSE), PURE;
+        StrictEquals ["==="] => raw[2..] comparison::equals @ Eq(EqOp::STRICT), PURE;
+        NotEquals ["!="] => raw[2] comparison::not_equals @ Eq(EqOp::LOOSE_NE), PURE;
+        StrictNotEquals ["!=="] => raw[2] comparison::not_equals @ Eq(EqOp::STRICT_NE), PURE;
+        GreaterThan [">"] => raw[2..] comparison::ordered @ Ord(OrdOp::Gt), PURE;
+        GreaterThanEqual [">="] => raw[2..] comparison::ordered @ Ord(OrdOp::Ge), PURE;
+        LessThan ["<"] => raw[2..] comparison::ordered @ Ord(OrdOp::Lt), PURE;
+        LessThanEqual ["<="] => raw[2..] comparison::ordered @ Ord(OrdOp::Le), PURE;
 
         // ── logic and control (lazy) ─────────────────────────────────────
         Not ["!"] => eager(Opt<Truthy>) logical::not, PURE;
         BoolCast ["!!"] => eager(Opt<Truthy>) logical::bool_cast, PURE;
-        And ["and"] => raw logical::evaluate_and, OpMeta { args_form: ArgsForm::ArrayOnly, ..PURE };
-        Or ["or"] => raw logical::evaluate_or, OpMeta { args_form: ArgsForm::ArrayOnly, ..PURE };
+        And ["and"] => raw[1..] logical::short_circuit @ Logic(Logic::And),
+            OpMeta { args_form: ArgsForm::ArrayOnly, on_missing: Miss::Return(singleton_null), ..PURE };
+        Or ["or"] => raw[1..] logical::short_circuit @ Logic(Logic::Or),
+            OpMeta { args_form: ArgsForm::ArrayOnly, on_missing: Miss::Return(singleton_null), ..PURE };
         // `?:` is accepted as a synonym; the ternary is the 3-argument `if`.
-        If ["if", "?:"] => raw control::evaluate_if, OpMeta { args_form: ArgsForm::ArrayOnly, ..PURE };
+        If ["if", "?:"] => raw[1..] control::evaluate_if,
+            OpMeta { args_form: ArgsForm::ArrayOnly, on_missing: Miss::Return(singleton_null), ..PURE };
 
         // ── arithmetic ───────────────────────────────────────────────────
         Add ["+"] => raw arithmetic::evaluate_add,
             OpMeta { algebra: Some(Algebra::Arith(ArithOp::Add)), ..PURE };
-        Subtract ["-"] => raw arithmetic::evaluate_subtract,
+        Subtract ["-"] => raw[1..] arithmetic::evaluate_subtract,
             OpMeta { algebra: Some(Algebra::Arith(ArithOp::Sub)), ..PURE };
         Multiply ["*"] => raw arithmetic::evaluate_multiply,
             OpMeta { algebra: Some(Algebra::Arith(ArithOp::Mul)), ..PURE };
-        Divide ["/"] => raw arithmetic::div_or_mod(arithmetic::DivOp::Divide), PURE;
-        Modulo ["%"] => raw arithmetic::div_or_mod(arithmetic::DivOp::Modulo), PURE;
+        Divide ["/"] => raw[1..] arithmetic::div_or_mod @ Div(DivOp::Divide), PURE;
+        Modulo ["%"] => raw[1..] arithmetic::div_or_mod @ Div(DivOp::Modulo), PURE;
         // `max` / `min` / `merge` disambiguate a literal array from an
         // argument list at runtime (`{"max": [[1, 2]]}`), so folding their
         // static form would bake in the wrong reading.
-        Max ["max"] => iter arithmetic::evaluate_max, OpMeta { fold: Fold::Never, ..PURE };
-        Min ["min"] => iter arithmetic::evaluate_min, OpMeta { fold: Fold::Never, ..PURE };
+        Max ["max"] => iter[1..] arithmetic::extremum @ Extremum(Extremum::Max),
+            OpMeta { fold: Fold::Never, ..PURE };
+        Min ["min"] => iter[1..] arithmetic::extremum @ Extremum(Extremum::Min),
+            OpMeta { fold: Fold::Never, ..PURE };
 
         // ── strings ──────────────────────────────────────────────────────
         Concat ["cat"] => raw string::evaluate_concat, OpMeta { cost: Cost::Bytes, ..PURE };
         Substr ["substr"] => eager(Str, Lenient<Int>, Lenient<Int>) string::substr,
-            OpMeta { on_missing: Miss::Return(crate::arena::singletons::singleton_empty_string), cost: Cost::Bytes, ..PURE };
+            OpMeta { on_missing: Miss::Return(singleton_empty_string), cost: Cost::Bytes, ..PURE };
         In ["in"] => eager(Any, Any) string::in_,
-            OpMeta { on_missing: Miss::Return(crate::arena::singletons::singleton_false), cost: Cost::Bytes, ..PURE };
+            OpMeta { on_missing: Miss::Return(singleton_false), cost: Cost::Bytes, ..PURE };
 
         // ── arrays ───────────────────────────────────────────────────────
         Merge ["merge"] => raw array::evaluate_merge,
             OpMeta { fold: Fold::Never, cost: Cost::PerItem, ..PURE };
-        Filter ["filter"] => iter array::evaluate_filter, ITERATOR;
-        Map ["map"] => iter array::evaluate_map, ITERATOR;
-        Reduce ["reduce"] => iter array::evaluate_reduce, ITERATOR;
-        All ["all"] => iter array::evaluate_all, ITERATOR;
-        Some ["some"] => iter array::evaluate_some, ITERATOR;
-        None ["none"] => iter array::evaluate_none, ITERATOR;
+        Filter ["filter"] => iter[2] array::evaluate_filter, ITERATOR;
+        Map ["map"] => iter[2] array::evaluate_map, ITERATOR;
+        Reduce ["reduce"] => iter[2..=3] array::evaluate_reduce, ITERATOR;
+        All ["all"] => iter[2] array::quantifier @ Quant(Quant::All), ITERATOR;
+        Some ["some"] => iter[2] array::quantifier @ Quant(Quant::Some), ITERATOR;
+        None ["none"] => iter[2] array::quantifier @ Quant(Quant::None), ITERATOR;
 
         // ── missing values ───────────────────────────────────────────────
         Missing ["missing"] => raw missing::evaluate_missing,
             OpMeta { reads_context: true, compile: Some(CompileHook::Args(hooks::missing)), ..PURE };
-        MissingSome ["missing_some"] => raw missing::evaluate_missing_some,
-            OpMeta { reads_context: true, compile: Some(CompileHook::Args(hooks::missing_some)), ..PURE };
+        MissingSome ["missing_some"] => raw[2] missing::evaluate_missing_some,
+            OpMeta {
+                reads_context: true,
+                on_missing: Miss::Return(singleton_empty_array),
+                compile: Some(CompileHook::Args(hooks::missing_some)),
+                ..PURE
+            };
     }
 
     family DateTime (feature = "datetime") {
@@ -459,14 +504,15 @@ operators! {
     family ExtArray (feature = "ext-array") {
         // `sort`'s `args[1]` is the scalar direction flag; the key
         // expression at `args[2]` runs per element.
-        Sort ["sort"] => iter array::evaluate_sort,
-            OpMeta { frames: Frames::At(2), cost: Cost::NLogN, ..ITERATOR };
-        Slice ["slice"] => raw array::evaluate_slice, OpMeta { cost: Cost::PerItem, ..PURE };
-        GroupBy ["group_by"] => iter array::evaluate_group_by, ITERATOR;
+        Sort ["sort"] => iter[1..=3] array::evaluate_sort,
+            OpMeta { frames: Frames::At(2), cost: Cost::NLogN, on_extra: Extra::Ignore, ..ITERATOR };
+        Slice ["slice"] => raw[1..=4] array::evaluate_slice, OpMeta { cost: Cost::PerItem, ..PURE };
+        GroupBy ["group_by"] => iter[2] array::evaluate_group_by,
+            OpMeta { on_extra: Extra::Ignore, ..ITERATOR };
         // Without a key expression nothing runs under a frame, so
         // `distinct` folds like any pure operator.
-        Distinct ["distinct"] => iter array::evaluate_distinct,
-            OpMeta { cost: Cost::Quadratic, ..ITERATOR };
+        Distinct ["distinct"] => iter[1..=2] array::evaluate_distinct,
+            OpMeta { cost: Cost::Quadratic, on_extra: Extra::Ignore, ..ITERATOR };
     }
 
     family ExtObject (feature = "ext-object") {
@@ -476,17 +522,31 @@ operators! {
     }
 
     family ExtControl (feature = "ext-control") {
-        Exists ["exists"] => raw variable::evaluate_exists,
-            OpMeta { reads_context: true, compile: Some(CompileHook::Args(hooks::exists)), ..PURE };
+        // No path names the current data itself, which always exists (the
+        // compile hook resolves `{"exists": []}` that way before this row's
+        // gate is reached).
+        Exists ["exists"] => raw[1..] variable::evaluate_exists,
+            OpMeta {
+                reads_context: true,
+                on_missing: Miss::Return(singleton_true),
+                compile: Some(CompileHook::Args(hooks::exists)),
+                ..PURE
+            };
         Coalesce ["??"] => raw control::evaluate_coalesce, PURE;
-        Switch ["switch", "match"] => raw control::evaluate_switch, PURE;
+        Switch ["switch", "match"] => raw[2..=3] control::evaluate_switch,
+            OpMeta { on_missing: Miss::Return(singleton_null), ..PURE };
         Type ["type"] => eager(Any) inspect::type_,
             OpMeta { on_missing: Miss::Return(inspect::type_of_nothing), ..PURE };
     }
 
     family ErrorHandling (feature = "error-handling") {
-        Try ["try"] => raw error_handling::evaluate_try,
-            OpMeta { effect: Effect::Catches, frames: Frames::LastIfMulti, ..PURE };
+        Try ["try"] => raw[1..] error_handling::evaluate_try,
+            OpMeta {
+                effect: Effect::Catches,
+                frames: Frames::LastIfMulti,
+                on_missing: Miss::Return(singleton_null),
+                ..PURE
+            };
         Throw ["throw"] => raw error_handling::evaluate_throw,
             OpMeta { effect: Effect::Throws, compile: Some(CompileHook::Args(hooks::throw_literal)), ..PURE };
     }
@@ -533,14 +593,14 @@ operators! {
         // list (fractional, sem_ver, now, try, throw) and no soundness
         // argument was made for the flagd pair; a flag rule calls each
         // once, so there is nothing to gain from relaxing it.
-        Fractional ["fractional"] => raw flagd::evaluate_fractional,
-            OpMeta { reads_context: true, cse: Cse::Never, ..PURE };
+        Fractional ["fractional"] => raw[1..] flagd::evaluate_fractional,
+            OpMeta { reads_context: true, cse: Cse::Never, on_missing: Miss::Return(singleton_null), ..PURE };
         // Pure given its arguments, so a fully literal call folds. Never
         // memoised, for the same reason as `fractional`.
         SemVer ["sem_ver"] => eager(Any, Any, Any) flagd::sem_ver,
             OpMeta {
-                on_missing: Miss::Return(crate::arena::singletons::singleton_null),
-                on_extra: Extra::Return(crate::arena::singletons::singleton_null),
+                on_missing: Miss::Return(singleton_null),
+                on_extra: Extra::Return(singleton_null),
                 cse: Cse::Never,
                 ..PURE
             };

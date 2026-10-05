@@ -439,8 +439,20 @@ grammar.
    its own arguments (lazy, control flow, variadic), or `iter` for one
    that iterates `args[0]` (it also receives the cached `IterArgKind`).
    Names are canonical first, then aliases; `[]` makes an internal opcode
-   (give it a `display` name). Operators that share an implementation
-   pass a kind tag through the path: `raw arithmetic::div_or_mod(DivOp::Divide)`.
+   (give it a `display` name).
+
+   A `raw` or `iter` row declares how many arguments it reads in
+   brackets, `raw[2]`, `raw[2..]` or `iter[2..=3]`, and the generated arm
+   applies the row's `on_missing` / `on_extra` before the body runs, so
+   the body never checks the count itself (it may still branch on it).
+   Leave the brackets off only when every count is meaningful (`+`, `cat`).
+
+   Operators that share an implementation name their operation once with
+   `@ Kind(payload)`: `raw[2..] comparison::ordered @ Ord(OrdOp::Gt)`.
+   The row's `algebra` becomes `Algebra::Ord(OrdOp::Gt)` and the body
+   receives `OrdOp::Gt` as its last argument, so the fast paths and the
+   body read the same constant. A one-off bound argument goes in the path
+   instead: `eager(StrictNum, Rest<StrictNum>) arithmetic::unary_math(UnaryMathOp::Abs)`.
 2. **Body.** Write the function the row names, under
    `crates/datalogic-rs/src/operators/<category>/`. An `eager` body takes
    the extracted values and returns any `IntoValue` type:
@@ -455,15 +467,14 @@ grammar.
 
    `raw` and `iter` bodies keep the four-parameter signature
    (`args, ctx, engine, arena`, plus `iter_arg_kind` after `args` for
-   `iter`). Arity for an `eager` row comes from its extractors: a missing
+   `iter`, plus the `@` payload last). Arity for an `eager` row comes from
+   its extractors: a missing
    argument raises `InvalidArguments` and extras are ignored unless the
    row's `on_missing` / `on_extra` say otherwise. The extractor set
    (`Any`, `Str`, `Int`, `StrictNum`, `Truthy`, `Obj`, `Nullable<T>`,
    `Opt<T>`, `Lenient<T>`, `Lazy`, `Rest<T>`) lives in
    `operators/extract.rs`, with a table of what each one accepts;
-   family-specific ones (the tensor family's) live with the family. An
-   `eager` row can pass a kind tag too: `eager(StrictNum, Rest<StrictNum>)
-   arithmetic::unary_math(UnaryMathOp::Abs)`.
+   family-specific ones (the tensor family's) live with the family.
 3. **Declared facts.** The row's `OpMeta` (see `operators/meta.rs`) says
    whether the operator reads the data context (`reads_context`), has an
    effect (`Clock`, `Throws`, `Catches`), runs an argument under a pushed

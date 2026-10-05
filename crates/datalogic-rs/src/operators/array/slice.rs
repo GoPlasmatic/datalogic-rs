@@ -14,10 +14,6 @@ pub(crate) fn evaluate_slice<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Err(crate::Error::invalid_args());
-    }
-
     let coll_av = engine.dispatch_node(&args[0], ctx, arena)?;
 
     // Null passthrough.

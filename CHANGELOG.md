@@ -14,7 +14,9 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 - **`Engine::operators()`** describes every built-in operator compiled
   into the build: canonical name and aliases, family and gating feature,
-  declared argument counts, whether it reads the data context, its effect
+  the argument counts it reads (declared on every row whose body does not
+  take any count, so `==` reports 2 or more and `map` exactly 2), whether
+  it reads the data context, its effect
   (`pure`, `clock`, `throws`, `catches`), its cost class, and which
   argument (if any) runs under a pushed frame (`ScopedArg`). It is read
   from the same table that drives compilation and dispatch, so it cannot
@@ -42,6 +44,12 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   and result conversion are generated. Every `InvalidArguments` message
   is unchanged, all suites pass on every compile path, and the canonical
   benchmark is within noise.
+- **Editor argument counts for `!=`, `!==`, `switch` and `match`.** The
+  React editor offered `!=` and `!==` as chainable, but the engine
+  compares only the first two operands and ignores the rest; they are now
+  two-operand nodes. `switch` / `match` accept at most a value, the case
+  list and a default, as the engine reads. Found by the registry test
+  against the catalogue's new argument counts.
 - **Tensor error precedence.** When a tensor operator call has two
   problems, a different one may now be reported: a missing argument is
   reported before any argument is evaluated, and an error raised while

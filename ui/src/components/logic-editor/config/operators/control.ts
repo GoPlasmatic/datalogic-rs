@@ -257,6 +257,7 @@ export const controlOperators: Record<string, Operator> = {
     arity: {
       type: 'special',
       min: 2,
+      max: 3,
       args: [
         { name: 'discriminant', label: 'Value', type: 'any', required: true },
         { name: 'cases', label: 'Cases', type: 'array', required: true },
@@ -415,6 +416,7 @@ export const controlOperators: Record<string, Operator> = {
     arity: {
       type: 'special',
       min: 2,
+      max: 3,
       args: [
         { name: 'discriminant', label: 'Value', type: 'any', required: true },
         { name: 'cases', label: 'Cases', type: 'array', required: true },

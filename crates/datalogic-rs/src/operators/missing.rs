@@ -52,10 +52,6 @@ pub(crate) fn evaluate_missing_some<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 {
-        return Ok(crate::arena::singletons::singleton_empty_array());
-    }
-
     let min_av = engine.dispatch_node(&args[0], ctx, arena)?;
     let min_present = min_av.as_i64().unwrap_or(1).max(0) as usize;
 

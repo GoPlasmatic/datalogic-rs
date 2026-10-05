@@ -43,7 +43,7 @@ mod sort;
 pub(crate) use filter::evaluate_filter;
 pub(crate) use map::evaluate_map;
 pub(crate) use merge::evaluate_merge;
-pub(crate) use quantifiers::{evaluate_all, evaluate_none, evaluate_some};
+pub(crate) use quantifiers::quantifier;
 pub(crate) use reduce::evaluate_reduce;
 
 #[cfg(feature = "ext-string")]

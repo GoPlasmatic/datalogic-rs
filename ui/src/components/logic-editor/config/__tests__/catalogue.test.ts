@@ -46,8 +46,8 @@ describe('operator registry vs the engine catalogue', () => {
   });
 
   it('never offers an argument count the engine does not read', () => {
-    // Only typed operators declare their counts in the table; the others
-    // check their own arguments and report 0..unbounded.
+    // Rows with a declared maximum. A variadic row (`max_args` null) and a
+    // row that declares no arity (0..unbounded) bound nothing to check.
     for (const row of catalogue.filter((r) => r.max_args !== null)) {
       for (const name of [row.name, ...row.aliases]) {
         const ui = admits(operators[name].arity);

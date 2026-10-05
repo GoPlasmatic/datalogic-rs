@@ -103,39 +103,6 @@ pub(super) fn coerce_pair_f64(
     ))
 }
 
-/// Operation discriminator for the shared 1-arg fold (`+` and `*`).
-#[derive(Clone, Copy)]
-pub(super) enum ArithOp {
-    Add,
-    Multiply,
-}
-
-impl ArithOp {
-    #[inline]
-    pub(super) fn identity_int(self) -> i64 {
-        match self {
-            ArithOp::Add => 0,
-            ArithOp::Multiply => 1,
-        }
-    }
-
-    #[inline]
-    pub(super) fn combine_int(self, a: i64, b: i64) -> Option<i64> {
-        match self {
-            ArithOp::Add => a.checked_add(b),
-            ArithOp::Multiply => a.checked_mul(b),
-        }
-    }
-
-    #[inline]
-    pub(super) fn combine_f(self, a: f64, b: f64) -> f64 {
-        match self {
-            ArithOp::Add => a + b,
-            ArithOp::Multiply => a * b,
-        }
-    }
-}
-
 /// Spec for an integer-fast-path / float-fallback variadic fold:
 /// inits, the integer combine (with overflow signaling via `None`), and
 /// the float combine.

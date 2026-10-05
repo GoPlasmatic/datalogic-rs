@@ -1,4 +1,5 @@
-//! Typed rows for fixed-arity operators.
+//! Row adapters: typed rows for fixed-arity operators, and the arity gate
+//! for `raw[..]` / `iter[..]` rows.
 //!
 //! A table row such as `eager(Str, Str) string::ends_with` declares the
 //! operator's signature as a list of argument extractors. The body is a
@@ -35,6 +36,7 @@ use bumpalo::Bump;
 use super::extract::{Extract, IntoValue};
 use super::meta::{Extra, Miss, OpMeta};
 use crate::arena::{ContextStack, DataValue};
+use crate::operators::array::IterArgKind;
 use crate::{CompiledNode, Engine, Error, OpCode, Result};
 
 // ---------------------------------------------------------------------------
@@ -100,8 +102,31 @@ pub(crate) struct Arity {
 }
 
 impl Arity {
-    /// `raw` and `iter` rows: the body checks its own arguments.
+    /// Any number of arguments: a bare `raw` or `iter` row, whose body
+    /// takes every count (it may still branch on it).
     pub(crate) const ANY: Arity = Arity { min: 0, max: None };
+
+    /// Exactly `n` (`raw[n]`).
+    pub(crate) const fn exactly(n: u8) -> Arity {
+        Arity {
+            min: n,
+            max: Some(n),
+        }
+    }
+
+    /// `min` or more (`raw[min..]`).
+    pub(crate) const fn at_least(min: u8) -> Arity {
+        Arity { min, max: None }
+    }
+
+    /// `min` to `max` inclusive (`raw[min..=max]`).
+    pub(crate) const fn between(min: u8, max: u8) -> Arity {
+        assert!(min <= max, "an empty arity range");
+        Arity {
+            min,
+            max: Some(max),
+        }
+    }
 
     /// Sum the spans of an `eager` row's extractors. Optional extractors
     /// must come after the required ones, and an unbounded one
@@ -195,6 +220,61 @@ macro_rules! eager_call {
             Ok(out.into_value(&mut cx))
         }
     };
+}
+
+/// The adapter for a `raw[..]` row: apply the row's declared arity and
+/// policy, then run the body, which evaluates its own arguments and may
+/// index any position below the declared minimum.
+#[inline]
+pub(crate) fn raw<'a, const OP: u8, F>(
+    args: &'a [CompiledNode],
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
+    arena: &'a Bump,
+    body: F,
+) -> Result<&'a DataValue<'a>>
+where
+    F: for<'c> FnOnce(
+        &'a [CompiledNode],
+        &'c mut ContextStack<'a>,
+        &'c Engine,
+        &'a Bump,
+    ) -> Result<&'a DataValue<'a>>,
+{
+    let meta: &'static OpMeta = const { OpCode::ALL[OP as usize].meta() };
+    let arity: Arity = const { OpCode::ALL[OP as usize].arity() };
+    if let Some(early) = check_arity(args.len(), arity, meta)? {
+        return Ok(early);
+    }
+    body(args, ctx, engine, arena)
+}
+
+/// The adapter for an `iter[..]` row: [`raw`], passing the iteration-source
+/// classification through.
+#[inline]
+pub(crate) fn iter<'a, const OP: u8, F>(
+    args: &'a [CompiledNode],
+    iter_arg_kind: IterArgKind,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
+    arena: &'a Bump,
+    body: F,
+) -> Result<&'a DataValue<'a>>
+where
+    F: for<'c> FnOnce(
+        &'a [CompiledNode],
+        IterArgKind,
+        &'c mut ContextStack<'a>,
+        &'c Engine,
+        &'a Bump,
+    ) -> Result<&'a DataValue<'a>>,
+{
+    let meta: &'static OpMeta = const { OpCode::ALL[OP as usize].meta() };
+    let arity: Arity = const { OpCode::ALL[OP as usize].arity() };
+    if let Some(early) = check_arity(args.len(), arity, meta)? {
+        return Ok(early);
+    }
+    body(args, iter_arg_kind, ctx, engine, arena)
 }
 
 eager_call!(call0;);

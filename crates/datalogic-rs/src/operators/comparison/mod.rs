@@ -45,6 +45,7 @@
 mod loose;
 
 use crate::arena::{ContextStack, DataValue, coerce_to_number_cfg};
+use crate::operators::meta::{EqOp, OrdOp};
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 use loose::loose_equals;
@@ -185,58 +186,6 @@ fn iso_byte_compare_eligible(l: &str, r: &str) -> bool {
     // designator at the same offset in both strings.
     let tz_start = 19 + if frac_l > 0 { 1 + frac_l as usize } else { 0 };
     l.as_bytes()[tz_start..] == r.as_bytes()[tz_start..]
-}
-
-#[derive(Clone, Copy)]
-enum OrdOp {
-    Gt,
-    Gte,
-    Lt,
-    Lte,
-}
-
-impl OrdOp {
-    #[inline]
-    fn apply_f64(self, l: f64, r: f64) -> bool {
-        match self {
-            OrdOp::Gt => l > r,
-            OrdOp::Gte => l >= r,
-            OrdOp::Lt => l < r,
-            OrdOp::Lte => l <= r,
-        }
-    }
-
-    #[inline]
-    fn apply_str(self, l: &str, r: &str) -> bool {
-        match self {
-            OrdOp::Gt => l > r,
-            OrdOp::Gte => l >= r,
-            OrdOp::Lt => l < r,
-            OrdOp::Lte => l <= r,
-        }
-    }
-
-    #[cfg(feature = "datetime")]
-    #[inline]
-    fn apply_datetime(self, l: &datavalue::DataDateTime, r: &datavalue::DataDateTime) -> bool {
-        match self {
-            OrdOp::Gt => l > r,
-            OrdOp::Gte => l >= r,
-            OrdOp::Lt => l < r,
-            OrdOp::Lte => l <= r,
-        }
-    }
-
-    #[cfg(feature = "datetime")]
-    #[inline]
-    fn apply_duration(self, l: &datavalue::DataDuration, r: &datavalue::DataDuration) -> bool {
-        match self {
-            OrdOp::Gt => l > r,
-            OrdOp::Gte => l >= r,
-            OrdOp::Lt => l < r,
-            OrdOp::Lte => l <= r,
-        }
-    }
 }
 
 // =============================================================================
@@ -411,7 +360,7 @@ fn compare_ordered(
     // to f64), matching `compare_equals` and avoiding the `Option` + `.expect()`
     // panic-path codegen of the `DataValue::as_f64` round-trip.
     if let (DataValue::Number(a), DataValue::Number(b)) = (left, right) {
-        return Ok(op.apply_f64(a.as_f64(), b.as_f64()));
+        return Ok(op.cmp_f64(a.as_f64(), b.as_f64()));
     }
 
     // String vs String (non-datetime fast path). Datetime-shaped operands
@@ -423,11 +372,11 @@ fn compare_ordered(
             || !could_be_datetime_or_duration(r)
             || iso_byte_compare_eligible(l, r))
     {
-        return Ok(op.apply_str(l, r));
+        return Ok(op.holds(l, r));
     }
     #[cfg(not(feature = "datetime"))]
     if let (Some(l), Some(r)) = (left.as_str(), right.as_str()) {
-        return Ok(op.apply_str(l, r));
+        return Ok(op.holds(l, r));
     }
 
     #[cfg(feature = "datetime")]
@@ -436,7 +385,7 @@ fn compare_ordered(
         let left_dt = extract_datetime(left);
         let right_dt = extract_datetime(right);
         if let (Some(dt1), Some(dt2)) = (&left_dt, &right_dt) {
-            return Ok(op.apply_datetime(dt1, dt2));
+            return Ok(op.holds(dt1, dt2));
         }
         let left_dur = if left_dt.is_none() {
             extract_duration(left)
@@ -449,7 +398,7 @@ fn compare_ordered(
             None
         };
         if let (Some(dur1), Some(dur2)) = (&left_dur, &right_dur) {
-            return Ok(op.apply_duration(dur1, dur2));
+            return Ok(op.holds(dur1, dur2));
         }
     }
 
@@ -462,14 +411,14 @@ fn compare_ordered(
 
     // String vs String — datetime-shaped that fell through.
     if let (Some(l), Some(r)) = (left.as_str(), right.as_str()) {
-        return Ok(op.apply_str(l, r));
+        return Ok(op.holds(l, r));
     }
 
     // Numeric coercion fallback.
     let l_num = coerce_to_number_cfg(left, engine);
     let r_num = coerce_to_number_cfg(right, engine);
     if let (Some(l), Some(r)) = (l_num, r_num) {
-        return Ok(op.apply_f64(l, r));
+        return Ok(op.cmp_f64(l, r));
     }
 
     // Number-String mismatch — NaN error.
@@ -482,99 +431,55 @@ fn compare_ordered(
     Ok(false)
 }
 
-/// Chained equality (`==` / `===`): every arg must equal the first.
-/// `strict` selects strict vs loose `compare_equals`.
+/// `==` / `===`: every argument equals the first. Short-circuits on the
+/// first mismatch, so later arguments are not evaluated.
 #[inline]
-fn equals_chain<'a>(
+pub(crate) fn equals<'a>(
     args: &'a [CompiledNode],
     ctx: &mut ContextStack<'a>,
     engine: &Engine,
     arena: &'a Bump,
-    strict: bool,
+    op: EqOp,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 {
-        return Err(crate::Error::invalid_args());
-    }
+    debug_assert!(!op.negate, "`!=` / `!==` rows bind `not_equals`");
     let first_av = engine.dispatch_node(&args[0], ctx, arena)?;
     for arg in &args[1..] {
         let cur_av = engine.dispatch_node(arg, ctx, arena)?;
-        if !compare_equals(first_av, cur_av, strict, engine, ctx)? {
+        if !compare_equals(first_av, cur_av, op.strict, engine, ctx)? {
             return Ok(crate::arena::singletons::singleton_false());
         }
     }
     Ok(crate::arena::singletons::singleton_true())
 }
 
-/// Pairwise inequality (`!=` / `!==`) on the first two args. `strict`
-/// selects strict vs loose `compare_equals`.
+/// `!=` / `!==`: the first two arguments differ. Further arguments are
+/// ignored and never evaluated.
 #[inline]
-fn not_equals_pair<'a>(
+pub(crate) fn not_equals<'a>(
     args: &'a [CompiledNode],
     ctx: &mut ContextStack<'a>,
     engine: &Engine,
     arena: &'a Bump,
-    strict: bool,
+    op: EqOp,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 {
-        return Err(crate::Error::invalid_args());
-    }
+    debug_assert!(op.negate, "`==` / `===` rows bind `equals`");
     let a = engine.dispatch_node(&args[0], ctx, arena)?;
     let b = engine.dispatch_node(&args[1], ctx, arena)?;
-    let eq = compare_equals(a, b, strict, engine, ctx)?;
+    let eq = compare_equals(a, b, op.strict, engine, ctx)?;
     Ok(crate::arena::singletons::singleton_bool(!eq))
 }
 
+/// `>`, `>=`, `<`, `<=`: each adjacent pair is ordered by `op`
+/// (`{"<": [1, 2, 3]}` is `1 < 2 && 2 < 3`). Short-circuits on the first
+/// pair that is not.
 #[inline]
-pub(crate) fn evaluate_strict_equals<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    equals_chain(args, ctx, engine, arena, true)
-}
-
-#[inline]
-pub(crate) fn evaluate_strict_not_equals<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    not_equals_pair(args, ctx, engine, arena, true)
-}
-
-#[inline]
-pub(crate) fn evaluate_equals<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    equals_chain(args, ctx, engine, arena, false)
-}
-
-#[inline]
-pub(crate) fn evaluate_not_equals<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    not_equals_pair(args, ctx, engine, arena, false)
-}
-
-#[inline]
-fn evaluate_ord<'a>(
+pub(crate) fn ordered<'a>(
     args: &'a [CompiledNode],
     ctx: &mut ContextStack<'a>,
     engine: &Engine,
     arena: &'a Bump,
     op: OrdOp,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 {
-        return Err(crate::Error::invalid_args());
-    }
     let mut prev_av = engine.dispatch_node(&args[0], ctx, arena)?;
     for arg in &args[1..] {
         let cur_av = engine.dispatch_node(arg, ctx, arena)?;
@@ -586,52 +491,12 @@ fn evaluate_ord<'a>(
     Ok(crate::arena::singletons::singleton_true())
 }
 
-#[inline]
-pub(crate) fn evaluate_greater_than<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    evaluate_ord(args, ctx, engine, arena, OrdOp::Gt)
-}
-
-#[inline]
-pub(crate) fn evaluate_greater_than_equal<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    evaluate_ord(args, ctx, engine, arena, OrdOp::Gte)
-}
-
-#[inline]
-pub(crate) fn evaluate_less_than<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    evaluate_ord(args, ctx, engine, arena, OrdOp::Lt)
-}
-
-#[inline]
-pub(crate) fn evaluate_less_than_equal<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    evaluate_ord(args, ctx, engine, arena, OrdOp::Lte)
-}
-
 #[cfg(all(test, feature = "datetime"))]
 mod iso_fastpath_tests {
     use super::*;
     use crate::operators::datetime::{extract_datetime, extract_duration};
 
-    const ORD_OPS: [OrdOp; 4] = [OrdOp::Gt, OrdOp::Gte, OrdOp::Lt, OrdOp::Lte];
+    const ORD_OPS: [OrdOp; 4] = [OrdOp::Gt, OrdOp::Ge, OrdOp::Lt, OrdOp::Le];
 
     /// A context for direct `compare_equals` calls: unbounded, rooted at null.
     fn test_ctx() -> ContextStack<'static> {
@@ -712,8 +577,8 @@ mod iso_fastpath_tests {
             extract_datetime(&DataValue::String(l)),
             extract_datetime(&DataValue::String(r)),
         ) {
-            (Some(a), Some(b)) => op.apply_datetime(&a, &b),
-            _ => op.apply_str(l, r),
+            (Some(a), Some(b)) => op.holds(&a, &b),
+            _ => op.holds(l, r),
         }
     }
 

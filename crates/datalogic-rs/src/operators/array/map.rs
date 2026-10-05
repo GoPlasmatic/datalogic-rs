@@ -25,10 +25,6 @@ pub(crate) fn evaluate_map<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() != 2 {
-        return Err(crate::Error::invalid_args());
-    }
-
     let body = &args[1];
     let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,

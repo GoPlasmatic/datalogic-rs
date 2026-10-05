@@ -43,10 +43,11 @@ pub(crate) struct OpMeta {
     /// What the operator's work is proportional to. Documentation for the
     /// budget audit: the operator body does its own charging.
     pub cost: Cost,
-    /// `eager` rows only: what happens when a required argument is absent.
+    /// Rows with a declared arity (`eager(..)`, `raw[..]`, `iter[..]`): what
+    /// happens when a required argument is absent.
     pub on_missing: Miss,
-    /// `eager` rows only: what happens when there are more arguments than
-    /// the signature reads.
+    /// Rows with a declared maximum: what happens when there are more
+    /// arguments than the row reads.
     pub on_extra: Extra,
     /// What the operator computes, for the fast paths that specialise on it
     /// (`map` / `reduce` arithmetic bodies, `filter` comparisons, constant
@@ -160,7 +161,7 @@ impl Effect {
 /// A static singleton returned in place of evaluating.
 pub(crate) type Singleton = fn() -> &'static DataValue<'static>;
 
-/// `eager` rows: what happens when a required argument is absent.
+/// What happens when a required argument is absent.
 #[derive(Clone, Copy)]
 pub(crate) enum Miss {
     /// `InvalidArguments("Invalid Arguments")`.
@@ -172,8 +173,7 @@ pub(crate) enum Miss {
     Return(Singleton),
 }
 
-/// `eager` rows: what happens when there are more arguments than the
-/// signature reads.
+/// What happens when there are more arguments than the row reads.
 #[derive(Clone, Copy)]
 pub(crate) enum Extra {
     /// Extra arguments are never evaluated.
@@ -186,15 +186,101 @@ pub(crate) enum Extra {
     Return(Singleton),
 }
 
-/// What an operator computes, for fast paths that specialise on it.
+/// What an operator computes.
+///
+/// Read by the fast paths that specialise on it (`map` / `reduce`
+/// arithmetic bodies, `filter` comparisons, constant folding's associative
+/// set), and, for a row written `@ Kind(payload)`, passed to the row's body
+/// as its last argument, so one body serves every row of the kind.
+///
+/// The payload types live here as a shared vocabulary; behaviour that only
+/// one operator module needs is an inherent `impl` in that module.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Algebra {
     /// `+`, `-`, `*`.
     Arith(ArithOp),
+    /// `/`, `%`.
+    Div(DivOp),
     /// `>`, `>=`, `<`, `<=`.
     Ord(OrdOp),
     /// `==`, `===`, `!=`, `!==`.
-    Eq { strict: bool, negate: bool },
+    Eq(EqOp),
+    /// `and`, `or`.
+    Logic(Logic),
+    /// `max`, `min`.
+    Extremum(Extremum),
+    /// `all`, `some`, `none`.
+    Quant(Quant),
+}
+
+/// An equality comparison.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct EqOp {
+    /// `===` / `!==`: no type coercion.
+    pub strict: bool,
+    /// `!=` / `!==`: the negated result.
+    pub negate: bool,
+}
+
+impl EqOp {
+    /// `==`.
+    pub(crate) const LOOSE: EqOp = EqOp {
+        strict: false,
+        negate: false,
+    };
+    /// `===`.
+    pub(crate) const STRICT: EqOp = EqOp {
+        strict: true,
+        negate: false,
+    };
+    /// `!=`.
+    pub(crate) const LOOSE_NE: EqOp = EqOp {
+        strict: false,
+        negate: true,
+    };
+    /// `!==`.
+    pub(crate) const STRICT_NE: EqOp = EqOp {
+        strict: true,
+        negate: true,
+    };
+}
+
+/// `/` or `%`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DivOp {
+    Divide,
+    Modulo,
+}
+
+/// A short-circuiting boolean chain.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Logic {
+    And,
+    Or,
+}
+
+impl Logic {
+    /// The truthiness that ends the chain and becomes its result: falsy
+    /// for `and`, truthy for `or`.
+    #[inline(always)]
+    pub(crate) const fn absorbing(self) -> bool {
+        matches!(self, Logic::Or)
+    }
+}
+
+/// `max` or `min`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Extremum {
+    Max,
+    Min,
+}
+
+/// A quantifier over a collection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Quant {
+    All,
+    Some,
+    None,
 }
 
 /// A binary arithmetic operation with an exact integer form.
@@ -233,6 +319,15 @@ impl ArithOp {
     pub(crate) const fn is_associative(self) -> bool {
         matches!(self, ArithOp::Add | ArithOp::Mul)
     }
+
+    /// The `e` with `x op e == x`: the start of a fold over no operands.
+    #[inline(always)]
+    pub(crate) const fn right_identity(self) -> i64 {
+        match self {
+            ArithOp::Add | ArithOp::Sub => 0,
+            ArithOp::Mul => 1,
+        }
+    }
 }
 
 /// An ordering comparison.
@@ -245,6 +340,17 @@ pub(crate) enum OrdOp {
 }
 
 impl OrdOp {
+    /// Whether `a op b` holds.
+    #[inline(always)]
+    pub(crate) fn holds<T: PartialOrd + ?Sized>(self, a: &T, b: &T) -> bool {
+        match self {
+            OrdOp::Gt => a > b,
+            OrdOp::Ge => a >= b,
+            OrdOp::Lt => a < b,
+            OrdOp::Le => a <= b,
+        }
+    }
+
     /// Apply the comparison to two `f64`s.
     #[inline(always)]
     pub(crate) fn cmp_f64(self, a: f64, b: f64) -> bool {
@@ -305,10 +411,13 @@ pub(crate) const PURE: OpMeta = OpMeta {
 };
 
 /// An iterator: `args[0]` is the source and `args[1]` the per-element
-/// body, run under a pushed frame.
+/// body, run under a pushed frame. The JSONLogic iterators reject extra
+/// arguments; the extension ones (`sort`, `group_by`, `distinct`) override
+/// that with [`Extra::Ignore`].
 pub(crate) const ITERATOR: OpMeta = OpMeta {
     frames: Frames::At(1),
     cost: Cost::PerItem,
+    on_extra: Extra::InvalidArgs,
     ..PURE
 };
 

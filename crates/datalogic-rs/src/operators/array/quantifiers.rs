@@ -2,6 +2,7 @@
 
 use crate::arena::singletons::singleton_bool;
 use crate::arena::{ContextStack, DataValue};
+use crate::operators::meta::Quant;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 use std::ops::ControlFlow;
@@ -11,65 +12,53 @@ use super::helpers::{
     resolve_iter_input,
 };
 
-/// Shape of a quantifier (`all` / `some` / `none`) — the three flags
-/// distinguishing them are bundled here so callers and helpers don't carry
-/// three loose `bool` parameters.
-#[derive(Clone, Copy)]
-pub(super) struct QuantifierShape {
-    /// Predicate result that triggers early exit.
-    pub(super) short_circuit_on: bool,
-    /// If `true`, invert `short_circuit_on` when assembling the final result.
-    pub(super) invert_final: bool,
-    /// Result for an empty input collection.
-    pub(super) empty_result: bool,
-}
+impl Quant {
+    /// The predicate result that settles the answer early: `false` for
+    /// `all`, `true` for `some` and `none`.
+    #[inline(always)]
+    fn short_circuit_on(self) -> bool {
+        !matches!(self, Quant::All)
+    }
 
-impl QuantifierShape {
-    #[inline]
+    /// The answer for an empty collection. `all` is deliberately not
+    /// vacuously true.
+    #[inline(always)]
+    fn empty_result(self) -> bool {
+        matches!(self, Quant::None)
+    }
+
+    /// The answer, given whether some item hit [`Self::short_circuit_on`].
+    #[inline(always)]
     fn finalize(self, found_short: bool) -> bool {
-        if found_short {
-            if self.invert_final {
-                !self.short_circuit_on
-            } else {
-                self.short_circuit_on
-            }
-        } else if self.invert_final {
-            self.short_circuit_on
-        } else {
-            !self.short_circuit_on
+        match self {
+            Quant::Some => found_short,
+            Quant::All | Quant::None => !found_short,
         }
     }
 }
 
-/// Internal helper: arena-mode quantifier (all / some / none).
-/// `early_truthy` controls short-circuit semantics:
-///   - `all`: early_truthy = false (false ⇒ return false immediately)
-///   - `some`: early_truthy = true (true ⇒ return true immediately)
-///   - `none`: same as `some` but invert the final result
+/// `all` / `some` / `none`: test the predicate against each item, stopping
+/// at the first that settles the answer.
 #[inline]
-fn evaluate_quantifier<'a>(
+pub(crate) fn quantifier<'a>(
     args: &'a [CompiledNode],
     iter_arg_kind: IterArgKind,
     ctx: &mut ContextStack<'a>,
     engine: &Engine,
     arena: &'a Bump,
-    shape: QuantifierShape,
+    op: Quant,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() != 2 {
-        return Err(crate::Error::invalid_args());
-    }
-
     let predicate = &args[1];
     let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
-        ResolvedInput::Empty => return Ok(singleton_bool(shape.empty_result)),
+        ResolvedInput::Empty => return Ok(singleton_bool(op.empty_result())),
         ResolvedInput::Bridge(av) => {
-            return quantifier_arena_bridge(av, predicate, shape, ctx, engine, arena);
+            return quantifier_arena_bridge(av, predicate, op, ctx, engine, arena);
         }
     };
 
     if src.is_empty() {
-        return Ok(singleton_bool(shape.empty_result));
+        return Ok(singleton_bool(op.empty_result()));
     }
 
     // Fast predicate path — no context push, no clones. Detection is
@@ -85,7 +74,7 @@ fn evaluate_quantifier<'a>(
         let mut verdict = Some(false);
         for i in 0..len {
             match fast_pred.evaluate_opt(src.get(i), engine) {
-                Some(hit) if hit == shape.short_circuit_on => {
+                Some(hit) if hit == op.short_circuit_on() => {
                     verdict = Some(true);
                     break;
                 }
@@ -97,20 +86,20 @@ fn evaluate_quantifier<'a>(
             }
         }
         if let Some(found_short) = verdict {
-            return Ok(singleton_bool(shape.finalize(found_short)));
+            return Ok(singleton_bool(op.finalize(found_short)));
         }
     }
 
     // General path: zero-clone via ContextStack.
     let mut found_short = false;
     for_each_iter_array(src.0, predicate, ctx, engine, arena, |_, _item, av| {
-        if crate::arena::truthy_arena(av, engine) == shape.short_circuit_on {
+        if crate::arena::truthy_arena(av, engine) == op.short_circuit_on() {
             found_short = true;
             return Ok(ControlFlow::Break(()));
         }
         Ok(ControlFlow::Continue(()))
     })?;
-    Ok(singleton_bool(shape.finalize(found_short)))
+    Ok(singleton_bool(op.finalize(found_short)))
 }
 
 /// Quantifier Bridge case — Object inputs iterate (key, value) pairs. The
@@ -121,7 +110,7 @@ fn evaluate_quantifier<'a>(
 fn quantifier_arena_bridge<'a>(
     input: &'a DataValue<'a>,
     predicate: &'a CompiledNode,
-    shape: QuantifierShape,
+    op: Quant,
     ctx: &mut ContextStack<'a>,
     engine: &Engine,
     arena: &'a Bump,
@@ -129,7 +118,7 @@ fn quantifier_arena_bridge<'a>(
     match input {
         DataValue::Object(pairs) => {
             if pairs.is_empty() {
-                return Ok(singleton_bool(shape.empty_result));
+                return Ok(singleton_bool(op.empty_result()));
             }
             let mut found_short = false;
             for_each_iter_object(
@@ -139,90 +128,17 @@ fn quantifier_arena_bridge<'a>(
                 engine,
                 arena,
                 |_, _item, _key, av| {
-                    if crate::arena::truthy_arena(av, engine) == shape.short_circuit_on {
+                    if crate::arena::truthy_arena(av, engine) == op.short_circuit_on() {
                         found_short = true;
                         return Ok(ControlFlow::Break(()));
                     }
                     Ok(ControlFlow::Continue(()))
                 },
             )?;
-            Ok(singleton_bool(shape.finalize(found_short)))
+            Ok(singleton_bool(op.finalize(found_short)))
         }
         // Anything else (scalars, strings) — treated as empty. Null and Array
         // never reach the Bridge variant, so they are not handled here.
-        _ => Ok(singleton_bool(shape.empty_result)),
+        _ => Ok(singleton_bool(op.empty_result())),
     }
-}
-
-/// Arena-mode `all` — true iff every item satisfies predicate. Short-circuits on false.
-#[inline]
-pub(crate) fn evaluate_all<'a>(
-    args: &'a [CompiledNode],
-    iter_arg_kind: IterArgKind,
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    // all: early-exit on false; empty array ⇒ false (matching existing impl,
-    // which deliberately rejects vacuous truth).
-    evaluate_quantifier(
-        args,
-        iter_arg_kind,
-        ctx,
-        engine,
-        arena,
-        QuantifierShape {
-            short_circuit_on: false,
-            invert_final: false,
-            empty_result: false,
-        },
-    )
-}
-
-/// Arena-mode `some` — true iff any item satisfies predicate. Short-circuits on true.
-#[inline]
-pub(crate) fn evaluate_some<'a>(
-    args: &'a [CompiledNode],
-    iter_arg_kind: IterArgKind,
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    // some: early-exit on true; empty array ⇒ false.
-    evaluate_quantifier(
-        args,
-        iter_arg_kind,
-        ctx,
-        engine,
-        arena,
-        QuantifierShape {
-            short_circuit_on: true,
-            invert_final: false,
-            empty_result: false,
-        },
-    )
-}
-
-/// Arena-mode `none` — true iff no item satisfies predicate. Short-circuits on true.
-#[inline]
-pub(crate) fn evaluate_none<'a>(
-    args: &'a [CompiledNode],
-    iter_arg_kind: IterArgKind,
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    // none: early-exit on true (then return false); empty array ⇒ true.
-    evaluate_quantifier(
-        args,
-        iter_arg_kind,
-        ctx,
-        engine,
-        arena,
-        QuantifierShape {
-            short_circuit_on: true,
-            invert_final: true,
-            empty_result: true,
-        },
-    )
 }

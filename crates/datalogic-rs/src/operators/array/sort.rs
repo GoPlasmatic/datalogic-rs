@@ -28,10 +28,6 @@ pub(crate) fn evaluate_sort<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Err(crate::Error::invalid_args());
-    }
-
     // Literal-null first arg is an error.
     if let CompiledNode::Value { value, .. } = &args[0]
         && value.is_null()

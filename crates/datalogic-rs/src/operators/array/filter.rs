@@ -1,7 +1,7 @@
 //! `filter` — keep array items / object pairs whose predicate is truthy.
 
 use crate::arena::{ContextStack, DataValue, bvec};
-use crate::operators::meta::Algebra;
+use crate::operators::meta::{Algebra, EqOp};
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 use std::ops::ControlFlow;
@@ -21,10 +21,6 @@ pub(crate) fn evaluate_filter<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() != 2 {
-        return Err(crate::Error::invalid_args());
-    }
-
     // Resolve input via unified helper (root borrow OR upstream arena op).
     let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
@@ -76,10 +72,10 @@ fn filter_strict_eq_field_fast_path<'a>(
     else {
         return Ok(None);
     };
-    let Some(Algebra::Eq {
+    let Some(Algebra::Eq(EqOp {
         strict: true,
         negate,
-    }) = opcode.algebra()
+    })) = opcode.algebra()
     else {
         return Ok(None);
     };

@@ -2,13 +2,14 @@
 //! optional datetime/duration support.
 
 use crate::arena::{ContextStack, DataValue, coerce_to_number_cfg, try_coerce_to_integer_cfg};
+use crate::operators::meta::ArithOp;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 use datavalue::NumberValue;
 
 use super::helpers::{
-    ArithOp, FoldState, FoldStepOutcome, NanAction, VariadicFoldSpec, alloc_number,
-    coerce_pair_f64, coerce_pair_int, handle_nan, is_literal_array, try_int_op, variadic_fold,
+    FoldState, FoldStepOutcome, NanAction, VariadicFoldSpec, alloc_number, coerce_pair_f64,
+    coerce_pair_int, handle_nan, is_literal_array, try_int_op, variadic_fold,
 };
 
 /// Arena-mode `+`. Handles 0-arg (identity), 1-arg array (sum elements),
@@ -110,7 +111,7 @@ pub(crate) fn evaluate_multiply<'a>(
         return Ok(alloc_number(arena, NumberValue::from_i64(1)));
     }
     if args.len() == 1 {
-        return one_arg_arith(&args[0], ctx, engine, arena, ArithOp::Multiply);
+        return one_arg_arith(&args[0], ctx, engine, arena, ArithOp::Mul);
     }
     if args.len() == 2 {
         return multiply_two_arg(&args[0], &args[1], ctx, engine, arena);
@@ -191,9 +192,6 @@ pub(crate) fn evaluate_subtract<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Err(crate::Error::invalid_args());
-    }
     if args.len() == 1 {
         return subtract_one_arg(&args[0], ctx, engine, arena);
     }
@@ -345,7 +343,7 @@ fn one_arg_arith<'a>(
         return match handle_nan(ctx, engine)? {
             NanAction::Skip => Ok(alloc_number(
                 arena,
-                NumberValue::from_i64(op.identity_int()),
+                NumberValue::from_i64(op.right_identity()),
             )),
             NanAction::ReturnNull => Ok(crate::arena::singletons::singleton_null()),
         };
@@ -360,24 +358,24 @@ fn one_arg_arith<'a>(
 
     // Non-array single value: coerce and return (op identity * coerced).
     if let Some(i) = try_coerce_to_integer_cfg(av, engine) {
-        return match op.combine_int(op.identity_int(), i) {
+        return match op.checked_i64(op.right_identity(), i) {
             Some(r) => Ok(alloc_number(arena, NumberValue::from_i64(r))),
             None => Ok(alloc_number(
                 arena,
-                NumberValue::from_f64(op.combine_f(op.identity_int() as f64, i as f64)),
+                NumberValue::from_f64(op.apply_f64(op.right_identity() as f64, i as f64)),
             )),
         };
     }
     if let Some(f) = coerce_to_number_cfg(av, engine) {
         return Ok(alloc_number(
             arena,
-            NumberValue::from_f64(op.combine_f(op.identity_int() as f64, f)),
+            NumberValue::from_f64(op.apply_f64(op.right_identity() as f64, f)),
         ));
     }
     match handle_nan(ctx, engine)? {
         NanAction::Skip => Ok(alloc_number(
             arena,
-            NumberValue::from_i64(op.identity_int()),
+            NumberValue::from_i64(op.right_identity()),
         )),
         NanAction::ReturnNull => Ok(crate::arena::singletons::singleton_null()),
     }
@@ -389,7 +387,7 @@ fn one_arg_arith<'a>(
 /// Coercion strategy: `try_coerce_to_integer_cfg` for the int path (so
 /// numeric-string elements stay on the int track), `coerce_to_number_cfg`
 /// for the float fallback. Identical to `subtract_variadic`'s strategy
-/// except the accumulator starts at `op.identity_int()` rather than
+/// except the accumulator starts at `op.right_identity()` rather than
 /// arg[0].
 #[inline]
 fn one_arg_array_fold<'a>(
@@ -405,10 +403,10 @@ fn one_arg_array_fold<'a>(
     if items.is_empty() {
         return Ok(alloc_number(
             arena,
-            NumberValue::from_i64(op.identity_int()),
+            NumberValue::from_i64(op.right_identity()),
         ));
     }
-    let init = op.identity_int();
+    let init = op.right_identity();
     let mut state = FoldState::new(init, init as f64);
     for item in items.iter() {
         let int_opt = try_coerce_to_integer_cfg(item, engine);
@@ -420,8 +418,8 @@ fn one_arg_array_fold<'a>(
         if let FoldStepOutcome::ReturnNull = state.step(
             int_opt,
             float_opt,
-            |a, b| op.combine_int(a, b),
-            |a, b| op.combine_f(a, b),
+            |a, b| op.checked_i64(a, b),
+            |a, b| op.apply_f64(a, b),
             ctx,
             engine,
         )? {

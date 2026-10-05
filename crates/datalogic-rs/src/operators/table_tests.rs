@@ -97,6 +97,88 @@ fn iterators_are_iter_rows() {
     }
 }
 
+/// Each row's operation, pinned. The fast paths, constant folding and the
+/// `@ Kind(payload)` bodies all key on it, so a row that loses or changes
+/// its algebra is a deliberate edit here too. Every row not listed has none.
+#[test]
+fn algebra_is_pinned() {
+    use super::meta::{Algebra as A, ArithOp, DivOp, EqOp, Extremum, Logic, OrdOp, Quant};
+    let expected = |op: OpCode| -> Option<A> {
+        Some(match op {
+            OpCode::Equals => A::Eq(EqOp::LOOSE),
+            OpCode::StrictEquals => A::Eq(EqOp::STRICT),
+            OpCode::NotEquals => A::Eq(EqOp::LOOSE_NE),
+            OpCode::StrictNotEquals => A::Eq(EqOp::STRICT_NE),
+            OpCode::GreaterThan => A::Ord(OrdOp::Gt),
+            OpCode::GreaterThanEqual => A::Ord(OrdOp::Ge),
+            OpCode::LessThan => A::Ord(OrdOp::Lt),
+            OpCode::LessThanEqual => A::Ord(OrdOp::Le),
+            OpCode::And => A::Logic(Logic::And),
+            OpCode::Or => A::Logic(Logic::Or),
+            OpCode::Add => A::Arith(ArithOp::Add),
+            OpCode::Subtract => A::Arith(ArithOp::Sub),
+            OpCode::Multiply => A::Arith(ArithOp::Mul),
+            OpCode::Divide => A::Div(DivOp::Divide),
+            OpCode::Modulo => A::Div(DivOp::Modulo),
+            OpCode::Max => A::Extremum(Extremum::Max),
+            OpCode::Min => A::Extremum(Extremum::Min),
+            OpCode::All => A::Quant(Quant::All),
+            OpCode::Some => A::Quant(Quant::Some),
+            OpCode::None => A::Quant(Quant::None),
+            _ => return None,
+        })
+    };
+    for &op in OpCode::ALL {
+        assert_eq!(op.meta().algebra, expected(op), "{op:?}");
+        // The by-value accessors the per-evaluation fast paths use agree
+        // with the row.
+        assert_eq!(op.algebra(), op.meta().algebra, "{op:?}");
+        let arith = match op.meta().algebra {
+            Some(A::Arith(a)) => Some(a),
+            _ => None,
+        };
+        assert_eq!(op.arith_op(), arith, "{op:?}");
+    }
+}
+
+/// Every comparison row's `{op: [var, literal]}` predicate is cached as a
+/// fast predicate, so `filter` / `all` / `some` / `none` over it never
+/// dispatch per element. Keyed on the row's algebra, so a comparison row
+/// that loses it (or a detection that stops matching) fails here rather
+/// than as a benchmark regression.
+#[test]
+fn comparison_predicates_take_the_fast_path() {
+    use super::meta::Algebra;
+    let engine = Engine::new();
+    let mut checked = 0;
+    for &op in OpCode::ALL {
+        if !matches!(op.meta().algebra, Some(Algebra::Ord(_) | Algebra::Eq(_))) {
+            continue;
+        }
+        for literal in ["500", "\"a\""] {
+            // Loose and ordered comparisons only specialise numeric (and
+            // loose-equality string) literals.
+            if literal == "\"a\"" && matches!(op.meta().algebra, Some(Algebra::Ord(_))) {
+                continue;
+            }
+            let rule = format!(
+                r#"{{"filter": [{{"var": "xs"}}, {{"{}": [{{"var": ""}}, {literal}]}}]}}"#,
+                op.as_str()
+            );
+            let logic = engine.compile(rule.as_str()).unwrap();
+            let CompiledNode::BuiltinOperator { args, .. } = &logic.root else {
+                panic!("{rule} did not compile to an operator node");
+            };
+            let CompiledNode::BuiltinOperator { predicate_hint, .. } = &args[1] else {
+                panic!("{rule}: predicate is not an operator node");
+            };
+            assert!(predicate_hint.is_some(), "{rule}: no fast predicate");
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 12);
+}
+
 fn lit() -> CompiledNode {
     CompiledNode::synthetic_value(OwnedDataValue::from(1i64))
 }
@@ -203,57 +285,67 @@ fn derived_classification_decisions() {
 /// Arity is derived from the `eager` signature.
 #[test]
 fn arity_is_derived_from_the_signature() {
-    assert_eq!(OpCode::Add.arity(), Arity::ANY);
-    assert_eq!(OpCode::Map.arity(), Arity::ANY);
-    assert_eq!(
-        OpCode::In.arity(),
-        Arity {
-            min: 2,
-            max: Some(2)
-        }
-    );
-    assert_eq!(
-        OpCode::Substr.arity(),
-        Arity {
-            min: 1,
-            max: Some(3)
-        }
-    );
+    assert_eq!(OpCode::In.arity(), Arity::exactly(2));
+    assert_eq!(OpCode::Substr.arity(), Arity::between(1, 3));
     #[cfg(feature = "datetime")]
     {
-        assert_eq!(
-            OpCode::Now.arity(),
-            Arity {
-                min: 0,
-                max: Some(0)
-            }
-        );
-        assert_eq!(
-            OpCode::FormatDate.arity(),
-            Arity {
-                min: 2,
-                max: Some(3)
-            }
-        );
+        assert_eq!(OpCode::Now.arity(), Arity::exactly(0));
+        assert_eq!(OpCode::FormatDate.arity(), Arity::between(2, 3));
     }
-    assert_eq!(
-        OpCode::Not.arity(),
-        Arity {
-            min: 0,
-            max: Some(1)
-        }
-    );
+    assert_eq!(OpCode::Not.arity(), Arity::between(0, 1));
     // A `Rest` tail leaves the maximum open.
     #[cfg(feature = "ext-math")]
-    assert_eq!(OpCode::Abs.arity(), Arity { min: 1, max: None });
+    assert_eq!(OpCode::Abs.arity(), Arity::at_least(1));
     #[cfg(feature = "tensor")]
-    assert_eq!(
-        OpCode::TensorPad.arity(),
-        Arity {
-            min: 3,
-            max: Some(4)
+    assert_eq!(OpCode::TensorPad.arity(), Arity::between(3, 4));
+}
+
+/// The declared arity of every `raw` and `iter` row, pinned. `ANY` means
+/// the body takes any count (it may still branch on it). Published in
+/// `Engine::operators()` and `operators.json`, so a change is deliberate.
+#[test]
+fn raw_and_iter_arity_is_pinned() {
+    let expected = |op: OpCode| -> Arity {
+        match op {
+            OpCode::Equals | OpCode::StrictEquals => Arity::at_least(2),
+            OpCode::NotEquals | OpCode::StrictNotEquals => Arity::exactly(2),
+            OpCode::GreaterThan
+            | OpCode::GreaterThanEqual
+            | OpCode::LessThan
+            | OpCode::LessThanEqual => Arity::at_least(2),
+            OpCode::And | OpCode::Or | OpCode::If => Arity::at_least(1),
+            OpCode::Subtract | OpCode::Divide | OpCode::Modulo => Arity::at_least(1),
+            OpCode::Max | OpCode::Min => Arity::at_least(1),
+            OpCode::Filter | OpCode::Map | OpCode::All | OpCode::Some | OpCode::None => {
+                Arity::exactly(2)
+            }
+            OpCode::Reduce => Arity::between(2, 3),
+            OpCode::MissingSome => Arity::exactly(2),
+            #[cfg(feature = "ext-array")]
+            OpCode::Sort => Arity::between(1, 3),
+            #[cfg(feature = "ext-array")]
+            OpCode::Slice => Arity::between(1, 4),
+            #[cfg(feature = "ext-array")]
+            OpCode::GroupBy => Arity::exactly(2),
+            #[cfg(feature = "ext-array")]
+            OpCode::Distinct => Arity::between(1, 2),
+            #[cfg(feature = "ext-control")]
+            OpCode::Exists => Arity::at_least(1),
+            #[cfg(feature = "ext-control")]
+            OpCode::Switch => Arity::between(2, 3),
+            #[cfg(feature = "error-handling")]
+            OpCode::Try => Arity::at_least(1),
+            #[cfg(feature = "flagd")]
+            OpCode::Fractional => Arity::at_least(1),
+            _ => Arity::ANY,
         }
-    );
+    };
+    for &op in OpCode::ALL {
+        if op.catalogue_entry().shape.starts_with("eager") {
+            continue;
+        }
+        assert_eq!(op.arity(), expected(op), "{op:?}");
+    }
 }
 
 /// `{name: [null, null, ...]}` with `n` arguments.
@@ -272,18 +364,18 @@ fn render(r: Result<OwnedDataValue, ErrorKind>) -> String {
     format!("{r:?}")
 }
 
-/// Every `eager` row honours its declared arity policy: one argument short
+/// Every row with a declared arity honours its policy: one argument short
 /// of the minimum produces exactly its `on_missing` result, one past the
 /// maximum exactly its `on_extra` result. Pins the messages the suites do
 /// not, since an `InvalidArguments` message is the serialised error `type`.
 #[test]
-fn eager_rows_honour_their_arity_policy() {
+fn rows_honour_their_arity_policy() {
     let engine = Engine::builder().with_constant_folding(false).build();
     let mut checked = 0;
     for &op in OpCode::ALL {
         let arity = op.arity();
-        // `raw` and `iter` rows check their own arguments.
-        if arity == Arity::ANY && !op.catalogue_entry().shape.starts_with("eager") {
+        // Nothing to fall short of or exceed.
+        if arity == Arity::ANY {
             continue;
         }
         let meta = op.meta();
@@ -326,8 +418,8 @@ fn eager_rows_honour_their_arity_policy() {
         }
         checked += 1;
     }
-    // In, Substr at minimum; every typed family when its feature is on.
-    assert!(checked >= 2);
+    // The core rows alone declare more than this.
+    assert!(checked >= 25, "only {checked} rows checked");
 }
 
 /// Every row that declares a scoped argument is exercised with context

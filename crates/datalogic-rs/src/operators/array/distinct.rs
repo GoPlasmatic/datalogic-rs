@@ -29,10 +29,6 @@ pub(crate) fn evaluate_distinct<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Err(crate::Error::invalid_args());
-    }
-
     let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(crate::arena::singletons::singleton_empty_array()),
