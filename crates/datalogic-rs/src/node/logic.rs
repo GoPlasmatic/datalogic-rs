@@ -258,7 +258,13 @@ pub(crate) fn node_is_static(node: &CompiledNode) -> bool {
         CompiledNode::Value { .. } => true,
         CompiledNode::Array { nodes, .. } => nodes.iter().all(node_is_static),
         CompiledNode::BuiltinOperator { opcode, args, .. } => opcode.meta().can_fold(args),
-        CompiledNode::CustomOperator(_) => false,
+        // Static only when the operator declared that its result depends on
+        // its arguments alone.
+        CompiledNode::CustomOperator(data) => {
+            data.info.deterministic
+                && !data.info.reads_context
+                && data.args.iter().all(node_is_static)
+        }
         CompiledNode::Cse(data) => node_is_static(&data.inner),
         CompiledNode::Var { .. } => false,
         #[cfg(feature = "ext-control")]

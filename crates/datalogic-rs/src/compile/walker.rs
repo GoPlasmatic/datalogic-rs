@@ -125,24 +125,43 @@ fn compile_operator_invocation(
 
     #[cfg(feature = "templating")]
     if templating {
-        return compile_templating_unknown(op_name, args_value, engine, templating, ctx);
+        return compile_templating_unknown(op_name, args_value, engine, templating, fold, ctx);
     }
 
     let args = compile_args(args_value, engine, templating, ctx)?;
-    Ok(custom_operator_node(op_name, args, ctx))
+    Ok(custom_operator_node(op_name, args, engine, fold, ctx))
 }
 
-/// Build a `CustomOperator` node from an op name and its already-compiled args.
+/// Build a `CustomOperator` node from an op name and its already-compiled
+/// args, recording what the operator declares about itself. A call to an
+/// operator that declares itself deterministic and context-free, with
+/// constant arguments, is evaluated now and replaced by its result (unless
+/// the parent reads this argument as written).
 fn custom_operator_node(
     op_name: &str,
     args: Box<[CompiledNode]>,
+    engine: Option<&Engine>,
+    fold: bool,
     ctx: &mut CompileCtx,
 ) -> CompiledNode {
-    CompiledNode::CustomOperator(Box::new(crate::node::CustomOperatorData {
+    let info = engine
+        .and_then(|e| e.custom_operator_info(op_name))
+        .unwrap_or_else(crate::CustomOperatorInfo::opaque);
+    let node = CompiledNode::CustomOperator(Box::new(crate::node::CustomOperatorData {
         id: Some(ctx.next_id()),
         name: op_name.to_string(),
         args,
-    }))
+        info,
+    }));
+    if let Some(eng) = engine
+        && fold
+        && !ctx.skip_fold()
+        && node_is_static(&node)
+        && let Some(value) = optimize::constant_fold::fold_static_node(&node, eng)
+    {
+        return CompiledNode::compile_time_value(Some(ctx.next_id()), value);
+    }
+    node
 }
 
 /// Builtin operator path: the row's argument-form rule, its compile hook
@@ -241,13 +260,14 @@ fn compile_templating_unknown(
     args_value: &OwnedDataValue,
     engine: Option<&Engine>,
     templating: bool,
+    fold: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
     if let Some(eng) = engine
         && eng.has_custom_operator(op_name)
     {
         let args = compile_args(args_value, engine, templating, ctx)?;
-        return Ok(custom_operator_node(op_name, args, ctx));
+        return Ok(custom_operator_node(op_name, args, engine, fold, ctx));
     }
     single_field_object(op_name, args_value, engine, templating, false, ctx)
 }

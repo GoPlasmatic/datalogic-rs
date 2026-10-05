@@ -305,6 +305,108 @@ pub trait CustomOperator: Send + Sync {
         ctx: &mut operator::EvalContext<'_, 'a>,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a DataValue<'a>>;
+
+    /// What the engine may assume about this operator. The default,
+    /// [`CustomOperatorInfo::opaque`], assumes nothing: the operator may
+    /// return a different result each call and read the whole context.
+    ///
+    /// Declaring more lets the engine do more:
+    ///
+    /// - [`deterministic`](CustomOperatorInfo::deterministic) without
+    ///   [`reads_context`](CustomOperatorInfo::reads_context): a call
+    ///   whose arguments are all constant is evaluated once, when the rule
+    ///   is compiled, and replaced by its result.
+    /// - [`Logic::facts`] trusts the declaration:
+    ///   [`Facts::is_deterministic`] holds for a deterministic operator,
+    ///   and [`Facts::reads_complete`] for one that does not read the
+    ///   context.
+    /// - A declared argument count is checked before any argument is
+    ///   evaluated; a call outside it fails with `InvalidArguments`.
+    ///
+    /// The engine reads this when it compiles a call, so it should not
+    /// change over the operator's lifetime. A wrong declaration gives wrong
+    /// results: an operator that declares itself deterministic but is not
+    /// is folded to whatever it returned at compile time.
+    fn info(&self) -> CustomOperatorInfo {
+        CustomOperatorInfo::opaque()
+    }
+}
+
+/// What the engine may assume about a [`CustomOperator`], returned by
+/// [`CustomOperator::info`].
+///
+/// Build one from [`Self::opaque`] or [`Self::pure`] and the `with` / `-ing`
+/// methods; the struct is `#[non_exhaustive]` so fields can be added in 5.x.
+///
+/// ```rust
+/// use datalogic_rs::CustomOperatorInfo;
+///
+/// // Depends only on its one or two arguments.
+/// let info = CustomOperatorInfo::pure().with_args(1, Some(2));
+/// assert!(info.deterministic && !info.reads_context);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct CustomOperatorInfo {
+    /// The same arguments (and, if [`Self::reads_context`], the same data)
+    /// always give the same result, and evaluating it has no effect the
+    /// rule could observe.
+    pub deterministic: bool,
+    /// Reads the data context through
+    /// [`EvalContext`](operator::EvalContext), beyond its arguments.
+    pub reads_context: bool,
+    /// The fewest arguments a call may pass.
+    pub min_args: usize,
+    /// The most arguments a call may pass, or `None` for no limit.
+    pub max_args: Option<usize>,
+}
+
+impl CustomOperatorInfo {
+    /// Nothing assumed: nondeterministic, may read the context, any
+    /// number of arguments. The default.
+    pub const fn opaque() -> Self {
+        CustomOperatorInfo {
+            deterministic: false,
+            reads_context: true,
+            min_args: 0,
+            max_args: None,
+        }
+    }
+
+    /// A function of its arguments alone: deterministic, reads no
+    /// context, any number of arguments.
+    pub const fn pure() -> Self {
+        CustomOperatorInfo {
+            deterministic: true,
+            reads_context: false,
+            min_args: 0,
+            max_args: None,
+        }
+    }
+
+    /// The same, but also reading the data context.
+    pub const fn reading_context(self) -> Self {
+        CustomOperatorInfo {
+            reads_context: true,
+            ..self
+        }
+    }
+
+    /// The same, accepting between `min` and `max` arguments (`None`: no
+    /// upper limit).
+    pub const fn with_args(self, min: usize, max: Option<usize>) -> Self {
+        CustomOperatorInfo {
+            min_args: min,
+            max_args: max,
+            ..self
+        }
+    }
+}
+
+impl Default for CustomOperatorInfo {
+    fn default() -> Self {
+        Self::opaque()
+    }
 }
 
 // `Box<dyn CustomOperator>` itself implements `CustomOperator` by
@@ -324,6 +426,11 @@ impl CustomOperator for Box<dyn CustomOperator> {
     ) -> Result<&'a DataValue<'a>> {
         (**self).evaluate(args, ctx, arena)
     }
+
+    #[inline]
+    fn info(&self) -> CustomOperatorInfo {
+        (**self).info()
+    }
 }
 
 // `Arc<T>` delegates the same way, so one operator instance (and any state
@@ -340,5 +447,10 @@ impl<T: CustomOperator + ?Sized> CustomOperator for std::sync::Arc<T> {
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a DataValue<'a>> {
         (**self).evaluate(args, ctx, arena)
+    }
+
+    #[inline]
+    fn info(&self) -> CustomOperatorInfo {
+        (**self).info()
     }
 }

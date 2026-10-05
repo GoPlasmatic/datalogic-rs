@@ -92,6 +92,7 @@ pub struct Facts {
     operators: Vec<&'static str>,
     custom_operators: Vec<String>,
     deterministic: bool,
+    context_readers: bool,
 }
 
 impl Facts {
@@ -121,11 +122,13 @@ impl Facts {
     }
 
     /// Whether [`Self::reads`] lists everything the rule can read: no
-    /// computed path, and no custom operator (which can read the whole
-    /// context through
+    /// computed path, and no custom operator that reads the context (one
+    /// can read all of it through
     /// [`EvalContext::root_input`](crate::operator::EvalContext::root_input)).
+    /// A custom operator that does not declares so in
+    /// [`CustomOperator::info`](crate::CustomOperator::info).
     pub fn reads_complete(&self) -> bool {
-        !self.computed_reads && self.custom_operators.is_empty()
+        !self.computed_reads && !self.context_readers
     }
 
     /// Whether the rule can read its data at all. `false` means its result
@@ -150,9 +153,10 @@ impl Facts {
     }
 
     /// Whether the result depends on nothing but the data: no operator
-    /// that reads the clock (`now`), and no custom operator, whose
-    /// behaviour the engine cannot see. Raising an error (`throw`) is
-    /// deterministic.
+    /// that reads the clock (`now`), and no custom operator that does not
+    /// declare itself deterministic in
+    /// [`CustomOperator::info`](crate::CustomOperator::info). Raising an
+    /// error (`throw`) is deterministic.
     pub fn is_deterministic(&self) -> bool {
         self.deterministic
     }
@@ -165,6 +169,7 @@ struct Collector {
     operators: BTreeSet<&'static str>,
     custom_operators: BTreeSet<String>,
     nondeterministic: bool,
+    context_readers: bool,
 }
 
 impl Collector {
@@ -285,7 +290,8 @@ impl Collector {
             }
             CompiledNode::CustomOperator(data) => {
                 self.custom_operators.insert(data.name.clone());
-                self.nondeterministic = true;
+                self.nondeterministic |= !data.info.deterministic;
+                self.context_readers |= data.info.reads_context;
                 for arg in data.args.iter() {
                     self.walk(arg, depth);
                 }
@@ -344,6 +350,7 @@ impl Collector {
             computed_reads: self.computed_reads,
             operators: self.operators.into_iter().collect(),
             custom_operators: self.custom_operators.into_iter().collect(),
+            context_readers: self.context_readers,
             deterministic: !self.nondeterministic,
         }
     }

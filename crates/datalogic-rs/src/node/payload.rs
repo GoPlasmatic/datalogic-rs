@@ -75,6 +75,10 @@ pub(crate) struct CustomOperatorData {
     pub id: NodeId,
     pub name: String,
     pub args: Box<[CompiledNode]>,
+    /// What the operator declared when the rule was compiled
+    /// ([`crate::CustomOperator::info`]); opaque when no operator of that
+    /// name was registered.
+    pub info: crate::CustomOperatorInfo,
 }
 
 /// Data for a CSE memo wrapper (boxed inside CompiledNode to reduce enum

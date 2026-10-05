@@ -418,6 +418,14 @@ impl Engine {
         self.custom_operators.contains_key(name)
     }
 
+    /// What the custom operator registered as `name` declares about
+    /// itself ([`crate::CustomOperator::info`]), or `None` when no custom
+    /// operator has that name. Built-ins are described by
+    /// [`Self::operators`].
+    pub fn custom_operator_info(&self, name: &str) -> Option<crate::CustomOperatorInfo> {
+        self.custom_operators.get(name).map(|op| op.info())
+    }
+
     /// Iterator over the names of every *custom* operator registered on
     /// this engine (built-ins are not included). Order is unspecified
     /// (HashMap iteration order). Useful for tooling, UIs, and tests

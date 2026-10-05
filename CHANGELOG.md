@@ -71,6 +71,17 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   keep their operator registrations in step. A generated test checks
   every suite case: each mode gives the same compiled rule and outcome as
   an engine built in that mode.
+- **`CustomOperator::info`** lets a custom operator declare what the
+  engine may assume about it, as a `CustomOperatorInfo`: whether it is
+  deterministic, whether it reads the data context, and how many arguments
+  it takes. The default method returns `CustomOperatorInfo::opaque()`
+  (nondeterministic, may read the context, any count), so existing
+  operators are unchanged. A deterministic operator that does not read the
+  context, called with constant arguments, is evaluated once at compile
+  time and folded like a built-in. `Logic::facts()` trusts the declaration
+  (`is_deterministic()`, `reads_complete()`), and a declared argument count
+  is checked before any argument runs. `Engine::custom_operator_info(name)`
+  reads it back. `Box<dyn CustomOperator>` and `Arc<T>` forward it.
 - **`Arc<T>` implements `CustomOperator`** (for any
   `T: CustomOperator + ?Sized`, `Arc<dyn CustomOperator>` included), so
   one operator instance and its state can be registered on several

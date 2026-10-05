@@ -262,6 +262,11 @@ fn evaluate_custom_operator<'a>(
         .custom_operators
         .get(&data.name)
         .ok_or_else(|| Error::invalid_operator(data.name.clone()))?;
+    // The declared argument count, checked before any argument runs.
+    let count = data.args.len();
+    if count < data.info.min_args || data.info.max_args.is_some_and(|max| count > max) {
+        return Err(Error::invalid_args().with_operator(data.name.clone()));
+    }
     let mut args: bumpalo::collections::Vec<'a, &'a DataValue<'a>> =
         bumpalo::collections::Vec::with_capacity_in(data.args.len(), arena);
     for arg in data.args.iter() {
