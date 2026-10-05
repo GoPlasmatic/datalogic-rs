@@ -56,29 +56,7 @@ fn filter_strict_eq_field_fast_path<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<Option<&'a DataValue<'a>>> {
-    let CompiledNode::BuiltinOperator {
-        opcode,
-        args: pred_args,
-        ..
-    } = predicate
-    else {
-        return Ok(None);
-    };
-    let Some(Algebra::Eq(EqOp {
-        strict: true,
-        negate,
-    })) = opcode.algebra()
-    else {
-        return Ok(None);
-    };
-    if pred_args.len() != 2 {
-        return Ok(None);
-    }
-
-    let Some((segments, invariant_node)) =
-        try_extract_filter_field_cmp(&pred_args[0], &pred_args[1])
-            .or_else(|| try_extract_filter_field_cmp(&pred_args[1], &pred_args[0]))
-    else {
+    let Some((segments, invariant_node, negate)) = strict_eq_field_shape(predicate) else {
         return Ok(None);
     };
 
@@ -110,6 +88,37 @@ fn filter_strict_eq_field_fast_path<'a>(
     Ok(Some(
         arena.alloc(DataValue::Array(results.into_bump_slice())),
     ))
+}
+
+/// The strict-equality fast path's shape: `{"===" | "!==": [field, x]}`
+/// (either order) where `field` is a plain element field and `x` is loop
+/// invariant. Returns the field's segments, `x`, and whether it negates.
+/// Listed in [`super::fast_paths`].
+#[inline]
+pub(super) fn strict_eq_field_shape(
+    predicate: &CompiledNode,
+) -> Option<(&[crate::node::PathSegment], &CompiledNode, bool)> {
+    let CompiledNode::BuiltinOperator {
+        opcode,
+        args: pred_args,
+        ..
+    } = predicate
+    else {
+        return None;
+    };
+    let Some(Algebra::Eq(EqOp {
+        strict: true,
+        negate,
+    })) = opcode.algebra()
+    else {
+        return None;
+    };
+    if pred_args.len() != 2 {
+        return None;
+    }
+    let (segments, invariant) = try_extract_filter_field_cmp(&pred_args[0], &pred_args[1])
+        .or_else(|| try_extract_filter_field_cmp(&pred_args[1], &pred_args[0]))?;
+    Some((segments, invariant, negate))
 }
 
 /// Filter using a `FastPredicate` — predicate evaluates in-place against each

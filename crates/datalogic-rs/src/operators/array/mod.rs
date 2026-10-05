@@ -19,6 +19,7 @@
 //!   `resolve_iter_input` (used by every iterator op), `FastPredicate`
 //!   (filter / quantifier fast paths), and a few small comparison helpers.
 
+mod fast_paths;
 mod helpers;
 
 mod filter;

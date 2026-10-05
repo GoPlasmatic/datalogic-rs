@@ -344,7 +344,7 @@ fn mapped_number<'a>(
 
 /// Detected `{+|-|*: [var, var]}` fold body over `current`/`accumulator`,
 /// operand order preserved.
-struct FoldShape<'a> {
+pub(super) struct FoldShape<'a> {
     op: ArithOp,
     /// true — body is `{op: [accumulator, current]}`; false — `[current, accumulator]`.
     acc_is_lhs: bool,
@@ -355,7 +355,7 @@ struct FoldShape<'a> {
 /// Matches a reduce body of the shape `{+|-|*: [val("current"[+path]),
 /// val("accumulator")]}` in either operand order, recording which side the
 /// accumulator sits on so non-commutative folds evaluate correctly.
-fn detect_fold_shape(body: &CompiledNode) -> Option<FoldShape<'_>> {
+pub(super) fn detect_fold_shape(body: &CompiledNode) -> Option<FoldShape<'_>> {
     let CompiledNode::BuiltinOperator {
         opcode,
         args: body_args,

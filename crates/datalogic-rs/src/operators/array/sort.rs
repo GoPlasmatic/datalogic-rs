@@ -138,14 +138,11 @@ fn sort_no_extractor<'a>(src: &IterSrc<'a>, ascending: bool, arena: &'a Bump) ->
     arena.alloc(DataValue::Array(slice))
 }
 
-/// Extractor fast path: `{var: "field..."}` over non-empty segments at scope 0.
+/// The sort-by-field fast path's shape: a key expression that is a plain
+/// element field (`{"var": "a.b"}`, non-empty path, no default). Listed in
+/// [`super::fast_paths`].
 #[inline]
-fn sort_fast_path_var_extractor<'a>(
-    src: &IterSrc<'a>,
-    extractor: &'a CompiledNode,
-    ascending: bool,
-    arena: &'a Bump,
-) -> Option<&'a DataValue<'a>> {
+pub(super) fn sort_key_field(extractor: &CompiledNode) -> Option<&[crate::node::PathSegment]> {
     let CompiledNode::Var {
         scope_level: 0,
         segments,
@@ -157,9 +154,18 @@ fn sort_fast_path_var_extractor<'a>(
     else {
         return None;
     };
-    if segments.is_empty() {
-        return None;
-    }
+    (!segments.is_empty()).then_some(&**segments)
+}
+
+/// Extractor fast path: `{var: "field..."}` over non-empty segments at scope 0.
+#[inline]
+fn sort_fast_path_var_extractor<'a>(
+    src: &IterSrc<'a>,
+    extractor: &'a CompiledNode,
+    ascending: bool,
+    arena: &'a Bump,
+) -> Option<&'a DataValue<'a>> {
+    let segments = sort_key_field(extractor)?;
 
     let len = src.len();
     let mut keyed = bvec::<(usize, Option<&'a DataValue<'a>>)>(arena, len);
