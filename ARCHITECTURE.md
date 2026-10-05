@@ -238,7 +238,13 @@ The runtime side has its own fast paths that fire without a compile-time
 pass, including:
 
 - `FastPredicate::from_node` in array operators detects predicate
-  shapes that can run without pushing a context frame per item.
+  shapes that can run without pushing a context frame per item, and
+  `FastPredicate::scan` runs them: the predicate kind (and a comparison's
+  operator) is matched once per call, so each leaf gets its own loop with
+  no per-item call or indirect branch. Per-item dispatch made the same
+  machine code run 2x slower or faster depending on where the linker
+  placed it; `tests/fast_predicate_test.rs` checks every shape against
+  the general path (a traced evaluation, which skips the fast paths).
 - `filter_strict_eq_field_fast_path` recognises
   `filter(arr, == [{var: "field"}, invariant])` and evaluates the
   invariant once outside the loop.

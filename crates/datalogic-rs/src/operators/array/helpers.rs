@@ -462,6 +462,136 @@ impl FastPredicate {
     }
 }
 
+impl FastPredicate {
+    /// Evaluate the predicate against every item of `src`, in order, handing
+    /// each verdict to `on_item`, which returns [`ControlFlow::Break`] to
+    /// stop early. `None` when an item is indeterminate (see
+    /// [`Self::evaluate_opt`]): the caller re-runs the collection on the
+    /// general path, which is exact because fast evaluation is pure.
+    ///
+    /// The predicate kind is matched once, outside the loop: each scalar
+    /// leaf runs its own loop with its test inlined, and a numeric
+    /// comparison also fixes its operator up front, so the per-item work has
+    /// no call and no indirect branch. Calling [`Self::evaluate_opt`] per
+    /// item put both in the loop, and that loop ran at 3.1 or 6.0 µs per 1k
+    /// items depending only on where the linker placed the (byte-identical)
+    /// code. Combinator trees (`and` / `or` / `!`) still walk
+    /// `evaluate_opt` per item.
+    #[inline]
+    pub(super) fn scan<'b, F>(&self, src: &IterSrc<'b>, engine: &Engine, on_item: F) -> Option<()>
+    where
+        F: FnMut(&'b DataValue<'b>, bool) -> ControlFlow<()>,
+    {
+        match self {
+            FastPredicate::NumericCmp {
+                var_path,
+                literal_f,
+                op,
+                var_is_lhs,
+            } => {
+                let lit = *literal_f;
+                // `lit op x` is `x op.flip() lit`, so every loop below has
+                // the item on the left.
+                let op = if *var_is_lhs { *op } else { op.flip() };
+                match op {
+                    OrdOp::Gt => scan_leaf(src, var_path, on_item, |v| number(v).map(|x| x > lit)),
+                    OrdOp::Ge => scan_leaf(src, var_path, on_item, |v| number(v).map(|x| x >= lit)),
+                    OrdOp::Lt => scan_leaf(src, var_path, on_item, |v| number(v).map(|x| x < lit)),
+                    OrdOp::Le => scan_leaf(src, var_path, on_item, |v| number(v).map(|x| x <= lit)),
+                }
+            }
+            FastPredicate::LooseNumericEq {
+                var_path,
+                literal_f,
+                negate,
+            } => {
+                let (lit, negate) = (*literal_f, *negate);
+                scan_leaf(src, var_path, on_item, |v| {
+                    number(v).map(|x| (x == lit) != negate)
+                })
+            }
+            FastPredicate::StrictEq {
+                var_path,
+                literal,
+                negate,
+            } => scan_leaf(src, var_path, on_item, |v| {
+                // A missing field is `var`'s implicit null.
+                let av = v.unwrap_or(&DataValue::Null);
+                Some(value_equals_serde(av, literal) != *negate)
+            }),
+            FastPredicate::LooseStrEq {
+                var_path,
+                literal,
+                negate,
+            } => scan_leaf(src, var_path, on_item, |v| match v {
+                Some(DataValue::String(s)) => Some((*s == &**literal) != *negate),
+                // Any other shape needs the general path's coercion table.
+                _ => None,
+            }),
+            FastPredicate::InStrLits { var_path, items } => {
+                scan_leaf(src, var_path, on_item, |v| {
+                    Some(match v {
+                        Some(DataValue::String(s)) => items.iter().any(|lit| &**lit == *s),
+                        // Strict-equality membership: a non-string never matches.
+                        _ => false,
+                    })
+                })
+            }
+            // `Truthy` only occurs inside a combinator.
+            FastPredicate::Truthy { .. }
+            | FastPredicate::AllOf(_)
+            | FastPredicate::AnyOf(_)
+            | FastPredicate::Not(_) => {
+                let mut on_item = on_item;
+                for item in src.0 {
+                    if on_item(item, self.evaluate_opt(item, engine)?).is_break() {
+                        break;
+                    }
+                }
+                Some(())
+            }
+        }
+    }
+}
+
+/// One scalar leaf's loop: resolve each item's value (the item itself for
+/// an empty path), test it, hand the verdict on. Monomorphised per leaf
+/// test, so the test is inlined into its own loop.
+#[inline(always)]
+fn scan_leaf<'b>(
+    src: &IterSrc<'b>,
+    var_path: &[crate::node::PathSegment],
+    mut on_item: impl FnMut(&'b DataValue<'b>, bool) -> ControlFlow<()>,
+    test: impl Fn(Option<&'b DataValue<'b>>) -> Option<bool>,
+) -> Option<()> {
+    // Two loops, so the whole-item case (`{"var": ""}`) never walks a path.
+    if var_path.is_empty() {
+        for item in src.0 {
+            if on_item(item, test(Some(item))?).is_break() {
+                break;
+            }
+        }
+    } else {
+        for item in src.0 {
+            let value = crate::arena::value::traverse_segments(item, var_path);
+            if on_item(item, test(value)?).is_break() {
+                break;
+            }
+        }
+    }
+    Some(())
+}
+
+/// A native number as `f64`; anything else is indeterminate (the general
+/// path's coercion table decides `"9" > 2` and `null >= 0`).
+#[inline(always)]
+fn number(value: Option<&DataValue<'_>>) -> Option<f64> {
+    match value {
+        Some(DataValue::Number(n)) => Some(n.as_f64()),
+        _ => None,
+    }
+}
+
 /// Strict equality between a [`DataValue`] (arena) and an
 /// [`OwnedDataValue`] literal — used by `FastPredicate::StrictEq` to
 /// compare an arena-resident item against a compile-time literal without

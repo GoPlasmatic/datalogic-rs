@@ -74,6 +74,15 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   field-against-literal fast path was affected; `all` / `some` / `none`
   and traced evaluation were already right.
 
+### Performance
+
+- **`filter`, `all`, `some` and `none` over a comparison predicate are
+  faster and no longer layout-sensitive.** The recognised predicate shape
+  is now dispatched once per call instead of once per item. Over 1,000
+  items: `{">": [{"var": ""}, 500]}` filters in 1.17 µs (was 3.2 µs, or
+  6.0 µs in some builds of the same code), full `all` / `some` scans are
+  3.7 to 3.9 times faster, and comparisons on a field are 26 to 31% faster.
+
 ## [5.7.1] - 2026-10-01
 
 ### Security

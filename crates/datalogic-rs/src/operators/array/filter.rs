@@ -124,14 +124,13 @@ fn filter_with_fast_predicate<'a>(
     engine: &Engine,
     arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
-    let len = src.len();
-    let mut results = bvec::<DataValue<'a>>(arena, len);
-    for i in 0..len {
-        let item = src.get(i);
-        if fast_pred.evaluate_opt(item, engine)? {
+    let mut results = bvec::<DataValue<'a>>(arena, src.len());
+    fast_pred.scan(src, engine, |item, keep| {
+        if keep {
             results.push(*item);
         }
-    }
+        ControlFlow::Continue(())
+    })?;
     if results.is_empty() {
         return Some(crate::arena::singletons::singleton_empty_array());
     }

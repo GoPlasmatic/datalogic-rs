@@ -64,22 +64,17 @@ pub(crate) fn quantifier<'a>(
     if !ctx.is_tracing()
         && let Some(fast_pred) = FastPredicate::from_node(predicate)
     {
-        let len = src.len();
-        let mut verdict = Some(false);
-        for i in 0..len {
-            match fast_pred.evaluate_opt(src.get(i), engine) {
-                Some(hit) if hit == op.short_circuit_on() => {
-                    verdict = Some(true);
-                    break;
-                }
-                Some(_) => {}
-                None => {
-                    verdict = None;
-                    break;
-                }
+        let short_on = op.short_circuit_on();
+        let mut found_short = false;
+        let completed = fast_pred.scan(&src, engine, |_, hit| {
+            if hit == short_on {
+                found_short = true;
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
             }
-        }
-        if let Some(found_short) = verdict {
+        });
+        if completed.is_some() {
             return Ok(singleton_bool(op.finalize(found_short)));
         }
     }

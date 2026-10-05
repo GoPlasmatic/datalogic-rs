@@ -378,6 +378,18 @@ pub(crate) enum OrdOp {
 }
 
 impl OrdOp {
+    /// The operator with its operands swapped: `a op b` is `b op.flip() a`
+    /// (`5 > x` is `x < 5`), for every pair including NaN.
+    #[inline(always)]
+    pub(crate) const fn flip(self) -> OrdOp {
+        match self {
+            OrdOp::Gt => OrdOp::Lt,
+            OrdOp::Ge => OrdOp::Le,
+            OrdOp::Lt => OrdOp::Gt,
+            OrdOp::Le => OrdOp::Ge,
+        }
+    }
+
     /// Whether `a op b` holds.
     #[inline(always)]
     pub(crate) fn holds<T: PartialOrd + ?Sized>(self, a: &T, b: &T) -> bool {
