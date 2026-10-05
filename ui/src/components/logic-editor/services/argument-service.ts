@@ -121,10 +121,12 @@ export function addArgument(
 
   if (!opConfig || !canEditArguments(operatorData.operator)) return null;
 
-  const { arity } = opConfig;
-  if (arity.max && operatorData.cells.length >= arity.max) {
-    return null;
-  }
+  // The structured editors below grow a part of one argument (an else-if
+  // branch, a case in the case list, a path segment), not the argument
+  // count, so the operator's arity does not bound them. They run before the
+  // arity check, which compares against cells: a `switch` with one case
+  // already has four cells (Match, Case, Then, Default) for its three
+  // arguments.
 
   // Special handling for if operator: chain a new else-if diamond
   if (isIfOperator(operatorData.operator) && isDecisionCells(operatorData.cells)) {
@@ -139,6 +141,11 @@ export function addArgument(
   // Special handling for val operator: add editable path component cell
   if (operatorData.operator === 'val' && hasVariableCells(operatorData.cells)) {
     return addValPathCell(nodes, parentNode, operatorData);
+  }
+
+  const { arity } = opConfig;
+  if (arity.max && operatorData.cells.length >= arity.max) {
+    return null;
   }
 
   const currentOperands = storedOperandsOf(operatorData);

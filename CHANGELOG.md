@@ -180,6 +180,15 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   output against them and reject unlisted properties, so a format change
   is a reviewed schema change.
 
+### Fixed (UI)
+
+- **Adding a case to a `switch` in the editor works again.** The editor
+  compared the operator's argument limit (3) against the node's cells (a
+  `switch` with one case has four), so "add case" did nothing once the
+  catalogue gave `switch` its real limit. Case, else-if and path-segment
+  editors now run before the limit check, since they grow one argument
+  rather than adding one.
+
 ### Deprecated
 
 - The WASM `CompiledRule` class and the free `evaluate(logic, data,
