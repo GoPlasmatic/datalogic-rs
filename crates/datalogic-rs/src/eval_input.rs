@@ -35,7 +35,7 @@ use crate::arena::DataValue;
 /// private module so external crates cannot implement [`EvalInput`].
 /// The set of supported input shapes is a closed class defined entirely
 /// in this file.
-mod sealed {
+pub(crate) mod sealed {
     use bumpalo::Bump;
 
     use crate::arena::DataValue;
@@ -60,7 +60,7 @@ mod sealed {
     /// The per-call arena of a one-shot evaluation. 4 KB covers typical
     /// small-rule evaluations without a second chunk.
     #[inline]
-    pub(super) fn one_shot_arena() -> Bump {
+    pub(crate) fn one_shot_arena() -> Bump {
         Bump::with_capacity(4096)
     }
 }

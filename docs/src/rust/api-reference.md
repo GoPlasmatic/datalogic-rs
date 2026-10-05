@@ -355,16 +355,47 @@ entry points.
 | `&OwnedDataValue` | Deep-borrow into the arena. |
 | `&'a ParsedData` | Pass-through: the tree is already arena-resident. |
 | `&serde_json::Value` (`feature = "serde_json"`) | Deep-convert into the arena. |
+| `&Roots` / `Roots` | One object node, plus each root's own cost. |
 
 The trait is sealed; external crates cannot add new shapes.
+
+### Roots
+
+Several values evaluated as the fields of one top-level object, without
+building that object. Each root is borrowed and viewed in place the way
+the engine views a single input of that type, so a host that keeps a
+payload and its metadata apart does not copy both into a combined value
+for every evaluation.
+
+```rust
+let roots = Roots::from([("data", &payload), ("metadata", &metadata)]);
+session.eval_into::<serde_json::Value, _>(&compiled, &roots)?;
+
+// Mixed representations, built up one root at a time:
+let roots = Roots::new()
+    .root("data", &payload)        // &serde_json::Value
+    .root("claims", &claims)       // &OwnedDataValue
+    .root("config", &parsed);      // &ParsedData
+```
+
+A rule reads `{"var": "data.user"}` exactly as it would from
+`{"data": payload, "metadata": metadata}`. Names keep the order they were
+first given in (the key order of `{"var": ""}`), and a repeated name
+replaces its value in place. `Roots` is accepted wherever the engine
+takes input, by reference or by value.
+
+Against Orion's guard shape (`json!({"data": data, "metadata": metadata})`
+built per evaluation), `Roots` measured 7 to 10 times faster for payloads
+of 4 to 1,024 fields.
 
 ### OwnedInput
 
 The owned-entry-point cousin used by `Engine::eval*` and the module-level
 helpers, where the engine creates and owns the arena per call. Also
 sealed; the supported shapes are `&str` and `&String` (JSON-parsed),
-`&OwnedDataValue` (cloned), `OwnedDataValue` (moved), and
-`&serde_json::Value` (`feature = "serde_json"`, deep-converted).
+`&OwnedDataValue` (cloned), `OwnedDataValue` (moved),
+`&serde_json::Value` (`feature = "serde_json"`, deep-converted), and
+`&Roots` / `Roots`.
 
 ### FromDataValue
 

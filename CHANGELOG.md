@@ -39,6 +39,18 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   test checks every suite case: evaluating against data pruned to the
   reported reads gives the same outcome. New public types: `Facts`,
   `DataPath`.
+- **`Roots`** evaluates several values as the fields of one top-level
+  object without building it: `Roots::from([("data", &payload),
+  ("metadata", &metadata)])` reads as `{"data": .., "metadata": ..}`.
+  Each root is borrowed and viewed in place like a single input of its
+  type (`&serde_json::Value`, `&OwnedDataValue`, `&ParsedData`,
+  `&DataValue`, mixed freely), so a host no longer copies its parts into
+  a combined value per evaluation. Accepted by every entry point that
+  takes input, by reference or by value. Against a per-evaluation
+  `json!` merge it measured 7 to 10 times faster for payloads of 4 to
+  1,024 fields. A generated test splits every suite case's data into
+  roots and checks the outcome is unchanged. New public types: `Roots`,
+  `RootValue`.
 - **`Engine::truthy_of`** applies the engine's configured truthiness to
   a value the host already holds: `&serde_json::Value`,
   `&OwnedDataValue`, `&ParsedData` or `&DataValue` (sealed
