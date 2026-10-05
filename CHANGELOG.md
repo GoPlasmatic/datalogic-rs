@@ -59,6 +59,24 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   falsy, like an empty array, and a configured `TruthyEvaluator` applies.
   Tested against the engine's own `!!` for every representation and
   evaluator.
+- **`Engine::check`** reports every problem the engine can see in a rule
+  before it runs, in one pass, as `Diagnostic`s (a `DiagnosticCode`, a
+  `Severity`, a message and an RFC 6901 JSON Pointer into the rule). Errors
+  are what will fail: an object with several keys outside templating
+  mode, an unknown operator (with a "did you mean" suggestion one edit
+  away), `and` / `or` / `if` without an argument array, an argument count
+  the operator rejects (read from the operator table, or from a custom
+  operator's declared `CustomOperatorInfo`), and a literal timezone that
+  does not exist. Warnings run but are probably mistakes: arguments an
+  operator never evaluates, and in a template an output key one edit away
+  from an operator name. `CheckMode` checks in the engine's mode, strictly
+  or as a template. **`Engine::compile_checked`** compiles only a rule with
+  no error diagnostic and otherwise returns a `CompileError` listing them
+  all. A generated test checks that `compile` fails exactly when `check`
+  reports a compile-level problem. Run over the 525 rules stored in Orion
+  and dataflow-rs, it reports nothing in the mode they are compiled in. New
+  public types: `CheckMode`, `Diagnostic`, `DiagnosticCode`, `Severity`,
+  `CompileError`.
 - **`EvaluationConfig::missing_var`** chooses what a `var` / `val` read that
   finds nothing evaluates to: `MissingVar::Null` (the default, JSONLogic's
   rule) or `MissingVar::Error`, which raises `VariableNotFound` naming the

@@ -143,7 +143,7 @@ pub(crate) fn tensor_wire_body(
 /// a rule, so `{"tensor": {"val": "prediction"}}` still reads a tensor out
 /// of the data rather than being mistaken for a wire body.
 #[cfg(feature = "tensor")]
-fn is_tensor_wire_body(fields: &[(String, OwnedDataValue)]) -> bool {
+pub(crate) fn is_tensor_wire_body(fields: &[(String, OwnedDataValue)]) -> bool {
     if fields.len() != 3 {
         return false;
     }

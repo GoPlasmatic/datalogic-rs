@@ -202,13 +202,12 @@ pub struct Engine {
     pub(super) custom_operators: CustomOperators,
     /// Whether templating mode is enabled — multi-key objects compile
     /// to output-shaping templates and unknown operator keys pass through.
-    #[cfg(feature = "templating")]
+    /// Always `false` without the `templating` feature.
     templating: bool,
     /// Escape prefix that marks a template object key as a literal output
     /// field rather than an operator invocation. `None` (the default)
     /// leaves key resolution exactly as it was. See
     /// [`crate::EngineBuilder::with_template_key_escape`].
-    #[cfg(feature = "templating")]
     template_key_escape: Option<char>,
     /// Whether `Engine::compile` runs the constant-folding pass.
     /// Defaults to `true`; toggled via
@@ -329,9 +328,7 @@ impl std::fmt::Debug for Engine {
         // themselves can't render a meaningful Debug.
         let mut s = f.debug_struct("Engine");
         s.field("custom_operators", &self.custom_operators.len());
-        #[cfg(feature = "templating")]
         s.field("templating", &self.templating);
-        #[cfg(feature = "templating")]
         s.field("template_key_escape", &self.template_key_escape);
         s.field("config", &self.config);
         s.finish_non_exhaustive()
@@ -389,9 +386,7 @@ impl Engine {
         Self {
             id: NEXT_ENGINE_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             custom_operators: CustomOperators::new(operators),
-            #[cfg(feature = "templating")]
-            templating: _templating,
-            #[cfg(feature = "templating")]
+            templating: _templating && cfg!(feature = "templating"),
             template_key_escape: _template_key_escape,
             constant_folding,
             config,
@@ -443,23 +438,10 @@ impl Engine {
     /// single call site in `compile/` doesn't repeat the `#[cfg]` ceremony.
     #[inline]
     pub(crate) fn is_templating_enabled(&self) -> bool {
-        #[cfg(feature = "templating")]
-        {
-            self.templating
-        }
-        #[cfg(not(feature = "templating"))]
-        {
-            false
-        }
+        self.templating
     }
 
     /// Internal: the template-key escape prefix, or `None` when unset.
-    ///
-    /// Gated rather than folded like [`Self::is_templating_enabled`]:
-    /// every call site (the compile walker's escaped-key branch and
-    /// `evaluate_structured_object`) already sits behind the same feature,
-    /// so an off-feature stub would just be dead code.
-    #[cfg(feature = "templating")]
     #[inline]
     pub(crate) fn template_key_escape(&self) -> Option<char> {
         self.template_key_escape
@@ -593,6 +575,78 @@ impl Engine {
     pub fn compile<R: crate::IntoLogic>(&self, rule: R) -> Result<Logic> {
         let owned = rule.into_owned_logic()?;
         Logic::compile_with(&owned, self)
+    }
+
+    /// Check `rule` without compiling it: every problem the engine can see
+    /// before it runs, in rule order, each located by a JSON Pointer.
+    ///
+    /// An [`Error`](crate::Severity::Error) is something that will fail: a
+    /// rule that does not compile (an object with several keys outside
+    /// templating mode), or a call that fails whenever it runs (an unknown
+    /// operator, `and` / `or` / `if` without an argument array, an argument
+    /// count the operator rejects, a literal timezone that does not exist).
+    /// A [`Warning`](crate::Severity::Warning) runs, but probably not as
+    /// meant: arguments an operator never evaluates, or in a template an
+    /// output key one edit away from an operator name.
+    ///
+    /// Unlike [`Self::compile`], which stops at the first problem and
+    /// leaves call errors to evaluation, this reports them all, including
+    /// those in branches a given input never reaches. `mode` chooses
+    /// strict or templating mode for this check (see [`crate::CheckMode`]).
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::{CheckMode, DiagnosticCode, Engine};
+    ///
+    /// let engine = Engine::new();
+    /// let diags = engine.check(r#"{"if": [true, {"vr": "x"}, {"map": [1]}]}"#, CheckMode::Engine);
+    /// assert_eq!(diags.len(), 2);
+    /// assert_eq!(diags[0].code, DiagnosticCode::UnknownOperator);
+    /// assert_eq!(diags[0].pointer, "/if/1");
+    /// assert!(diags[0].message.contains("did you mean `var`"));
+    /// assert_eq!(diags[1].code, DiagnosticCode::ArgumentCount);
+    /// ```
+    pub fn check<R: crate::IntoLogic>(
+        &self,
+        rule: R,
+        mode: crate::CheckMode,
+    ) -> Vec<crate::Diagnostic> {
+        let owned = match rule.into_owned_logic() {
+            Ok(owned) => owned,
+            Err(err) => return crate::CompileError::from_error(err).diagnostics,
+        };
+        let templating = match mode {
+            crate::CheckMode::Engine => self.is_templating_enabled(),
+            crate::CheckMode::Strict => false,
+            crate::CheckMode::Template => true,
+        };
+        crate::check::check(self, &owned, templating)
+    }
+
+    /// [`Self::compile`], refusing a rule that [`Self::check`] finds any
+    /// error in: strict up front, where `compile` leaves a call that cannot
+    /// succeed to fail at evaluation. The error carries every diagnostic,
+    /// warnings included. A rule with only warnings compiles.
+    ///
+    /// # Errors
+    ///
+    /// [`crate::CompileError`] listing the diagnostics.
+    pub fn compile_checked<R: crate::IntoLogic>(
+        &self,
+        rule: R,
+    ) -> std::result::Result<Logic, crate::CompileError> {
+        let owned = rule
+            .into_owned_logic()
+            .map_err(crate::CompileError::from_error)?;
+        let diagnostics = crate::check::check(self, &owned, self.is_templating_enabled());
+        if diagnostics
+            .iter()
+            .any(|d| d.severity == crate::Severity::Error)
+        {
+            return Err(crate::CompileError { diagnostics });
+        }
+        Logic::compile_with(&owned, self).map_err(crate::CompileError::from_error)
     }
 
     /// Compile `rule` in templating mode, whatever mode the engine was

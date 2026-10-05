@@ -98,6 +98,7 @@
 mod arena;
 mod arena_ext;
 mod builder;
+mod check;
 mod compile;
 mod config;
 mod engine;
@@ -132,6 +133,7 @@ pub use builder::EngineBuilder;
 /// `datalogic-rs` itself depends on — pair with `use datalogic_rs::bumpalo`
 /// instead of an independent `bumpalo` dep to avoid major-version skew.
 pub use bumpalo;
+pub use check::{CheckMode, CompileError, Diagnostic, DiagnosticCode, Severity};
 pub use config::{
     DivisionByZeroHandling, EvaluationConfig, MissingVar, NanHandling, NumericCoercionConfig,
     TruthyEvaluator,
