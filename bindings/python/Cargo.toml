@@ -34,17 +34,9 @@ name = "datalogic_py"
 # valid in the JS/UI playground also runs from Python.
 datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features = [
     "serde_json",
-    "datetime",
+    "all-operators",
     "trace",
     "templating",
-    "error-handling",
-    "ext-string",
-    "ext-array",
-    "ext-object",
-    "ext-control",
-    "ext-math",
-    "flagd",
-    "tensor",
     "budget",
 ] }
 # pyo3 0.23 is the floor for Rust edition 2024 + the `Bound<'py, T>` API.

@@ -58,7 +58,7 @@ pub(super) fn try_compile_var(args: &[CompiledNode], ctx: &mut CompileCtx) -> Op
         _ if args.len() >= 2 => {
             return Some(CompiledNode::BuiltinOperator {
                 id: Some(ctx.next_id()),
-                opcode: crate::opcode::OpCode::VarDefault,
+                opcode: crate::OpCode::VarDefault,
                 args: args[..2].to_vec().into_boxed_slice(),
                 predicate_hint: None,
                 iter_arg_kind: crate::operators::array::IterArgKind::General,

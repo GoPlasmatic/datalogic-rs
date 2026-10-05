@@ -2,7 +2,7 @@
 
 use crate::arena::{ContextStack, DataValue, IterGuard, bvec};
 use crate::node::PathSegment;
-use crate::opcode::OpCode;
+use crate::operators::meta::ArithOp;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 use datavalue::{NumberValue, OwnedDataValue};
@@ -92,7 +92,7 @@ fn map_fused<'a>(
 #[inline]
 fn map_arith_var_lit<'a>(
     src: &IterSrc<'a>,
-    opcode: OpCode,
+    op: ArithOp,
     var_segs: &[PathSegment],
     lit_value: &OwnedDataValue,
     var_is_lhs: bool,
@@ -105,7 +105,7 @@ fn map_arith_var_lit<'a>(
     // Integer fast path. Aborts (without committing results) on the first
     // overflow or non-integer input — caller falls through to f64.
     if let Some(li) = lit_i
-        && let Some(av) = map_arith_var_lit_int(src, var_segs, li, opcode, var_is_lhs, len, arena)
+        && let Some(av) = map_arith_var_lit_int(src, var_segs, li, op, var_is_lhs, len, arena)
     {
         return Some(av);
     }
@@ -125,12 +125,7 @@ fn map_arith_var_lit<'a>(
         } else {
             (lit_f, item_f)
         };
-        let r = match opcode {
-            OpCode::Add => a + b,
-            OpCode::Subtract => a - b,
-            OpCode::Multiply => a * b,
-            _ => unreachable!(),
-        };
+        let r = op.apply_f64(a, b);
         results.push(DataValue::Number(NumberValue::from_f64(r)));
     }
     Some(arena.alloc(DataValue::Array(results.into_bump_slice())))
@@ -144,7 +139,7 @@ fn map_arith_var_lit_int<'a>(
     src: &IterSrc<'a>,
     var_segs: &[PathSegment],
     li: i64,
-    opcode: OpCode,
+    op: ArithOp,
     var_is_lhs: bool,
     len: usize,
     arena: &'a Bump,
@@ -163,12 +158,7 @@ fn map_arith_var_lit_int<'a>(
         } else {
             (li, item_i)
         };
-        let r = match opcode {
-            OpCode::Add => a.checked_add(b)?,
-            OpCode::Subtract => a.checked_sub(b)?,
-            OpCode::Multiply => a.checked_mul(b)?,
-            _ => unreachable!(),
-        };
+        let r = op.checked_i64(a, b)?;
         results.push(DataValue::Number(NumberValue::Integer(r)));
     }
     Some(arena.alloc(DataValue::Array(results.into_bump_slice())))
@@ -185,7 +175,7 @@ fn map_arith_var_lit_int<'a>(
 #[inline]
 fn map_arith_var_var<'a>(
     src: &IterSrc<'a>,
-    opcode: OpCode,
+    op: ArithOp,
     a_segs: &[PathSegment],
     b_segs: &[PathSegment],
     arena: &'a Bump,
@@ -207,12 +197,7 @@ fn map_arith_var_var<'a>(
             let (Some(ia), Some(ib)) = (a.as_i64(), b.as_i64()) else {
                 break 'int_pass;
             };
-            let r = match opcode {
-                OpCode::Add => ia.checked_add(ib),
-                OpCode::Subtract => ia.checked_sub(ib),
-                OpCode::Multiply => ia.checked_mul(ib),
-                _ => unreachable!(),
-            };
+            let r = op.checked_i64(ia, ib);
             let Some(r) = r else { break 'int_pass };
             results.push(DataValue::Number(NumberValue::Integer(r)));
         }
@@ -225,12 +210,7 @@ fn map_arith_var_var<'a>(
         let item = src.get(i);
         let a_f = a_field.resolve(item)?.as_f64()?;
         let b_f = b_field.resolve(item)?.as_f64()?;
-        let r = match opcode {
-            OpCode::Add => a_f + b_f,
-            OpCode::Subtract => a_f - b_f,
-            OpCode::Multiply => a_f * b_f,
-            _ => unreachable!(),
-        };
+        let r = op.apply_f64(a_f, b_f);
         results.push(DataValue::Number(NumberValue::from_f64(r)));
     }
     Some(arena.alloc(DataValue::Array(results.into_bump_slice())))

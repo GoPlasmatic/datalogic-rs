@@ -173,7 +173,7 @@ JSON test-suite files via `serde_json::Value`; it does not need
 | Public Rust API                | `crates/datalogic-rs/src/lib.rs`                  |
 | Engine + dispatcher            | `crates/datalogic-rs/src/engine/`                 |
 | Compile pipeline + optimiser   | `crates/datalogic-rs/src/compile/`                |
-| OpCode enum (64 builtins; 67 accepted names including the `var` / `?:` / `match` aliases) | `crates/datalogic-rs/src/opcode.rs` |
+| Operator table: one row per built-in (84 operators; 87 accepted names including the `var` / `?:` / `match` aliases). Generates `OpCode`, names, dispatch; declares the facts the optimizer derives from | `crates/datalogic-rs/src/operators/table.rs`, `operators/meta.rs` |
 | Operator implementations       | `crates/datalogic-rs/src/operators/`              |
 | Arena value types & context    | `crates/datalogic-rs/src/arena/`                  |
 | Rust integration tests         | `crates/datalogic-rs/tests/`                      |
@@ -215,15 +215,20 @@ from `optimize/mod.rs`.
 | `scope`          | Resolves every `var` / `val` / `exists` reference to a compile-time `ScopeBinding` (`Root` / `Current` / `Ancestor`), so the runtime reads a precomputed frame target instead of probing `ctx.depth()`. Runs once after CSE; unconditional, so no-fold and traced compiles get the same resolution. | `compile/scope.rs`          |
 | `scope` (cont.)  | The same pass reports `Logic::needs_ancestor_frames`: whether any reference can reach past the innermost frame. When false (the common case: reaching an ancestor takes both two levels of iterator nesting and a level marker inside the inner one) evaluation skips maintaining the ancestor-frame list entirely. | `compile/scope.rs`          |
 
-`compile/scope.rs` also owns `frames_pushed_for_child`, the single source
-of truth for which argument positions execute under a pushed context frame
-(iterator bodies, sort/group_by/distinct key expressions, a multi-arg `try`'s
-catch arm). Both the scope pass and `optimize/cse.rs` read it, so the two can
-never drift. **An operator that pushes a frame must register its argument
-position there**, or variable references beneath it resolve against the wrong
-frame; a debug-only oracle in `operators::variable` cross-checks every
-resolution against the runtime walk and fires on the first test that
-exercises an omission.
+None of these passes keeps its own list of operators. Each operator-table
+row (`operators/table.rs`) declares facts in its `OpMeta`
+(`operators/meta.rs`): whether it reads the data context, its effect
+(`Clock`, `Throws`, `Catches`), which argument positions run under a pushed
+context frame (iterator bodies, sort/group_by/distinct key expressions, a
+multi-arg `try`'s catch arm), explicit fold/CSE opt-outs, and its algebra
+(`+ - *`, the comparisons). Constant folding (`OpMeta::can_fold`), CSE
+(`cse_pure`, `is_iterator`) and scope resolution (`frames_for`, through
+`compile/scope.rs::frames_pushed_for_child`) derive their answers from those
+facts, and the `map` / `reduce` / `filter` fast paths read the algebra. **An
+operator that pushes a frame must declare it in its row**, or variable
+references beneath it resolve against the wrong frame; a debug-only oracle in
+`operators::variable` cross-checks every resolution against the runtime walk
+and fires on the first test that exercises an omission.
 
 The runtime side has its own fast paths that fire without a compile-time
 pass, including:

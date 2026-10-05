@@ -75,5 +75,7 @@ JSONLOGIC_TEST_FILE=tests/suites/arithmetic/plus.json \
 ## Adding a new suite
 
 1. Create `tests/suites/<path>.json` with the test cases.
-2. Add the relative path to `tests/suites/index.json` so the discovery loop picks it up.
+2. Add it to `tests/suites/index.json`, which fixes run order:
+   `UPDATE_SUITE_INDEX=1 cargo test -p datalogic-rs --all-features --test test_jsonlogic suite_index`
+   appends every new file on disk.
 3. Run the suite locally with `JSONLOGIC_TEST_FILE=…` to confirm pass/fail counts before committing.

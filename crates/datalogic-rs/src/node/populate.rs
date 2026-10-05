@@ -6,7 +6,6 @@
 use super::CompiledNode;
 use super::prelit::PreLit;
 use crate::arena::DataValue;
-use crate::opcode::OpCode;
 use datavalue::OwnedDataValue;
 
 /// Pre-build a [`PreLit`] for every literal whose payload either fits
@@ -41,30 +40,6 @@ pub(super) fn precompute_lit(value: &OwnedDataValue) -> Option<PreLit> {
         _ => return None,
     };
     Some(PreLit::from_static(dv))
-}
-
-/// Opcodes that consume `args[0]` as an iterator input via
-/// [`crate::operators::array::resolve_iter_input`]. Used by the post-compile
-/// populate pass to decide whether `iter_arg_kind` should be classified or
-/// left at the `General` default. Mirrors the actual call sites — Merge does
-/// not currently route through `resolve_iter_input`.
-#[inline]
-fn iterates_args0(opcode: OpCode) -> bool {
-    #[cfg(feature = "ext-array")]
-    if matches!(opcode, OpCode::Sort | OpCode::GroupBy | OpCode::Distinct) {
-        return true;
-    }
-    matches!(
-        opcode,
-        OpCode::Filter
-            | OpCode::Map
-            | OpCode::All
-            | OpCode::Some
-            | OpCode::None
-            | OpCode::Reduce
-            | OpCode::Min
-            | OpCode::Max
-    )
 }
 
 /// Walk the compiled tree and cache per-operator analysis results
@@ -113,7 +88,7 @@ pub(crate) fn populate_lits(node: &mut CompiledNode) {
         // runtime shape match collapses to a byte compare. Other opcodes
         // keep the default `General` (the populate pass overwrites on
         // every clone).
-        *iter_arg_kind = if iterates_args0(*opcode) && !args.is_empty() {
+        *iter_arg_kind = if opcode.iterates_arg0() && !args.is_empty() {
             crate::operators::array::IterArgKind::classify(&args[0])
         } else {
             crate::operators::array::IterArgKind::General
@@ -124,7 +99,7 @@ pub(crate) fn populate_lits(node: &mut CompiledNode) {
 #[cfg(test)]
 mod tests {
     /// `group_by` / `distinct` consume `args[0]` via `resolve_iter_input`,
-    /// so they must be listed in [`super::iterates_args0`] — otherwise the
+    /// so their rows must use the `iter` shape (`OpCode::iterates_arg0`) — otherwise the
     /// classification silently stays `General` (still correct, but pays a
     /// full dispatch per evaluation). Pin the classified shape.
     #[cfg(feature = "ext-array")]
@@ -144,7 +119,7 @@ mod tests {
             assert_ne!(
                 *iter_arg_kind,
                 IterArgKind::General,
-                "iterates_args0 must classify {rule}"
+                "iterates_arg0 must classify {rule}"
             );
         }
     }

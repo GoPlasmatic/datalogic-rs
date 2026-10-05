@@ -103,5 +103,17 @@
     "rule": { "keys": [] },
     "data": null,
     "error": { "type": "Invalid Arguments" }
+  },
+  {
+    "description": "values of a literal null (folded at compile time)",
+    "rule": { "values": [null] },
+    "data": null,
+    "result": []
+  },
+  {
+    "description": "entries of a literal null (folded at compile time)",
+    "rule": { "entries": [null] },
+    "data": null,
+    "result": []
   }
 ]

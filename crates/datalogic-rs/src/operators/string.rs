@@ -7,6 +7,7 @@ use crate::{CompiledNode, Engine, Result};
 // build the result. For string-producing ops, the result is allocated as
 // `&'a str` in the arena via `arena.alloc_str` — no heap `String`.
 
+use super::eager::Cx;
 use crate::arena::{ContextStack, DataValue, data_to_str};
 use bumpalo::Bump;
 
@@ -44,28 +45,20 @@ pub(crate) fn evaluate_concat<'a>(
     Ok(arena.alloc(DataValue::String(buf.into_bump_str())))
 }
 
-/// `substr` — char-indexed substring extraction. Negative start counts from
-/// end; negative length is treated as an end position.
+/// `substr(text, start?, length?)`: char-indexed substring. Negative
+/// `start` counts from the end; negative `length` is an end position
+/// counted from the end. A `start` or `length` that is not an integer is
+/// treated as absent (per substr's spec).
 #[inline]
-pub(crate) fn evaluate_substr<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Ok(crate::arena::singletons::singleton_empty_string());
-    }
-
-    let s_av = engine.dispatch_node(&args[0], ctx, arena)?;
-    let string = data_to_str(s_av, arena);
+pub(crate) fn substr<'a>(
+    cx: &mut Cx<'_, 'a>,
+    string: &'a str,
+    start: Option<i64>,
+    length: Option<i64>,
+) -> Result<&'a str> {
     // Finding the boundaries scans the string.
-    ctx.charge_bytes(string.len())?;
-
-    // `start` defaults to 0; `length` is optional. Both swallow non-numeric
-    // values silently (per substr's spec). Literal fast path skips dispatch.
-    let start: i64 = substr_arg_i64(args.get(1), ctx, engine, arena)?.unwrap_or(0);
-    let length: Option<i64> = substr_arg_i64(args.get(2), ctx, engine, arena)?;
+    cx.charge_bytes(string.len())?;
+    let start = start.unwrap_or(0);
 
     // The selected chars form one contiguous run of `string`, and `string`
     // is already arena-resident (`data_to_str` returns `&'a str`), so the
@@ -131,11 +124,7 @@ pub(crate) fn evaluate_substr<'a>(
         (byte_start, byte_end)
     };
 
-    let result = &string[byte_start..byte_end];
-    if result.is_empty() {
-        return Ok(crate::arena::singletons::singleton_empty_string());
-    }
-    Ok(arena.alloc(DataValue::String(result)))
+    Ok(&string[byte_start..byte_end])
 }
 
 /// Byte offset of the `n`-th char of `s`, or `s.len()` when `n` is at or
@@ -149,24 +138,6 @@ pub(crate) fn char_to_byte_offset(s: &str, n: usize) -> usize {
     s.char_indices().nth(n).map_or(s.len(), |(b, _)| b)
 }
 
-/// Resolve a substr `start` / `length` argument as `Option<i64>`. Literal
-/// `Value` nodes skip the dispatch hop; everything else dispatches and
-/// reads `as_i64()`. Non-numeric resolved values map to `None` (substr
-/// silently swallows them — different from `slice` which errors on NaN).
-#[inline]
-fn substr_arg_i64<'a>(
-    arg: Option<&'a CompiledNode>,
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<Option<i64>> {
-    let Some(node) = arg else { return Ok(None) };
-    if let CompiledNode::Value { value, .. } = node {
-        return Ok(value.as_i64());
-    }
-    Ok(engine.dispatch_node(node, ctx, arena)?.as_i64())
-}
-
 /// Native arena-mode `in` — checks whether a needle is contained in a
 /// haystack.
 ///
@@ -178,24 +149,17 @@ fn substr_arg_i64<'a>(
 ///   equality `===` uses, so `[1] in [[1], [2]]` is `true` but
 ///   `1 in ["1"]` is `false`.
 #[inline]
-pub(crate) fn evaluate_in<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 {
-        return Ok(crate::arena::singletons::singleton_false());
-    }
-    let needle = engine.dispatch_node(&args[0], ctx, arena)?;
-    let haystack = engine.dispatch_node(&args[1], ctx, arena)?;
-
-    let result = match haystack {
+pub(crate) fn in_<'a>(
+    cx: &mut Cx<'_, 'a>,
+    needle: &'a DataValue<'a>,
+    haystack: &'a DataValue<'a>,
+) -> Result<bool> {
+    Ok(match haystack {
         // String haystack — substring check (needle must be a string).
         // Charged the haystack's bytes, which the search reads.
         DataValue::String(h) => match needle {
             DataValue::String(n) => {
-                ctx.charge_bytes(h.len())?;
+                cx.charge_bytes(h.len())?;
                 h.contains(*n)
             }
             _ => false,
@@ -205,12 +169,14 @@ pub(crate) fn evaluate_in<'a>(
         // iterators charge theirs, so the cost does not depend on where
         // (or whether) the needle is found.
         DataValue::Array(items) => {
-            ctx.charge(items.len() as u64)?;
+            cx.charge(items.len() as u64)?;
             let mut found = false;
             for it in items.iter() {
                 // A failed comparison counts as "not this item", except an
                 // exhausted budget, which is final.
-                match crate::operators::comparison::compare_equals(it, needle, true, engine, ctx) {
+                match crate::operators::comparison::compare_equals(
+                    it, needle, true, cx.engine, cx.ctx,
+                ) {
                     Ok(true) => {
                         found = true;
                         break;
@@ -226,166 +192,88 @@ pub(crate) fn evaluate_in<'a>(
             found
         }
         _ => false,
-    };
-    Ok(crate::arena::singletons::singleton_bool(result))
+    })
 }
 
+/// `starts_with(text, prefix)`: whether `text` starts with `prefix`.
 #[cfg(feature = "ext-string")]
 #[inline]
-pub(crate) fn evaluate_starts_with<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 {
-        return Err(crate::Error::invalid_args());
-    }
-    let s = engine.dispatch_node(&args[0], ctx, arena)?;
-    let p = engine.dispatch_node(&args[1], ctx, arena)?;
-    let s_str = data_to_str(s, arena);
-    let p_str = data_to_str(p, arena);
+pub(crate) fn starts_with<'a>(cx: &mut Cx<'_, 'a>, text: &'a str, prefix: &'a str) -> Result<bool> {
     // The test reads at most the needle's length.
-    ctx.charge_bytes(p_str.len().min(s_str.len()))?;
-    Ok(crate::arena::singletons::singleton_bool(
-        s_str.starts_with(p_str),
-    ))
+    cx.charge_bytes(prefix.len().min(text.len()))?;
+    Ok(text.starts_with(prefix))
 }
 
+/// `ends_with(text, suffix)`: whether `text` ends with `suffix`.
 #[cfg(feature = "ext-string")]
 #[inline]
-pub(crate) fn evaluate_ends_with<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 {
-        return Err(crate::Error::invalid_args());
-    }
-    let s = engine.dispatch_node(&args[0], ctx, arena)?;
-    let p = engine.dispatch_node(&args[1], ctx, arena)?;
-    let s_str = data_to_str(s, arena);
-    let p_str = data_to_str(p, arena);
+pub(crate) fn ends_with<'a>(cx: &mut Cx<'_, 'a>, text: &'a str, suffix: &'a str) -> Result<bool> {
     // The test reads at most the needle's length.
-    ctx.charge_bytes(p_str.len().min(s_str.len()))?;
-    Ok(crate::arena::singletons::singleton_bool(
-        s_str.ends_with(p_str),
-    ))
+    cx.charge_bytes(suffix.len().min(text.len()))?;
+    Ok(text.ends_with(suffix))
 }
 
+/// `upper(text)`: `text` upper-cased.
 #[cfg(feature = "ext-string")]
 #[inline]
-pub(crate) fn evaluate_upper<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Err(crate::Error::invalid_args());
-    }
-    let av = engine.dispatch_node(&args[0], ctx, arena)?;
-    let s = data_to_str(av, arena);
-    ctx.charge_bytes(s.len())?;
+pub(crate) fn upper<'a>(cx: &mut Cx<'_, 'a>, s: &'a str) -> Result<&'a str> {
+    cx.charge_bytes(s.len())?;
     // Build the upper-cased text straight into the arena instead of
     // allocating a heap `String` via `to_uppercase()` then copying it in.
     // Pre-size to the source byte length so the common (ASCII, length-
     // preserving) case never re-grows the arena buffer.
-    let mut buf = bumpalo::collections::String::with_capacity_in(s.len(), arena);
+    let mut buf = bumpalo::collections::String::with_capacity_in(s.len(), cx.arena);
     for c in s.chars() {
         for u in c.to_uppercase() {
             buf.push(u);
         }
     }
-    Ok(arena.alloc(DataValue::String(buf.into_bump_str())))
+    Ok(buf.into_bump_str())
 }
 
+/// `lower(text)`: `text` lower-cased.
 #[cfg(feature = "ext-string")]
 #[inline]
-pub(crate) fn evaluate_lower<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Err(crate::Error::invalid_args());
-    }
-    let av = engine.dispatch_node(&args[0], ctx, arena)?;
-    let s = data_to_str(av, arena);
-    ctx.charge_bytes(s.len())?;
+pub(crate) fn lower<'a>(cx: &mut Cx<'_, 'a>, s: &'a str) -> Result<&'a str> {
+    cx.charge_bytes(s.len())?;
     // Build the lower-cased text straight into the arena instead of
     // allocating a heap `String` via `to_lowercase()` then copying it in.
     // Pre-size to the source byte length so the common (ASCII, length-
     // preserving) case never re-grows the arena buffer.
-    let mut buf = bumpalo::collections::String::with_capacity_in(s.len(), arena);
+    let mut buf = bumpalo::collections::String::with_capacity_in(s.len(), cx.arena);
     for c in s.chars() {
         for l in c.to_lowercase() {
             buf.push(l);
         }
     }
-    Ok(arena.alloc(DataValue::String(buf.into_bump_str())))
+    Ok(buf.into_bump_str())
 }
 
+/// `trim(text)`: `text` without leading and trailing whitespace.
 #[cfg(feature = "ext-string")]
 #[inline]
-pub(crate) fn evaluate_trim<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Err(crate::Error::invalid_args());
-    }
-    let av = engine.dispatch_node(&args[0], ctx, arena)?;
-    let s = data_to_str(av, arena);
+pub(crate) fn trim<'a>(cx: &mut Cx<'_, 'a>, s: &'a str) -> Result<&'a str> {
     // An all-whitespace string is scanned end to end.
-    ctx.charge_bytes(s.len())?;
-    // `s` is already arena-resident, so `s.trim()` is an arena `&'a str`
+    cx.charge_bytes(s.len())?;
+    // `s` is already arena-resident, so the trimmed view is an arena
     // sub-slice; no re-copy needed.
-    Ok(arena.alloc(DataValue::String(s.trim())))
+    Ok(s.trim())
 }
 
-/// Native arena-mode `split`. Splits text by a plain string delimiter,
-/// building the result directly in the arena.
+/// `split(text, delimiter)`: the parts of `text` between occurrences of
+/// a plain-string delimiter, built directly in the arena. An empty
+/// delimiter splits into characters.
 #[cfg(feature = "ext-string")]
 #[inline]
-pub(crate) fn evaluate_split<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn split<'a>(
+    cx: &mut Cx<'_, 'a>,
+    text: &'a str,
+    delim: &'a str,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 {
-        return Err(crate::Error::invalid_args());
-    }
-    let text_av = engine.dispatch_node(&args[0], ctx, arena)?;
-    let text_str: &'a str = match text_av {
-        DataValue::String(s) => s,
-        _ => data_to_str(text_av, arena),
-    };
-
-    // Resolve the delimiter as a string. Literal-string fast path skips dispatch.
-    let delim_str: &'a str = if let CompiledNode::Value {
-        value: datavalue::OwnedDataValue::String(s),
-        ..
-    } = &args[1]
-    {
-        arena.alloc_str(s)
-    } else {
-        let av = engine.dispatch_node(&args[1], ctx, arena)?;
-        match av {
-            DataValue::String(s) => s,
-            _ => data_to_str(av, arena),
-        }
-    };
-
     // The text's bytes now, and one per part produced in
     // `split_arena_normal`.
-    ctx.charge_bytes(text_str.len())?;
-    split_arena_normal(text_str, delim_str, ctx, arena)
+    cx.charge_bytes(text.len())?;
+    split_arena_normal(text, delim, cx.ctx, cx.arena)
 }
 
 #[cfg(feature = "ext-string")]

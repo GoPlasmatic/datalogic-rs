@@ -1,9 +1,9 @@
 //! Shared test fixtures for optimizer-pass unit tests.
 
+use crate::OpCode;
 use crate::node::{
     CompiledNode, MetadataHint, PathSegment, ReduceHint, SYNTHETIC_ID, ScopeBinding,
 };
-use crate::opcode::OpCode;
 use datavalue::OwnedDataValue;
 
 pub(super) fn val(v: OwnedDataValue) -> CompiledNode {

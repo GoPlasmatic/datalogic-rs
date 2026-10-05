@@ -10,12 +10,12 @@
 //! every dtype.
 
 use super::{
-    Scalar, advance, arg, as_axis, as_i64_list, as_shape, as_tensor, at_most, bad, by_dtype,
-    charge, cost, element_error, finish_bytes, numel_of, opt_arg, resolve_index,
-    shape_without_axis, split_axis, strides_of, wrap,
+    Scalar, advance, as_tensor, bad, by_dtype, charge, cost, element_error, finish_bytes, numel_of,
+    resolve_axis, resolve_index, shape_without_axis, split_axis, strides_of, wrap,
 };
-use crate::arena::{ContextStack, DataValue, bvec};
-use crate::{CompiledNode, Engine, Result};
+use crate::Result;
+use crate::arena::{DataValue, bvec};
+use crate::operators::eager::Cx;
 use bumpalo::Bump;
 use datavalue::{DType, DataTensor, TensorError};
 
@@ -41,16 +41,15 @@ fn tensor_list<'a>(v: &DataValue<'a>, arena: &'a Bump) -> Result<&'a [DataTensor
 
 /// `stack: [tensors, axis]` — join equal-shaped tensors along a **new**
 /// axis, so the result has one more dimension than its inputs.
-pub(crate) fn evaluate_stack<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn stack<'a>(
+    cx: &mut Cx<'_, 'a>,
+    tensors: &'a DataValue<'a>,
+    axis: i64,
 ) -> Result<&'a DataValue<'a>> {
-    at_most(args, 2)?;
-    let parts = tensor_list(arg(args, 0, ctx, engine, arena)?, arena)?;
+    let arena = cx.arena;
+    let parts = tensor_list(tensors, arena)?;
     let first = parts[0];
-    let axis = as_axis(arg(args, 1, ctx, engine, arena)?, first.ndim(), 1)?;
+    let axis = resolve_axis(axis, first.ndim(), 1)?;
 
     if parts.iter().any(|t| t.shape() != first.shape()) {
         return Err(bad("stack: every tensor must have the same shape"));
@@ -58,7 +57,7 @@ pub(crate) fn evaluate_stack<'a>(
     let total: usize = parts.iter().map(|t| t.numel()).sum();
     // max(tensors read, elements produced): zero-element parts are still
     // each validated.
-    charge(ctx, cost(parts.len(), total))?;
+    charge(cx, cost(parts.len(), total))?;
 
     // Insert the new axis: [outer…, n, inner…].
     let mut shape = bvec::<usize>(arena, first.ndim() + 1);
@@ -85,21 +84,20 @@ pub(crate) fn evaluate_stack<'a>(
 
 /// `concat: [tensors, axis]` — join along an **existing** axis. Shapes
 /// must agree on every axis but that one.
-pub(crate) fn evaluate_concat<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn concat<'a>(
+    cx: &mut Cx<'_, 'a>,
+    tensors: &'a DataValue<'a>,
+    axis: i64,
 ) -> Result<&'a DataValue<'a>> {
-    at_most(args, 2)?;
-    let parts = tensor_list(arg(args, 0, ctx, engine, arena)?, arena)?;
+    let arena = cx.arena;
+    let parts = tensor_list(tensors, arena)?;
     let first = parts[0];
     if first.ndim() == 0 {
         return Err(bad(
             "concat: cannot concatenate 0-d tensors; stack them instead",
         ));
     }
-    let axis = as_axis(arg(args, 1, ctx, engine, arena)?, first.ndim(), 0)?;
+    let axis = resolve_axis(axis, first.ndim(), 0)?;
 
     let agrees = |t: &DataTensor<'_>| {
         t.ndim() == first.ndim()
@@ -117,7 +115,7 @@ pub(crate) fn evaluate_concat<'a>(
     let total: usize = parts.iter().map(|t| t.numel()).sum();
     // max(tensors read, elements produced): zero-element parts are still
     // each validated.
-    charge(ctx, cost(parts.len(), total))?;
+    charge(cx, cost(parts.len(), total))?;
 
     let mut shape = bvec::<usize>(arena, first.ndim());
     shape.extend_from_slice(first.shape());
@@ -146,19 +144,17 @@ pub(crate) fn evaluate_concat<'a>(
 
 /// `unstack: [T, axis]` — the inverse of `stack`: split along `axis` and
 /// drop it, giving an array of tensors one rank lower.
-pub(crate) fn evaluate_unstack<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn unstack<'a>(
+    cx: &mut Cx<'_, 'a>,
+    t: DataTensor<'a>,
+    axis: i64,
 ) -> Result<&'a DataValue<'a>> {
-    at_most(args, 2)?;
-    let t = as_tensor(arg(args, 0, ctx, engine, arena)?, arena)?;
+    let arena = cx.arena;
     if t.ndim() == 0 {
         return Err(bad("unstack: a 0-d tensor has no axis to split"));
     }
-    let axis = as_axis(arg(args, 1, ctx, engine, arena)?, t.ndim(), 0)?;
-    charge(ctx, t.numel() as u64)?;
+    let axis = resolve_axis(axis, t.ndim(), 0)?;
+    charge(cx, t.numel() as u64)?;
 
     let dtype = t.dtype();
     let cell = dtype.size_of();
@@ -185,16 +181,13 @@ pub(crate) fn evaluate_unstack<'a>(
 /// hence its charge of 1: the payload is shared with the input, not
 /// copied. The element count must match exactly; there is no inferred
 /// `-1` dimension.
-pub(crate) fn evaluate_reshape<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn reshape<'a>(
+    cx: &mut Cx<'_, 'a>,
+    t: DataTensor<'a>,
+    shape: &'a [usize],
 ) -> Result<&'a DataValue<'a>> {
-    at_most(args, 2)?;
-    let t = as_tensor(arg(args, 0, ctx, engine, arena)?, arena)?;
-    let shape = as_shape(arg(args, 1, ctx, engine, arena)?, arena)?;
-    charge(ctx, 1)?;
+    let arena = cx.arena;
+    charge(cx, 1)?;
 
     if numel_of(shape)? != t.numel() {
         return Err(bad(
@@ -208,19 +201,16 @@ pub(crate) fn evaluate_reshape<'a>(
 
 /// `transpose: [T, perm?]` — permute the axes. `perm` defaults to a full
 /// reversal, so a 2-d transpose needs no second argument.
-pub(crate) fn evaluate_transpose<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn transpose<'a>(
+    cx: &mut Cx<'_, 'a>,
+    t: DataTensor<'a>,
+    perm: Option<&'a [usize]>,
 ) -> Result<&'a DataValue<'a>> {
-    at_most(args, 2)?;
-    let t = as_tensor(arg(args, 0, ctx, engine, arena)?, arena)?;
+    let arena = cx.arena;
     let rank = t.ndim();
 
-    let perm: &[usize] = match opt_arg(args, 1, ctx, engine, arena)? {
-        Some(v) => {
-            let p = as_shape(v, arena)?;
+    let perm: &[usize] = match perm {
+        Some(p) => {
             if p.len() != rank {
                 return Err(bad("transpose: perm must name every axis"));
             }
@@ -240,7 +230,7 @@ pub(crate) fn evaluate_transpose<'a>(
             p.into_bump_slice()
         }
     };
-    charge(ctx, t.numel() as u64)?;
+    charge(cx, t.numel() as u64)?;
 
     let mut shape = bvec::<usize>(arena, rank);
     for &ax in perm {
@@ -270,18 +260,15 @@ pub(crate) fn evaluate_transpose<'a>(
 
 /// `pad: [T, before, after, value?]` — grow every axis by a leading and a
 /// trailing margin, filling the margin with `value` (0 by default).
-pub(crate) fn evaluate_pad<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn pad<'a>(
+    cx: &mut Cx<'_, 'a>,
+    t: DataTensor<'a>,
+    before: &'a [usize],
+    after: &'a [usize],
+    fill: Option<&'a DataValue<'a>>,
 ) -> Result<&'a DataValue<'a>> {
-    at_most(args, 4)?;
-    let t = as_tensor(arg(args, 0, ctx, engine, arena)?, arena)?;
+    let arena = cx.arena;
     let rank = t.ndim();
-    let before = as_shape(arg(args, 1, ctx, engine, arena)?, arena)?;
-    let after = as_shape(arg(args, 2, ctx, engine, arena)?, arena)?;
-    let fill = opt_arg(args, 3, ctx, engine, arena)?;
 
     if before.len() != rank || after.len() != rank {
         return Err(bad("pad: before and after must have one entry per axis"));
@@ -296,7 +283,7 @@ pub(crate) fn evaluate_pad<'a>(
         );
     }
     let shape = shape.into_bump_slice();
-    charge(ctx, cost(t.numel(), numel_of(shape)?))?;
+    charge(cx, cost(t.numel(), numel_of(shape)?))?;
 
     let dtype = t.dtype();
     let cell = dtype.size_of();
@@ -337,17 +324,14 @@ pub(crate) fn evaluate_pad<'a>(
 
 /// `crop: [T, offset, shape]` — the inverse of `pad`: cut a sub-block out
 /// of the tensor. The window must lie inside the input.
-pub(crate) fn evaluate_crop<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn crop<'a>(
+    cx: &mut Cx<'_, 'a>,
+    t: DataTensor<'a>,
+    offset: &'a [usize],
+    shape: &'a [usize],
 ) -> Result<&'a DataValue<'a>> {
-    at_most(args, 3)?;
-    let t = as_tensor(arg(args, 0, ctx, engine, arena)?, arena)?;
+    let arena = cx.arena;
     let rank = t.ndim();
-    let offset = as_shape(arg(args, 1, ctx, engine, arena)?, arena)?;
-    let shape = as_shape(arg(args, 2, ctx, engine, arena)?, arena)?;
 
     if offset.len() != rank || shape.len() != rank {
         return Err(bad("crop: offset and shape must have one entry per axis"));
@@ -360,7 +344,7 @@ pub(crate) fn evaluate_crop<'a>(
             return Err(bad("crop: the window runs past the end of the tensor"));
         }
     }
-    charge(ctx, cost(t.numel(), numel_of(shape)?))?;
+    charge(cx, cost(t.numel(), numel_of(shape)?))?;
 
     let dtype = t.dtype();
     let out = DataTensor::zeroed_bytes_in(dtype, shape, arena).map_err(wrap)?;
@@ -384,20 +368,18 @@ pub(crate) fn evaluate_crop<'a>(
 /// default) in the order `indices` gives, so it both reorders and
 /// resamples. Every index must be in range: unlike `scatter`, dropping one
 /// would silently change the output shape.
-pub(crate) fn evaluate_gather<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn gather<'a>(
+    cx: &mut Cx<'_, 'a>,
+    t: DataTensor<'a>,
+    indices: &'a [i64],
+    axis: Option<i64>,
 ) -> Result<&'a DataValue<'a>> {
-    at_most(args, 3)?;
-    let t = as_tensor(arg(args, 0, ctx, engine, arena)?, arena)?;
+    let arena = cx.arena;
     if t.ndim() == 0 {
         return Err(bad("gather: a 0-d tensor has no axis to index"));
     }
-    let indices = as_i64_list(arg(args, 1, ctx, engine, arena)?, arena)?;
-    let axis = match opt_arg(args, 2, ctx, engine, arena)? {
-        Some(v) => as_axis(v, t.ndim(), 0)?,
+    let axis = match axis {
+        Some(a) => resolve_axis(a, t.ndim(), 0)?,
         None => 0,
     };
 
@@ -414,7 +396,7 @@ pub(crate) fn evaluate_gather<'a>(
     shape.extend_from_slice(t.shape());
     shape[axis] = resolved.len();
     let shape = shape.into_bump_slice();
-    charge(ctx, cost(t.numel(), numel_of(shape)?))?;
+    charge(cx, cost(t.numel(), numel_of(shape)?))?;
 
     let dtype = t.dtype();
     let cell = dtype.size_of();

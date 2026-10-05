@@ -458,7 +458,36 @@ impl Engine {
     /// assert!(!names.contains(&"lenght"));
     /// ```
     pub fn builtin_operator_names(&self) -> impl Iterator<Item = &'static str> + use<> {
-        crate::opcode::builtin_operator_names()
+        crate::operators::table::builtin_operator_names()
+    }
+
+    /// Every built-in operator compiled into this build, described by its
+    /// operator-table row: name and aliases, family and gating feature,
+    /// declared argument counts, whether it reads the data context, its
+    /// effect, its cost class, and which argument (if any) runs under a
+    /// pushed frame.
+    ///
+    /// Read from the same table that drives compilation, dispatch and the
+    /// optimizer, so it cannot drift from what the engine does. Custom
+    /// operators are not included; see [`Self::custom_operator_names`].
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::{Engine, ScopedArg};
+    ///
+    /// let engine = Engine::new();
+    /// let map = engine.operators().find(|op| op.name == "map").unwrap();
+    /// assert_eq!(map.family, "Core");
+    /// assert_eq!(map.feature, None);
+    /// assert_eq!(map.scoped_arg, Some(ScopedArg::Index(1)));
+    ///
+    /// let val = engine.operators().find(|op| op.name == "val").unwrap();
+    /// assert_eq!(val.aliases, ["var"]);
+    /// assert!(val.reads_context);
+    /// ```
+    pub fn operators(&self) -> impl Iterator<Item = crate::OperatorInfo> + use<> {
+        crate::operators::info::operators()
     }
 
     // ============================================================

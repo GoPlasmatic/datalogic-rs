@@ -7,6 +7,7 @@
 // exercise every suite.
 #![cfg(all(feature = "templating", feature = "serde_json"))]
 
+use datalogic_rs::__private::CATALOGUE;
 use datalogic_rs::Engine;
 use serde_json::{Value, json};
 
@@ -256,92 +257,30 @@ impl Recorder {
     }
 }
 
-/// Operators that exist only behind a cargo feature, grouped by the feature
-/// that gates them. Availability is looked up through [`feature_enabled`],
-/// so the feature-to-`cfg!` mapping lives in one place.
+/// Every operator this build did *not* compile in, read from the operator
+/// table's catalogue (which lists every family in the source, compiled in or
+/// not).
 ///
 /// The suite index is deliberately feature-agnostic: it lists every suite, and
 /// a reduced-feature build simply cannot evaluate some of them. Without this,
 /// `cargo test --no-default-features --features serde_json,templating,trace`
-/// fails on `throw` and `switch` with "Unknown Operator" — which is why CI's
-/// `feature-matrix` job only *builds* its legs instead of testing them.
+/// fails on `throw` and `switch` with "Unknown Operator".
 ///
-/// Kept as an explicit table rather than derived from
-/// `Engine::builtin_operator_names`, because that reports what *this* build
-/// has and so cannot distinguish "gated off" from "misspelled". A genuine typo
-/// in a suite stays absent from this table, so it still fails loudly instead of
-/// being skipped. `gated_operator_table_matches_engine` guards the table
-/// against drift.
-const GATED_OPERATORS: &[(&str, &[&str])] = &[
-    (
-        "datetime",
-        &[
-            "datetime",
-            "timestamp",
-            "parse_date",
-            "format_date",
-            "date_diff",
-            "now",
-        ],
-    ),
-    ("error-handling", &["try", "throw"]),
-    ("ext-array", &["sort", "slice", "group_by", "distinct"]),
-    ("ext-control", &["exists", "??", "switch", "match", "type"]),
-    ("ext-math", &["abs", "ceil", "floor"]),
-    ("ext-object", &["keys", "values", "entries"]),
-    (
-        "ext-string",
-        &[
-            "length",
-            "starts_with",
-            "ends_with",
-            "upper",
-            "lower",
-            "trim",
-            "split",
-        ],
-    ),
-    ("flagd", &["fractional", "sem_ver"]),
-    (
-        "tensor",
-        &[
-            "tensor",
-            "zeros",
-            "full",
-            "scatter",
-            "rle_expand",
-            "one_hot",
-            "stack",
-            "concat",
-            "unstack",
-            "reshape",
-            "transpose",
-            "pad",
-            "crop",
-            "cast",
-            "normalize",
-            "argmax",
-            "gather",
-            "to_list",
-            "shape",
-            "dtype",
-        ],
-    ),
-];
-
-/// Every gated operator this build did *not* compile in.
+/// The catalogue rather than `Engine::builtin_operator_names`, because that
+/// reports what *this* build has and so cannot distinguish "gated off" from
+/// "misspelled". A genuine typo in a suite is in no catalogue entry, so it
+/// still fails loudly instead of being skipped.
 fn absent_operators() -> impl Iterator<Item = &'static str> {
-    GATED_OPERATORS
+    CATALOGUE
         .iter()
-        .filter(|(feature, _)| !feature_enabled(feature))
-        .flat_map(|(_, ops)| ops.iter().copied())
+        .filter(|entry| !entry.enabled)
+        .flat_map(|entry| entry.names.iter().copied())
 }
 
 /// Whether this build has the named cargo feature. Backs a case's optional
 /// `requires` field, for cases that need a feature for reasons the operator
 /// walk cannot see — a duration string only coerces to a duration under
-/// `datetime`, for instance, even though the rule is a plain `*` — and the
-/// [`GATED_OPERATORS`] table.
+/// `datetime`, for instance, even though the rule is a plain `*`.
 fn feature_enabled(name: &str) -> bool {
     match name {
         "datetime" => cfg!(feature = "datetime"),
@@ -381,23 +320,105 @@ fn absent_operator(rule: &Value) -> Option<&'static str> {
     }
 }
 
-/// The table must name real operators. Under `--all-features` every entry has
-/// to be live, which catches a rename or a typo in the table itself; a *new*
-/// gated operator nobody added here still surfaces the old way, as a loud
-/// "Unknown Operator" failure under a reduced-feature build.
-#[test]
-fn gated_operator_table_matches_engine() {
-    let engine = Engine::new();
-    let live: std::collections::HashSet<&str> = engine.builtin_operator_names().collect();
-    for (feature, ops) in GATED_OPERATORS {
-        for name in *ops {
-            assert_eq!(
-                live.contains(name),
-                feature_enabled(feature),
-                "GATED_OPERATORS disagrees with the engine about `{name}` (feature `{feature}`)"
-            );
+/// Every operator name in a rule: the keys of single-key objects, which is
+/// how an operator invocation is spelled.
+fn operator_keys<'v>(rule: &'v Value, out: &mut std::collections::HashSet<&'v str>) {
+    match rule {
+        Value::Object(map) => {
+            if map.len() == 1 {
+                out.insert(map.keys().next().expect("len checked"));
+            }
+            map.values().for_each(|v| operator_keys(v, out));
+        }
+        Value::Array(items) => items.iter().for_each(|v| operator_keys(v, out)),
+        _ => {}
+    }
+}
+
+/// The suites listed in `index.json`, in run order.
+fn indexed_suites() -> Vec<String> {
+    let index = fs::read_to_string("tests/suites/index.json").expect("Failed to read index.json");
+    serde_json::from_str(&index).expect("Failed to parse index.json")
+}
+
+/// Every `.json` suite on disk, relative to `tests/suites/`.
+fn suites_on_disk() -> Vec<String> {
+    fn walk(dir: &Path, root: &Path, out: &mut Vec<String>) {
+        for entry in fs::read_dir(dir).expect("read suite dir") {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                walk(&path, root, out);
+            } else if path.extension().is_some_and(|e| e == "json")
+                && path.file_name().is_some_and(|n| n != "index.json")
+            {
+                let rel = path.strip_prefix(root).expect("under root");
+                out.push(rel.to_string_lossy().replace('\\', "/"));
+            }
         }
     }
+    let root = Path::new("tests/suites");
+    let mut out = Vec::new();
+    walk(root, root, &mut out);
+    out.sort();
+    out
+}
+
+/// The suites are discovered from disk; `index.json` only fixes their run
+/// order (the bindings' conformance runners and the benchmark read it
+/// too), so it must list exactly the suites on disk: an unlisted file is
+/// never run, which is how a new operator's suite could ship without
+/// running. `UPDATE_SUITE_INDEX=1` rewrites it, keeping the existing order,
+/// dropping deleted files and appending new ones.
+#[test]
+fn suite_index_lists_every_suite() {
+    let on_disk = suites_on_disk();
+    let indexed = indexed_suites();
+    if env::var_os("UPDATE_SUITE_INDEX").is_some() {
+        let mut order: Vec<&String> = indexed.iter().filter(|s| on_disk.contains(s)).collect();
+        order.extend(on_disk.iter().filter(|s| !indexed.contains(s)));
+        let lines: Vec<String> = order.iter().map(|s| format!("  {}", json!(s))).collect();
+        fs::write(
+            "tests/suites/index.json",
+            format!("[\n{}\n]\n", lines.join(",\n")),
+        )
+        .expect("write index.json");
+        return;
+    }
+    let mut sorted = indexed.clone();
+    sorted.sort();
+    assert_eq!(
+        sorted, on_disk,
+        "tests/suites/index.json is out of date; regenerate with UPDATE_SUITE_INDEX=1 \
+         cargo test -p datalogic-rs --all-features --test test_jsonlogic suite_index"
+    );
+}
+
+/// Every operator in the table has conformance cases: its canonical name
+/// is called by at least one rule in an indexed suite.
+#[test]
+fn every_operator_has_suite_cases() {
+    let mut called = std::collections::HashSet::new();
+    let mut suites = Vec::new();
+    for file in indexed_suites() {
+        let text = fs::read_to_string(format!("tests/suites/{file}")).expect("read suite");
+        suites.push(serde_json::from_str::<Value>(&text).expect("parse suite"));
+    }
+    for suite in &suites {
+        for case in suite.as_array().into_iter().flatten() {
+            if let Some(rule) = case.get("rule") {
+                operator_keys(rule, &mut called);
+            }
+        }
+    }
+    let missing: Vec<&str> = CATALOGUE
+        .iter()
+        .filter_map(|entry| entry.names.first().copied())
+        .filter(|name| !called.contains(name))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "operators with no suite case: {missing:?}"
+    );
 }
 
 #[test]

@@ -32,17 +32,9 @@ name = "datalogic_c"
 # PHP).
 datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features = [
     "serde_json",
-    "datetime",
+    "all-operators",
     "trace",
     "templating",
-    "error-handling",
-    "ext-string",
-    "ext-array",
-    "ext-object",
-    "ext-control",
-    "ext-math",
-    "flagd",
-    "tensor",
     "budget",
 ] }
 serde = { version = "1.0", features = ["derive"] }

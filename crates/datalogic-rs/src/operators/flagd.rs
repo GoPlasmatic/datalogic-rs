@@ -33,6 +33,7 @@ use crate::Result;
 use crate::arena::ContextStack;
 use crate::engine::Engine;
 use crate::node::CompiledNode;
+use crate::operators::eager::Cx;
 
 /// MurmurHash3 x86_32. Spec-correct on every target (no unaligned reads,
 /// no endianness dependency, no platform intrinsics).
@@ -287,36 +288,27 @@ fn lookup_string<'a>(value: &'a DataValue<'a>, key: &str) -> Option<&'a str> {
 /// Returns `Null` on any malformed input (non-3-arg shape, unparseable
 /// version, unknown operator) — matches the flagd providers' "graceful
 /// fallback" behaviour, callers compose with `??` / `if` for defaults.
+///
+/// The table row returns `Null` for any argument count other than three.
 #[inline]
-pub(crate) fn evaluate_sem_ver<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    if args.len() != 3 {
-        return Ok(crate::arena::singletons::singleton_null());
-    }
-    let v1_av = engine.dispatch_node(&args[0], ctx, arena)?;
-    let op_av = engine.dispatch_node(&args[1], ctx, arena)?;
-    let v2_av = engine.dispatch_node(&args[2], ctx, arena)?;
-
+pub(crate) fn sem_ver<'a>(
+    cx: &mut Cx<'_, 'a>,
+    v1_av: &'a DataValue<'a>,
+    op_av: &'a DataValue<'a>,
+    v2_av: &'a DataValue<'a>,
+) -> Result<Option<bool>> {
     // Normalize both version strings; bail to Null on parse failure.
-    let v1 = match parse_version(v1_av, arena) {
-        Some(v) => v,
-        None => return Ok(crate::arena::singletons::singleton_null()),
+    let Some(v1) = parse_version(v1_av, cx.arena) else {
+        return Ok(None);
     };
-    let v2 = match parse_version(v2_av, arena) {
-        Some(v) => v,
-        None => return Ok(crate::arena::singletons::singleton_null()),
+    let Some(v2) = parse_version(v2_av, cx.arena) else {
+        return Ok(None);
     };
-
-    let op = match op_av.as_str() {
-        Some(s) => s,
-        None => return Ok(crate::arena::singletons::singleton_null()),
+    let Some(op) = op_av.as_str() else {
+        return Ok(None);
     };
 
-    let result = match op {
+    Ok(Some(match op {
         "=" => v1 == v2,
         "!=" => v1 != v2,
         "<" => v1 < v2,
@@ -329,9 +321,8 @@ pub(crate) fn evaluate_sem_ver<'a>(
         "^" => v1.major == v2.major,
         // Tilde: same major + minor.
         "~" => v1.major == v2.major && v1.minor == v2.minor,
-        _ => return Ok(crate::arena::singletons::singleton_null()),
-    };
-    Ok(crate::arena::singletons::singleton_bool(result))
+        _ => return Ok(None),
+    }))
 }
 
 /// Normalize a `DataValue` into a `semver::Version`. Returns `None` if

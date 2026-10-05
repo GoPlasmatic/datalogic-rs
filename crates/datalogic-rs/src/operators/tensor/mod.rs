@@ -55,8 +55,10 @@
 //! [`datavalue::TensorError::UnsupportedDType`] on `f16` / `bf16` unless
 //! the `tensor-half` feature is on.
 
-use crate::arena::{ContextStack, DataValue};
-use crate::{CompiledNode, Engine, Error, Result};
+use crate::arena::DataValue;
+use crate::operators::eager::Cx;
+use crate::operators::extract::Coerce;
+use crate::{Error, Result};
 use bumpalo::Bump;
 use datavalue::{DType, DataTensor, TensorError};
 
@@ -64,18 +66,9 @@ mod construct;
 mod read;
 mod shape_ops;
 
-pub(crate) use construct::{
-    evaluate_full, evaluate_one_hot, evaluate_rle_expand, evaluate_scatter, evaluate_tensor,
-    evaluate_zeros,
-};
-pub(crate) use read::{
-    evaluate_argmax, evaluate_cast, evaluate_dtype, evaluate_normalize, evaluate_shape,
-    evaluate_to_list,
-};
-pub(crate) use shape_ops::{
-    evaluate_concat, evaluate_crop, evaluate_gather, evaluate_pad, evaluate_reshape,
-    evaluate_stack, evaluate_transpose, evaluate_unstack,
-};
+pub(crate) use construct::{full, one_hot, rle_expand, scatter, tensor, zeros};
+pub(crate) use read::{argmax, cast, dtype, normalize, shape, to_list};
+pub(crate) use shape_ops::{concat, crop, gather, pad, reshape, stack, transpose, unstack};
 
 // ---------------------------------------------------------------------------
 // Cost
@@ -92,8 +85,8 @@ pub(crate) use shape_ops::{
 /// feature the call compiles to `Ok(())` and the call sites are simply
 /// documentation of where the cost is.
 #[inline]
-fn charge(ctx: &mut ContextStack<'_>, elements: u64) -> Result<()> {
-    ctx.charge(elements)
+fn charge(cx: &mut Cx<'_, '_>, elements: u64) -> Result<()> {
+    cx.charge(elements)
 }
 
 /// `max(a, b)` as a charge, saturating into the counter's `u64`.
@@ -126,48 +119,63 @@ fn element_error(index: usize, expected: DType) -> Error {
 }
 
 // ---------------------------------------------------------------------------
-// Argument plumbing
+// Argument extractors
 // ---------------------------------------------------------------------------
+//
+// Every operator in this family takes a fixed positional argument list.
+// The table rows declare it with these extractors, so a missing argument
+// is "missing argument" and an extra one "too many arguments" (the
+// `TENSOR` preset), both raised before any argument is evaluated.
 
-/// Evaluate argument `i`. Every operator in this family takes a fixed
-/// positional argument list, so a missing one is an argument error rather
-/// than an implicit null.
-#[inline]
-fn arg<'a>(
-    args: &'a [CompiledNode],
-    i: usize,
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    let node = args.get(i).ok_or_else(|| bad("missing argument"))?;
-    engine.dispatch_node(node, ctx, arena)
+/// Generate a single-argument extractor that applies one of the readers
+/// below to the evaluated argument.
+macro_rules! extractor {
+    ($(#[$doc:meta])* $name:ident => $out:ty, |$v:ident, $arena:ident| $read:expr) => {
+        $(#[$doc])*
+        pub(crate) struct $name;
+
+        impl<'a> Coerce<'a> for $name {
+            type Out = $out;
+            #[inline]
+            fn coerce(value: &'a DataValue<'a>, cx: &mut Cx<'_, 'a>) -> Result<Self::Out> {
+                let $v = value;
+                let $arena = cx.arena;
+                let _ = $arena;
+                $read
+            }
+        }
+    };
 }
 
-/// Evaluate optional argument `i`, if it was supplied.
-#[inline]
-fn opt_arg<'a>(
-    args: &'a [CompiledNode],
-    i: usize,
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<Option<&'a DataValue<'a>>> {
-    match args.get(i) {
-        None => Ok(None),
-        Some(node) => engine.dispatch_node(node, ctx, arena).map(Some),
-    }
-}
-
-/// Reject a call with more arguments than the operator reads, so a typo in
-/// a rule surfaces at evaluation instead of being silently ignored.
-#[inline]
-fn at_most(args: &[CompiledNode], n: usize) -> Result<()> {
-    if args.len() > n {
-        return Err(bad("too many arguments"));
-    }
-    Ok(())
-}
+extractor!(
+    /// A tensor ([`as_tensor`]).
+    TensorArg => DataTensor<'a>, |v, arena| as_tensor(v, arena)
+);
+extractor!(
+    /// A shape: non-negative whole numbers ([`as_shape`]).
+    ShapeArg => &'a [usize], |v, arena| as_shape(v, arena)
+);
+extractor!(
+    /// A dtype name ([`as_dtype`]).
+    DTypeArg => DType, |v, arena| as_dtype(v)
+);
+extractor!(
+    /// One non-negative whole number ([`as_usize`]).
+    UsizeArg => usize, |v, arena| as_usize(v)
+);
+extractor!(
+    /// One whole number ([`as_i64`]). Axes are read this way and resolved
+    /// against the tensor's rank in the body with [`resolve_axis`].
+    I64Arg => i64, |v, arena| as_i64(v)
+);
+extractor!(
+    /// A list of signed whole numbers ([`as_i64_list`]).
+    I64List => &'a [i64], |v, arena| as_i64_list(v, arena)
+);
+extractor!(
+    /// One number ([`as_f64`]).
+    F64Arg => f64, |v, arena| as_f64(v)
+);
 
 // ---------------------------------------------------------------------------
 // Reading the common argument shapes
@@ -272,8 +280,8 @@ fn resolve_index(i: i64, extent: usize) -> Option<usize> {
 /// where the axis names a position in the *output* rank. A 0-d tensor
 /// still accepts axis 0 so the rank-0 checks each operator does can
 /// produce their own, more specific error.
-fn as_axis(v: &DataValue<'_>, rank: usize, extra: usize) -> Result<usize> {
-    resolve_index(as_i64(v)?, (rank + extra).max(1)).ok_or_else(|| bad("axis out of range"))
+fn resolve_axis(axis: i64, rank: usize, extra: usize) -> Result<usize> {
+    resolve_index(axis, (rank + extra).max(1)).ok_or_else(|| bad("axis out of range"))
 }
 
 // ---------------------------------------------------------------------------

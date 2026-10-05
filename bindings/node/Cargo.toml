@@ -30,17 +30,9 @@ crate-type = ["cdylib", "rlib"]
 # bridge to convert JS objects ↔ `serde_json::Value`.
 datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features = [
     "serde_json",
-    "datetime",
+    "all-operators",
     "trace",
     "templating",
-    "error-handling",
-    "ext-string",
-    "ext-array",
-    "ext-object",
-    "ext-control",
-    "ext-math",
-    "flagd",
-    "tensor",
     "budget",
 ] }
 # napi 3.x is the current major and the floor for `napi-derive` 3.x's

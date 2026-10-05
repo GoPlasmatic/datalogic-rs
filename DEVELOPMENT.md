@@ -416,62 +416,104 @@ JSONLogic implementation as a comparison subject, see
 
 ## Adding a built-in operator
 
-A built-in operator is wired through several places in the tree. The
-module doc at the top of `crates/datalogic-rs/src/opcode.rs` carries the
-short form of this list; this is the full one.
+Every built-in operator is one row of the operator table in
+`crates/datalogic-rs/src/operators/table.rs` plus one plain function the
+row points at. The `OpCode` enum, name lookup, `as_str`, dispatch arms,
+`Engine::builtin_operator_names()`, `Engine::operators()` and every
+optimizer classification are generated from the row or derived from what
+it declares. The module doc at the top of `table.rs` carries the row
+grammar.
 
-1. **OpCode.** In `crates/datalogic-rs/src/opcode.rs`, add a variant to
-   `OpCode`, an entry to `OPCODE_NAMES` (canonical name first, then any
-   aliases; `FromStr` is a scan over this table, so there is no separate
-   parse arm to write), and an `as_str()` arm. The opcode unit tests
-   enforce that every name round-trips. `Engine::builtin_operator_names()`
-   is derived from the same table, so it reports the new name
-   automatically.
-2. **Implementation.** Add `evaluate_<op>` under
-   `crates/datalogic-rs/src/operators/<category>/` following the
-   established signature
-   (`args: &'a [CompiledNode], ctx: &mut ContextStack<'a>, engine: &Engine, arena: &'a Bump`)
-   returning `Result<&'a DataValue<'a>>`.
-3. **Dispatch.** Add an arm to the `dispatch_node_inner` match in
-   `crates/datalogic-rs/src/engine/dispatch.rs`.
-4. **Optimizer classification.** The compiler treats an operator as a
-   pure function of its arguments unless told otherwise. If the new
-   operator reads the data context, runs a callback per element, has
-   side effects, or depends on runtime state, add it to the dynamic
-   arms of `opcode_is_static` in `crates/datalogic-rs/src/node/logic.rs`
-   (so it is never constant-folded) and to `opcode_is_cse_pure` or
-   `is_iterator_opcode` in `crates/datalogic-rs/src/compile/optimize/cse.rs`
-   (so the CSE pass neither memoizes it nor caches inside its per-item
-   bodies). If it pushes a context frame around one of its arguments,
-   register that position in `frames_pushed_for_child` in
-   `crates/datalogic-rs/src/compile/scope.rs`, which both the scope pass
-   and CSE consult; the debug oracle in `operators/variable` fails the
-   first test that exercises an unregistered frame. `group_by` and keyed
-   `distinct` (5.2.0) are the worked example; a pure operator needs
-   nothing here.
-5. **Suite.** Add a JSON suite under
+1. **Row.** Add a row inside the right `family` block. The family's `cfg`
+   gate applies to every row in it.
+
+   ```rust
+   family ExtString (feature = "ext-string") {
+       Repeat ["repeat"] => eager(Str, Lenient<Int>) string::repeat,
+           OpMeta { cost: Cost::Bytes, ..PURE };
+   }
+   ```
+
+   The shape is `eager(Extractor, ...)` for a fixed-arity operator
+   (arguments evaluated and coerced for you), `raw` for one that evaluates
+   its own arguments (lazy, control flow, variadic), or `iter` for one
+   that iterates `args[0]` (it also receives the cached `IterArgKind`).
+   Names are canonical first, then aliases; `[]` makes an internal opcode
+   (give it a `display` name). Operators that share an implementation
+   pass a kind tag through the path: `raw arithmetic::div_or_mod(DivOp::Divide)`.
+2. **Body.** Write the function the row names, under
+   `crates/datalogic-rs/src/operators/<category>/`. An `eager` body takes
+   the extracted values and returns any `IntoValue` type:
+
+   ```rust
+   pub(crate) fn repeat<'a>(cx: &mut Cx<'_, 'a>, text: &'a str, n: Option<i64>) -> Result<&'a str> {
+       let n = n.unwrap_or(1).max(0) as usize;
+       cx.charge_bytes(text.len().saturating_mul(n))?;
+       Ok(cx.arena.alloc_str(&text.repeat(n)))
+   }
+   ```
+
+   `raw` and `iter` bodies keep the four-parameter signature
+   (`args, ctx, engine, arena`, plus `iter_arg_kind` after `args` for
+   `iter`). Arity for an `eager` row comes from its extractors: a missing
+   argument raises `InvalidArguments` and extras are ignored unless the
+   row's `on_missing` / `on_extra` say otherwise. The extractor set
+   (`Any`, `Str`, `Int`, `StrictNum`, `Truthy`, `Obj`, `Nullable<T>`,
+   `Opt<T>`, `Lenient<T>`, `Lazy`, `Rest<T>`) lives in
+   `operators/extract.rs`, with a table of what each one accepts;
+   family-specific ones (the tensor family's) live with the family. An
+   `eager` row can pass a kind tag too: `eager(StrictNum, Rest<StrictNum>)
+   arithmetic::unary_math(UnaryMathOp::Abs)`.
+3. **Declared facts.** The row's `OpMeta` (see `operators/meta.rs`) says
+   whether the operator reads the data context (`reads_context`), has an
+   effect (`Clock`, `Throws`, `Catches`), runs an argument under a pushed
+   frame (`frames`), opts out of folding or CSE, and what its work is
+   proportional to (`cost`). Constant folding, CSE and scope resolution
+   derive their classification from these facts, so a pure operator
+   declares nothing. If it pushes a frame and does not say so, variable
+   references beneath it resolve against the wrong frame: the debug scope
+   oracle fails the first suite case that exercises it.
+4. **Suite.** Add a JSON suite under
    `crates/datalogic-rs/tests/suites/<category>/` covering the happy path
-   and at least one error case, and register its path in
-   `crates/datalogic-rs/tests/suites/index.json`; the runner only
-   discovers files listed there. See
+   and at least one error case, then add it to
+   `crates/datalogic-rs/tests/suites/index.json` (which fixes run order)
+   with `UPDATE_SUITE_INDEX=1 cargo test -p datalogic-rs --all-features --test test_jsonlogic suite_index`.
+   `suite_index_lists_every_suite` fails on an unlisted file,
+   `every_operator_has_suite_cases` on an operator no rule calls, and
+   `every_foldable_row_is_folded_by_a_suite_case` on a foldable operator
+   with no all-literal case (it also checks that folding such a case
+   changes nothing). See
    [crates/datalogic-rs/tests/README.md](./crates/datalogic-rs/tests/README.md)
    for the suite format.
-6. **Feature gating (new family only).** If the operator starts a new
-   feature family, declare the feature in `crates/datalogic-rs/Cargo.toml`,
-   `#[cfg]`-gate the variant, dispatch arm, and implementation, and add
-   the feature to every consumer that enables families explicitly:
-   `bindings/wasm/Cargo.toml`, `bindings/node/Cargo.toml`,
-   `bindings/python/Cargo.toml`, `bindings/c/Cargo.toml` (Go, JVM, .NET,
-   and PHP inherit from it), `tools/benchmark/Cargo.toml` (otherwise its
-   suites show `ERR` in the matrix), and the `feature-matrix` job in
-   `.github/workflows/ci.yml`. An operator joining an existing family
-   reuses that family's gate.
+5. **Snapshot.** Regenerate `docs/src/operators/operators.json` and the
+   feature table in `docs/src/operators/overview.md`:
+   `UPDATE_OPERATORS_JSON=1 cargo test -p datalogic-rs --all-features --test operators_json_test`.
+   The same test checks that the overview's category table names the
+   operator and that its opening counts add up.
+   A row with a `cost` other than `Node` also needs a size-parameterised
+   probe in `tests/budget_audit_test.rs`, which fails until it has one.
+6. **Feature gating (new family only).** Declare the feature in
+   `crates/datalogic-rs/Cargo.toml`, add it to the `all-operators` list
+   there (the bindings and the benchmark depend on that one feature), add
+   a `family` block with its gate to the table, and add the feature to the
+   `feature-matrix` job in `.github/workflows/ci.yml`.
+   `catalogue_gates_match_cargo_features` fails until the feature and the
+   `all-operators` list agree with the table.
 7. **Editor and docs.** Add the operator's picker entry under
    `ui/src/components/logic-editor/config/operators/` (one file per
    category) so the React editor offers it, and document it on the
-   matching page under `docs/src/operators/`. The WASM and Node bindings
+   matching page under `docs/src/operators/`. The UI's
+   `config/__tests__/catalogue.test.ts` reads `operators.json` and fails
+   until the picker has the operator (and its aliases), with an argument
+   count the engine accepts. The WASM and Node bindings
    need no change: they expose the engine as-is, so the operator is live
    once you rebuild them.
+
+Generated guardrails cover every row without edits: name round-trips, the
+catalogue against the build and against `Cargo.toml`, the declared arity
+policy of every `eager` row (messages included, since an
+`InvalidArguments` message is the serialised error `type`), scoped
+arguments under the frame oracle, and the budget audit.
 
 ## Adding a custom operator (your own application)
 

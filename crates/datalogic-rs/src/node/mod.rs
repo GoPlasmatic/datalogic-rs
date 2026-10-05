@@ -40,7 +40,7 @@ pub(crate) use payload::{
 pub(crate) use populate::populate_lits;
 pub(crate) use prelit::PreLit;
 
-use crate::opcode::OpCode;
+use crate::OpCode;
 use datavalue::OwnedDataValue;
 use populate::precompute_lit;
 use std::num::NonZeroU32;

@@ -130,6 +130,22 @@ tensor = ["datavalue/tensor"]
 # operators (the byte-moving ones already work on every dtype, since they
 # never interpret an element). Pulls in `half` through datavalue.
 tensor-half = ["tensor", "datavalue/tensor-half"]
+# `all-operators` turns on every operator family at once. The bindings and
+# the benchmark depend on this one feature rather than listing the
+# families, so a new family is one entry here instead of an edit to every
+# consumer manifest. `operator_names_test` checks that this list names
+# every family in the operator table.
+all-operators = [
+    "datetime",
+    "error-handling",
+    "ext-string",
+    "ext-array",
+    "ext-object",
+    "ext-control",
+    "ext-math",
+    "flagd",
+    "tensor",
+]
 
 [dependencies]
 # Floors below are the **minimum** versions we actually compile against.

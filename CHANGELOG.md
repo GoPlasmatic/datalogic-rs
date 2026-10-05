@@ -8,6 +8,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
+## [Unreleased]
+
+### Added
+
+- **`Engine::operators()`** describes every built-in operator compiled
+  into the build: canonical name and aliases, family and gating feature,
+  declared argument counts, whether it reads the data context, its effect
+  (`pure`, `clock`, `throws`, `catches`), its cost class, and which
+  argument (if any) runs under a pushed frame (`ScopedArg`). It is read
+  from the same table that drives compilation and dispatch, so it cannot
+  drift from what the engine does. New public types: `OperatorInfo`,
+  `ScopedArg` (both `#[non_exhaustive]`).
+- **`all-operators` feature** enables every operator family. The
+  bindings and the benchmark now depend on it instead of listing the
+  families one by one.
+- **`docs/src/operators/operators.json`**, a machine-readable operator
+  catalogue rendered from the table and checked by a snapshot test. The
+  feature table in the operators overview is generated from the same
+  table, and the React editor's registry test checks its picker entries
+  and argument counts against the catalogue.
+
+### Changed
+
+- **One declarative operator table.** Every built-in operator is now one
+  row in `operators/table.rs` plus one function. The `OpCode` enum, name
+  lookup, dispatch arms, `builtin_operator_names()`, and the constant
+  folding, CSE and scope classifications are generated from the row or
+  derived from the facts it declares, replacing six hand-maintained
+  classifier lists. Fixed-arity operators (the string, object, datetime,
+  math, tensor and flagd `sem_ver` families, plus `!`, `!!`, `in`,
+  `substr`, `type`, `length`) are plain typed functions whose argument counting, evaluation
+  and result conversion are generated. Every `InvalidArguments` message
+  is unchanged, all suites pass on every compile path, and the canonical
+  benchmark is within noise.
+- **Tensor error precedence.** When a tensor operator call has two
+  problems, a different one may now be reported: a missing argument is
+  reported before any argument is evaluated, and an error raised while
+  evaluating a later argument now wins over a coercion error on an
+  earlier one. Calls that succeed are unaffected.
+- **`sort` with a literal key expression is no longer constant-folded.**
+  Its key runs per element, like every other iterator body, and is now
+  classified that way. Results are unchanged; the rule is simply
+  evaluated at run time.
+
 ## [5.7.1] - 2026-10-01
 
 ### Security

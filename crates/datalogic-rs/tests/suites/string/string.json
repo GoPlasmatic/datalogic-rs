@@ -227,5 +227,23 @@
     "rule": { "split": [{"var": "text"}] },
     "data": { "text": "Hello World" },
     "error": { "type": "Invalid Arguments" }
+  },
+  {
+    "description": "Literal starts_with (folded at compile time)",
+    "rule": { "starts_with": ["hello", "he"] },
+    "data": null,
+    "result": true
+  },
+  {
+    "description": "Literal ends_with (folded at compile time)",
+    "rule": { "ends_with": ["hello", "lo"] },
+    "data": null,
+    "result": true
+  },
+  {
+    "description": "Literal split (folded at compile time)",
+    "rule": { "split": ["a,b,c", ","] },
+    "data": null,
+    "result": ["a", "b", "c"]
   }
 ]

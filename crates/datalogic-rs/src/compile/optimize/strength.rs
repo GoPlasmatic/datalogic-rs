@@ -4,8 +4,8 @@
 //! - `{"!": [{"!": [X]}]}` → `{"!!": [X]}` (double negation → bool coerce)
 //! - `{"!!": [{"!!": [X]}]}` → `{"!!": [X]}` (idempotent bool coerce)
 
+use crate::OpCode;
 use crate::node::CompiledNode;
-use crate::opcode::OpCode;
 
 /// Apply strength reduction to a compiled node.
 ///

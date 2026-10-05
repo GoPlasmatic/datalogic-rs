@@ -47,7 +47,7 @@ pub(crate) use quantifiers::{evaluate_all, evaluate_none, evaluate_some};
 pub(crate) use reduce::evaluate_reduce;
 
 #[cfg(feature = "ext-string")]
-pub(crate) use length::evaluate_length;
+pub(crate) use length::length;
 
 #[cfg(feature = "ext-array")]
 pub(crate) use distinct::evaluate_distinct;

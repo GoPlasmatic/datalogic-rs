@@ -22,15 +22,7 @@ publish = false
 datalogic-rs = { path = "../../crates/datalogic-rs", features = [
     "serde_json",
     "templating",
-    "datetime",
-    "error-handling",
-    "ext-string",
-    "ext-array",
-    "ext-object",
-    "ext-control",
-    "ext-math",
-    "flagd",
-    "tensor",
+    "all-operators",
 ] }
 serde_json = "1.0"
 bumpalo = "3"

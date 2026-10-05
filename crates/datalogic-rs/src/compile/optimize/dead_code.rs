@@ -8,8 +8,8 @@
 //! - `{"or": [false, X]}` → `X` (strip identity elements)
 
 use crate::Engine;
+use crate::OpCode;
 use crate::node::CompiledNode;
-use crate::opcode::OpCode;
 
 use super::helpers::is_truthy_literal;
 

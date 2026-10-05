@@ -1,7 +1,7 @@
 //! `filter` — keep array items / object pairs whose predicate is truthy.
 
 use crate::arena::{ContextStack, DataValue, bvec};
-use crate::opcode::OpCode;
+use crate::operators::meta::Algebra;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 use std::ops::ControlFlow;
@@ -76,7 +76,14 @@ fn filter_strict_eq_field_fast_path<'a>(
     else {
         return Ok(None);
     };
-    if pred_args.len() != 2 || !matches!(opcode, OpCode::StrictEquals | OpCode::StrictNotEquals) {
+    let Some(Algebra::Eq {
+        strict: true,
+        negate,
+    }) = opcode.algebra()
+    else {
+        return Ok(None);
+    };
+    if pred_args.len() != 2 {
         return Ok(None);
     }
 
@@ -91,7 +98,7 @@ fn filter_strict_eq_field_fast_path<'a>(
     // admits only literals and root-bound references, neither of which
     // reads the frame stack.
     let invariant_val = engine.dispatch_node(invariant_node, ctx, arena)?;
-    let is_eq = matches!(opcode, OpCode::StrictEquals);
+    let is_eq = !negate;
     let len = src.len();
     // Local hinted cursor — homogeneous rows resolve the field in one key
     // compare after the first item (same mechanism as the map fast paths).

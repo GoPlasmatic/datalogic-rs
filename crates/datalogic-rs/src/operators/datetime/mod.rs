@@ -69,14 +69,15 @@ pub(crate) mod arith;
 
 use chrono::Utc;
 
-use crate::{CompiledNode, Engine, Error, Result};
+use crate::operators::eager::Cx;
+use crate::{CompiledNode, Error, Result};
 use datavalue::{DataDateTime, DataDuration};
 
 // =============================================================================
 // Datetime operators.
 // =============================================================================
 
-use crate::arena::{ContextStack, DataValue};
+use crate::arena::DataValue;
 use bumpalo::Bump;
 
 // =============================================================================
@@ -140,17 +141,10 @@ fn is_duration_object(av: &DataValue<'_>) -> bool {
 /// Native arena-mode `datetime`. Returns the input unchanged if it parses
 /// as a datetime (object or ISO string); errors otherwise.
 #[inline]
-pub(crate) fn evaluate_datetime<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn datetime<'a>(
+    _cx: &mut Cx<'_, 'a>,
+    av: &'a DataValue<'a>,
 ) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Err(Error::invalid_arguments("datetime requires an argument"));
-    }
-    let av = engine.dispatch_node(&args[0], ctx, arena)?;
-
     // Datetime object passthrough.
     if is_datetime_object(av) {
         return Ok(av);
@@ -169,17 +163,10 @@ pub(crate) fn evaluate_datetime<'a>(
 /// Native arena-mode `timestamp`. Returns the input unchanged if it parses
 /// as a duration (object or string); errors otherwise.
 #[inline]
-pub(crate) fn evaluate_timestamp<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn timestamp<'a>(
+    cx: &mut Cx<'_, 'a>,
+    av: &'a DataValue<'a>,
 ) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Err(Error::invalid_arguments("timestamp requires an argument"));
-    }
-    let av = engine.dispatch_node(&args[0], ctx, arena)?;
-
     if is_duration_object(av) {
         return Ok(av);
     }
@@ -189,7 +176,7 @@ pub(crate) fn evaluate_timestamp<'a>(
     {
         // `DataDuration` has a streaming `Display`, so render it straight
         // into the arena rather than through a heap `String`.
-        return Ok(arith::write_into_arena(arena, duration));
+        return Ok(arith::write_into_arena(cx.arena, duration));
     }
 
     Err(Error::invalid_arguments("Invalid duration format"))
@@ -270,31 +257,25 @@ fn offset_to_z_string(secs: i32) -> String {
 /// input is then read as wall-clock time in that zone and resolved to the
 /// corresponding UTC instant (see [`parse_date_in_zone`] for the DST
 /// policy).
+///
+/// The zone is evaluated only once the date and format are both strings.
 #[inline]
-pub(crate) fn evaluate_parse_date<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn parse_date<'a>(
+    cx: &mut Cx<'_, 'a>,
+    date_av: &'a DataValue<'a>,
+    fmt_av: &'a DataValue<'a>,
+    tz: Option<&'a CompiledNode>,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 {
-        return Err(Error::invalid_arguments(
-            "parse_date requires date string and format",
-        ));
-    }
-    let date_av = engine.dispatch_node(&args[0], ctx, arena)?;
-    let fmt_av = engine.dispatch_node(&args[1], ctx, arena)?;
     if let (Some(date), Some(fmt)) = (date_av.as_str(), fmt_av.as_str()) {
         let chrono_format = jsonlogic_to_chrono_format(fmt);
-        if args.len() >= 3 {
-            let tz_av = engine.dispatch_node(&args[2], ctx, arena)?;
-            let tz = resolve_tz(tz_av)?;
-            return parse_date_in_zone(date, &chrono_format, tz, arena);
+        if let Some(tz) = tz {
+            let tz = resolve_tz(cx.eval(tz)?)?;
+            return parse_date_in_zone(date, &chrono_format, tz, cx.arena);
         }
         if let Some(dt) = DataDateTime::parse_with_format(date, &chrono_format) {
             let iso = dt.to_iso_string();
-            let s: &'a str = arena.alloc_str(&iso);
-            return Ok(arena.alloc(DataValue::String(s)));
+            let s: &'a str = cx.alloc_str(&iso);
+            return Ok(cx.alloc(DataValue::String(s)));
         }
     }
     Err(Error::invalid_arguments("Failed to parse date"))
@@ -344,22 +325,15 @@ fn parse_date_in_zone<'a>(
     Ok(arena.alloc(DataValue::String(s)))
 }
 
-/// Native arena-mode `format_date`.
+/// Native arena-mode `format_date`. The optional zone is evaluated only
+/// once the datetime and format have both resolved.
 #[inline]
-pub(crate) fn evaluate_format_date<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn format_date<'a>(
+    cx: &mut Cx<'_, 'a>,
+    dt_av: &'a DataValue<'a>,
+    fmt_av: &'a DataValue<'a>,
+    tz: Option<&'a CompiledNode>,
 ) -> Result<&'a DataValue<'a>> {
-    if args.len() < 2 {
-        return Err(Error::invalid_arguments(
-            "format_date requires datetime and format",
-        ));
-    }
-    let dt_av = engine.dispatch_node(&args[0], ctx, arena)?;
-    let fmt_av = engine.dispatch_node(&args[1], ctx, arena)?;
-
     // Resolve the datetime — supports object form and string form.
     let dt: Option<DataDateTime> = extract_datetime(dt_av);
 
@@ -373,18 +347,17 @@ pub(crate) fn evaluate_format_date<'a>(
         // entirely — its `"z"` branch reports the *source* offset, but
         // with an explicit zone the offset reported must be the target
         // zone's at that instant (DST-correct via chrono-tz's table).
-        if args.len() >= 3 {
+        if let Some(tz) = tz {
             use chrono::Offset;
-            let tz_av = engine.dispatch_node(&args[2], ctx, arena)?;
-            let tz = resolve_tz(tz_av)?;
+            let tz = resolve_tz(cx.eval(tz)?)?;
             let zoned = datetime.dt.with_timezone(&tz);
             let formatted = if fmt == "z" {
                 offset_to_z_string(zoned.offset().fix().local_minus_utc())
             } else {
                 zoned.format(&jsonlogic_to_chrono_format(fmt)).to_string()
             };
-            let s: &'a str = arena.alloc_str(&formatted);
-            return Ok(arena.alloc(DataValue::String(s)));
+            let s: &'a str = cx.alloc_str(&formatted);
+            return Ok(cx.alloc(DataValue::String(s)));
         }
 
         let chrono_format = if fmt == "z" {
@@ -393,8 +366,8 @@ pub(crate) fn evaluate_format_date<'a>(
             jsonlogic_to_chrono_format(fmt)
         };
         let formatted = datetime.format(&chrono_format);
-        let s: &'a str = arena.alloc_str(&formatted);
-        return Ok(arena.alloc(DataValue::String(s)));
+        let s: &'a str = cx.alloc_str(&formatted);
+        return Ok(cx.alloc(DataValue::String(s)));
     }
 
     Err(Error::invalid_arguments("Failed to format date"))
@@ -406,21 +379,12 @@ const DATE_DIFF_UNITS: [&str; 5] = ["days", "hours", "minutes", "seconds", "mill
 
 /// Native arena-mode `date_diff`.
 #[inline]
-pub(crate) fn evaluate_date_diff<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    if args.len() < 3 {
-        return Err(Error::invalid_arguments(
-            "date_diff requires two dates and a unit",
-        ));
-    }
-    let d1_av = engine.dispatch_node(&args[0], ctx, arena)?;
-    let d2_av = engine.dispatch_node(&args[1], ctx, arena)?;
-    let unit_av = engine.dispatch_node(&args[2], ctx, arena)?;
-
+pub(crate) fn date_diff<'a>(
+    _cx: &mut Cx<'_, 'a>,
+    d1_av: &'a DataValue<'a>,
+    d2_av: &'a DataValue<'a>,
+    unit_av: &'a DataValue<'a>,
+) -> Result<i64> {
     let dt1 = extract_datetime(d1_av);
     let dt2 = extract_datetime(d2_av);
     let unit = unit_av.as_str();
@@ -434,8 +398,7 @@ pub(crate) fn evaluate_date_diff<'a>(
                 "date_diff: unknown unit {u:?} (expected days, hours, minutes, seconds, or milliseconds)"
             )));
         }
-        let diff = a.diff_in_unit(&b, u);
-        return Ok(arena.alloc(DataValue::from_i64(diff as i64)));
+        return Ok(a.diff_in_unit(&b, u) as i64);
     }
     Err(Error::invalid_arguments(
         "Failed to calculate date difference",
@@ -444,19 +407,13 @@ pub(crate) fn evaluate_date_diff<'a>(
 
 /// Native arena-mode `now`. Allocates the ISO string in the arena.
 #[inline]
-pub(crate) fn evaluate_now<'a>(
-    _args: &[CompiledNode],
-    _ctx: &mut ContextStack<'a>,
-    _engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
+pub(crate) fn now<'a>(cx: &mut Cx<'_, 'a>) -> Result<&'a str> {
     let now = Utc::now();
     let data_dt = DataDateTime {
         dt: now,
         original_offset: Some(0),
     };
-    let s: &'a str = arena.alloc_str(&data_dt.to_iso_string());
-    Ok(arena.alloc(DataValue::String(s)))
+    Ok(cx.alloc_str(&data_dt.to_iso_string()))
 }
 
 #[cfg(test)]

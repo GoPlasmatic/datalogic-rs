@@ -46,7 +46,7 @@ crate-type = ["cdylib", "rlib"]
 # `slice`, `exists`, `abs`/`ceil`/`floor`) needs the matching feature here
 # or it returns `UnknownOperator` at runtime.
 datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features = [
-    "datetime",
+    "all-operators",
     # This package is wasm-bindgen based, i.e. always hosted by JS, so the
     # JS clock is safe here; without it `now` traps on wasm32. Core
     # consumers targeting non-JS wasm runtimes (wasmtime, wazero, Chicory)
@@ -54,14 +54,6 @@ datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features =
     "wasm-clock",
     "trace",
     "templating",
-    "error-handling",
-    "ext-string",
-    "ext-array",
-    "ext-object",
-    "ext-control",
-    "ext-math",
-    "flagd",
-    "tensor",
     "budget",
 ] }
 wasm-bindgen = "0.2"

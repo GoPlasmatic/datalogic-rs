@@ -4,6 +4,7 @@
 //!
 //! The entry points live here; the heavy lifting is split across
 //! - [`walker`] — the recursive `compile_node` dispatch.
+//! - [`hooks`] — the compile hooks operator table rows declare.
 //! - [`operator`] — `var` / `val` / `exists` specialisations.
 //! - [`missing`] — `missing` / `missing_some` static path pre-parsing.
 //! - [`path_segments`] — shared dot-path parsing.
@@ -13,6 +14,7 @@
 
 mod optimize;
 
+pub(crate) mod hooks;
 mod missing;
 mod operator;
 mod path_segments;

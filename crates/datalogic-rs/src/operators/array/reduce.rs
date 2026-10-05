@@ -1,8 +1,9 @@
 //! `reduce` — fold an array into a single value via an accumulator.
 
+use crate::OpCode;
 use crate::arena::{ContextStack, DataValue, IterGuard};
 use crate::node::{PathSegment, ReduceHint};
-use crate::opcode::OpCode;
+use crate::operators::meta::ArithOp;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 use datavalue::NumberValue;
@@ -343,8 +344,8 @@ type FloatOp = fn(f64, f64) -> f64;
 /// rules: integer math whenever both operands land exactly in `i64`
 /// (which includes whole floats), promoting through
 /// [`try_int_op`](crate::operators::arithmetic::try_int_op) on overflow,
-/// and `from_f64` otherwise. `None` for an op outside the detected
-/// `+` / `-` / `*` set.
+/// and `from_f64` otherwise. Always `Some`; the `Option` lets the fast
+/// paths' callers chain it with their own bail-outs.
 ///
 /// Deliberately *not* `NumberValue::add`/`sub`/`mul`: those return a bare
 /// `Float` on integer overflow, where the operators return
@@ -352,12 +353,15 @@ type FloatOp = fn(f64, f64) -> f64;
 /// `Integer`. `reduce([1], {"-": [accumulator, current]}, i64::MIN)` is
 /// the case that separates them.
 #[inline(always)]
-fn arith_number(op: OpCode, a: NumberValue, b: NumberValue) -> Option<NumberValue> {
+fn arith_number(op: ArithOp, a: NumberValue, b: NumberValue) -> Option<NumberValue> {
+    // One `match` yielding both functions: each arm then specialises the
+    // fold step with direct calls. Fetching the two through separate
+    // matches left an indirect call per item (measured +4% on the reduce
+    // suite).
     let (int_op, float_op): (IntOp, FloatOp) = match op {
-        OpCode::Add => (i64::checked_add, |x, y| x + y),
-        OpCode::Subtract => (i64::checked_sub, |x, y| x - y),
-        OpCode::Multiply => (i64::checked_mul, |x, y| x * y),
-        _ => return None,
+        ArithOp::Add => (i64::checked_add, |x, y| x + y),
+        ArithOp::Sub => (i64::checked_sub, |x, y| x - y),
+        ArithOp::Mul => (i64::checked_mul, |x, y| x * y),
     };
     Some(match (a.as_i64(), b.as_i64()) {
         (Some(x), Some(y)) => crate::operators::arithmetic::try_int_op(x, y, int_op, float_op),
@@ -369,7 +373,7 @@ fn arith_number(op: OpCode, a: NumberValue, b: NumberValue) -> Option<NumberValu
 /// non-commutative folds keep their order.
 #[inline(always)]
 fn fold_number(
-    op: OpCode,
+    op: ArithOp,
     acc_is_lhs: bool,
     acc: NumberValue,
     cur: NumberValue,
@@ -384,7 +388,7 @@ fn fold_number(
 /// Detected `{+|-|*: [var, var]}` fold body over `current`/`accumulator`,
 /// operand order preserved.
 struct FoldShape<'a> {
-    op: OpCode,
+    op: ArithOp,
     /// true — body is `{op: [accumulator, current]}`; false — `[current, accumulator]`.
     acc_is_lhs: bool,
     /// Path below `current` (`"current.x.y"` → `["x", "y"]`); empty for bare `current`.
@@ -395,12 +399,16 @@ struct FoldShape<'a> {
 /// val("accumulator")]}` in either operand order, recording which side the
 /// accumulator sits on so non-commutative folds evaluate correctly.
 fn detect_fold_shape(body: &CompiledNode) -> Option<FoldShape<'_>> {
-    let (opcode, body_args) = match body {
-        CompiledNode::BuiltinOperator { opcode, args, .. } => (*opcode, args),
-        _ => return None,
+    let CompiledNode::BuiltinOperator {
+        opcode,
+        args: body_args,
+        ..
+    } = body
+    else {
+        return None;
     };
-    if body_args.len() != 2 || !matches!(opcode, OpCode::Add | OpCode::Multiply | OpCode::Subtract)
-    {
+    let op = opcode.arith_op()?;
+    if body_args.len() != 2 {
         return None;
     }
 
@@ -443,7 +451,7 @@ fn detect_fold_shape(body: &CompiledNode) -> Option<FoldShape<'_>> {
     };
 
     Some(FoldShape {
-        op: opcode,
+        op,
         acc_is_lhs,
         current_segments,
     })

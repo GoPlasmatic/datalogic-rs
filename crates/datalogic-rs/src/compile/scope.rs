@@ -34,59 +34,29 @@
 //! wrapping subtrees that could never hit the depth-gated runtime memo).
 //! Both call [`frames_pushed_for_child`] so the two can never drift.
 
+use crate::OpCode;
 use crate::node::{CompiledNode, MetadataHint, ScopeBinding, metadata_reads_ancestor};
-use crate::opcode::OpCode;
 
 /// Number of context frames pushed around child `index` of `opcode` when that
 /// child executes. `len` is the operator's total argument count.
 ///
-/// Returns `0` for every position that evaluates at the operator's own depth,
-/// and `1` for the positions that run under a pushed frame:
+/// Read from the operator table row's `frames` declaration
+/// ([`crate::operators::meta::Frames`]): iterator bodies (`args[1]` of
+/// `filter` / `map` / `all` / `some` / `none` / `reduce`), key expressions
+/// (`args[2]` of `sort`, `args[1]` of `group_by` / `distinct`) and the catch
+/// arm of a multi-arg `try` run under one pushed frame; every other position
+/// evaluates at the operator's own depth. `min` / `max` / `merge` consume
+/// `args[0]` as an iterable but have no body position, so they declare none.
 ///
-/// - **iterator bodies** — `args[1]` of `filter` / `map` / `all` / `some` /
-///   `none` / `reduce`, which run under a per-item frame. Note `reduce`'s
-///   `args[2]` (the initial accumulator) evaluates once *outside* the
-///   iteration frames and is therefore `0`.
-/// - **key expressions** — `args[2]` of `sort` (its `args[1]` is the scalar
-///   direction flag) and `args[1]` of `group_by` / `distinct`.
-/// - **the catch arm** — the last argument of a multi-arg `try`.
+/// An operator that pushes a frame **must** declare it in its row, or
+/// variable references beneath it resolve against the wrong frame. The debug
+/// oracle in `operators::variable` catches an omission on the first test that
+/// exercises the operator.
 ///
-/// `min` / `max` / `merge` consume `args[0]` as an iterable but have no body
-/// position and push nothing, so they are absent here by design.
-///
-/// Adding an operator that pushes a frame **must** register its argument
-/// position here, or variable references beneath it resolve against the wrong
-/// frame. The debug oracle in `operators::variable` catches an omission on the
-/// first test that exercises the operator.
-///
-/// No operator currently pushes more than one frame for a single child, but
-/// the return type is `u32` rather than `bool` so a future nested-frame
+/// The return type is `u32` rather than `bool` so a future nested-frame
 /// operator is expressible without changing every call site.
 pub(crate) fn frames_pushed_for_child(opcode: OpCode, index: usize, len: usize) -> u32 {
-    #[cfg(feature = "ext-array")]
-    if matches!(opcode, OpCode::Sort) {
-        return u32::from(index == 2);
-    }
-    #[cfg(feature = "ext-array")]
-    if matches!(opcode, OpCode::GroupBy | OpCode::Distinct) {
-        return u32::from(index == 1);
-    }
-    #[cfg(feature = "error-handling")]
-    if matches!(opcode, OpCode::Try) {
-        return u32::from(len >= 2 && index == len - 1);
-    }
-    let _ = len;
-    u32::from(
-        matches!(
-            opcode,
-            OpCode::Filter
-                | OpCode::Map
-                | OpCode::All
-                | OpCode::Some
-                | OpCode::None
-                | OpCode::Reduce
-        ) && index == 1,
-    )
+    opcode.meta().frames_for(index, len)
 }
 
 /// Annotate every variable-reading node in the tree with its compile-time

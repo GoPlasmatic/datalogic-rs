@@ -67,12 +67,16 @@ are authoritative; link to them.
   JSONLOGIC_TEST_FILE=tests/suites/arithmetic/plus.json \
     cargo test -p datalogic-rs --all-features --test test_jsonlogic -- --nocapture
   ```
-- **Adding an operator?** Built-in operators require coordinated edits
-  across `opcode.rs`, `engine/dispatch.rs`, `operators/<category>/`, and a
-  JSON suite under `tests/suites/`. See the canonical step-by-step in
+- **Adding an operator?** One row in `operators/table.rs`, one function
+  under `operators/<category>/`, one JSON suite under `tests/suites/`.
+  OpCode, names, dispatch and the fold/CSE/scope classification are
+  generated from the row. See the canonical step-by-step in
   [`DEVELOPMENT.md`](./DEVELOPMENT.md#adding-a-built-in-operator).
-- **Operator function signature:**
-  `pub(crate) fn evaluate_<op><'a>(args: &'a [CompiledNode], ctx: &mut ContextStack<'a>, engine: &Engine, arena: &'a Bump) -> Result<&'a DataValue<'a>>`.
+- **Operator function signature:** an `eager(..)` row's body is typed,
+  `fn op<'a>(cx: &mut Cx<'_, 'a>, a: &'a str, ...) -> Result<impl IntoValue>`.
+  `raw` rows take
+  `(args: &'a [CompiledNode], ctx: &mut ContextStack<'a>, engine: &Engine, arena: &'a Bump) -> Result<&'a DataValue<'a>>`;
+  `iter` rows add `iter_arg_kind: IterArgKind` after `args`.
 - **Test-suite JSON format:** array of test-case objects with
   `description`, `rule`, `data`, and either `result` or `error`. Strings
   in the array are skipped (used as section headers). Full schema in

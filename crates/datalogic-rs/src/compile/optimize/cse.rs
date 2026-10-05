@@ -56,11 +56,11 @@ use std::hash::{Hash, Hasher};
 
 use datavalue::{NumberValue, OwnedDataValue};
 
+use crate::OpCode;
 use crate::node::{
     CompiledMissingArg, CompiledMissingMin, CompiledMissingPaths, CompiledNode, CseData,
     SYNTHETIC_ID,
 };
-use crate::opcode::OpCode;
 
 /// Minimum subtree size (node count) for a candidate that contains no
 /// iterator opcode. Small repeated scalar expressions are cheaper to
@@ -317,7 +317,7 @@ fn is_cse_pure(node: &CompiledNode) -> bool {
         CompiledNode::Value { .. } => true,
         CompiledNode::Array { nodes, .. } => nodes.iter().all(is_cse_pure),
         CompiledNode::BuiltinOperator { opcode, args, .. } => {
-            opcode_is_cse_pure(*opcode) && args.iter().all(is_cse_pure)
+            opcode.meta().cse_pure() && args.iter().all(is_cse_pure)
         }
         // Opaque user code: may be non-deterministic, stateful, or
         // re-entrant. Never memoize.
@@ -353,32 +353,6 @@ fn is_cse_pure(node: &CompiledNode) -> bool {
     }
 }
 
-fn opcode_is_cse_pure(opcode: OpCode) -> bool {
-    // With all the gated features off, every impure opcode compiles out
-    // and `opcode` would be unused.
-    let _ = opcode;
-    #[cfg(feature = "error-handling")]
-    if matches!(opcode, OpCode::Try | OpCode::Throw) {
-        return false;
-    }
-    #[cfg(feature = "datetime")]
-    if matches!(opcode, OpCode::Now) {
-        return false;
-    }
-    #[cfg(feature = "flagd")]
-    if matches!(opcode, OpCode::Fractional | OpCode::SemVer) {
-        return false;
-    }
-    // Memoizing a tensor operator would make a budgeted operation count
-    // depend on CSE decisions, and the memo would pin a large buffer for
-    // the whole evaluation — see `OpCode::is_tensor`.
-    #[cfg(feature = "tensor")]
-    if opcode.is_tensor() {
-        return false;
-    }
-    true
-}
-
 // ---------------------------------------------------------------------------
 // Subtree metrics
 // ---------------------------------------------------------------------------
@@ -391,7 +365,7 @@ fn node_count(node: &CompiledNode) -> usize {
 
 fn contains_iterator_op(node: &CompiledNode) -> bool {
     if let CompiledNode::BuiltinOperator { opcode, .. } = node
-        && is_iterator_opcode(*opcode)
+        && opcode.meta().is_iterator()
     {
         return true;
     }
@@ -402,17 +376,6 @@ fn contains_iterator_op(node: &CompiledNode) -> bool {
         }
     });
     found
-}
-
-fn is_iterator_opcode(opcode: OpCode) -> bool {
-    #[cfg(feature = "ext-array")]
-    if matches!(opcode, OpCode::Sort | OpCode::GroupBy | OpCode::Distinct) {
-        return true;
-    }
-    matches!(
-        opcode,
-        OpCode::Filter | OpCode::Map | OpCode::All | OpCode::Some | OpCode::None | OpCode::Reduce
-    )
 }
 
 // ---------------------------------------------------------------------------

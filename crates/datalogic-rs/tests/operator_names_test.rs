@@ -6,10 +6,11 @@
 //! `serde_json` gate would skip the whole file.
 
 use bumpalo::Bump;
+use datalogic_rs::__private::CATALOGUE;
 #[cfg(feature = "templating")]
 use datalogic_rs::datavalue::OwnedDataValue;
 use datalogic_rs::operator::EvalContext;
-use datalogic_rs::{CustomOperator, DataValue, Engine, Result};
+use datalogic_rs::{CustomOperator, DataValue, Engine, Result, ScopedArg};
 
 fn names() -> Vec<&'static str> {
     Engine::new().builtin_operator_names().collect()
@@ -142,88 +143,139 @@ fn every_reported_name_is_live_under_templating() {
 
 // ---------------------------------------------------------------------
 // Per-family presence, asserted in both directions so a family can be
-// neither leaked into a build that lacks it nor dropped from one that
-// has it. Representative names per family.
+// neither leaked into a build that lacks it nor dropped from one that has
+// it. Driven by the operator table's catalogue, which lists every family in
+// the source whether or not this build compiled it in.
 // ---------------------------------------------------------------------
 
-macro_rules! family_tests {
-    ($feature:literal, $present:ident, $absent:ident, [$($name:literal),+ $(,)?]) => {
-        #[cfg(feature = $feature)]
-        #[test]
-        fn $present() {
-            let names = names();
-            $(assert!(names.contains(&$name), concat!($feature, " enabled but ", $name, " missing"));)+
+#[test]
+fn compiled_families_are_reported_and_gated_ones_are_not() {
+    let names = names();
+    for entry in CATALOGUE {
+        for name in entry.names {
+            assert_eq!(
+                names.contains(name),
+                entry.enabled,
+                "{name:?} ({} family, `{}`)",
+                entry.family,
+                entry.gate
+            );
         }
-
-        #[cfg(not(feature = $feature))]
-        #[test]
-        fn $absent() {
-            let names = names();
-            $(assert!(!names.contains(&$name), concat!($feature, " disabled but ", $name, " reported"));)+
-        }
-    };
+    }
 }
 
-family_tests!(
-    "datetime",
-    datetime_names_present_when_enabled,
-    datetime_names_absent_when_disabled,
-    [
-        "datetime",
-        "timestamp",
-        "parse_date",
-        "format_date",
-        "date_diff",
-        "now"
-    ]
-);
-family_tests!(
-    "ext-string",
-    ext_string_names_present_when_enabled,
-    ext_string_names_absent_when_disabled,
-    [
-        "length",
-        "starts_with",
-        "ends_with",
-        "upper",
-        "lower",
-        "trim",
-        "split"
-    ]
-);
-family_tests!(
-    "ext-array",
-    ext_array_names_present_when_enabled,
-    ext_array_names_absent_when_disabled,
-    ["sort", "slice", "group_by", "distinct"]
-);
-family_tests!(
-    "ext-object",
-    ext_object_names_present_when_enabled,
-    ext_object_names_absent_when_disabled,
-    ["keys", "values", "entries"]
-);
-family_tests!(
-    "ext-control",
-    ext_control_names_present_when_enabled,
-    ext_control_names_absent_when_disabled,
-    ["exists", "??", "switch", "match", "type"]
-);
-family_tests!(
-    "error-handling",
-    error_handling_names_present_when_enabled,
-    error_handling_names_absent_when_disabled,
-    ["try", "throw"]
-);
-family_tests!(
-    "ext-math",
-    ext_math_names_present_when_enabled,
-    ext_math_names_absent_when_disabled,
-    ["abs", "ceil", "floor"]
-);
-family_tests!(
-    "flagd",
-    flagd_names_present_when_enabled,
-    flagd_names_absent_when_disabled,
-    ["fractional", "sem_ver"]
-);
+/// `[features]` of this crate's manifest: feature name → its list.
+fn cargo_features() -> Vec<(String, Vec<String>)> {
+    let manifest = include_str!("../Cargo.toml");
+    let section = manifest
+        .split("\n[features]\n")
+        .nth(1)
+        .expect("Cargo.toml has a [features] table");
+    let section = section.split("\n[").next().unwrap_or(section);
+    let mut features = Vec::new();
+    let mut current: Option<(String, String)> = None;
+    for line in section.lines() {
+        let line = line.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some((name, rest)) = line.split_once('=') {
+            if let Some(done) = current.take() {
+                features.push(done);
+            }
+            current = Some((name.trim().to_string(), rest.trim().to_string()));
+        } else if let Some((_, body)) = current.as_mut() {
+            body.push_str(line);
+        }
+    }
+    features.extend(current);
+    features
+        .into_iter()
+        .map(|(name, body)| {
+            let items = body
+                .trim_matches(|c| c == '[' || c == ']')
+                .split(',')
+                .map(|item| item.trim().trim_matches('"').to_string())
+                .filter(|item| !item.is_empty())
+                .collect();
+            (name, items)
+        })
+        .collect()
+}
+
+/// Every gated family names a real Cargo feature, and `all-operators`
+/// enables exactly the operator families.
+#[test]
+fn catalogue_gates_match_cargo_features() {
+    let features = cargo_features();
+    let declared = |name: &str| features.iter().any(|(f, _)| f == name);
+    let mut families: Vec<&str> = CATALOGUE.iter().filter_map(|e| e.feature()).collect();
+    families.sort_unstable();
+    families.dedup();
+    for feature in &families {
+        assert!(
+            declared(feature),
+            "family feature `{feature}` is not in Cargo.toml"
+        );
+    }
+    let (_, all) = features
+        .iter()
+        .find(|(f, _)| f == "all-operators")
+        .expect("`all-operators` feature");
+    let mut all: Vec<&str> = all.iter().map(String::as_str).collect();
+    all.sort_unstable();
+    assert_eq!(
+        all, families,
+        "`all-operators` must enable exactly the operator families"
+    );
+    // Core needs no feature.
+    assert!(
+        CATALOGUE
+            .iter()
+            .any(|e| e.family == "Core" && e.feature().is_none())
+    );
+}
+
+#[test]
+fn operators_describe_every_named_builtin() {
+    let engine = Engine::new();
+    let mut from_ops: Vec<&str> = engine
+        .operators()
+        .flat_map(|op| std::iter::once(op.name).chain(op.aliases.iter().copied()))
+        .collect();
+    let mut from_names = names();
+    from_ops.sort_unstable();
+    from_names.sort_unstable();
+    assert_eq!(from_ops, from_names);
+
+    let val = engine.operators().find(|op| op.name == "val").unwrap();
+    assert_eq!(val.aliases, ["var"]);
+    assert!(val.reads_context);
+    assert_eq!(val.effect, "pure");
+
+    let map = engine.operators().find(|op| op.name == "map").unwrap();
+    assert_eq!(map.scoped_arg, Some(ScopedArg::Index(1)));
+    assert_eq!(map.cost, "per_item");
+
+    let substr = engine.operators().find(|op| op.name == "substr").unwrap();
+    assert_eq!((substr.min_args, substr.max_args), (1, Some(3)));
+
+    for op in engine.operators() {
+        let entry = CATALOGUE
+            .iter()
+            .find(|e| e.names.first() == Some(&op.name))
+            .unwrap();
+        assert_eq!(op.family, entry.family);
+        assert_eq!(op.feature, entry.feature());
+    }
+}
+
+#[cfg(feature = "error-handling")]
+#[test]
+fn try_reports_its_catch_arm_and_effect() {
+    let engine = Engine::new();
+    let try_ = engine.operators().find(|op| op.name == "try").unwrap();
+    assert_eq!(try_.scoped_arg, Some(ScopedArg::LastOfMany));
+    assert_eq!(try_.effect, "catches");
+    assert_eq!(try_.feature, Some("error-handling"));
+}

@@ -10,13 +10,14 @@
 //! with no copy: the vector's own allocation *is* the tensor's payload.
 
 use super::{
-    Scalar, arg, as_dtype, as_i64, as_shape, as_usize, at_most, bad, by_dtype, charge, cost,
-    element_error, finish, finish_bytes, finish_slice, numel_of, opt_arg, strides_of, wrap,
+    Scalar, as_dtype, as_i64, as_usize, bad, by_dtype, charge, cost, element_error, finish,
+    finish_bytes, finish_slice, numel_of, strides_of, wrap,
 };
-use crate::arena::{ContextStack, DataValue, bvec};
-use crate::{CompiledNode, Engine, Result};
+use crate::arena::{DataValue, bvec};
+use crate::operators::eager::Cx;
+use crate::{CompiledNode, Result};
 use bumpalo::Bump;
-use datavalue::DataTensor;
+use datavalue::{DType, DataTensor};
 
 /// Is this the tagged `{"tensor": {...}}` wire form? A single-key object
 /// under datavalue's tag; anything else is a nested-array input.
@@ -57,14 +58,12 @@ fn decode_body<'a>(v: &DataValue<'a>, arena: &'a Bump) -> Result<DataTensor<'a>>
 ///   the declared `dtype`, with the shape inferred from the nesting.
 ///
 /// A flat list plus an explicit shape is `reshape` over this.
-pub(crate) fn evaluate_tensor<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn tensor<'a>(
+    cx: &mut Cx<'_, 'a>,
+    v: &'a DataValue<'a>,
+    dtype: Option<&'a CompiledNode>,
 ) -> Result<&'a DataValue<'a>> {
-    at_most(args, 2)?;
-    let v = arg(args, 0, ctx, engine, arena)?;
+    let arena = cx.arena;
 
     // Unlike the shape-declaring constructors below, both paths here are
     // bounded by an input value that is already materialised in the
@@ -77,13 +76,15 @@ pub(crate) fn evaluate_tensor<'a>(
     } else if is_wire_body(v) {
         decode_body(v, arena)?
     } else {
-        let dtype = as_dtype(opt_arg(args, 1, ctx, engine, arena)?.ok_or_else(|| {
+        // The dtype is only read here, so it is only evaluated here.
+        let dtype = dtype.ok_or_else(|| {
             bad("tensor: nested-array input needs a dtype, e.g. {\"tensor\": [[[1,2]], \"f32\"]}")
-        })?)?;
+        })?;
+        let dtype = as_dtype(cx.eval(dtype)?)?;
         DataTensor::from_nested_in(v, dtype, arena).map_err(wrap)?
     };
 
-    charge(ctx, t.numel() as u64)?;
+    charge(cx, t.numel() as u64)?;
     finish(t, arena)
 }
 
@@ -92,36 +93,30 @@ pub(crate) fn evaluate_tensor<'a>(
 /// The one element-wise-looking constructor that needs no `Element` impl:
 /// an all-zero buffer is a valid value of every dtype, `f16` / `bf16`
 /// included, so this works without `tensor-half` where `full` does not.
-pub(crate) fn evaluate_zeros<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn zeros<'a>(
+    cx: &mut Cx<'_, 'a>,
+    shape: &'a [usize],
+    dtype: DType,
 ) -> Result<&'a DataValue<'a>> {
-    at_most(args, 2)?;
-    let shape = as_shape(arg(args, 0, ctx, engine, arena)?, arena)?;
-    let dtype = as_dtype(arg(args, 1, ctx, engine, arena)?)?;
+    let arena = cx.arena;
 
     // max(dims read, elements produced): a zero-element shape still has
     // its dimensions validated.
-    charge(ctx, cost(shape.len(), numel_of(shape)?))?;
+    charge(cx, cost(shape.len(), numel_of(shape)?))?;
     let buf = DataTensor::zeroed_bytes_in(dtype, shape, arena).map_err(wrap)?;
     finish_bytes(dtype, shape, buf, arena)
 }
 
 /// `full: [shape, dtype, value]` — every element set to `value`.
-pub(crate) fn evaluate_full<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn full<'a>(
+    cx: &mut Cx<'_, 'a>,
+    shape: &'a [usize],
+    dtype: DType,
+    value: &'a DataValue<'a>,
 ) -> Result<&'a DataValue<'a>> {
-    at_most(args, 3)?;
-    let shape = as_shape(arg(args, 0, ctx, engine, arena)?, arena)?;
-    let dtype = as_dtype(arg(args, 1, ctx, engine, arena)?)?;
-    let value = arg(args, 2, ctx, engine, arena)?;
+    let arena = cx.arena;
 
-    charge(ctx, cost(shape.len(), numel_of(shape)?))?;
+    charge(cx, cost(shape.len(), numel_of(shape)?))?;
     by_dtype!(dtype, full_impl, shape, value, arena)
 }
 
@@ -145,22 +140,19 @@ fn full_impl<'a, T: Scalar>(
 /// rejected, because the usual producer is a detector emitting boxes in
 /// source coordinates that may fall outside the target grid, and dropping
 /// them is what the consumer would otherwise write by hand.
-pub(crate) fn evaluate_scatter<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn scatter<'a>(
+    cx: &mut Cx<'_, 'a>,
+    points: &'a DataValue<'a>,
+    shape: &'a [usize],
+    dtype: DType,
+    value: Option<&'a DataValue<'a>>,
 ) -> Result<&'a DataValue<'a>> {
-    at_most(args, 4)?;
-    let points = arg(args, 0, ctx, engine, arena)?;
-    let shape = as_shape(arg(args, 1, ctx, engine, arena)?, arena)?;
-    let dtype = as_dtype(arg(args, 2, ctx, engine, arena)?)?;
-    let value = opt_arg(args, 3, ctx, engine, arena)?;
+    let arena = cx.arena;
 
     let DataValue::Array(points) = points else {
         return Err(bad("scatter: points must be an array of coordinate arrays"));
     };
-    charge(ctx, cost(points.len(), numel_of(shape)?))?;
+    charge(cx, cost(points.len(), numel_of(shape)?))?;
     by_dtype!(dtype, scatter_impl, points, shape, value, arena)
 }
 
@@ -228,16 +220,13 @@ fn scatter_impl<'a, T: Scalar>(
 /// run lengths must sum to exactly the shape's element count: a mask that
 /// decodes to the wrong size is a bug in the producer, and filling the
 /// remainder with zeros would hide it.
-pub(crate) fn evaluate_rle_expand<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn rle_expand<'a>(
+    cx: &mut Cx<'_, 'a>,
+    runs: &'a DataValue<'a>,
+    shape: &'a [usize],
+    dtype: DType,
 ) -> Result<&'a DataValue<'a>> {
-    at_most(args, 3)?;
-    let runs = arg(args, 0, ctx, engine, arena)?;
-    let shape = as_shape(arg(args, 1, ctx, engine, arena)?, arena)?;
-    let dtype = as_dtype(arg(args, 2, ctx, engine, arena)?)?;
+    let arena = cx.arena;
 
     let DataValue::Array(runs) = runs else {
         return Err(bad(
@@ -247,7 +236,7 @@ pub(crate) fn evaluate_rle_expand<'a>(
     if !runs.len().is_multiple_of(2) {
         return Err(bad("rle_expand: runs must have an even length"));
     }
-    charge(ctx, cost(runs.len(), numel_of(shape)?))?;
+    charge(cx, cost(runs.len(), numel_of(shape)?))?;
     by_dtype!(dtype, rle_impl, runs, shape, arena)
 }
 
@@ -283,23 +272,20 @@ fn rle_impl<'a, T: Scalar>(
 /// An index outside `0..depth` leaves its row all-zero, which is what
 /// every framework's `one_hot` does and what a caller encoding an
 /// "unknown category" sentinel expects.
-pub(crate) fn evaluate_one_hot<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn one_hot<'a>(
+    cx: &mut Cx<'_, 'a>,
+    indices: &'a DataValue<'a>,
+    depth: usize,
+    dtype: DType,
 ) -> Result<&'a DataValue<'a>> {
-    at_most(args, 3)?;
-    let indices = arg(args, 0, ctx, engine, arena)?;
-    let depth = as_usize(arg(args, 1, ctx, engine, arena)?)?;
-    let dtype = as_dtype(arg(args, 2, ctx, engine, arena)?)?;
+    let arena = cx.arena;
 
     let DataValue::Array(indices) = indices else {
         return Err(bad("one_hot: indices must be an array"));
     };
     let shape = arena.alloc_slice_copy(&[indices.len(), depth]);
     // max(indices read, elements produced): depth 0 still walks the indices.
-    charge(ctx, cost(indices.len(), numel_of(shape)?))?;
+    charge(cx, cost(indices.len(), numel_of(shape)?))?;
     by_dtype!(dtype, one_hot_impl, indices, shape, arena)
 }
 

@@ -1,22 +1,10 @@
 //! `abs`, `ceil`, `floor` — unary numeric ops.
 
-use crate::arena::{ContextStack, DataValue, bvec};
-use crate::{CompiledNode, Engine, Result};
-use bumpalo::Bump;
+use crate::Result;
+use crate::arena::{DataValue, bvec};
+use crate::operators::eager::Cx;
+use crate::operators::extract::{RestArgs, StrictNum};
 use datavalue::NumberValue;
-
-use super::helpers::alloc_number;
-
-/// `get_number_strict` for arena values — Number variants and string-as-number
-/// only (no bool/null coercion).
-#[inline]
-fn value_strict_f64(av: &DataValue<'_>) -> Option<f64> {
-    match av {
-        DataValue::Number(n) => Some(n.as_f64()),
-        DataValue::String(s) => s.parse().ok(),
-        _ => None,
-    }
-}
 
 /// `abs` / `ceil` / `floor` discriminant for the unified unary-math entry
 /// point.
@@ -45,23 +33,20 @@ impl UnaryMathOp {
     }
 }
 
-/// Generic native unary math op shared by abs / ceil / floor.
-/// - `args.is_empty()` → InvalidArguments
-/// - 1 arg, numeric → apply op, return arena Number
-/// - 1 arg, non-numeric → InvalidArguments
-/// - >1 args → variadic, return arena Array of results (any non-numeric → error)
-#[inline]
+/// `abs` / `ceil` / `floor` over one or more numbers (the row reads them
+/// with `StrictNum`: a number or a numeric string, anything else is
+/// `InvalidArguments`). One argument gives a number; more give an array
+/// of results, each argument evaluated and checked in turn.
+///
+/// `inline(always)`: merged into its adapter, the call costs what the
+/// pre-table body did; as a separate function it measured ~2% slower.
+#[inline(always)]
 pub(crate) fn unary_math<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+    cx: &mut Cx<'_, 'a>,
+    first: f64,
+    rest: RestArgs<'a, StrictNum>,
     op: UnaryMathOp,
 ) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Err(crate::Error::invalid_args());
-    }
-
     let to_number = |x: f64| -> NumberValue {
         if op.returns_int() {
             NumberValue::from_i64(x as i64)
@@ -70,20 +55,15 @@ pub(crate) fn unary_math<'a>(
         }
     };
 
-    if args.len() == 1 {
-        let av = engine.dispatch_node(&args[0], ctx, arena)?;
-        let n = value_strict_f64(av).ok_or_else(crate::Error::invalid_args)?;
-        return Ok(alloc_number(arena, to_number(op.apply(n))));
+    if rest.is_empty() {
+        return Ok(cx.alloc(DataValue::Number(to_number(op.apply(first)))));
     }
 
-    let mut items = bvec::<DataValue<'a>>(arena, args.len());
-    for arg in args {
-        let av = engine.dispatch_node(arg, ctx, arena)?;
-        let n = value_strict_f64(av).ok_or_else(crate::Error::invalid_args)?;
-        // Push the Number straight into the result Vec; the previous code
-        // arena-allocated each element via `alloc_number` then copied it in,
-        // discarding the throwaway allocation.
+    let mut items = bvec::<DataValue<'a>>(cx.arena, rest.len() + 1);
+    items.push(DataValue::Number(to_number(op.apply(first))));
+    for i in 0..rest.len() {
+        let n = rest.get(i, cx)?;
         items.push(DataValue::Number(to_number(op.apply(n))));
     }
-    Ok(arena.alloc(DataValue::Array(items.into_bump_slice())))
+    Ok(cx.alloc(DataValue::Array(items.into_bump_slice())))
 }

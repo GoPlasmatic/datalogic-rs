@@ -7,11 +7,12 @@
 //! header and work on every dtype.
 
 use super::{
-    Scalar, arg, as_axis, as_dtype, as_f64, as_tensor, at_most, bad, by_dtype, charge, finish,
-    finish_slice, opt_arg, shape_without_axis, split_axis, wrap,
+    Scalar, bad, by_dtype, charge, finish, finish_slice, resolve_axis, shape_without_axis,
+    split_axis, wrap,
 };
-use crate::arena::{ContextStack, DataValue, bvec};
-use crate::{CompiledNode, Engine, Result};
+use crate::Result;
+use crate::arena::{DataValue, bvec};
+use crate::operators::eager::Cx;
 use bumpalo::Bump;
 use datavalue::{DType, DataTensor, NumberValue};
 
@@ -68,16 +69,13 @@ fn narrow_impl<'a, T: Scalar>(
 /// not `44`) and `NaN` becomes zero, matching Rust's own float-to-integer
 /// cast. This is deliberately lossy — it is the operator you reach for
 /// when you know the model wants `f32` and the JSON gave you `f64`.
-pub(crate) fn evaluate_cast<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn cast<'a>(
+    cx: &mut Cx<'_, 'a>,
+    t: DataTensor<'a>,
+    dtype: DType,
 ) -> Result<&'a DataValue<'a>> {
-    at_most(args, 2)?;
-    let t = as_tensor(arg(args, 0, ctx, engine, arena)?, arena)?;
-    let dtype = as_dtype(arg(args, 1, ctx, engine, arena)?)?;
-    charge(ctx, t.numel() as u64)?;
+    let arena = cx.arena;
+    charge(cx, t.numel() as u64)?;
 
     // Casting to the dtype it already has costs nothing and, importantly,
     // does not round-trip 64-bit integers through `f64`.
@@ -95,20 +93,15 @@ pub(crate) fn evaluate_cast<'a>(
 /// expects. `scale` defaults to 1, so the two-argument form is a plain
 /// mean subtraction. `mean` and `scale` are scalars; per-channel
 /// normalization is `unstack` + `normalize` + `stack`.
-pub(crate) fn evaluate_normalize<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn normalize<'a>(
+    cx: &mut Cx<'_, 'a>,
+    t: DataTensor<'a>,
+    mean: f64,
+    scale: Option<f64>,
 ) -> Result<&'a DataValue<'a>> {
-    at_most(args, 3)?;
-    let t = as_tensor(arg(args, 0, ctx, engine, arena)?, arena)?;
-    let mean = as_f64(arg(args, 1, ctx, engine, arena)?)?;
-    let scale = match opt_arg(args, 2, ctx, engine, arena)? {
-        Some(v) => as_f64(v)?,
-        None => 1.0,
-    };
-    charge(ctx, t.numel() as u64)?;
+    let arena = cx.arena;
+    let scale = scale.unwrap_or(1.0);
+    charge(cx, t.numel() as u64)?;
     by_dtype!(t.dtype(), normalize_impl, t, mean, scale, arena)
 }
 
@@ -131,22 +124,20 @@ fn normalize_impl<'a, T: Scalar>(
 ///
 /// Ties go to the first occurrence. `NaN` never wins, so an all-`NaN`
 /// lane reports 0.
-pub(crate) fn evaluate_argmax<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn argmax<'a>(
+    cx: &mut Cx<'_, 'a>,
+    t: DataTensor<'a>,
+    axis: i64,
 ) -> Result<&'a DataValue<'a>> {
-    at_most(args, 2)?;
-    let t = as_tensor(arg(args, 0, ctx, engine, arena)?, arena)?;
+    let arena = cx.arena;
     if t.ndim() == 0 {
         return Err(bad("argmax: a 0-d tensor has no axis to reduce"));
     }
-    let axis = as_axis(arg(args, 1, ctx, engine, arena)?, t.ndim(), 0)?;
+    let axis = resolve_axis(axis, t.ndim(), 0)?;
     if t.shape()[axis] == 0 {
         return Err(bad("argmax: cannot reduce a zero-length axis"));
     }
-    charge(ctx, t.numel() as u64)?;
+    charge(cx, t.numel() as u64)?;
     by_dtype!(t.dtype(), argmax_impl, t, axis, arena)
 }
 
@@ -190,28 +181,16 @@ fn argmax_impl<'a, T: Scalar>(
 /// The general escape hatch, and expensive by design: this is the one
 /// operator that turns a compact buffer back into one `DataValue` node per
 /// element. Reach for `argmax`, `shape` or a comparison first.
-pub(crate) fn evaluate_to_list<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    at_most(args, 1)?;
-    let t = as_tensor(arg(args, 0, ctx, engine, arena)?, arena)?;
-    charge(ctx, t.numel() as u64)?;
+pub(crate) fn to_list<'a>(cx: &mut Cx<'_, 'a>, t: DataTensor<'a>) -> Result<&'a DataValue<'a>> {
+    let arena = cx.arena;
+    charge(cx, t.numel() as u64)?;
     Ok(arena.alloc(t.to_nested_in(arena).map_err(wrap)?))
 }
 
 /// `shape: [T]` — the shape as a JSON array of numbers.
-pub(crate) fn evaluate_shape<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    at_most(args, 1)?;
-    let t = as_tensor(arg(args, 0, ctx, engine, arena)?, arena)?;
-    charge(ctx, 1)?;
+pub(crate) fn shape<'a>(cx: &mut Cx<'_, 'a>, t: DataTensor<'a>) -> Result<&'a DataValue<'a>> {
+    let arena = cx.arena;
+    charge(cx, 1)?;
     let dims = arena.alloc_slice_fill_iter(
         t.shape()
             .iter()
@@ -222,14 +201,8 @@ pub(crate) fn evaluate_shape<'a>(
 
 /// `dtype: [T]` — the dtype's wire name (`"f32"`, `"bool"`, `"bf16"`, …),
 /// which is exactly what `tensor`, `zeros`, `full` and `cast` accept back.
-pub(crate) fn evaluate_dtype<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    at_most(args, 1)?;
-    let t = as_tensor(arg(args, 0, ctx, engine, arena)?, arena)?;
-    charge(ctx, 1)?;
+pub(crate) fn dtype<'a>(cx: &mut Cx<'_, 'a>, t: DataTensor<'a>) -> Result<&'a DataValue<'a>> {
+    let arena = cx.arena;
+    charge(cx, 1)?;
     Ok(arena.alloc(DataValue::String(t.dtype().name())))
 }

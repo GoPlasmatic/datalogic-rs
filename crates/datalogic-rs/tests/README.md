@@ -72,8 +72,16 @@ pair on first use, so a suite can mix flavours freely, including setting
 `template_key_escape` with `templating` absent, to pin that the escape is
 inert outside templating mode.
 
-`suites/index.json` lists every file the harness should run; add new
-suites there.
+`suites/index.json` lists every file the harness should run, in run order
+(the bindings' conformance runners and the benchmark read it too).
+`suite_index_lists_every_suite` fails when a file on disk is missing from
+the index (or the index names a file that is gone); rerun it with
+`UPDATE_SUITE_INDEX=1` to append new files and drop deleted ones, keeping
+the existing order. `every_operator_has_suite_cases` fails when an operator
+in the operator table is called by no rule in any suite, and
+`every_foldable_row_is_folded_by_a_suite_case` (a unit test in
+`operators/table_tests.rs`) when a foldable operator has no case with
+literal arguments, or folding one changes its result.
 
 ## Reduced-feature builds
 
@@ -87,11 +95,12 @@ TOTAL RESULTS: 1142 passed, 0 failed, 572 skipped
 ```
 
 Detection walks the rule for single-key objects (how an operator call is
-spelled) and matches them against `GATED_OPERATORS` in the runner.
-`gated_operator_table_matches_engine` checks that table against
-`Engine::builtin_operator_names()`, so it cannot silently drift. A
-misspelled operator is deliberately *not* in the table, so unknown-operator
-cases still assert rather than being skipped.
+spelled) and matches them against the operator table's catalogue
+(`datalogic_rs::__private::CATALOGUE`), which lists every operator family in
+the source with whether this build compiled it in. Because it comes from the
+same table as dispatch, it cannot drift. A misspelled operator is in no
+catalogue entry, so unknown-operator cases still assert rather than being
+skipped.
 
 `requires` covers the residual case where a feature changes value semantics
 rather than adding an operator. Under `--all-features` nothing is skipped, so

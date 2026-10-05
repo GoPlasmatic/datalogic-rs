@@ -106,7 +106,6 @@ mod eval_input;
 mod logic_input;
 mod node;
 mod node_serialize;
-mod opcode;
 pub mod operator;
 mod operators;
 mod parsed_data;
@@ -192,6 +191,7 @@ pub use error::{CustomErrorSource, Error, ErrorKind};
 pub use eval_input::{EvalInput, OwnedInput};
 pub use logic_input::IntoLogic;
 pub use node::Logic;
+pub use operators::info::{OperatorInfo, ScopedArg};
 pub use parsed_data::ParsedData;
 pub use path::PathStep;
 pub use result_output::FromDataValue;
@@ -206,9 +206,17 @@ pub use trace::{ExecutionStep, ExpressionNode, TracedRun, TracedSession};
 
 // `CompiledNode`, `OpCode`, `MetadataHint`, `PathSegment`, `ReduceHint` were
 // public in 4.x. They are compile-internal in v5; consumers reach for them
-// via `crate::node::*` / `crate::opcode::*` directly.
+// via `crate::node::*` / `crate::OpCode` directly.
 pub(crate) use node::CompiledNode;
-pub(crate) use opcode::OpCode;
+
+/// Not public API. The operator table's full catalogue, every family
+/// whether compiled in or not, for the conformance runner and repository
+/// tooling to tell a gated-off operator from a misspelled one.
+#[doc(hidden)]
+pub mod __private {
+    pub use crate::operators::table::{CATALOGUE, CatalogueEntry};
+}
+pub(crate) use operators::table::OpCode;
 
 /// Result type for Engine operations
 pub type Result<T> = std::result::Result<T, Error>;

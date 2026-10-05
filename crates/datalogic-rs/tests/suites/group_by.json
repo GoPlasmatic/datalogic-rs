@@ -148,5 +148,11 @@
     "rule": { "group_by": [{"val": "obj"}, {"var": ""}] },
     "data": { "obj": {"a": 1} },
     "error": { "type": "Invalid Arguments" }
+  },
+  {
+    "description": "Literal array without a key expression is an error",
+    "rule": { "group_by": [[1, 2]] },
+    "data": null,
+    "error": { "type": "Invalid Arguments" }
   }
 ]

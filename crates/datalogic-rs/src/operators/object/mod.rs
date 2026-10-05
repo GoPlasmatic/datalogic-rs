@@ -11,81 +11,75 @@
 //! arena objects are plain pair slices and these operators report them
 //! as-is.
 
-use crate::arena::{ContextStack, DataValue};
-use crate::{CompiledNode, Engine, Result};
-use bumpalo::Bump;
+use crate::Result;
+use crate::arena::DataValue;
+use crate::operators::eager::Cx;
 
-/// Resolve the single object argument shared by all three operators.
-/// `Ok(None)` means "result is the empty array" (null or empty object).
+/// The pairs of the single object argument shared by all three
+/// operators (the row reads it as `Nullable<Obj>`: an object or `null`,
+/// anything else is `InvalidArguments`). `None` means "result is the
+/// empty array" (null or empty object).
 ///
 /// Charges one operation per pair before the caller builds its result:
 /// each operator produces one item per pair.
 #[inline]
-fn resolve_object<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+fn pairs_of<'a>(
+    cx: &mut Cx<'_, 'a>,
+    object: Option<&'a [(&'a str, DataValue<'a>)]>,
 ) -> Result<Option<&'a [(&'a str, DataValue<'a>)]>> {
-    if args.is_empty() {
-        return Err(crate::Error::invalid_args());
-    }
-    match engine.dispatch_node(&args[0], ctx, arena)? {
-        DataValue::Object([]) => Ok(None),
-        DataValue::Object(pairs) => {
-            ctx.charge(pairs.len() as u64)?;
+    match object {
+        None | Some([]) => Ok(None),
+        Some(pairs) => {
+            cx.charge(pairs.len() as u64)?;
             Ok(Some(pairs))
         }
-        DataValue::Null => Ok(None),
-        _ => Err(crate::Error::invalid_args()),
     }
 }
 
 /// `keys: [obj]` → array of the object's key strings.
 #[inline]
-pub(crate) fn evaluate_keys<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn keys<'a>(
+    cx: &mut Cx<'_, 'a>,
+    object: Option<&'a [(&'a str, DataValue<'a>)]>,
 ) -> Result<&'a DataValue<'a>> {
-    let Some(pairs) = resolve_object(args, ctx, engine, arena)? else {
+    let Some(pairs) = pairs_of(cx, object)? else {
         return Ok(crate::arena::singletons::singleton_empty_array());
     };
     // Key strings are already arena-resident — re-borrow, no copies.
-    let slice = arena.alloc_slice_fill_iter(pairs.iter().map(|(k, _)| DataValue::String(k)));
-    Ok(arena.alloc(DataValue::Array(slice)))
+    let slice = cx
+        .arena
+        .alloc_slice_fill_iter(pairs.iter().map(|(k, _)| DataValue::String(k)));
+    Ok(cx.alloc(DataValue::Array(slice)))
 }
 
 /// `values: [obj]` → array of the object's values.
 #[inline]
-pub(crate) fn evaluate_values<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn values<'a>(
+    cx: &mut Cx<'_, 'a>,
+    object: Option<&'a [(&'a str, DataValue<'a>)]>,
 ) -> Result<&'a DataValue<'a>> {
-    let Some(pairs) = resolve_object(args, ctx, engine, arena)? else {
+    let Some(pairs) = pairs_of(cx, object)? else {
         return Ok(crate::arena::singletons::singleton_empty_array());
     };
-    let slice = arena.alloc_slice_fill_iter(pairs.iter().map(|(_, v)| *v));
-    Ok(arena.alloc(DataValue::Array(slice)))
+    let slice = cx
+        .arena
+        .alloc_slice_fill_iter(pairs.iter().map(|(_, v)| *v));
+    Ok(cx.alloc(DataValue::Array(slice)))
 }
 
 /// `entries: [obj]` → array of `{key, value}` rows.
 #[inline]
-pub(crate) fn evaluate_entries<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
+pub(crate) fn entries<'a>(
+    cx: &mut Cx<'_, 'a>,
+    object: Option<&'a [(&'a str, DataValue<'a>)]>,
 ) -> Result<&'a DataValue<'a>> {
-    let Some(pairs) = resolve_object(args, ctx, engine, arena)? else {
+    let Some(pairs) = pairs_of(cx, object)? else {
         return Ok(crate::arena::singletons::singleton_empty_array());
     };
+    let arena = cx.arena;
     let slice = arena.alloc_slice_fill_iter(pairs.iter().map(|(k, v)| {
         let row = arena.alloc([("key", DataValue::String(k)), ("value", *v)]);
         DataValue::Object(&row[..])
     }));
-    Ok(arena.alloc(DataValue::Array(slice)))
+    Ok(cx.alloc(DataValue::Array(slice)))
 }

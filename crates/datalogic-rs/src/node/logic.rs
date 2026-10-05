@@ -3,7 +3,6 @@
 //! consults to decide whether a sub-expression can be folded.
 
 use super::{CompiledNode, populate_lits};
-use crate::opcode::OpCode;
 
 /// Compiled logic that can be evaluated multiple times across different data.
 ///
@@ -227,7 +226,7 @@ pub(crate) fn node_is_static(node: &CompiledNode) -> bool {
     match node {
         CompiledNode::Value { .. } => true,
         CompiledNode::Array { nodes, .. } => nodes.iter().all(node_is_static),
-        CompiledNode::BuiltinOperator { opcode, args, .. } => opcode_is_static(opcode, args),
+        CompiledNode::BuiltinOperator { opcode, args, .. } => opcode.meta().can_fold(args),
         CompiledNode::CustomOperator(_) => false,
         CompiledNode::Cse(data) => node_is_static(&data.inner),
         CompiledNode::Var { .. } => false,
@@ -248,90 +247,6 @@ pub(crate) fn node_is_static(node: &CompiledNode) -> bool {
         CompiledNode::Missing(_) | CompiledNode::MissingSome(_) => false,
         // InvalidArgs is dynamic — it raises an error at runtime.
         CompiledNode::InvalidArgs { .. } => false,
-    }
-}
-
-/// Check if an operator can be statically evaluated at compile time.
-///
-/// Static operators can be pre-computed during compilation when their arguments
-/// are also static, eliminating runtime evaluation overhead.
-///
-/// # Classification Criteria
-///
-/// An operator is **non-static** (dynamic) if it:
-/// 1. Reads from the data context (`var`, `val`, `missing`, `exists`)
-/// 2. Uses iterative callbacks with changing context (`map`, `filter`, `reduce`)
-/// 3. Has side effects or error handling (`try`, `throw`)
-/// 4. Depends on runtime state (`now` for current time)
-/// 5. Needs runtime disambiguation (`merge`, `min`, `max`)
-///
-/// All other operators are **static** when their arguments are static.
-fn opcode_is_static(opcode: &OpCode, args: &[CompiledNode]) -> bool {
-    use OpCode::*;
-
-    // Check if all arguments are static first (common pattern)
-    let args_static = || args.iter().all(node_is_static);
-
-    match opcode {
-        // Context-dependent: These operators read from the data context, which is
-        // not available at compile time. They must remain dynamic.
-        Val | VarDefault | Missing | MissingSome => false,
-        #[cfg(feature = "ext-control")]
-        Exists => false,
-
-        // Iteration operators: These push new contexts for each iteration and use
-        // callbacks that may reference the iteration variable. Even with static
-        // arrays, the callback logic depends on the per-element context.
-        Map | Filter | Reduce | All | Some | None => false,
-        #[cfg(feature = "ext-array")]
-        GroupBy => false,
-        // `distinct` without a key expression runs no callback (pure value
-        // dedup) and folds like any pure operator; the keyed form runs the
-        // key expression under per-element frames and stays dynamic.
-        #[cfg(feature = "ext-array")]
-        Distinct => args.len() < 2 && args_static(),
-
-        // Error handling: These have control flow effects (early exit, error propagation)
-        // that should be preserved for runtime execution.
-        #[cfg(feature = "error-handling")]
-        Try | Throw => false,
-
-        // Time-dependent: Returns current UTC time, inherently non-static.
-        #[cfg(feature = "datetime")]
-        Now => false,
-
-        // Tensor: pure, but never folded — see `OpCode::is_tensor` for
-        // why the whole family opts out of both optimizer gates.
-        #[cfg(feature = "tensor")]
-        op if op.is_tensor() => false,
-
-        // Context-dependent in implicit form: when the bucketing
-        // expression is omitted, `fractional` reads `$flagd.flagKey` and
-        // `targetingKey` from the root data, so it cannot be folded even
-        // if every literal arg is static. Even the explicit form depends
-        // on the user expecting it to be evaluated per-call (the same
-        // input always produces the same output, but folding bakes in
-        // *one* bucketing key for the lifetime of the compiled rule —
-        // which is correct, but surprises users who rebuild the rule
-        // with a different bucketing strategy). Keep dynamic.
-        #[cfg(feature = "flagd")]
-        Fractional => false,
-        // `sem_ver` is pure given static args — `Version::parse` +
-        // comparison has no context dependency. Fold when every arg
-        // (version1, op, version2) is a literal. The common case is
-        // `sem_ver(var("app_version"), ">=", "1.2.0")` which has a
-        // dynamic var and stays dynamic naturally.
-        #[cfg(feature = "flagd")]
-        SemVer => args_static(),
-
-        // Runtime disambiguation needed: Merge/Min/Max have to distinguish
-        // a [1,2,3] literal from operator arguments at runtime to handle
-        // nested arrays correctly.
-        Merge | Min | Max => false,
-
-        // Pure operators: Static when all arguments are static. These perform
-        // deterministic transformations without side effects or context access.
-        _ => args_static(),
     }
 }
 

@@ -9,8 +9,8 @@
 //! evaluates identically.
 
 use crate::CompiledNode;
+use crate::OpCode;
 use crate::node::PathSegment;
-use crate::opcode::OpCode;
 
 /// Serialise an entire compiled tree as a JSONLogic string.
 pub(crate) fn node_to_json_string(node: &CompiledNode) -> String {

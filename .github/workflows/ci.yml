@@ -132,6 +132,7 @@ jobs:
           - tensor
           - tensor-half
           - budget
+          - all-operators
     steps:
       - name: Checkout
         uses: actions/checkout@v6

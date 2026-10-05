@@ -1,37 +1,18 @@
 use crate::arena::{ContextStack, DataValue, truthy_arena};
+use crate::operators::eager::Cx;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
+/// `!`: the negated truthiness of the argument; `true` with none.
 #[inline]
-pub(crate) fn evaluate_not<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Ok(crate::arena::singletons::singleton_true());
-    }
-    let v = engine.dispatch_node(&args[0], ctx, arena)?;
-    Ok(crate::arena::singletons::singleton_bool(!truthy_arena(
-        v, engine,
-    )))
+pub(crate) fn not(_cx: &mut Cx<'_, '_>, value: Option<bool>) -> Result<bool> {
+    Ok(!value.unwrap_or(false))
 }
 
+/// `!!`: the truthiness of the argument; `false` with none.
 #[inline]
-pub(crate) fn evaluate_bool_cast<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Ok(crate::arena::singletons::singleton_false());
-    }
-    let v = engine.dispatch_node(&args[0], ctx, arena)?;
-    Ok(crate::arena::singletons::singleton_bool(truthy_arena(
-        v, engine,
-    )))
+pub(crate) fn bool_cast(_cx: &mut Cx<'_, '_>, value: Option<bool>) -> Result<bool> {
+    Ok(value.unwrap_or(false))
 }
 
 #[inline]

@@ -51,11 +51,22 @@
 //!
 //! # Dispatch Mechanism
 //!
-//! Operators are dispatched through the [`OpCode`](crate::OpCode) enum in `opcode.rs`.
-//! During compilation, operator names are converted to `OpCode` variants for fast
-//! runtime dispatch without string comparisons.
+//! Every built-in operator is one row of the operator table in
+//! [`table`]: the row names the operator, points at its implementation,
+//! and declares its facts ([`meta::OpMeta`]). The `OpCode` enum, name
+//! lookup, dispatch arms and every optimizer classification are generated
+//! or derived from the rows. During compilation, operator names are
+//! converted to `OpCode` variants for fast runtime dispatch without string
+//! comparisons.
 
 pub(crate) mod truthy;
+
+// The operator table, the facts it declares, and the typed-row adapters.
+pub(crate) mod eager;
+pub(crate) mod extract;
+pub(crate) mod info;
+pub(crate) mod meta;
+pub(crate) mod table;
 
 // Core - always compiled
 pub(crate) mod arithmetic;
@@ -80,3 +91,6 @@ pub(crate) mod inspect;
 pub(crate) mod object;
 #[cfg(feature = "tensor")]
 pub(crate) mod tensor;
+
+#[cfg(test)]
+mod table_tests;

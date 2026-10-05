@@ -8,8 +8,9 @@
 //! Numeric string literals are deliberately NOT pre-coerced — see the note in [`fold`].
 
 use crate::Engine;
+use crate::OpCode;
 use crate::node::{CompiledNode, SYNTHETIC_ID, node_is_static};
-use crate::opcode::OpCode;
+use crate::operators::meta::Algebra;
 use datavalue::OwnedDataValue;
 
 /// Apply partial constant folding to a compiled node.
@@ -30,8 +31,8 @@ pub(crate) fn fold(node: CompiledNode, engine: &Engine) -> (CompiledNode, bool) 
         CompiledNode::BuiltinOperator {
             id, opcode, args, ..
         } => {
-            // Partial fold for commutative operators with mixed static/dynamic args
-            if is_commutative(opcode) && args.len() >= 2 {
+            // Partial fold for associative operators with mixed static/dynamic args
+            if is_associative(*opcode) && args.len() >= 2 {
                 match try_partial_fold(*id, *opcode, args, engine) {
                     Some(new) => (new, true),
                     None => (node, false),
@@ -49,9 +50,10 @@ pub(crate) fn fold(node: CompiledNode, engine: &Engine) -> (CompiledNode, bool) 
     }
 }
 
-/// Check if an operator is commutative and associative (safe to reorder static args).
-fn is_commutative(opcode: &OpCode) -> bool {
-    matches!(opcode, OpCode::Add | OpCode::Multiply)
+/// Whether the operator's static arguments may be regrouped and folded
+/// together, read from its table row's `algebra`.
+fn is_associative(opcode: OpCode) -> bool {
+    matches!(opcode.meta().algebra, Some(Algebra::Arith(op)) if op.is_associative())
 }
 
 /// Try to fold static args in a commutative operator.

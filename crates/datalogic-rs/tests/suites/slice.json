@@ -180,5 +180,17 @@
     "rule": { "slice": [{ "map": [{"val": "array"}, { "*": [{"val": []}, 2] }] }, 0, 3] },
     "data": { "array": [1, 2, 3, 4, 5] },
     "result": [2, 4, 6]
+  },
+  {
+    "description": "Literal array slice (folded at compile time)",
+    "rule": { "slice": [[1, 2, 3, 4], 1, 3] },
+    "data": null,
+    "result": [2, 3]
+  },
+  {
+    "description": "Literal string slice (folded at compile time)",
+    "rule": { "slice": ["hello", 1] },
+    "data": null,
+    "result": "ello"
   }
 ]

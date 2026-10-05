@@ -1,115 +1,15 @@
 //! Arena-mode dispatch hub.
 //!
 //! [`dispatch_node_inner`] is the exhaustive `CompiledNode` match that
-//! routes each node shape to its operator implementation. It is invoked from
+//! routes each node shape to its implementation; built-in operators are
+//! routed by the operator table's generated `dispatch_builtin`. It is invoked from
 //! `Engine::dispatch_node`, which handles the literal fast path,
 //! breadcrumb accumulation, and trace recording before delegating here.
 
 use super::Engine;
 use crate::arena::ContextStack;
+use crate::operators::table::dispatch_builtin;
 use crate::{CompiledNode, Error, Result};
-
-/// Build the dispatch match. Splits the ~50 `BuiltinOperator` arms into
-/// three regular shapes plus a tail of irregular arms so the bulk of the
-/// dispatch is one tabular invocation. The compiler lowers the resulting
-/// `match` to a jump table over the `OpCode` discriminant.
-///
-/// # Picking a shape (when adding an operator)
-///
-/// 1. **Does your operator share an implementation with another op,
-///    differing only by a kind tag?** → use `with_kind`. Pattern: one
-///    function takes a discriminator enum value as its last argument.
-///    Existing examples — `Divide`/`Modulo` both call
-///    [`crate::operators::arithmetic::div_or_mod`] passing
-///    `DivOp::Divide` / `DivOp::Modulo`; `Abs`/`Ceil`/`Floor` call
-///    `unary_math` with their own `UnaryMathOp::*` variant.
-/// 2. **Is your operator iterating an array source whose classification
-///    the compiler cached on `iter_arg_kind`?** → use `iter`. The
-///    dispatcher dereferences `*iter_arg_kind` and threads it in front of
-///    `ctx`. This covers `filter`, `map`, `all`, `some`, `none`,
-///    `reduce`, `max`, `min`, `sort`. The `IterArgKind` value tells the
-///    op whether the source is an array, an arena-allocated array, an
-///    inline literal, etc., letting it skip work it has already done.
-/// 3. **Does your operator just take `(args, ctx, engine, arena)`?** →
-///    use `simple`. This is the dominant shape — most builtins land
-///    here (`Add`, `Equals`, `Concat`, `If`, the comparison family, the
-///    `ext-string` family, …).
-/// 4. **Anything else** — compiled-form variants (`Var`, `Exists`,
-///    `Missing`), the literal-value defensive arm, `InvalidArgs`,
-///    `Throw`, `Array`, `StructuredObject`, `CustomOperator` — goes in
-///    `other`, where the arm pattern and right-hand side are written
-///    verbatim. Use this whenever the arm needs to destructure
-///    something other than the standard `BuiltinOperator { opcode,
-///    args, .. }` shape.
-///
-/// Each shape lowers to:
-/// - `simple    Op => fn` ⟶ `BuiltinOperator { opcode: OpCode::Op, args, .. } => fn(args, ctx, engine, arena)`
-/// - `iter      Op => fn` ⟶ `BuiltinOperator { opcode: OpCode::Op, args, iter_arg_kind, .. } => fn(args, *iter_arg_kind, ctx, engine, arena)`
-/// - `with_kind Op => (fn, KindEnum::Variant)` ⟶ `BuiltinOperator { opcode: OpCode::Op, args, .. } => fn(args, ctx, engine, arena, KindEnum::Variant)`
-/// - `other     Pat => Expr` ⟶ pasted verbatim before the generated arms
-///
-/// # Operational details
-///
-/// Per-arm `#[cfg(...)]` attributes attach to each `Op => fn` line, so
-/// feature-gated operators (`ext-string`, `datetime`, `error-handling`,
-/// `ext-control`, `ext-array`, `ext-math`) compile out cleanly when the
-/// feature is off — no separate gate at the OpCode level.
-///
-/// Arm ordering doesn't affect codegen because the match becomes a jump
-/// table. The heavy `bumpalo::Vec`-building cases (`Array`,
-/// `StructuredObject`, `CustomOperator`) live in `#[inline(never)]`
-/// helpers below, so the dispatch's stack frame is sized for the
-/// small/common arms regardless of which arm fires.
-///
-/// # Cross-references for new contributors
-///
-/// Adding an operator touches three files in lockstep:
-/// `crates/datalogic-rs/src/opcode.rs` (OpCode variant + `OPCODE_NAMES` entry),
-/// the implementation file under `crates/datalogic-rs/src/operators/`, and one
-/// arm here. The OpCode round-trip test `as_str_round_trips_through_from_str`
-/// in `opcode.rs` catches name drift; missing dispatch arms surface as a
-/// non-exhaustive match (compile error).
-macro_rules! dispatch {
-    (
-        node: $node:expr,
-        ctx: $ctx:expr,
-        engine: $engine:expr,
-        arena: $arena:expr,
-        other: { $($others:tt)* },
-        simple: [ $( $(#[$scfg:meta])* $sop:ident => $sfn:path ),* $(,)? ],
-        iter: [ $( $(#[$icfg:meta])* $iop:ident => $ifn:path ),* $(,)? ],
-        with_kind: [ $( $(#[$kcfg:meta])* $kop:ident => ($kfn:path, $kkind:expr) ),* $(,)? ] $(,)?
-    ) => {
-        match $node {
-            $($others)*
-            $(
-                $(#[$scfg])*
-                CompiledNode::BuiltinOperator {
-                    opcode: crate::OpCode::$sop,
-                    args,
-                    ..
-                } => $sfn(args, $ctx, $engine, $arena),
-            )*
-            $(
-                $(#[$icfg])*
-                CompiledNode::BuiltinOperator {
-                    opcode: crate::OpCode::$iop,
-                    args,
-                    iter_arg_kind,
-                    ..
-                } => $ifn(args, *iter_arg_kind, $ctx, $engine, $arena),
-            )*
-            $(
-                $(#[$kcfg])*
-                CompiledNode::BuiltinOperator {
-                    opcode: crate::OpCode::$kop,
-                    args,
-                    ..
-                } => $kfn(args, $ctx, $engine, $arena, $kkind),
-            )*
-        }
-    };
-}
 
 /// Inner dispatch — never called directly; reachable only via
 /// `Engine::dispatch_node` which handles the literal fast path,
@@ -119,6 +19,17 @@ macro_rules! dispatch {
 /// dispatch and the compiler inlines it into `dispatch_node` in the
 /// single-file layout. Crossing the module boundary loses that inline
 /// decision (measured ~1 ns regression on the 15 ns baseline).
+///
+/// Built-in operators go through [`dispatch_builtin`], which the operator
+/// table generates (`#[inline(always)]` too, so its `match` lowers into
+/// the same jump table). The arms written here are node kinds, not
+/// operators: compiled forms (`Var`, `Exists`, `Missing`, `Throw`),
+/// literals, templates and the CSE wrapper.
+///
+/// The heavy `bumpalo::Vec`-building cases (`Array`, `StructuredObject`,
+/// `CustomOperator`) live in `#[inline(never)]` helpers below, so the
+/// dispatch's stack frame is sized for the small/common arms regardless
+/// of which arm fires.
 #[inline(always)]
 pub(super) fn dispatch_node_inner<'a>(
     engine: &Engine,
@@ -126,285 +37,105 @@ pub(super) fn dispatch_node_inner<'a>(
     ctx: &mut ContextStack<'a>,
     arena: &'a bumpalo::Bump,
 ) -> Result<&'a crate::arena::DataValue<'a>> {
-    dispatch! {
-        node: node,
-        ctx: ctx,
-        engine: engine,
-        arena: arena,
+    match node {
+        CompiledNode::BuiltinOperator {
+            opcode,
+            args,
+            iter_arg_kind,
+            ..
+        } => dispatch_builtin(*opcode, args, *iter_arg_kind, ctx, engine, arena),
 
-        other: {
-            // Compiled var: full dispatch via the arena helper. Root and
-            // frame data are both arena-resident `DataValue`s, so lookups
-            // are zero-copy borrows.
-            CompiledNode::Var {
-                scope_level,
+        // Compiled var: full dispatch via the arena helper. Root and
+        // frame data are both arena-resident `DataValue`s, so lookups
+        // are zero-copy borrows.
+        CompiledNode::Var {
+            scope_level,
+            segments,
+            reduce_hint,
+            metadata_hint,
+            default_value,
+            binding,
+            ..
+        } => crate::operators::variable::evaluate_val_compiled(
+            crate::operators::variable::CompiledVarSpec {
+                scope_level: *scope_level,
                 segments,
-                reduce_hint,
-                metadata_hint,
-                default_value,
-                binding,
-                ..
-            } => crate::operators::variable::evaluate_val_compiled(
-                crate::operators::variable::CompiledVarSpec {
-                    scope_level: *scope_level,
-                    segments,
-                    reduce_hint: *reduce_hint,
-                    metadata_hint: *metadata_hint,
-                    default_value: default_value.as_deref(),
-                    binding: *binding,
-                },
-                ctx,
-                engine,
-                arena,
-            ),
+                reduce_hint: *reduce_hint,
+                metadata_hint: *metadata_hint,
+                default_value: default_value.as_deref(),
+                binding: *binding,
+            },
+            ctx,
+            engine,
+            arena,
+        ),
 
-            // Compiled exists: full dispatch — root scope walks the input
-            // directly, others walk arena frame data. Result is always a
-            // Bool singleton.
-            #[cfg(feature = "ext-control")]
-            CompiledNode::Exists(data) => crate::operators::variable::evaluate_exists_compiled(
-                data.scope_level,
-                &data.segments,
-                data.binding,
-                ctx,
-            ),
+        // Compiled exists: full dispatch — root scope walks the input
+        // directly, others walk arena frame data. Result is always a
+        // Bool singleton.
+        #[cfg(feature = "ext-control")]
+        CompiledNode::Exists(data) => crate::operators::variable::evaluate_exists_compiled(
+            data.scope_level,
+            &data.segments,
+            data.binding,
+            ctx,
+        ),
 
-            // Value literal: the outer `dispatch_node` wrapper already
-            // routes `Value` through `literal_fallback`, so this arm is
-            // unreachable in normal flow. Defensive fallback — degrades
-            // gracefully to a fresh arena alloc if a future code path
-            // ever calls the inner dispatcher directly with a literal.
-            CompiledNode::Value { value, .. } => Ok(super::literal_fallback(value, arena)),
+        // Value literal: the outer `dispatch_node` wrapper already
+        // routes `Value` through `literal_fallback`, so this arm is
+        // unreachable in normal flow. Defensive fallback — degrades
+        // gracefully to a fresh arena alloc if a future code path
+        // ever calls the inner dispatcher directly with a literal.
+        CompiledNode::Value { value, .. } => Ok(super::literal_fallback(value, arena)),
 
-            // Compiled missing / missing_some — pre-parsed segments.
-            CompiledNode::Missing(data) => {
-                crate::operators::missing::evaluate_compiled_missing(data, ctx, engine, arena)
+        // Compiled missing / missing_some — pre-parsed segments.
+        CompiledNode::Missing(data) => {
+            crate::operators::missing::evaluate_compiled_missing(data, ctx, engine, arena)
+        }
+        CompiledNode::MissingSome(data) => {
+            crate::operators::missing::evaluate_compiled_missing_some(data, ctx, engine, arena)
+        }
+
+        // Compile-time placeholder for a call known to be malformed
+        // (`and` / `or` / `if` with a non-array argument, a literal
+        // unknown timezone). Keep the canonical "Invalid Arguments"
+        // message (the JSONLogic suite uses it as the error tag) but
+        // attach the captured op name to the operator field so nested
+        // failures still identify the misused op.
+        CompiledNode::InvalidArgs { op_name, .. } => {
+            Err(crate::Error::invalid_args().with_operator(*op_name))
+        }
+
+        // CompiledThrow — constant-folded error literal. Inside a
+        // protected `try` arm (and untraced) the error can't escape:
+        // park the payload arena-borrowed in the context's thrown slot
+        // and skip the owned deep clone — `try`'s catch arm reads the
+        // slot back without an owned→arena round-trip. `data.error` is
+        // already normalized (`{"type": ...}`) by the compile-time fold.
+        #[cfg(feature = "error-handling")]
+        CompiledNode::Throw(data) => {
+            if ctx.in_catch_scope() && !ctx.is_tracing() {
+                let av: &crate::arena::DataValue = arena.alloc(data.error.view_in(arena));
+                ctx.set_thrown_slot(av);
+                Err(Error::deferred_thrown())
+            } else {
+                Err(Error::thrown(data.error.clone()))
             }
-            CompiledNode::MissingSome(data) => {
-                crate::operators::missing::evaluate_compiled_missing_some(data, ctx, engine, arena)
-            }
+        }
 
-            // Compile-time placeholder for malformed args on
-            // `and` / `or` / `if`. Keep the canonical "Invalid Arguments"
-            // message (the JSONLogic suite uses it as the error tag) but
-            // attach the captured op name to the operator field so nested
-            // failures still identify the misused op.
-            CompiledNode::InvalidArgs { op_name, .. } => {
-                Err(crate::Error::invalid_args().with_operator(*op_name))
-            }
+        // Out-of-line — bumpalo::Vec construction would otherwise force
+        // a large stack frame on every dispatch arm via worst-case
+        // spill sizing. See the comments on the helpers below.
+        #[cfg(feature = "templating")]
+        CompiledNode::StructuredObject(data) => {
+            evaluate_structured_object(data, ctx, engine, arena)
+        }
+        CompiledNode::Array { nodes, .. } => evaluate_array_literal(nodes, ctx, engine, arena),
+        CompiledNode::CustomOperator(data) => evaluate_custom_operator(data, ctx, engine, arena),
 
-            // CompiledThrow — constant-folded error literal. Inside a
-            // protected `try` arm (and untraced) the error can't escape:
-            // park the payload arena-borrowed in the context's thrown slot
-            // and skip the owned deep clone — `try`'s catch arm reads the
-            // slot back without an owned→arena round-trip. `data.error` is
-            // already normalized (`{"type": ...}`) by the compile-time fold.
-            #[cfg(feature = "error-handling")]
-            CompiledNode::Throw(data) => {
-                if ctx.in_catch_scope() && !ctx.is_tracing() {
-                    let av: &crate::arena::DataValue = arena.alloc(data.error.view_in(arena));
-                    ctx.set_thrown_slot(av);
-                    Err(Error::deferred_thrown())
-                } else {
-                    Err(Error::thrown(data.error.clone()))
-                }
-            }
-
-            // Out-of-line — bumpalo::Vec construction would otherwise force
-            // a large stack frame on every dispatch arm via worst-case
-            // spill sizing. See the comments on the helpers below.
-            #[cfg(feature = "templating")]
-            CompiledNode::StructuredObject(data) => {
-                evaluate_structured_object(data, ctx, engine, arena)
-            }
-            CompiledNode::Array { nodes, .. } => evaluate_array_literal(nodes, ctx, engine, arena),
-            CompiledNode::CustomOperator(data) => evaluate_custom_operator(data, ctx, engine, arena),
-
-            // CSE memo wrapper — one more jump-table entry, so non-CSE
-            // nodes pay nothing for the feature. See `dispatch_cse`.
-            CompiledNode::Cse(data) => dispatch_cse(engine, data, ctx, arena),
-        },
-
-        // Standard `BuiltinOperator { opcode, args, .. } => fn(args, ctx,
-        // engine, arena)` shape.
-        simple: [
-            // Variable / context
-            Val => crate::operators::variable::evaluate_val,
-            VarDefault => crate::operators::variable::evaluate_var_default,
-            #[cfg(feature = "ext-control")]
-            Exists => crate::operators::variable::evaluate_exists,
-
-            // Array / collection
-            Merge => crate::operators::array::evaluate_merge,
-            Missing => crate::operators::missing::evaluate_missing,
-            MissingSome => crate::operators::missing::evaluate_missing_some,
-            #[cfg(feature = "ext-string")]
-            Length => crate::operators::array::evaluate_length,
-            #[cfg(feature = "ext-array")]
-            Slice => crate::operators::array::evaluate_slice,
-
-            // Arithmetic (binary)
-            Add => crate::operators::arithmetic::evaluate_add,
-            Multiply => crate::operators::arithmetic::evaluate_multiply,
-            Subtract => crate::operators::arithmetic::evaluate_subtract,
-
-            // Comparison
-            Equals => crate::operators::comparison::evaluate_equals,
-            StrictEquals => crate::operators::comparison::evaluate_strict_equals,
-            NotEquals => crate::operators::comparison::evaluate_not_equals,
-            StrictNotEquals => crate::operators::comparison::evaluate_strict_not_equals,
-            GreaterThan => crate::operators::comparison::evaluate_greater_than,
-            GreaterThanEqual => crate::operators::comparison::evaluate_greater_than_equal,
-            LessThan => crate::operators::comparison::evaluate_less_than,
-            LessThanEqual => crate::operators::comparison::evaluate_less_than_equal,
-
-            // Logical
-            Not => crate::operators::logical::evaluate_not,
-            BoolCast => crate::operators::logical::evaluate_bool_cast,
-            And => crate::operators::logical::evaluate_and,
-            Or => crate::operators::logical::evaluate_or,
-
-            // Control. `if` and `?:` both arrive as OpCode::If — see
-            // `OpCode::FromStr`. `evaluate_if` handles ternary identically.
-            If => crate::operators::control::evaluate_if,
-            #[cfg(feature = "ext-control")]
-            Coalesce => crate::operators::control::evaluate_coalesce,
-            #[cfg(feature = "ext-control")]
-            Switch => crate::operators::control::evaluate_switch,
-
-            // String
-            Concat => crate::operators::string::evaluate_concat,
-            Substr => crate::operators::string::evaluate_substr,
-            In => crate::operators::string::evaluate_in,
-            #[cfg(feature = "ext-string")]
-            StartsWith => crate::operators::string::evaluate_starts_with,
-            #[cfg(feature = "ext-string")]
-            EndsWith => crate::operators::string::evaluate_ends_with,
-            #[cfg(feature = "ext-string")]
-            Upper => crate::operators::string::evaluate_upper,
-            #[cfg(feature = "ext-string")]
-            Lower => crate::operators::string::evaluate_lower,
-            #[cfg(feature = "ext-string")]
-            Trim => crate::operators::string::evaluate_trim,
-            #[cfg(feature = "ext-string")]
-            Split => crate::operators::string::evaluate_split,
-
-            // DateTime
-            #[cfg(feature = "datetime")]
-            Datetime => crate::operators::datetime::evaluate_datetime,
-            #[cfg(feature = "datetime")]
-            Timestamp => crate::operators::datetime::evaluate_timestamp,
-            #[cfg(feature = "datetime")]
-            ParseDate => crate::operators::datetime::evaluate_parse_date,
-            #[cfg(feature = "datetime")]
-            FormatDate => crate::operators::datetime::evaluate_format_date,
-            #[cfg(feature = "datetime")]
-            DateDiff => crate::operators::datetime::evaluate_date_diff,
-            #[cfg(feature = "datetime")]
-            Now => crate::operators::datetime::evaluate_now,
-
-            // Object take-apart
-            #[cfg(feature = "ext-object")]
-            Keys => crate::operators::object::evaluate_keys,
-            #[cfg(feature = "ext-object")]
-            Values => crate::operators::object::evaluate_values,
-            #[cfg(feature = "ext-object")]
-            Entries => crate::operators::object::evaluate_entries,
-
-            // Type
-            #[cfg(feature = "ext-control")]
-            Type => crate::operators::inspect::evaluate_type,
-
-            // Throw / Try
-            #[cfg(feature = "error-handling")]
-            Throw => crate::operators::error_handling::evaluate_throw,
-            #[cfg(feature = "error-handling")]
-            Try => crate::operators::error_handling::evaluate_try,
-
-            // flagd
-            #[cfg(feature = "flagd")]
-            Fractional => crate::operators::flagd::evaluate_fractional,
-            #[cfg(feature = "flagd")]
-            SemVer => crate::operators::flagd::evaluate_sem_ver,
-
-            // tensor. Every operator in the family takes a fixed
-            // positional argument list, so all twenty are the `simple`
-            // shape.
-            #[cfg(feature = "tensor")]
-            TensorMake => crate::operators::tensor::evaluate_tensor,
-            #[cfg(feature = "tensor")]
-            TensorZeros => crate::operators::tensor::evaluate_zeros,
-            #[cfg(feature = "tensor")]
-            TensorFull => crate::operators::tensor::evaluate_full,
-            #[cfg(feature = "tensor")]
-            TensorScatter => crate::operators::tensor::evaluate_scatter,
-            #[cfg(feature = "tensor")]
-            TensorRleExpand => crate::operators::tensor::evaluate_rle_expand,
-            #[cfg(feature = "tensor")]
-            TensorOneHot => crate::operators::tensor::evaluate_one_hot,
-            #[cfg(feature = "tensor")]
-            TensorStack => crate::operators::tensor::evaluate_stack,
-            #[cfg(feature = "tensor")]
-            TensorConcat => crate::operators::tensor::evaluate_concat,
-            #[cfg(feature = "tensor")]
-            TensorUnstack => crate::operators::tensor::evaluate_unstack,
-            #[cfg(feature = "tensor")]
-            TensorReshape => crate::operators::tensor::evaluate_reshape,
-            #[cfg(feature = "tensor")]
-            TensorTranspose => crate::operators::tensor::evaluate_transpose,
-            #[cfg(feature = "tensor")]
-            TensorPad => crate::operators::tensor::evaluate_pad,
-            #[cfg(feature = "tensor")]
-            TensorCrop => crate::operators::tensor::evaluate_crop,
-            #[cfg(feature = "tensor")]
-            TensorCast => crate::operators::tensor::evaluate_cast,
-            #[cfg(feature = "tensor")]
-            TensorNormalize => crate::operators::tensor::evaluate_normalize,
-            #[cfg(feature = "tensor")]
-            TensorArgmax => crate::operators::tensor::evaluate_argmax,
-            #[cfg(feature = "tensor")]
-            TensorGather => crate::operators::tensor::evaluate_gather,
-            #[cfg(feature = "tensor")]
-            TensorToList => crate::operators::tensor::evaluate_to_list,
-            #[cfg(feature = "tensor")]
-            TensorShape => crate::operators::tensor::evaluate_shape,
-            #[cfg(feature = "tensor")]
-            TensorDtype => crate::operators::tensor::evaluate_dtype,
-        ],
-
-        // `BuiltinOperator { opcode, args, iter_arg_kind, .. } => fn(args,
-        // *iter_arg_kind, ctx, engine, arena)` shape — operators that
-        // consume the cached iterator-input classification.
-        iter: [
-            Filter => crate::operators::array::evaluate_filter,
-            Map => crate::operators::array::evaluate_map,
-            All => crate::operators::array::evaluate_all,
-            Some => crate::operators::array::evaluate_some,
-            None => crate::operators::array::evaluate_none,
-            Reduce => crate::operators::array::evaluate_reduce,
-            Max => crate::operators::arithmetic::evaluate_max,
-            Min => crate::operators::arithmetic::evaluate_min,
-            #[cfg(feature = "ext-array")]
-            Sort => crate::operators::array::evaluate_sort,
-            #[cfg(feature = "ext-array")]
-            GroupBy => crate::operators::array::evaluate_group_by,
-            #[cfg(feature = "ext-array")]
-            Distinct => crate::operators::array::evaluate_distinct,
-        ],
-
-        // `BuiltinOperator { opcode, args, .. } => fn(args, ctx, engine,
-        // arena, kind)` shape — operators sharing one impl behind a
-        // discriminator (Divide/Modulo, Abs/Ceil/Floor).
-        with_kind: [
-            Divide => (crate::operators::arithmetic::div_or_mod, crate::operators::arithmetic::DivOp::Divide),
-            Modulo => (crate::operators::arithmetic::div_or_mod, crate::operators::arithmetic::DivOp::Modulo),
-            #[cfg(feature = "ext-math")]
-            Abs => (crate::operators::arithmetic::unary_math, crate::operators::arithmetic::UnaryMathOp::Abs),
-            #[cfg(feature = "ext-math")]
-            Ceil => (crate::operators::arithmetic::unary_math, crate::operators::arithmetic::UnaryMathOp::Ceil),
-            #[cfg(feature = "ext-math")]
-            Floor => (crate::operators::arithmetic::unary_math, crate::operators::arithmetic::UnaryMathOp::Floor),
-        ],
+        // CSE memo wrapper — one more jump-table entry, so non-CSE
+        // nodes pay nothing for the feature. See `dispatch_cse`.
+        CompiledNode::Cse(data) => dispatch_cse(engine, data, ctx, arena),
     }
 }
 

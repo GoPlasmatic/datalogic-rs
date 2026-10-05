@@ -37,30 +37,18 @@
 //! so a literal array operand must be wrapped. A `var` that resolves to
 //! an array needs no wrapping.
 
-use crate::{CompiledNode, Engine, Result};
+use crate::Result;
+use crate::arena::DataValue;
+use crate::operators::eager::Cx;
 
-// =============================================================================
-// Arena-mode type operator
-// =============================================================================
-//
-// Evaluates the arg via arena dispatch and returns a `&'static str` from a
-// small set of type names. The string is allocated once into the arena.
+/// `type` with no argument: `"null"`, as if it had inspected `null`.
+pub(crate) fn type_of_nothing() -> &'static DataValue<'static> {
+    crate::arena::singletons::singleton_type_name("null")
+}
 
-use crate::arena::{ContextStack, DataValue};
-use bumpalo::Bump;
-
+/// `type(value)`: the name of the value's type, as a static singleton.
 #[inline]
-pub(crate) fn evaluate_type<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    if args.is_empty() {
-        return Ok(crate::arena::singletons::singleton_type_name("null"));
-    }
-    let av = engine.dispatch_node(&args[0], ctx, arena)?;
-
+pub(crate) fn type_<'a>(_cx: &mut Cx<'_, 'a>, av: &'a DataValue<'a>) -> Result<&'a DataValue<'a>> {
     // Datetime/duration object detection (e.g. {"datetime": "..."}).
     #[cfg(feature = "datetime")]
     {

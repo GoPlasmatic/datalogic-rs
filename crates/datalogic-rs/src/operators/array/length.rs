@@ -1,39 +1,21 @@
 //! `length` — string char count or array length.
 
-use crate::arena::{ContextStack, DataValue};
-use crate::{CompiledNode, Engine, Result};
-use bumpalo::Bump;
+use crate::Result;
+use crate::arena::DataValue;
+use crate::operators::eager::Cx;
 
-/// Arena-mode `length`. Critical for the COMPOSITION test: when called as
-/// `length(filter(...))`, the filter result lives in the arena and length
-/// just reads the slice length — zero conversion cost on the intermediate.
+/// `length(value)`: a string's char count or an array's item count.
+/// Composed calls (`length(filter(...))`) read the arena-resident
+/// intermediate's slice length directly: zero conversion cost.
 #[inline]
-pub(crate) fn evaluate_length<'a>(
-    args: &'a [CompiledNode],
-    ctx: &mut ContextStack<'a>,
-    engine: &Engine,
-    arena: &'a Bump,
-) -> Result<&'a DataValue<'a>> {
-    if args.len() != 1 {
-        return Err(crate::Error::invalid_args());
-    }
-
-    // Recurse into arena dispatcher so composed cases (e.g. length(filter(...)))
-    // stay arena-resident on the intermediate.
-    let arg = engine.dispatch_node(&args[0], ctx, arena)?;
-
-    let n: i64 = match arg {
+pub(crate) fn length<'a>(cx: &mut Cx<'_, 'a>, arg: &'a DataValue<'a>) -> Result<i64> {
+    match arg {
         // Counting chars walks the string.
         DataValue::String(s) => {
-            ctx.charge_bytes(s.len())?;
-            s.chars().count() as i64
+            cx.charge_bytes(s.len())?;
+            Ok(s.chars().count() as i64)
         }
-        DataValue::Array(items) => items.len() as i64,
-        _ => return Err(crate::Error::invalid_args()),
-    };
-
-    if let Some(av) = crate::arena::singletons::singleton_small_int(n) {
-        return Ok(av);
+        DataValue::Array(items) => Ok(items.len() as i64),
+        _ => Err(crate::Error::invalid_args()),
     }
-    Ok(arena.alloc(DataValue::Number(datavalue::NumberValue::from_i64(n))))
 }

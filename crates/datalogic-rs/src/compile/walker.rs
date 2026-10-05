@@ -7,13 +7,12 @@
 
 use datavalue::OwnedDataValue;
 
+use crate::OpCode;
 use crate::node::{CompileCtx, CompiledNode, node_is_static};
-use crate::opcode::OpCode;
 use crate::{Engine, Result};
 
-use super::missing::{compile_missing, compile_missing_some};
-use super::operator;
 use super::optimize;
+use crate::operators::meta::{ArgsForm, CompileHook, HookArgs, Hooked};
 
 /// Compile a single value into a [`CompiledNode`].
 ///
@@ -128,23 +127,6 @@ fn compile_operator_invocation(
     Ok(custom_operator_node(op_name, args, ctx))
 }
 
-/// Exactly the object datavalue's tensor serializer emits: the three keys
-/// `dtype` / `shape` / `data`, no others, each holding a literal of the
-/// right JSON type. Deliberately narrow — anything else keeps compiling as
-/// a rule, so `{"tensor": {"val": "prediction"}}` still reads a tensor out
-/// of the data rather than being mistaken for a wire body.
-#[cfg(feature = "tensor")]
-fn is_tensor_wire_body(fields: &[(String, OwnedDataValue)]) -> bool {
-    if fields.len() != 3 {
-        return false;
-    }
-    let get = |k: &str| fields.iter().find(|(n, _)| n == k).map(|(_, v)| v);
-    matches!(get("dtype"), Some(OwnedDataValue::String(_)))
-        && matches!(get("data"), Some(OwnedDataValue::String(_)))
-        && matches!(get("shape"), Some(OwnedDataValue::Array(dims))
-            if dims.iter().all(|d| matches!(d, OwnedDataValue::Number(_))))
-}
-
 /// Build a `CustomOperator` node from an op name and its already-compiled args.
 fn custom_operator_node(
     op_name: &str,
@@ -158,11 +140,9 @@ fn custom_operator_node(
     }))
 }
 
-/// Builtin operator path: handle invalid-args sentinels for `and`/`or`/`if`,
-/// var/val/exists specialisations,
-/// missing/missing_some, throw, and fall through to a generic
-/// `BuiltinOperator` (with optimization + static-fold passes when an
-/// `engine` is supplied).
+/// Builtin operator path: the row's argument-form rule, its compile hook
+/// (if any), then a generic `BuiltinOperator` with the optimization and
+/// static-fold passes when an `engine` is supplied.
 fn compile_builtin(
     op_name: &str,
     opcode: OpCode,
@@ -171,48 +151,30 @@ fn compile_builtin(
     templating: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
-    let requires_array = matches!(opcode, OpCode::And | OpCode::Or | OpCode::If);
-    if requires_array && !matches!(args_value, OwnedDataValue::Array(_)) {
+    let meta = opcode.meta();
+    if meta.args_form == ArgsForm::ArrayOnly && !matches!(args_value, OwnedDataValue::Array(_)) {
         return Ok(invalid_args_marker(opcode, args_value, ctx));
     }
 
-    // `{"tensor": {"dtype": .., "shape": [..], "data": ".."}}` is both the
-    // operator call and the wire form the emitter writes, so a serialized
-    // tensor pasted into a rule has to evaluate back to itself. Compiling
-    // that body as a rule would fail — it is a three-key object, which is
-    // an unknown operator outside templating mode — so recognise the
-    // emitter's exact shape and compile it as a literal argument instead.
-    #[cfg(feature = "tensor")]
-    if opcode == OpCode::TensorMake
-        && let OwnedDataValue::Object(fields) = args_value
-        && is_tensor_wire_body(fields)
+    if let Some(CompileHook::Raw(hook)) = meta.compile
+        && let Some(node) = hook(args_value, ctx)
     {
-        let body = CompiledNode::compile_time_value(Some(ctx.next_id()), args_value.clone());
-        return Ok(CompiledNode::BuiltinOperator {
-            id: Some(ctx.next_id()),
+        return Ok(node);
+    }
+
+    let mut args = compile_args(args_value, engine, templating, ctx)?;
+
+    if let Some(CompileHook::Args(hook)) = meta.compile {
+        let hook_args = HookArgs {
             opcode,
-            args: Box::new([body]),
-            predicate_hint: None,
-            iter_arg_kind: crate::operators::array::IterArgKind::General,
-        });
-    }
-
-    let args = compile_args(args_value, engine, templating, ctx)?;
-
-    if let Some(node) = try_specialised(op_name, opcode, &args, args_value, ctx) {
-        return Ok(node);
-    }
-
-    if opcode == OpCode::Missing {
-        return Ok(compile_missing(args, ctx));
-    }
-    if opcode == OpCode::MissingSome {
-        return Ok(compile_missing_some(args, ctx));
-    }
-
-    #[cfg(feature = "error-handling")]
-    if let Some(node) = try_compile_throw_literal(opcode, &args, ctx) {
-        return Ok(node);
+            op_name,
+            args_value,
+            ctx,
+        };
+        match hook(args, hook_args) {
+            Hooked::Node(node) => return Ok(node),
+            Hooked::Generic(back) => args = back,
+        }
     }
 
     let mut node = CompiledNode::BuiltinOperator {
@@ -243,76 +205,14 @@ fn compile_builtin(
     Ok(node)
 }
 
-/// Try the operator-specific compile-time specialisations: `var`, `val`,
-/// `exists`. Returns `None` if no specialisation applies.
-///
-/// We've already paid for `op_name -> OpCode` upstream, so dispatch on the
-/// opcode first and skip the per-call string compares for the (common)
-/// non-specialised path. `var` and `val` both compile to `OpCode::Val`,
-/// but with different arg-shape semantics — `var`'s second arg is a
-/// default fallback, `val`'s is a path-chain segment — so the inner split
-/// on `op_name` stays.
-fn try_specialised(
-    op_name: &str,
-    opcode: OpCode,
-    args: &[CompiledNode],
-    // Raw pre-compile arguments. Only the datetime timezone check wants
-    // them, to hand `invalid_args_marker` a serialisable copy of the rule.
-    #[cfg_attr(not(feature = "datetime"), allow(unused_variables))] args_value: &OwnedDataValue,
-    ctx: &mut CompileCtx,
-) -> Option<CompiledNode> {
-    match opcode {
-        OpCode::Val => {
-            // Only "var" / "val" map to `OpCode::Val` (see `OpCode::FromStr`).
-            if op_name == "var" {
-                operator::try_compile_var(args, ctx)
-            } else {
-                operator::try_compile_val(args, ctx)
-            }
-        }
-        #[cfg(feature = "ext-control")]
-        OpCode::Exists => operator::try_compile_exists(args, ctx),
-        #[cfg(feature = "datetime")]
-        OpCode::FormatDate | OpCode::ParseDate => {
-            try_validate_timezone_literal(opcode, args, args_value, ctx)
-        }
-        _ => None,
-    }
-}
-
-/// `format_date` / `parse_date` with a *literal* timezone argument:
-/// validate the zone name against chrono-tz's compiled-in table at compile
-/// time, so a typo'd zone fails when the rule is built instead of on first
-/// evaluation. Dynamic zone expressions still validate at evaluation.
-/// Follows the [`invalid_args_marker`] precedent — the marker raises at
-/// dispatch carrying the op name, keeping the breadcrumb path intact.
-#[cfg(feature = "datetime")]
-fn try_validate_timezone_literal(
-    opcode: OpCode,
-    args: &[CompiledNode],
-    args_value: &OwnedDataValue,
-    ctx: &mut CompileCtx,
-) -> Option<CompiledNode> {
-    let CompiledNode::Value {
-        value: OwnedDataValue::String(s),
-        ..
-    } = args.get(2)?
-    else {
-        return None;
-    };
-    if s.parse::<chrono_tz::Tz>().is_ok() {
-        return None;
-    }
-    Some(invalid_args_marker(opcode, args_value, ctx))
-}
-
-/// Build the [`CompiledNode::InvalidArgs`] placeholder for `and` / `or` /
-/// `if` invoked with a non-array argument. Carries the op name forward so
-/// the dispatcher can produce an error that names the failing op rather
-/// than a generic "Invalid Arguments", and the raw `args_value` so
-/// `to_json` can reproduce the offending rule verbatim instead of a
+/// Build the [`CompiledNode::InvalidArgs`] placeholder for a malformed
+/// call that is known to fail at compile time (`and` / `or` / `if` with a
+/// non-array argument, a literal unknown timezone). Carries the op name
+/// forward so the dispatcher can produce an error that names the failing
+/// op rather than a generic "Invalid Arguments", and the raw `args_value`
+/// so `to_json` can reproduce the offending rule verbatim instead of a
 /// placeholder that re-parses as something else.
-fn invalid_args_marker(
+pub(super) fn invalid_args_marker(
     opcode: OpCode,
     args_value: &OwnedDataValue,
     ctx: &mut CompileCtx,
@@ -322,35 +222,6 @@ fn invalid_args_marker(
         op_name: opcode.as_str(),
         args: Box::new(args_value.clone()),
     }
-}
-
-/// `throw` with a literal string argument compiles to a pre-built error
-/// payload so runtime evaluation has nothing to coerce.
-#[cfg(feature = "error-handling")]
-fn try_compile_throw_literal(
-    opcode: OpCode,
-    args: &[CompiledNode],
-    ctx: &mut CompileCtx,
-) -> Option<CompiledNode> {
-    if opcode != OpCode::Throw || args.len() != 1 {
-        return None;
-    }
-    let CompiledNode::Value {
-        value: OwnedDataValue::String(s),
-        ..
-    } = &args[0]
-    else {
-        return None;
-    };
-    Some(CompiledNode::Throw(Box::new(
-        crate::node::CompiledThrowData {
-            id: Some(ctx.next_id()),
-            error: OwnedDataValue::Object(vec![(
-                "type".to_string(),
-                OwnedDataValue::String(s.clone()),
-            )]),
-        },
-    )))
 }
 
 /// Unknown-operator handling under `templating` mode. Custom

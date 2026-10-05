@@ -1,9 +1,10 @@
 //! Internal helpers shared by the array operators (filter / map / reduce /
 //! quantifiers / sort / slice / merge / length).
 
+use crate::OpCode;
 use crate::arena::{ContextStack, DataValue, IterGuard};
 use crate::node::{MetadataHint, ReduceHint};
-use crate::opcode::OpCode;
+use crate::operators::meta::{Algebra, ArithOp, OrdOp};
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 use std::ops::ControlFlow;
@@ -124,7 +125,7 @@ pub(crate) enum FastPredicate {
     NumericCmp {
         var_path: Box<[crate::node::PathSegment]>,
         literal_f: f64,
-        opcode: OpCode,
+        op: OrdOp,
         var_is_lhs: bool,
     },
     /// Loose numeric equality (==) or inequality (!=) against a numeric literal
@@ -282,20 +283,24 @@ impl FastPredicate {
             {
                 let var_path: Box<[crate::node::PathSegment]> = segments.clone();
 
-                match opcode {
-                    OpCode::StrictEquals | OpCode::StrictNotEquals => {
-                        let negate = matches!(opcode, OpCode::StrictNotEquals);
+                match opcode.algebra() {
+                    Some(Algebra::Eq {
+                        strict: true,
+                        negate,
+                    }) => {
                         return Some(FastPredicate::StrictEq {
                             var_path,
                             literal: literal.clone(),
                             negate,
                         });
                     }
-                    OpCode::Equals | OpCode::NotEquals => {
+                    Some(Algebra::Eq {
+                        strict: false,
+                        negate,
+                    }) => {
                         // For loose equality with numeric literals, we can use a fast
                         // numeric comparison (loose == is same as strict for numbers)
                         if let Some(lit_f) = literal.as_f64() {
-                            let negate = matches!(opcode, OpCode::NotEquals);
                             return Some(FastPredicate::LooseNumericEq {
                                 var_path,
                                 literal_f: lit_f,
@@ -306,7 +311,6 @@ impl FastPredicate {
                         // plain equality; other value types stay
                         // indeterminate at evaluation time.
                         if let datavalue::OwnedDataValue::String(s) = literal {
-                            let negate = matches!(opcode, OpCode::NotEquals);
                             return Some(FastPredicate::LooseStrEq {
                                 var_path,
                                 literal: s.as_str().into(),
@@ -314,15 +318,12 @@ impl FastPredicate {
                             });
                         }
                     }
-                    OpCode::GreaterThan
-                    | OpCode::GreaterThanEqual
-                    | OpCode::LessThan
-                    | OpCode::LessThanEqual => {
+                    Some(Algebra::Ord(op)) => {
                         if let Some(lit_f) = literal.as_f64() {
                             return Some(FastPredicate::NumericCmp {
                                 var_path,
                                 literal_f: lit_f,
-                                opcode,
+                                op,
                                 var_is_lhs,
                             });
                         }
@@ -388,7 +389,7 @@ impl FastPredicate {
             FastPredicate::NumericCmp {
                 var_path,
                 literal_f,
-                opcode,
+                op,
                 var_is_lhs,
             } => match Self::resolve_value(var_path, item) {
                 // Only native numbers compare here. Anything else (string,
@@ -401,7 +402,7 @@ impl FastPredicate {
                     } else {
                         (*literal_f, val_f)
                     };
-                    Some(inline_numeric_cmp(lhs, rhs, *opcode))
+                    Some(op.cmp_f64(lhs, rhs))
                 }
                 _ => None,
             },
@@ -513,18 +514,6 @@ fn value_equals_serde_compound(av: &DataValue<'_>, v: &datavalue::OwnedDataValue
             }
             true
         }
-        _ => false,
-    }
-}
-
-/// Inline numeric comparison for fast predicate evaluation.
-#[inline(always)]
-fn inline_numeric_cmp(lhs: f64, rhs: f64, opcode: OpCode) -> bool {
-    match opcode {
-        OpCode::GreaterThan => lhs > rhs,
-        OpCode::GreaterThanEqual => lhs >= rhs,
-        OpCode::LessThan => lhs < rhs,
-        OpCode::LessThanEqual => lhs <= rhs,
         _ => false,
     }
 }
@@ -818,14 +807,14 @@ pub(super) enum FusedMapBody<'n> {
     },
     /// `{op: [var, literal]}` or `{op: [literal, var]}` for + / - / *.
     ArithVarLit {
-        op: OpCode,
+        op: ArithOp,
         segments: &'n [crate::node::PathSegment],
         lit: &'n datavalue::OwnedDataValue,
         var_is_lhs: bool,
     },
     /// `{op: [var_a, var_b]}` for + / - / * — the line-total shape.
     ArithVarVar {
-        op: OpCode,
+        op: ArithOp,
         a_segments: &'n [crate::node::PathSegment],
         b_segments: &'n [crate::node::PathSegment],
     },
@@ -861,10 +850,10 @@ impl FusedMapBody<'_> {
         let CompiledNode::BuiltinOperator { opcode, args, .. } = body else {
             return None;
         };
-        if args.len() != 2 || !matches!(opcode, OpCode::Add | OpCode::Subtract | OpCode::Multiply) {
+        let op = opcode.arith_op()?;
+        if args.len() != 2 {
             return None;
         }
-        let op = *opcode;
         match (&args[0], &args[1]) {
             (var, CompiledNode::Value { value, .. }) => {
                 let segments = plain_var_segments(var)?;
