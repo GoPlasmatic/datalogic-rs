@@ -39,6 +39,14 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   test checks every suite case: evaluating against data pruned to the
   reported reads gives the same outcome. New public types: `Facts`,
   `DataPath`.
+- **`Engine::truthy_of`** applies the engine's configured truthiness to
+  a value the host already holds: `&serde_json::Value`,
+  `&OwnedDataValue`, `&ParsedData` or `&DataValue` (sealed
+  `TruthyInput`). Hand-written checks on an evaluated result tend to
+  differ from the engine: under the default rules an empty object is
+  falsy, like an empty array, and a configured `TruthyEvaluator` applies.
+  Tested against the engine's own `!!` for every representation and
+  evaluator.
 - **`all-operators` feature** enables every operator family. The
   bindings and the benchmark now depend on it instead of listing the
   families one by one.

@@ -173,6 +173,25 @@ let result = engine.evaluate(&compiled, r#"{"items": [1]}"#, &arena)?;
 assert!(engine.truthy(result));
 ```
 
+#### `truthy_of`
+
+The same rules for a value in whatever representation the host holds:
+`&serde_json::Value`, `&OwnedDataValue`, `&ParsedData` or `&DataValue`
+(the sealed `TruthyInput` trait). Use it on an evaluated result instead
+of re-implementing truthiness: it follows the configured evaluator, and
+under the default rules an empty object is falsy, like an empty array.
+
+```rust
+pub fn truthy_of<V: TruthyInput>(&self, value: V) -> bool;
+```
+
+```rust
+let result: serde_json::Value = session.eval_into(&compiled, &context)?;
+if !engine.truthy_of(&result) {
+    return Err(rejected());
+}
+```
+
 #### `trace` (feature = "trace")
 
 Open a [`TracedSession`](#tracedsession) that records execution steps.

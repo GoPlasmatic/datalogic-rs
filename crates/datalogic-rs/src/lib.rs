@@ -118,6 +118,7 @@ mod session;
 mod top_level;
 #[cfg(feature = "trace")]
 mod trace;
+mod truthy_input;
 
 pub use arena::DataValue;
 pub use arena_ext::ArenaExt;
@@ -205,6 +206,7 @@ pub use top_level::{compile, eval, eval_str};
 #[cfg(feature = "trace")]
 #[cfg_attr(docsrs, doc(cfg(feature = "trace")))]
 pub use trace::{ExecutionStep, ExpressionNode, TracedRun, TracedSession};
+pub use truthy_input::TruthyInput;
 
 // `CompiledNode`, `OpCode`, `MetadataHint`, `PathSegment`, `ReduceHint` were
 // public in 4.x. They are compile-internal in v5; consumers reach for them

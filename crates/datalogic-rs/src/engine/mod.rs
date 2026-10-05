@@ -784,6 +784,35 @@ impl Engine {
         crate::arena::truthy_arena(value, self)
     }
 
+    /// [`Self::truthy`] for a value in any representation the host holds:
+    /// `&OwnedDataValue`, `&serde_json::Value`, `&ParsedData` or
+    /// `&DataValue` (see [`crate::TruthyInput`]).
+    ///
+    /// Use it instead of re-implementing truthiness on a result: the
+    /// answer follows the engine's [`crate::TruthyEvaluator`], and under
+    /// the default rules an empty object is falsy, like an empty array,
+    /// which hand-written checks often miss.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # #[cfg(feature = "serde_json")] {
+    /// use datalogic_rs::Engine;
+    /// use serde_json::json;
+    ///
+    /// let engine = Engine::new();
+    /// let result: serde_json::Value = engine
+    ///     .eval_into(r#"{"var": "claims"}"#, &json!({"claims": {}}))
+    ///     .unwrap();
+    /// assert!(!engine.truthy_of(&result));
+    /// assert!(engine.truthy_of(&json!({"sub": "ana"})));
+    /// # }
+    /// ```
+    #[inline]
+    pub fn truthy_of<V: crate::TruthyInput>(&self, value: V) -> bool {
+        value.truthy_with(self)
+    }
+
     /// One-shot evaluation returning [`datavalue::OwnedDataValue`].
     ///
     /// Compiles `rule`, parses `data`, evaluates against a fresh
