@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/GoPlasmatic/datalogic-rs/schemas/operators.v1.json",
+  "title": "datalogic operator catalogue, v1",
+  "description": "Engine.operators() in every binding, and docs/src/operators/operators.json.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["name", "aliases", "family", "feature", "min_args", "max_args", "reads_context", "effect", "cost", "scoped_arg"],
+    "properties": {
+      "name": {"type": "string"},
+      "aliases": {"type": "array", "items": {"type": "string"}},
+      "family": {"type": "string"},
+      "feature": {"type": ["string", "null"]},
+      "min_args": {"type": "integer"},
+      "max_args": {"type": ["integer", "null"]},
+      "reads_context": {"type": "boolean"},
+      "effect": {"type": "string", "enum": ["pure", "clock", "throws", "catches"]},
+      "cost": {"type": "string"},
+      "scoped_arg": {"type": ["integer", "string", "null"]}
+    }
+  }
+}

@@ -174,6 +174,12 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   and a test that keeps PHP's FFI header and the JVM and .NET native
   declarations in step with the generated `datalogic.h`.
 
+- **Versioned wire schemas** (`schemas/*.v1.json`, JSON Schema 2020-12)
+  for the traced-run envelope, serialised errors, the operator catalogue,
+  rule facts and check diagnostics. `datalogic-bind`'s tests validate real
+  output against them and reject unlisted properties, so a format change
+  is a reviewed schema change.
+
 ### Deprecated
 
 - The WASM `CompiledRule` class and the free `evaluate(logic, data,

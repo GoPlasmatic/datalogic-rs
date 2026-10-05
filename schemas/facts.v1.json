@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/GoPlasmatic/datalogic-rs/schemas/facts.v1.json",
+  "title": "datalogic rule facts, v1",
+  "description": "Rule.facts() in every binding (datalogic_bind::facts_json). Each read path is its list of segments.",
+  "type": "object",
+  "required": ["reads", "computed_reads", "reads_complete", "reads_data", "operators", "custom_operators", "deterministic"],
+  "properties": {
+    "reads": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}},
+    "computed_reads": {"type": "boolean"},
+    "reads_complete": {"type": "boolean"},
+    "reads_data": {"type": "boolean"},
+    "operators": {"type": "array", "items": {"type": "string"}},
+    "custom_operators": {"type": "array", "items": {"type": "string"}},
+    "deterministic": {"type": "boolean"}
+  }
+}

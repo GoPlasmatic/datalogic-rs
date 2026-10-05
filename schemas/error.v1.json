@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/GoPlasmatic/datalogic-rs/schemas/error.v1.json",
+  "title": "datalogic error, v1",
+  "description": "A serialised datalogic_rs::Error: the `structured_error` of a traced run, and the error object the bindings surface. `type` is the ErrorCode name.",
+  "type": "object",
+  "required": ["type", "message"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": ["InvalidOperator", "InvalidArguments", "VariableNotFound", "InvalidContextLevel", "TypeError", "ArithmeticError", "Custom", "ParseError", "Thrown", "FormatError", "IndexOutOfBounds", "ConfigurationError", "BudgetExceeded"]
+    },
+    "message": {"type": "string"},
+    "operator": {"type": "string"},
+    "node_ids": {"type": "array", "items": {"type": "integer"}},
+    "variable": {"type": "string"},
+    "level": {"type": "integer"},
+    "thrown": {},
+    "index": {"type": "integer"},
+    "length": {"type": "integer"},
+    "budget": {"type": "integer"},
+    "spent": {"type": "integer"}
+  }
+}

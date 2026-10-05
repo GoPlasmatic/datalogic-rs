@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/GoPlasmatic/datalogic-rs/schemas/diagnostics.v1.json",
+  "title": "datalogic check diagnostics, v1",
+  "description": "Engine.check() in every binding, and the diagnostics a CompileError carries. `pointer` is an RFC 6901 JSON Pointer into the rule.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["code", "severity", "message", "pointer", "operator"],
+    "properties": {
+      "code": {
+        "type": "string",
+        "enum": ["Unparsable", "UnknownOperator", "NotAnOperator", "ArgumentForm", "ArgumentCount", "InvalidTimezone", "SimilarToOperator", "Compile"]
+      },
+      "severity": {"type": "string", "enum": ["error", "warning"]},
+      "message": {"type": "string"},
+      "pointer": {"type": "string"},
+      "operator": {"type": ["string", "null"]}
+    }
+  }
+}

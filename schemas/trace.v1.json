@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/GoPlasmatic/datalogic-rs/schemas/trace.v1.json",
+  "title": "datalogic traced run, v1",
+  "description": "The envelope every binding's evaluateWithTrace returns (datalogic_bind::traced_run_json). `result` is null when the run failed; `error` and `structured_error` are present only then.",
+  "type": "object",
+  "required": ["result", "expression_tree", "steps"],
+  "properties": {
+    "result": {},
+    "expression_tree": {"$ref": "#/$defs/node"},
+    "steps": {"type": "array", "items": {"$ref": "#/$defs/step"}},
+    "error": {"type": "string"},
+    "structured_error": {"$ref": "error.v1.json"}
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "required": ["id", "expression", "children"],
+      "properties": {
+        "id": {"type": "integer"},
+        "expression": {"type": "string"},
+        "children": {"type": "array", "items": {"$ref": "#/$defs/node"}}
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": ["step_id", "node_id", "context", "result", "error"],
+      "properties": {
+        "step_id": {"type": "integer"},
+        "node_id": {"type": "integer"},
+        "context": {},
+        "result": {},
+        "error": {"type": ["string", "null"]},
+        "iteration_index": {"type": "integer"},
+        "iteration_total": {"type": "integer"}
+      }
+    }
+  }
+}
