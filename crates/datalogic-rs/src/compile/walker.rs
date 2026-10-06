@@ -24,7 +24,7 @@ use crate::operators::meta::{ArgsForm, CompileHook, HookArgs, Hooked, LiteralArg
 /// recursive `Drop` of the compiled tree.
 pub(super) fn compile_node(
     value: &OwnedDataValue,
-    engine: Option<&Engine>,
+    engine: &Engine,
     templating: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
@@ -36,7 +36,7 @@ pub(super) fn compile_node(
 
 fn compile_node_inner(
     value: &OwnedDataValue,
-    engine: Option<&Engine>,
+    engine: &Engine,
     templating: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
@@ -60,7 +60,7 @@ fn compile_node_inner(
 /// becomes a structured-object output template); otherwise an error.
 fn compile_multi_key_object(
     pairs: &[(String, OwnedDataValue)],
-    engine: Option<&Engine>,
+    engine: &Engine,
     templating: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
@@ -77,7 +77,7 @@ fn compile_multi_key_object(
         // nothing about *routing* here — it only has to be recorded so the
         // evaluator strips the prefix and folding leaves the node alone.
         let escape = engine
-            .and_then(|e| e.template_key_escape())
+            .template_key_escape()
             .filter(|&c| key_escape_present(&fields, c));
         return Ok(CompiledNode::StructuredObject(Box::new(
             crate::node::StructuredObjectData {
@@ -101,7 +101,7 @@ fn compile_multi_key_object(
 fn compile_operator_invocation(
     op_name: &str,
     args_value: &OwnedDataValue,
-    engine: Option<&Engine>,
+    engine: &Engine,
     templating: bool,
     fold: bool,
     ctx: &mut CompileCtx,
@@ -112,19 +112,13 @@ fn compile_operator_invocation(
     // out as a literal output field.
     #[cfg(feature = "templating")]
     if templating {
-        // No let-chain here: the crate's MSRV is 1.85 and they only
-        // stabilised in 1.88.
-        let escape = engine.and_then(|e| e.template_key_escape());
+        let escape = engine.template_key_escape();
         if escape.is_some_and(|c| op_name.starts_with(c)) {
             return single_field_object(op_name, args_value, engine, templating, escape, ctx);
         }
     }
 
-    let builtin = match engine {
-        Some(engine) => engine.builtin(op_name),
-        None => op_name.parse::<OpCode>().ok(),
-    };
-    if let Some(opcode) = builtin {
+    if let Some(opcode) = engine.builtin(op_name) {
         return compile_builtin(op_name, opcode, args_value, engine, templating, fold, ctx);
     }
 
@@ -147,25 +141,24 @@ fn compile_operator_invocation(
 fn custom_operator_node(
     op_name: &str,
     args: Box<[CompiledNode]>,
-    engine: Option<&Engine>,
+    engine: &Engine,
     fold: bool,
     ctx: &mut CompileCtx,
 ) -> CompiledNode {
     let info = engine
-        .and_then(|e| e.custom_operator_info(op_name))
+        .custom_operator_info(op_name)
         .unwrap_or_else(crate::CustomOperatorInfo::opaque);
     let node = CompiledNode::CustomOperator(Box::new(crate::node::CustomOperatorData {
         id: Some(ctx.next_id()),
         name: op_name.to_string(),
         args,
         info,
-        slot: engine.and_then(|e| e.custom_operator_slot(op_name)),
+        slot: engine.custom_operator_slot(op_name),
     }));
-    if let Some(eng) = engine
-        && fold
+    if fold
         && !ctx.skip_fold()
         && node_is_static(&node)
-        && let Some(value) = optimize::constant_fold::fold_static_node(&node, eng)
+        && let Some(value) = optimize::constant_fold::fold_static_node(&node, engine)
     {
         ctx.note_config_fold();
         return CompiledNode::compile_time_value(Some(ctx.next_id()), value);
@@ -175,12 +168,12 @@ fn custom_operator_node(
 
 /// Builtin operator path: the row's argument-form rule, its compile hook
 /// (if any), then a generic `BuiltinOperator` with the optimization and
-/// static-fold passes when an `engine` is supplied.
+/// static-fold passes unless folding is off.
 fn compile_builtin(
     op_name: &str,
     opcode: OpCode,
     args_value: &OwnedDataValue,
-    engine: Option<&Engine>,
+    engine: &Engine,
     templating: bool,
     fold: bool,
     ctx: &mut CompileCtx,
@@ -221,17 +214,14 @@ fn compile_builtin(
         iter_arg_kind: crate::operators::array::IterArgKind::General,
     };
 
-    // Optimization + static-fold passes (engine-dependent and gated on
-    // the compile context's `skip_fold` flag, which the trace path sets).
+    // Optimization + static-fold passes, gated on the compile context's
+    // `skip_fold` flag (which the trace path sets).
     // Folded literals are built with `compile_time_value` so composite
     // results carry their prebuilt view immediately — an enclosing static
     // operator folded right after this consumes it structurally (e.g.
     // `evaluate_switch`'s folded-case-table arms).
-    if let Some(eng) = engine
-        && fold
-        && !ctx.skip_fold()
-    {
-        let (optimized, observed) = optimize::optimize(node, eng);
+    if fold && !ctx.skip_fold() {
+        let (optimized, observed) = optimize::optimize(node, engine);
         node = optimized;
         if observed {
             ctx.note_config_fold();
@@ -239,7 +229,7 @@ fn compile_builtin(
         // Evaluating an operator at compile time may read the engine's
         // settings (coercion, NaN and division handling, truthiness).
         if node_is_static(&node)
-            && let Some(value) = optimize::constant_fold::fold_static_node(&node, eng)
+            && let Some(value) = optimize::constant_fold::fold_static_node(&node, engine)
         {
             ctx.note_config_fold();
             return Ok(CompiledNode::compile_time_value(Some(ctx.next_id()), value));
@@ -276,14 +266,12 @@ pub(super) fn invalid_args_marker(
 fn compile_templating_unknown(
     op_name: &str,
     args_value: &OwnedDataValue,
-    engine: Option<&Engine>,
+    engine: &Engine,
     templating: bool,
     fold: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
-    if let Some(eng) = engine
-        && eng.has_custom_operator(op_name)
-    {
+    if engine.has_custom_operator(op_name) {
         let args = keyed(op_name, ctx, |ctx| {
             compile_args(args_value, engine, templating, ctx)
         })?;
@@ -303,7 +291,7 @@ fn compile_templating_unknown(
 fn single_field_object(
     key: &str,
     value: &OwnedDataValue,
-    engine: Option<&Engine>,
+    engine: &Engine,
     templating: bool,
     escape: Option<char>,
     ctx: &mut CompileCtx,
@@ -325,11 +313,11 @@ fn key_escape_present(fields: &[(String, CompiledNode)], escape: char) -> bool {
     fields.iter().any(|(key, _)| key.starts_with(escape))
 }
 
-/// Compile a literal array. When all elements are static and an engine is
-/// supplied, the whole array is constant-folded to an [`OwnedDataValue`] literal.
+/// Compile a literal array. When all elements are static and folding is on,
+/// the whole array is constant-folded to an [`OwnedDataValue`] literal.
 fn compile_array(
     arr: &[OwnedDataValue],
-    engine: Option<&Engine>,
+    engine: &Engine,
     templating: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
@@ -345,10 +333,9 @@ fn compile_array(
         nodes: nodes_boxed,
     };
 
-    if let Some(eng) = engine
-        && !ctx.skip_fold()
+    if !ctx.skip_fold()
         && node_is_static(&node)
-        && let Some(value) = optimize::constant_fold::fold_static_node(&node, eng)
+        && let Some(value) = optimize::constant_fold::fold_static_node(&node, engine)
     {
         // `compile_time_value`: the folded array carries its
         // prebuilt composite view immediately, so an enclosing
@@ -366,7 +353,7 @@ fn compile_array(
 fn compile_builtin_args(
     literal: LiteralArgs,
     value: &OwnedDataValue,
-    engine: Option<&Engine>,
+    engine: &Engine,
     templating: bool,
     ctx: &mut CompileCtx,
 ) -> Result<Box<[CompiledNode]>> {
@@ -418,7 +405,7 @@ fn has_expression(value: &OwnedDataValue) -> bool {
 /// has one. Everything below the root still optimizes and folds.
 fn compile_as_written(
     value: &OwnedDataValue,
-    engine: Option<&Engine>,
+    engine: &Engine,
     templating: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
@@ -451,7 +438,7 @@ fn compile_as_written(
 /// treated as a single-arg form.
 pub(super) fn compile_args(
     value: &OwnedDataValue,
-    engine: Option<&Engine>,
+    engine: &Engine,
     templating: bool,
     ctx: &mut CompileCtx,
 ) -> Result<Box<[CompiledNode]>> {

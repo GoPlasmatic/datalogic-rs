@@ -82,7 +82,7 @@ impl Logic {
         templating: bool,
         mut ctx: CompileCtx,
     ) -> Result<Self> {
-        let mut root = walker::compile_node(logic_src, Some(engine), templating, &mut ctx)?;
+        let mut root = walker::compile_node(logic_src, engine, templating, &mut ctx)?;
         // CSE runs once over the finished tree, after the per-node fixpoint
         // optimizer (folded shapes are final) and before `Logic::new`'s
         // populate pass (so hints are derived through the wrappers). Gated

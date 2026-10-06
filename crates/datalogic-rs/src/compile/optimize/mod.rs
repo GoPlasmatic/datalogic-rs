@@ -35,7 +35,8 @@ const MAX_FIXPOINT_ITERATIONS: usize = 4;
 /// Run all optimization passes on a compiled node tree until a fixpoint.
 ///
 /// This is the main entry point for the optimization pipeline.
-/// Called from `compile_node` when an engine is provided (i.e., not in trace mode).
+/// Called from the walker for each builtin call unless folding is skipped (a
+/// traced compile, or an engine built with folding off).
 ///
 /// Passes are applied in order until none report a change or
 /// [`MAX_FIXPOINT_ITERATIONS`] is reached. Per iteration:
