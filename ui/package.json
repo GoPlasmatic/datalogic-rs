@@ -68,9 +68,10 @@
     "prebuild": "npm run sync-wasm",
     "prebuild:lib": "npm run sync-wasm",
     "prebuild:embed": "npm run sync-wasm",
-    "sync-wasm": "rm -rf vendor/datalogic && mkdir -p vendor && cp -R ../bindings/wasm/pkg vendor/datalogic",
+    "sync-wasm": "node scripts/sync-wasm.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "pretest": "npm run sync-wasm"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",

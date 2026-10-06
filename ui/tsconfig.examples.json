@@ -1,0 +1,15 @@
+{
+  // Type-checks examples/ against the library entry, the way a consumer
+  // sees it: `@goplasmatic/datalogic-ui` resolves to src/lib.ts.
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.examples.tsbuildinfo",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@logic-editor/*": ["./src/components/logic-editor/*"],
+      "@goplasmatic/datalogic-wasm": ["./vendor/datalogic"],
+      "@goplasmatic/datalogic-ui": ["./src/lib.ts"]
+    }
+  },
+  "include": ["examples", "src/css.d.ts"]
+}

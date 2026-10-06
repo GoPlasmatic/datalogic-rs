@@ -1,13 +1,16 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import wasm from 'vite-plugin-wasm';
-import { resolve } from 'path';
+import { resolve } from 'node:path';
+import { aliases } from './vite.aliases';
 
 /**
- * Embed build configuration
- * Creates a standalone IIFE bundle that can be loaded via <script> tag in mdBook
- * React is bundled (not externalized) because dependencies like @xyflow/react
- * use automatic JSX transforms that require react/jsx-runtime
+ * Embed build configuration.
+ *
+ * Creates a standalone ES-module bundle that the mdBook docs load with
+ * `<script type="module">` (see docs/theme/datalogic-playground.js). React
+ * is bundled, not externalized: the docs page has no React of its own, and
+ * dependencies like @xyflow/react use the automatic JSX runtime.
  */
 export default defineConfig({
   plugins: [
@@ -15,14 +18,7 @@ export default defineConfig({
     wasm(),
   ],
   resolve: {
-    alias: {
-      '@': resolve(import.meta.dirname, 'src'),
-      '@logic-editor': resolve(import.meta.dirname, 'src/components/logic-editor'),
-      // Match `vite.config.ts`: resolve the WASM dep to the vendored
-      // copy that `prebuild:embed` (→ sync-wasm) refreshes from
-      // `../wasm/pkg/` before this build runs.
-      '@goplasmatic/datalogic-wasm': resolve(import.meta.dirname, 'vendor/datalogic'),
-    },
+    alias: aliases('browser'),
   },
   define: {
     // Ensure process.env is defined for production

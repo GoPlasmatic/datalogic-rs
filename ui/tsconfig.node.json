@@ -13,6 +13,8 @@
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,
+    "allowJs": true,
+    "checkJs": true,
 
     /* Linting */
     "strict": true,
@@ -22,5 +24,12 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["vite.config.ts"]
+  "include": [
+    "vite.aliases.ts",
+    "vite.config.ts",
+    "vite.lib.config.ts",
+    "vite.embed.config.ts",
+    "vitest.config.ts",
+    "scripts"
+  ]
 }

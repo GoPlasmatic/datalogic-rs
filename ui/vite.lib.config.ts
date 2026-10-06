@@ -2,7 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import dts from 'vite-plugin-dts';
 import wasm from 'vite-plugin-wasm';
-import { resolve } from 'path';
+import { resolve } from 'node:path';
+import { aliases } from './vite.aliases';
 
 // Library build configuration
 export default defineConfig({
@@ -11,18 +12,11 @@ export default defineConfig({
     wasm(),
     dts({
       tsconfigPath: './tsconfig.lib.json',
-      outDir: 'dist',
+      outDirs: 'dist',
     }),
   ],
   resolve: {
-    alias: {
-      '@': resolve(import.meta.dirname, 'src'),
-      '@logic-editor': resolve(import.meta.dirname, 'src/components/logic-editor'),
-      // Match `vite.config.ts`: resolve the WASM dep to the vendored
-      // copy that `prebuild:lib` (→ sync-wasm) refreshes from
-      // `../wasm/pkg/` before this build runs.
-      '@goplasmatic/datalogic-wasm': resolve(import.meta.dirname, 'vendor/datalogic'),
-    },
+    alias: aliases('browser'),
   },
   build: {
     lib: {
@@ -40,13 +34,6 @@ export default defineConfig({
         '@xyflow/react',
       ],
       output: {
-        // Global names for UMD build
-        globals: {
-          react: 'React',
-          'react-dom': 'ReactDOM',
-          'react/jsx-runtime': 'ReactJSXRuntime',
-          '@xyflow/react': 'ReactFlow',
-        },
         // Ensure CSS is bundled into a single file with consistent name
         assetFileNames: (assetInfo) => {
           if (assetInfo.name?.endsWith('.css')) {
