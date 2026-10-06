@@ -23,7 +23,7 @@ type Error struct {
 	// {"type":"NaN"}), never as a "NaN" tag. Match on this for
 	// programmatic error handling; Message is for humans.
 	Type string
-	// Operator is the outermost failing operator's name (e.g. "+" or
+	// Operator is the innermost failing operator's name (e.g. "+" or
 	// "var"). Empty when the error didn't originate inside a named
 	// operator (e.g. rule-parse failures).
 	Operator string

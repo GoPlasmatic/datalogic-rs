@@ -75,7 +75,7 @@ public readonly struct EvaluationResult
     /// <summary>Human-readable error message, or <c>null</c> on success.</summary>
     public string? ErrorMessage { get; }
 
-    /// <summary>Outermost failing operator (e.g. <c>"+"</c>), or <c>null</c> when not operator-scoped or on success.</summary>
+    /// <summary>Innermost failing operator (e.g. <c>"+"</c>), or <c>null</c> when not operator-scoped or on success.</summary>
     public string? ErrorOperator { get; }
 
     /// <summary>

@@ -632,7 +632,7 @@ datalogic_status datalogic_engine_apply(const datalogic_engine *engine,
  const uint8_t *datalogic_error_tag(const datalogic_error *err, size_t *len_out);
 
 /**
- * The outermost failing operator's name (e.g. `"+"`, `"var"`), or
+ * The innermost failing operator's name (e.g. `"+"`, `"var"`), or
  * `NULL` if the error didn't originate inside a named operator.
  *
  * # Safety

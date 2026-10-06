@@ -966,7 +966,7 @@ impl Session {
     ///   result as a JSON string, or
     /// - `{ status: "rejected", reason }` where `reason` is
     ///   `{ tag, message, operator? }` (`tag` is the stable error-kind
-    ///   tag, `operator` the outermost failing operator when known).
+    ///   tag, `operator` the innermost failing operator when known).
     ///
     /// Item failures are independent — a failing item (including a
     /// non-`DataHandle` element in `handles`) never fails the call or

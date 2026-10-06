@@ -461,7 +461,7 @@ Each element of the returned array is one of:
 | Shape | Meaning |
 |-------|---------|
 | `{ status: "fulfilled", value: string }` | Item succeeded; `value` is its result as a JSON string |
-| `{ status: "rejected", reason: { tag, message, operator? } }` | Item failed; `tag` is the stable error-kind tag (`"Thrown"`, `"InvalidArgument"`, …), `operator` the outermost failing operator when known |
+| `{ status: "rejected", reason: { tag, message, operator? } }` | Item failed; `tag` is the stable error-kind tag (`"Thrown"`, `"InvalidArgument"`, …), `operator` the innermost failing operator when known |
 
 Per-item failures include evaluation errors *and* invalid elements (a
 non-`DataHandle` in `handles`, a non-`Rule` in `rules`; tag
@@ -543,7 +543,7 @@ The thrown object carries:
 | `name` | Stable error-kind tag: `"ParseError"`, `"InvalidOperator"`, `"InvalidArguments"`, `"TypeError"`, `"ArithmeticError"`, `"Thrown"`, `"IndexOutOfBounds"`, `"ConfigurationError"`, `"Custom"`, ... plus this binding's `"TypeMismatch"` (typed evaluations whose result has the wrong type) |
 | `message` | Human-readable message, including the failing operator when known |
 | `type` | Same tag as `name` (mirrors the wire JSON, kept for migration) |
-| `operator` | Outermost failing operator (runtime errors only) |
+| `operator` | Innermost failing operator (runtime errors only) |
 | `node_ids` | Breadcrumb of compiled-node ids from the failure site toward the root (runtime errors only) |
 | variant extras | Kind-specific fields: `thrown` (Thrown, as a parsed JS value), `index` / `length` (IndexOutOfBounds), `stage` (boundary input errors, e.g. `"parse-data"`) |
 | `detailJson` | The exact JSON string that 5.0.0 used as the rejection value |

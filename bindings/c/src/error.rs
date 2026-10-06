@@ -238,7 +238,7 @@ pub unsafe extern "C" fn datalogic_error_tag(err: *const Error, len_out: *mut us
     unsafe { str_out(err.as_ref().map(|e| e.tag.as_str()), len_out) }
 }
 
-/// The outermost failing operator's name (e.g. `"+"`, `"var"`), or
+/// The innermost failing operator's name (e.g. `"+"`, `"var"`), or
 /// `NULL` if the error didn't originate inside a named operator.
 ///
 /// # Safety

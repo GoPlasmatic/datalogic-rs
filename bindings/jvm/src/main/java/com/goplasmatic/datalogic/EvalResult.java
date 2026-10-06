@@ -18,7 +18,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  *                      success
  * @param errorMessage  human-readable error message, or {@code null} on
  *                      success
- * @param errorOperator outermost failing operator (e.g. {@code "+"}), or
+ * @param errorOperator innermost failing operator (e.g. {@code "+"}), or
  *                      {@code null} when absent or on success
  */
 public record EvalResult(String value, String errorTag, String errorMessage, String errorOperator) {

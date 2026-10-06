@@ -10,7 +10,7 @@
 //!   .name        "ParseError" | "EvaluateError" | "InternalError"
 //!   .message     human-readable message from datalogic_rs::Error
 //!   .errorType   stable tag from datalogic_rs::Error::tag()
-//!   .operator    outermost failing operator (or null)
+//!   .operator    innermost failing operator (or null)
 //!   .nodeIds     leaf-to-root breadcrumb of compiled-node ids
 //!   .path        resolved root-to-leaf array of { nodeId, operator,
 //!                argIndex, jsonPointer } objects (only when the binding

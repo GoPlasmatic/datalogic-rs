@@ -213,7 +213,7 @@ try {
     // Malformed rule or data JSON
   } else if (e.name === 'EvaluateError') {
     console.log(e.errorType);  // stable tag (e.g. "TypeError", "Thrown")
-    console.log(e.operator);   // outermost failing operator
+    console.log(e.operator);   // innermost failing operator
     console.log(e.nodeIds);    // leaf-to-root breadcrumb
     console.log(e.path);       // resolved root-to-leaf step list
   }

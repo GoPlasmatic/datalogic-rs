@@ -80,7 +80,7 @@ impl Session {
 /// payload can't abort the other N-1.
 ///
 /// ``tag`` is the stable engine error tag (e.g. ``"Thrown"``,
-/// ``"TypeError"``, ``"ArithmeticError"``), ``operator`` the outermost
+/// ``"TypeError"``, ``"ArithmeticError"``), ``operator`` the innermost
 /// failing operator when known.
 #[pyclass(name = "BatchItemError", module = "datalogic_py", frozen)]
 pub struct BatchItemError {
@@ -91,7 +91,7 @@ pub struct BatchItemError {
     /// Human-readable failure message.
     #[pyo3(get)]
     pub message: String,
-    /// Outermost failing operator, when known.
+    /// Innermost failing operator, when known.
     #[pyo3(get)]
     pub operator: Option<String>,
 }

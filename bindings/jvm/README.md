@@ -291,7 +291,7 @@ Everything the binding throws extends `DatalogicException` (unchecked):
 The structured fields ride on the base class: `errorType()` is the
 stable engine tag (e.g. `"ParseError"`, `"Thrown"`, `"TypeError"`,
 `"InvalidOperator"`, or the binding-level `"TypeMismatch"` /
-`"InvalidArgument"`), `operatorName()` the outermost failing operator
+`"InvalidArgument"`), `operatorName()` the innermost failing operator
 (e.g. `"+"`), and `pathJson()` the root-to-leaf error path as a JSON
 array; each is `null` when not applicable. Arithmetic NaN surfaces as
 `errorType()` `"Thrown"` with a message carrying `{"type":"NaN"}`;

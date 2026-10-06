@@ -10,7 +10,7 @@ import java.lang.foreign.ValueLayout;
 /**
  * Base exception for every error raised by this binding. Carries the
  * structured fields of the C ABI's `datalogic_error` handle: the stable
- * engine tag, the outermost failing operator, and the resolved error
+ * engine tag, the innermost failing operator, and the resolved error
  * path.
  *
  * <p>Subclass mapping follows the C ABI v2 status code: parse failures
@@ -48,7 +48,7 @@ public class DatalogicException extends RuntimeException {
      */
     public String errorType() { return errorType; }
 
-    /** Outermost failing operator name (e.g. "+"), or null if not operator-scoped. */
+    /** Innermost failing operator name (e.g. "+"), or null if not operator-scoped. */
     public String operatorName() { return operatorName; }
 
     /** Resolved root-to-leaf error path as a JSON array, or null if not available. */

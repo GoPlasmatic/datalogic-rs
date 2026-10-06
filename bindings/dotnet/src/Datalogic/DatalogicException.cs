@@ -18,7 +18,7 @@ public class DatalogicException : Exception
     /// failures surface as "Thrown" with a <c>{"type":"NaN"}</c> payload; there is no "NaN" tag.
     /// </summary>
     public string? ErrorType { get; }
-    /// <summary>Outermost failing operator name (e.g. "+"), or null if not operator-scoped.</summary>
+    /// <summary>Innermost failing operator name (e.g. "+"), or null if not operator-scoped.</summary>
     public string? Operator { get; }
     /// <summary>Resolved root-to-leaf error path as a JSON array, or null if not available.</summary>
     public string? PathJson { get; }

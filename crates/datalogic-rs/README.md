@@ -415,7 +415,7 @@ through accessors:
 - `kind: ErrorKind`: the discriminant (`ParseError`, `Thrown`,
   `InvalidArguments`, `TypeError`, `ArithmeticError`, `Custom`, …),
   public for pattern matching
-- `operator() -> Option<&str>`: the outermost failing operator
+- `operator() -> Option<&str>`: the innermost failing operator
 - `node_ids() -> &[u32]`: breadcrumbs from the compiled tree
   (leaf to root); resolve to a JSON path via
   `Error::resolve_path(&logic)`, which returns a `Vec<PathStep>` you

@@ -234,7 +234,7 @@ Everything the binding throws extends `DatalogicException`:
 
 The structured fields ride on the base class: `ErrorType` is the stable
 engine tag (e.g. `"ParseError"`, `"Thrown"`, `"TypeMismatch"`,
-`"InvalidArgument"`), `Operator` the outermost failing operator (e.g.
+`"InvalidArgument"`), `Operator` the innermost failing operator (e.g.
 `"+"`), `PathJson` the root-to-leaf error path as a JSON array (each
 `null` when not applicable), and `Status` the coarse
 `EvaluationStatus` the native call returned (`ParseError`,

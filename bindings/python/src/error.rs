@@ -6,7 +6,7 @@
 //!     ├── ParseError          rule/data parse failure or unsupported Python type
 //!     └── EvaluateError       runtime operator failure
 //!                              .error_type — stable tag from datalogic_rs::Error::tag()
-//!                              .operator   — outermost failing operator (or None)
+//!                              .operator   — innermost failing operator (or None)
 //!                              .node_ids   — leaf-to-root breadcrumb of compiled-node ids
 //!                              .path       — list of {operator, json_pointer, ...} dicts
 //!                                            (populated when the binding has the compiled

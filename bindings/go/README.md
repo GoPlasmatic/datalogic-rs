@@ -299,7 +299,7 @@ _, err := rule.Evaluate(`{}`)
 if err != nil {
     e := err.(*datalogic.Error)
     fmt.Println(e.Type)      // "Thrown" | "ParseError" | "InvalidOperator" | ...
-    fmt.Println(e.Operator)  // outermost failing operator name
+    fmt.Println(e.Operator)  // innermost failing operator name
     fmt.Println(e.PathJSON)  // JSON array string of {operator, json_pointer, ...}
 }
 ```
