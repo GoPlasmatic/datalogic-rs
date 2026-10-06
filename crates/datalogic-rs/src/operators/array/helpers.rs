@@ -148,12 +148,15 @@ pub(crate) enum FastPredicate {
     AllOf(Box<[FastPredicate]>),
     /// `{"or": [...]}` over detected sub-predicates; short-circuits on true.
     AnyOf(Box<[FastPredicate]>),
-    /// `{"!": pred}` — truthiness negation of a detected sub-predicate.
-    Not(Box<FastPredicate>),
-    /// `{"!!": pred}` — the truthiness of a detected sub-predicate. It
-    /// evaluates as `pred` does; it is kept as its own node so the metered
-    /// count includes the `!!` node the general path dispatches.
-    Bool(Box<FastPredicate>),
+    /// `{"!": pred}` (`negate`) — truthiness negation of a detected
+    /// sub-predicate — or `{"!!": pred}` (not `negate`), its truthiness,
+    /// which evaluates as `pred` does but stays a node so the metered count
+    /// includes the `!!` the general path dispatches. One variant for both:
+    /// a separate `!!` variant measured ~15% slower on combinator scans.
+    Not {
+        inner: Box<FastPredicate>,
+        negate: bool,
+    },
 }
 
 /// A numeric literal as the `f64` the numeric leaves compare items with,
@@ -214,12 +217,10 @@ impl FastPredicate {
             // `!` — truthiness negation. `!!` evaluates as its operand (the
             // consumer only reads the tree through truthiness) but stays a
             // node, for the metered count.
-            (_, Some(Algebra::Truth(Truth::Not))) if args.len() == 1 => Some(FastPredicate::Not(
-                Box::new(Self::detect_operand(&args[0], depth + 1)?),
-            )),
-            (_, Some(Algebra::Truth(Truth::Bool))) if args.len() == 1 => Some(FastPredicate::Bool(
-                Box::new(Self::detect_operand(&args[0], depth + 1)?),
-            )),
+            (_, Some(Algebra::Truth(truth))) if args.len() == 1 => Some(FastPredicate::Not {
+                inner: Box::new(Self::detect_operand(&args[0], depth + 1)?),
+                negate: truth == Truth::Not,
+            }),
             // `in` with an all-string literal array: `in` compares elements
             // with strict equality, so a non-string needle is always false —
             // total semantics, no coercion involved.
@@ -361,8 +362,10 @@ impl FastPredicate {
 
     /// Operations the general path charges for one evaluation of a scalar
     /// leaf: the comparison node and its `var` (the literal operand is
-    /// free), plus the haystack length `in` charges. Combinators are priced
-    /// per evaluation in [`Self::evaluate_opt`], since they short-circuit.
+    /// free), plus the haystack length `in` charges. The per-item loops of
+    /// [`Self::scan`] multiply it out; [`Self::evaluate_opt`] returns the
+    /// same amounts per leaf, since combinators short-circuit. Keep the two
+    /// in step.
     #[inline(always)]
     fn leaf_cost(&self) -> u64 {
         match self {
@@ -372,9 +375,11 @@ impl FastPredicate {
         }
     }
 
-    /// Evaluate this predicate against a single item, adding to `cost` the
-    /// operations the general path would have charged for it (the nodes it
-    /// dispatches, short-circuiting included). `None` means
+    /// Evaluate this predicate against a single item, with the operations
+    /// the general path would have charged for it (the nodes it dispatches,
+    /// short-circuiting included). The count is returned rather than added
+    /// through a pointer: a chain of read-modify-writes to one counter,
+    /// one per node, made the combinator scan measurably slower. `None` means
     /// "indeterminate" — the item's value shape needs coercion semantics
     /// only the general dispatch path implements, so the caller must
     /// abandon the fast path for the whole collection (fast evaluation is
@@ -388,45 +393,7 @@ impl FastPredicate {
         &self,
         item: &'b DataValue<'b>,
         engine: &crate::Engine,
-        cost: &mut u64,
-    ) -> Option<bool> {
-        match self {
-            FastPredicate::AllOf(preds) => {
-                *cost += 1;
-                for p in preds.iter() {
-                    if !p.evaluate_opt(item, engine, cost)? {
-                        return Some(false);
-                    }
-                }
-                Some(true)
-            }
-            FastPredicate::AnyOf(preds) => {
-                *cost += 1;
-                for p in preds.iter() {
-                    if p.evaluate_opt(item, engine, cost)? {
-                        return Some(true);
-                    }
-                }
-                Some(false)
-            }
-            FastPredicate::Not(inner) => {
-                *cost += 1;
-                inner.evaluate_opt(item, engine, cost).map(|b| !b)
-            }
-            FastPredicate::Bool(inner) => {
-                *cost += 1;
-                inner.evaluate_opt(item, engine, cost)
-            }
-            leaf => {
-                *cost += leaf.leaf_cost();
-                leaf.evaluate_leaf(item, engine)
-            }
-        }
-    }
-
-    /// [`Self::evaluate_opt`] for a scalar leaf, uncounted.
-    #[inline]
-    fn evaluate_leaf<'b>(&self, item: &'b DataValue<'b>, engine: &crate::Engine) -> Option<bool> {
+    ) -> Option<(bool, u32)> {
         match self {
             FastPredicate::StrictEq {
                 var_path,
@@ -437,28 +404,31 @@ impl FastPredicate {
                 // which strict-compares like any other value (`null === null`
                 // is true) — total semantics, no coercion anywhere in `===`.
                 let av = Self::resolve_value(var_path, item).unwrap_or(&DataValue::Null);
-                strict_eq_literal(av, literal).map(|eq| eq != *negate)
+                strict_eq_literal(av, literal).map(|eq| (eq != *negate, 2))
             }
             FastPredicate::NumericCmp {
                 var_path,
                 literal_f,
                 op,
                 var_is_lhs,
-            } => match Self::resolve_value(var_path, item) {
-                // Only native numbers compare here. Anything else (string,
-                // bool, null, missing) goes through the general path's
-                // coercion table — `"9" >= 2` and `null >= 0` are true there.
-                Some(DataValue::Number(n)) => {
-                    let val_f = n.as_f64();
-                    let (lhs, rhs) = if *var_is_lhs {
-                        (val_f, *literal_f)
-                    } else {
-                        (*literal_f, val_f)
-                    };
-                    Some(op.cmp_f64(lhs, rhs))
-                }
-                _ => None,
-            },
+            } => {
+                let verdict = match Self::resolve_value(var_path, item) {
+                    // Only native numbers compare here. Anything else (string,
+                    // bool, null, missing) goes through the general path's
+                    // coercion table — `"9" >= 2` and `null >= 0` are true there.
+                    Some(DataValue::Number(n)) => {
+                        let val_f = n.as_f64();
+                        let (lhs, rhs) = if *var_is_lhs {
+                            (val_f, *literal_f)
+                        } else {
+                            (*literal_f, val_f)
+                        };
+                        Some(op.cmp_f64(lhs, rhs))
+                    }
+                    _ => None,
+                };
+                verdict.map(|v| (v, 2))
+            }
             FastPredicate::LooseNumericEq {
                 var_path,
                 literal_f,
@@ -466,13 +436,17 @@ impl FastPredicate {
             } => match Self::resolve_value(var_path, item) {
                 // Same-type loose equality only; `"5" == 5` / `true == 1`
                 // need the general path's coercion table.
-                Some(DataValue::Number(n)) => Some((n.as_f64() == *literal_f) != *negate),
+                Some(DataValue::Number(n)) => Some(((n.as_f64() == *literal_f) != *negate, 2)),
                 _ => None,
             },
-            FastPredicate::Truthy { var_path } => Some(match Self::resolve_value(var_path, item) {
-                Some(av) => crate::arena::truthy_arena(av, engine),
-                None => false,
-            }),
+            // One operation: the bare `var`.
+            FastPredicate::Truthy { var_path } => Some((
+                match Self::resolve_value(var_path, item) {
+                    Some(av) => crate::arena::truthy_arena(av, engine),
+                    None => false,
+                },
+                1,
+            )),
             FastPredicate::LooseStrEq {
                 var_path,
                 literal,
@@ -482,23 +456,50 @@ impl FastPredicate {
                 // datetime probe; any other value shape (including a
                 // missing field's implicit null) needs the general path's
                 // coercion table.
-                Some(DataValue::String(s)) => str_eq(s, literal).map(|eq| eq != *negate),
+                Some(DataValue::String(s)) => str_eq(s, literal).map(|eq| (eq != *negate, 2)),
                 _ => None,
             },
             FastPredicate::InStrLits { var_path, items } => {
-                match Self::resolve_value(var_path, item) {
+                let verdict = match Self::resolve_value(var_path, item) {
                     Some(DataValue::String(s)) => str_in(s, items),
                     // `in` is strict-equality membership: a non-string (or
                     // missing) needle never equals a string literal.
                     _ => Some(false),
-                }
+                };
+                // The `in` node, its `var`, and the haystack length `in`
+                // charges.
+                verdict.map(|v| {
+                    (
+                        v,
+                        2u32.saturating_add(items.len().try_into().unwrap_or(u32::MAX)),
+                    )
+                })
             }
-            // Combinators evaluate in `evaluate_opt`; never reached, and
-            // "indeterminate" would hand the item to the exact general path.
-            FastPredicate::AllOf(_)
-            | FastPredicate::AnyOf(_)
-            | FastPredicate::Not(_)
-            | FastPredicate::Bool(_) => None,
+            FastPredicate::AllOf(preds) => {
+                let mut cost: u32 = 1;
+                for p in preds.iter() {
+                    let (v, c) = p.evaluate_opt(item, engine)?;
+                    cost = cost.saturating_add(c);
+                    if !v {
+                        return Some((false, cost));
+                    }
+                }
+                Some((true, cost))
+            }
+            FastPredicate::AnyOf(preds) => {
+                let mut cost: u32 = 1;
+                for p in preds.iter() {
+                    let (v, c) = p.evaluate_opt(item, engine)?;
+                    cost = cost.saturating_add(c);
+                    if v {
+                        return Some((true, cost));
+                    }
+                }
+                Some((false, cost))
+            }
+            FastPredicate::Not { inner, negate } => inner
+                .evaluate_opt(item, engine)
+                .map(|(v, c)| (v != *negate, c.saturating_add(1))),
         }
     }
 }
@@ -583,12 +584,13 @@ impl FastPredicate {
             FastPredicate::Truthy { .. }
             | FastPredicate::AllOf(_)
             | FastPredicate::AnyOf(_)
-            | FastPredicate::Not(_)
-            | FastPredicate::Bool(_) => {
+            | FastPredicate::Not { .. } => {
                 let mut on_item = on_item;
                 let mut cost = 0u64;
                 for item in src.0 {
-                    if on_item(item, self.evaluate_opt(item, engine, &mut cost)?).is_break() {
+                    let (verdict, c) = self.evaluate_opt(item, engine)?;
+                    cost += u64::from(c);
+                    if on_item(item, verdict).is_break() {
                         break;
                     }
                 }

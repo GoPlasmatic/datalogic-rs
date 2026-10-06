@@ -105,37 +105,41 @@ fn sort_no_extractor<'a>(src: &IterSrc<'a>, ascending: bool, arena: &'a Bump) ->
     // All-numeric fast path: sort scalar `(key, index)` pairs instead of
     // driving `compare_values` through an index indirection per comparison.
     // The index tiebreaker reproduces the stable sort's equal-key order, so
-    // the output is identical to the general path's. An `f64` key orders
-    // exactly only while every integer fits in one, so an integer beyond
-    // 2^53 takes the general path's exact comparison.
-    if src
-        .0
-        .iter()
-        .all(|v| matches!(v, DataValue::Number(n) if f64_keyed(n)))
-    {
+    // the output is identical to the general path's. The keys order
+    // exactly only below 2^53 in magnitude (above it neighbouring integers
+    // share a key), so a key that large (rare) sends the array to the
+    // general path's exact comparison; the test rides along in the key
+    // loop, on the key it already computed.
+    if src.0.iter().all(|v| matches!(v, DataValue::Number(_))) {
+        const EXACT: f64 = 9_007_199_254_740_992.0; // 2^53
         let mut keyed = bvec::<(f64, u32)>(arena, len);
+        let mut wide = false;
         keyed.extend(src.0.iter().enumerate().map(|(i, v)| {
             let f = match v {
                 DataValue::Number(n) => n.as_f64(),
                 _ => unreachable!(),
             };
+            wide |= f.abs() >= EXACT;
             // Collapse -0.0 to 0.0 so `total_cmp` can't order the two zero
             // representations, keeping zero-keyed ties on the index
             // tiebreaker exactly like the stable path.
             (if f == 0.0 { 0.0 } else { f }, i as u32)
         }));
-        keyed.sort_unstable_by(|(ka, ia), (kb, ib)| {
-            // `total_cmp` keeps the comparator a total order even for NaN
-            // keys (which JSON data can't contain anyway — pdqsort panics
-            // on inconsistent comparators, so `partial_cmp` is off the
-            // table). Ties break by input position, reproducing the stable
-            // sort's equal-key order.
-            let cmp = ka.total_cmp(kb);
-            let cmp = if ascending { cmp } else { cmp.reverse() };
-            cmp.then(ia.cmp(ib))
-        });
-        let slice = arena.alloc_slice_fill_iter(keyed.iter().map(|&(_, i)| *src.get(i as usize)));
-        return arena.alloc(DataValue::Array(slice));
+        if !wide {
+            keyed.sort_unstable_by(|(ka, ia), (kb, ib)| {
+                // `total_cmp` keeps the comparator a total order even for
+                // NaN keys (which JSON data can't contain anyway — pdqsort
+                // panics on inconsistent comparators, so `partial_cmp` is
+                // off the table). Ties break by input position, reproducing
+                // the stable sort's equal-key order.
+                let cmp = ka.total_cmp(kb);
+                let cmp = if ascending { cmp } else { cmp.reverse() };
+                cmp.then(ia.cmp(ib))
+            });
+            let slice =
+                arena.alloc_slice_fill_iter(keyed.iter().map(|&(_, i)| *src.get(i as usize)));
+            return arena.alloc(DataValue::Array(slice));
+        }
     }
 
     let mut indices = bvec::<usize>(arena, len);
@@ -251,17 +255,6 @@ fn compare_values(a: &DataValue<'_>, b: &DataValue<'_>) -> Ordering {
             (x.dtype().name(), x.shape(), x.data()).cmp(&(y.dtype().name(), y.shape(), y.data()))
         }
         _ => type_rank(a).cmp(&type_rank(b)),
-    }
-}
-
-/// Whether `n` converts to `f64` without rounding, so an `f64` sort key
-/// orders it exactly: every float, and an integer within 2^53.
-#[inline(always)]
-fn f64_keyed(n: &NumberValue) -> bool {
-    const EXACT: i64 = 1 << 53;
-    match n {
-        NumberValue::Integer(i) => (-EXACT..=EXACT).contains(i),
-        NumberValue::Float(_) => true,
     }
 }
 
