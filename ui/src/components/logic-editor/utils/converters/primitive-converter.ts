@@ -1,6 +1,6 @@
 import type { JsonLogicValue } from '../../types';
 import type { ConversionContext } from './types';
-import { getParentInfo } from './types';
+import { getParentInfo, nodeIdFor } from './types';
 import { createLiteralNode, createArgEdge } from '../node-factory';
 
 // Convert a primitive value (or non-object) to a literal node
@@ -9,7 +9,7 @@ export function convertPrimitive(
   context: ConversionContext
 ): string {
   const parentInfo = getParentInfo(context);
-  const node = createLiteralNode(value, parentInfo);
+  const node = createLiteralNode(value, parentInfo, nodeIdFor(context));
 
   context.nodes.push(node);
 
@@ -28,9 +28,7 @@ export function convertInvalidObject(
   context: ConversionContext
 ): string {
   const parentInfo = getParentInfo(context);
-  const node = createLiteralNode(value, {
-    ...parentInfo,
-  });
+  const node = createLiteralNode(value, parentInfo, nodeIdFor(context));
 
   // Override valueType to 'array' for invalid objects
   if (node.data.type === 'literal') {

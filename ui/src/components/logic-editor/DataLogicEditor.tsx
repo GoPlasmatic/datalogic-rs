@@ -249,6 +249,11 @@ function ReadOnlyCanvas(props: CanvasProps) {
   );
 }
 
+function markSelected(nodes: LogicNode[], selected: ReadonlySet<string>): LogicNode[] {
+  if (selected.size === 0) return nodes;
+  return nodes.map((n) => (selected.has(n.id) ? { ...n, selected: true } : n));
+}
+
 /**
  * Editable canvas: keeps the ReactFlow nodes in step with EditorContext and
  * adds selection, context menus and double-click editing.
@@ -268,16 +273,25 @@ function EditableCanvas(props: CanvasProps) {
   } = useContextMenu(true);
 
   // Get editor context for syncing
-  const { nodes: editorNodes } = useEditorContext();
+  const { nodes: editorNodes, selectedNodeIds } = useEditorContext();
 
-  // Initialize state directly from props - component remounts via key when expression changes
-  const [nodes, setNodes, onNodesChange] = useNodesState<LogicNode>(initialNodes);
+  // Initialize state directly from props - component remounts via key when
+  // the expression's structure changes. A selection the editor carried over
+  // starts out marked, so ReactFlow does not report it as cleared.
+  const [mountNodes] = useState(() => markSelected(initialNodes, selectedNodeIds));
+  const [nodes, setNodes, onNodesChange] = useNodesState<LogicNode>(mountNodes);
   // Note: We don't use edges state directly - edges are rebuilt from nodes
   const [, , onEdgesChange] = useEdgesState<LogicEdge>(initialEdges);
 
-  // Sync state when props change (handles cases where key doesn't trigger remount)
+  // Sync state when props change (handles cases where key doesn't trigger
+  // remount). Node ids survive a re-conversion, so keep ReactFlow's
+  // selection marks: dropping them made NodeSelectionHandler clear the
+  // editor's selection.
   useEffect(() => {
-    setNodes(initialNodes);
+    setNodes((current) => {
+      const selected = new Set(current.filter((n) => n.selected).map((n) => n.id));
+      return markSelected(initialNodes, selected);
+    });
   }, [initialNodes, setNodes]);
 
   // Track previous node IDs to detect structural changes
@@ -385,6 +399,22 @@ function DataLogicEditorBody({
   // The root element: keyboard shortcuts listen on it (EditorRootContext).
   const [rootElement, setRootElement] = useState<HTMLDivElement | null>(null);
 
+  // The last expression this editor reported through onChange, serialized.
+  const [lastEmitted, setLastEmitted] = useState<string | null>(null);
+
+  // Counts values that came from outside, as opposed to the echo of this
+  // editor's own edit. Part of the canvas key: a new rule from the host
+  // remounts (and refits) the canvas even when its node count matches the
+  // old one, while an echo keeps the canvas, its viewport and selection.
+  const [valueRevision, setValueRevision] = useState({ value, revision: 0 });
+  if (value !== valueRevision.value) {
+    const isEcho = lastEmitted !== null && JSON.stringify(value) === lastEmitted;
+    setValueRevision({
+      value,
+      revision: isEcho ? valueRevision.revision : valueRevision.revision + 1,
+    });
+  }
+
   // Evaluation is enabled whenever data is provided (unified mode - no mode switching needed)
   const evalEnabled = data !== undefined;
 
@@ -397,9 +427,9 @@ function DataLogicEditorBody({
     direction,
   });
 
-  // Use a combination of node count, edge count, and root node ID as key
-  // This ensures the component remounts when the expression structure changes
-  const expressionKey = `${editor.nodes.length}-${editor.edges.length}-${editor.nodes[0]?.id ?? 'empty'}-${direction}`;
+  // Remount the canvas for a value from outside, or when the expression's
+  // structure (node count, edge count, root) or the direction changes.
+  const expressionKey = `${valueRevision.revision}-${editor.nodes.length}-${editor.edges.length}-${editor.nodes[0]?.id ?? 'empty'}-${direction}`;
 
   // Check if debugger should be active (trace mode with steps)
   const hasDebugger = evalEnabled && editor.usingTraceMode && editor.steps.length > 0;
@@ -417,6 +447,7 @@ function DataLogicEditorBody({
       // Debounce the onChange call (300ms)
       onChangeTimerRef.current = setTimeout(() => {
         const newExpr = nodesToJsonLogic(nodes);
+        setLastEmitted(JSON.stringify(newExpr));
         onChange(newExpr);
         onChangeTimerRef.current = null;
       }, 300);

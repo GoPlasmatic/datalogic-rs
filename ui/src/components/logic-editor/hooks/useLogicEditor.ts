@@ -6,7 +6,7 @@ import type {
   TracedResult,
   ExecutionStep,
 } from '../types';
-import { jsonLogicToNodes } from '../utils/jsonlogic-to-nodes';
+import { convertJsonLogic } from '../utils/jsonlogic-to-nodes';
 import {
   traceToNodes,
   isCompileFailedTrace,
@@ -52,6 +52,10 @@ interface UseLogicEditorReturn {
 
 // Maximum recursion depth to prevent stack overflow
 const MAX_RECURSION_DEPTH = 100;
+
+// Root id for the static conversion. Fixed, so converting the same rule
+// again (the echo of an edit) yields the same node ids.
+const ROOT_NODE_ID = 'n';
 
 const emptySteps: ExecutionStep[] = [];
 const emptyTraceNodeMap: Map<string, string> = new Map();
@@ -153,7 +157,7 @@ export function useLogicEditor({
       }
 
       // Fallback to JS parsing (no execution steps)
-      const { nodes: newNodes, edges: newEdges } = jsonLogicToNodes(value, { templating });
+      const { nodes: newNodes, edges: newEdges } = convertJsonLogic(value, { templating }, ROOT_NODE_ID);
       const layoutedNodes = applyTreeLayout(newNodes, newEdges, direction);
       setNodes(layoutedNodes);
       setEdges(newEdges);

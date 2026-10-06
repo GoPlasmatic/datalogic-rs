@@ -20,6 +20,7 @@ import { useSelectionState } from './useSelectionState';
 import { useHistoryState } from './useHistoryState';
 import { useClipboardState } from './useClipboardState';
 import { useNodeMutations } from './useNodeMutations';
+import { carryNodeIds } from './carry-selection';
 
 interface EditorProviderProps {
   children: ReactNode;
@@ -43,9 +44,6 @@ export function EditorProvider({
 
   // Ref to track current nodes for undo/redo (avoids stale closures)
   const nodesRef = useRef<LogicNode[]>(propNodes);
-
-  // Track if we should use internal nodes (after first edit) or prop nodes
-  const hasEditedRef = useRef(false);
 
   // Ref for property panel focus
   const propertyPanelFocusRef = useRef<{ focusField: (fieldId?: string) => void } | null>(null);
@@ -85,7 +83,6 @@ export function EditorProvider({
     onNodesChange,
     setSelectedNodeId,
     setPanelValues,
-    hasEditedRef,
   });
 
   const mutations = useNodeMutations({
@@ -95,37 +92,51 @@ export function EditorProvider({
     selectedNodeId: selection.selectedNodeId,
     setSelectedNodeId,
     setPanelValues,
-    hasEditedRef,
     nodes,
     internalNodes,
   });
 
-  // --- Effects ---
+  // --- Prop sync (adjusted during render, so no frame shows stale state) ---
 
-  // Sync nodes from props when they change (e.g., expression change from parent)
-  /* eslint-disable react-hooks/set-state-in-effect -- Syncing internal state from props is intentional */
-  useEffect(() => {
-    if (
-      !hasEditedRef.current ||
-      propNodes.length !== internalNodes.length ||
-      propNodes[0]?.id !== internalNodes[0]?.id
-    ) {
-      setInternalNodes(propNodes);
-      hasEditedRef.current = false;
+  // Adopt each new conversion of the rule. useLogicEditor builds a new
+  // array only when it re-converts (an external value, or the echo of an
+  // edit this editor reported), so the array's identity is the revision.
+  // The old check compared just the node count and the first node's id.
+  // Conversion ids are deterministic, so the selection usually survives as
+  // is; ids the conversion replaced (nodes this editor created) are carried
+  // to the node at the same place when it holds the same expression.
+  const [adoptedPropNodes, setAdoptedPropNodes] = useState(propNodes);
+  if (propNodes !== adoptedPropNodes) {
+    setAdoptedPropNodes(propNodes);
+    setInternalNodes(propNodes);
+    const { selectedNodeId, selectedNodeIds } = selection;
+    const ids = new Set(selectedNodeIds);
+    if (selectedNodeId) ids.add(selectedNodeId);
+    if (ids.size > 0) {
+      const carried = carryNodeIds(ids, internalNodes, propNodes);
+      setSelectedNodeId(selectedNodeId ? carried.get(selectedNodeId) ?? null : null);
+      setSelectedNodeIds(
+        new Set([...selectedNodeIds].flatMap((id) => {
+          const next = carried.get(id);
+          return next ? [next] : [];
+        }))
+      );
     }
-  }, [propNodes]); // eslint-disable-line react-hooks/exhaustive-deps
+  }
 
-  // Sync edit mode when prop changes (only responds to initialEditMode, not propNodes)
-  useEffect(() => {
+  // Follow the editable prop.
+  const [syncedEditMode, setSyncedEditMode] = useState(initialEditMode);
+  if (initialEditMode !== syncedEditMode) {
+    setSyncedEditMode(initialEditMode);
     setIsEditMode(initialEditMode);
     if (!initialEditMode) {
       setSelectedNodeId(null);
       setSelectedNodeIds(new Set());
       setPanelValues((prev) => Object.keys(prev).length === 0 ? prev : {});
-      hasEditedRef.current = false;
     }
-  }, [initialEditMode, setSelectedNodeId, setSelectedNodeIds]);
-  /* eslint-enable react-hooks/set-state-in-effect */
+  }
+
+  // --- Effects ---
 
   // Keep nodesRef in sync with internalNodes for undo/redo
   useEffect(() => {

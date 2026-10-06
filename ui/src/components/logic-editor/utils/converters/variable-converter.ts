@@ -1,7 +1,6 @@
-import { v4 as uuidv4 } from 'uuid';
 import type { JsonLogicValue, LogicNode, OperatorNodeData, CellData } from '../../types';
 import type { ConversionContext, ConverterFn } from './types';
-import { getParentInfo } from './types';
+import { getParentInfo, nodeIdFor } from './types';
 import { createArgEdge, createBranchEdge, buildVariableCells } from '../node-factory';
 import { getOperator } from '../../config/operators';
 import { type IconName } from '../icons';
@@ -32,7 +31,7 @@ export function convertVariable(
   context: ConversionContext,
   convertValue: ConverterFn
 ): string {
-  const nodeId = uuidv4();
+  const nodeId = nodeIdFor(context);
   const op = getOperator(operator);
   const category = op?.category ?? 'variable';
   const icon: IconName = getCategoryIcon(category) as IconName;

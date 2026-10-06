@@ -1,11 +1,10 @@
 import type { JsonLogicValue, LogicNode, OperatorNodeData, CellData } from '../../types';
 import type { ConversionContext, ConverterFn } from './types';
-import { getParentInfo } from './types';
+import { getParentInfo, nodeIdFor } from './types';
 import { generateExpressionText } from '../formatting';
 import { createBranchEdge, createArgEdge } from '../node-factory';
 import { isSimpleOperand } from '../type-helpers';
 import { formatOperandLabel } from '../formatting';
-import { v4 as uuidv4 } from 'uuid';
 import { convertOperator } from './operator-converter';
 import { isWellFormedCases } from './switch-cells';
 
@@ -40,7 +39,7 @@ export function convertSwitch(
   }
 
   const parentInfo = getParentInfo(context);
-  const nodeId = uuidv4();
+  const nodeId = nodeIdFor(context);
 
   const cells: CellData[] = [];
   let cellIndex = 0;

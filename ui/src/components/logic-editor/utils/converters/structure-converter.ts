@@ -1,7 +1,6 @@
-import { v4 as uuidv4 } from 'uuid';
 import type { JsonLogicValue, StructureNodeData, StructureElement, LogicNode } from '../../types';
 import type { ConversionContext, ConverterFn } from './types';
-import { getParentInfo } from './types';
+import { getParentInfo, nodeIdFor } from './types';
 import { createArgEdge, createBranchEdge } from '../node-factory';
 import { isJsonLogicExpression } from '../type-helpers';
 import { generateExpressionText } from '../formatting';
@@ -21,7 +20,7 @@ export function convertStructure(
   convertValue: ConverterFn
 ): string {
   const parentInfo = getParentInfo(context);
-  const nodeId = uuidv4();
+  const nodeId = nodeIdFor(context);
   const isArray = Array.isArray(value);
 
   // Collect expression elements in document order

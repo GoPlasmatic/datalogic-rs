@@ -21,7 +21,6 @@ export interface ClipboardDeps {
   onNodesChange?: (nodes: LogicNode[]) => void;
   setSelectedNodeId: (id: string | null) => void;
   setPanelValues: Dispatch<SetStateAction<Record<string, unknown>>>;
-  hasEditedRef: React.RefObject<boolean>;
 }
 
 export function useClipboardState(deps: ClipboardDeps) {
@@ -33,7 +32,6 @@ export function useClipboardState(deps: ClipboardDeps) {
     onNodesChange,
     setSelectedNodeId,
     setPanelValues,
-    hasEditedRef,
   } = deps;
 
   // Clipboard payload lives in a ref (deep clone, mutated imperatively
@@ -99,7 +97,6 @@ export function useClipboardState(deps: ClipboardDeps) {
 
           newNodes = [...newNodes, ...clonedNodes];
 
-          hasEditedRef.current = true;
           onNodesChange?.(newNodes);
           setSelectedNodeId(newRootId);
           setPanelValues({});
@@ -114,13 +111,12 @@ export function useClipboardState(deps: ClipboardDeps) {
       };
 
       const newNodes = clonedNodes;
-      hasEditedRef.current = true;
       onNodesChange?.(newNodes);
       setSelectedNodeId(newRootId);
       setPanelValues({});
       return newNodes;
     });
-  }, [selectedNode, pushToUndoStack, onNodesChange, setInternalNodes, setSelectedNodeId, setPanelValues, hasEditedRef]);
+  }, [selectedNode, pushToUndoStack, onNodesChange, setInternalNodes, setSelectedNodeId, setPanelValues]);
 
   return { copyNode, pasteNode, canPaste };
 }

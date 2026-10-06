@@ -23,9 +23,9 @@ import {
 // Factory function to create a literal node
 export function createLiteralNode(
   value: JsonLogicValue,
-  parentInfo: ParentInfo = {}
+  parentInfo: ParentInfo = {},
+  nodeId: string = uuidv4()
 ): LogicNode {
-  const nodeId = uuidv4();
   return {
     id: nodeId,
     type: 'literal',

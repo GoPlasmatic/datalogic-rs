@@ -75,12 +75,21 @@ export const PropertiesPanel = memo(function PropertiesPanel({
     };
   }, [propertyPanelFocusRef, focusField]);
 
-  // Initialize panel values when selection changes
+  // Initialize panel values when the selection, or what it holds, changes.
+  // A node object can be replaced without changing (the editor adopts a
+  // re-conversion of the rule after each reported edit); re-seeding then
+  // would overwrite what the user typed since the last apply.
+  const seededRef = useRef<string | null>(null);
   useEffect(() => {
-    if (selectedNode) {
-      const initialValues = getInitialValuesFromNode(selectedNode.data);
-      resetPanelValues(initialValues);
+    if (!selectedNode) {
+      seededRef.current = null;
+      return;
     }
+    const initialValues = getInitialValuesFromNode(selectedNode.data);
+    const seed = `${selectedNode.id}\u0000${JSON.stringify(initialValues)}`;
+    if (seed === seededRef.current) return;
+    seededRef.current = seed;
+    resetPanelValues(initialValues);
   }, [selectedNode, resetPanelValues]);
 
   // Handle pending focus after selection change

@@ -5,11 +5,12 @@
  */
 import { describe, expect, it } from 'vitest';
 import { fireEvent, render, waitFor } from '@testing-library/react';
-import './setup';
+import { flushEffects } from './setup';
 import { DataLogicEditor } from '../../src/lib';
 
 async function openPanel(root: HTMLElement) {
   await waitFor(() => expect(root.querySelector('.react-flow__node')).not.toBeNull());
+  await flushEffects();
   fireEvent.click(root.querySelector('.react-flow__node')!);
   await waitFor(() => expect(root.querySelector('.panel-field label[for]')).not.toBeNull());
 }

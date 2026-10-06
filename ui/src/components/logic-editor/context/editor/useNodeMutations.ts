@@ -18,7 +18,6 @@ export interface NodeMutationDeps {
   selectedNodeId: string | null;
   setSelectedNodeId: (id: string | null) => void;
   setPanelValues: Dispatch<SetStateAction<Record<string, unknown>>>;
-  hasEditedRef: React.RefObject<boolean>;
   nodes: LogicNode[];
   internalNodes: LogicNode[];
 }
@@ -31,25 +30,23 @@ export function useNodeMutations(deps: NodeMutationDeps) {
     selectedNodeId,
     setSelectedNodeId,
     setPanelValues,
-    hasEditedRef,
     nodes,
     internalNodes,
   } = deps;
 
   const { createNode, hasNodes } = useNodeCreation(
     pushToUndoStack, setInternalNodes, onNodesChange,
-    setSelectedNodeId, setPanelValues, hasEditedRef, internalNodes
+    setSelectedNodeId, setPanelValues, internalNodes
   );
 
   const { insertNodeOnEdge } = useNodeEdgeInsert(
     pushToUndoStack, setInternalNodes, onNodesChange,
-    setSelectedNodeId, setPanelValues, hasEditedRef
+    setSelectedNodeId, setPanelValues
   );
 
   const operations = useNodeOperations(
     pushToUndoStack, setInternalNodes, onNodesChange,
-    selectedNodeId, setSelectedNodeId, setPanelValues,
-    hasEditedRef, nodes
+    selectedNodeId, setSelectedNodeId, setPanelValues, nodes
   );
 
   return {

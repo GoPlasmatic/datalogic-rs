@@ -1,7 +1,6 @@
-import { v4 as uuidv4 } from 'uuid';
 import type { JsonLogicValue, CellData, LogicNode, OperatorNodeData } from '../../types';
 import type { ConversionContext, ConverterFn } from './types';
-import { getParentInfo } from './types';
+import { getParentInfo, nodeIdFor } from './types';
 import { TRUNCATION_LIMITS } from '../../constants';
 import { getOperator } from '../../config/operators';
 import { ITERATOR_ARG_ICONS, getOperandTypeIcon, CONTROL_ICONS, type IconName } from '../icons';
@@ -22,7 +21,7 @@ export function convertOperator(
   convertValue: ConverterFn,
   rawOperand?: JsonLogicValue
 ): string {
-  const nodeId = uuidv4();
+  const nodeId = nodeIdFor(context);
   const op = getOperator(operator);
   const category = op?.category ?? 'utility';
   const cells: CellData[] = [];

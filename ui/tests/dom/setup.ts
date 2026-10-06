@@ -7,7 +7,10 @@
  * structure and behaviour, not pixels.
  */
 import { afterEach } from 'vitest';
-import { cleanup } from '@testing-library/react';
+import { act, cleanup, configure } from '@testing-library/react';
+
+// The full suite runs files in parallel; give async queries room under load.
+configure({ asyncUtilTimeout: 5000 });
 
 class ResizeObserverStub {
   observe() {}
@@ -55,3 +58,15 @@ if (typeof window !== 'undefined') {
 afterEach(() => {
   cleanup();
 });
+
+/**
+ * Let pending passive effects run. A node can be in the DOM before the
+ * effects that subscribe to its selection (React Flow's
+ * useOnSelectionChange) have run; a click in that gap, which no user can
+ * make, would be lost.
+ */
+export async function flushEffects(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}

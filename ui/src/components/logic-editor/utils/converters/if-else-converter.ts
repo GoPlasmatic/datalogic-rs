@@ -1,9 +1,8 @@
 import type { JsonLogicValue, LogicNode, OperatorNodeData, CellData, LogicEdge } from '../../types';
 import type { ConversionContext, ConverterFn } from './types';
-import { getParentInfo } from './types';
+import { getParentInfo, nodeIdFor } from './types';
 import { generateExpressionText } from '../formatting';
 import { createArgEdge } from '../node-factory';
-import { v4 as uuidv4 } from 'uuid';
 
 type BranchType = 'yes' | 'no' | 'branch' | 'condition' | undefined;
 
@@ -131,7 +130,7 @@ function buildDiamond(
   branchType: BranchType,
   isElif: boolean
 ): string {
-  const diamondId = uuidv4();
+  const diamondId = nodeIdFor({ parentId, argIndex, rootId: context.rootId });
   const condition = args[0];
   const thenValue = args[1];
   const rest = args.slice(2);

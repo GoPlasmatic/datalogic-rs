@@ -13,5 +13,8 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.{ts,tsx}', 'tests/**/*.test.{ts,tsx}'],
     globals: false,
+    // The jsdom component tests mount React Flow, which is slow when the
+    // suite runs files in parallel.
+    testTimeout: 20_000,
   },
 });

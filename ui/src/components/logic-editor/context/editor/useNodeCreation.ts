@@ -16,7 +16,6 @@ export function useNodeCreation(
   onNodesChange: ((nodes: LogicNode[]) => void) | undefined,
   setSelectedNodeId: (id: string | null) => void,
   setPanelValues: Dispatch<SetStateAction<Record<string, unknown>>>,
-  hasEditedRef: React.RefObject<boolean>,
   internalNodes: LogicNode[]
 ) {
   const hasNodes = useCallback(() => {
@@ -155,7 +154,6 @@ export function useNodeCreation(
 
             if (prev.length === 0) {
               const newNodes = [newNode, conditionNode, thenNode, elseNode];
-              hasEditedRef.current = true;
               onNodesChange?.(newNodes);
               setSelectedNodeId(newNodeId);
               setPanelValues({});
@@ -193,7 +191,6 @@ export function useNodeCreation(
                 elseNode,
                 ...prev.map((n) => (n.id === rootNode.id ? updatedRoot : n)),
               ];
-              hasEditedRef.current = true;
               onNodesChange?.(newNodes);
               setSelectedNodeId(newNodeId);
               setPanelValues({});
@@ -208,7 +205,6 @@ export function useNodeCreation(
 
         if (prev.length === 0) {
           const newNodes = [newNode];
-          hasEditedRef.current = true;
           onNodesChange?.(newNodes);
           setSelectedNodeId(newNodeId);
           setPanelValues({});
@@ -240,7 +236,6 @@ export function useNodeCreation(
               updatedOp as LogicNode,
               ...prev.map((n) => (n.id === rootNode.id ? updatedRoot : n)),
             ];
-            hasEditedRef.current = true;
             onNodesChange?.(newNodes);
             setSelectedNodeId(newNodeId);
             setPanelValues({});
@@ -249,14 +244,13 @@ export function useNodeCreation(
         }
 
         const newNodes = [newNode];
-        hasEditedRef.current = true;
         onNodesChange?.(newNodes);
         setSelectedNodeId(newNodeId);
         setPanelValues({});
         return newNodes;
       });
     },
-    [onNodesChange, pushToUndoStack, setInternalNodes, setSelectedNodeId, setPanelValues, hasEditedRef]
+    [onNodesChange, pushToUndoStack, setInternalNodes, setSelectedNodeId, setPanelValues]
   );
 
   return { createNode, hasNodes };

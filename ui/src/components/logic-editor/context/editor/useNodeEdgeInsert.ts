@@ -58,7 +58,6 @@ export function useNodeEdgeInsert(
   onNodesChange: ((nodes: LogicNode[]) => void) | undefined,
   setSelectedNodeId: (id: string | null) => void,
   setPanelValues: Dispatch<SetStateAction<Record<string, unknown>>>,
-  hasEditedRef: React.RefObject<boolean>
 ) {
   const insertNodeOnEdge = useCallback(
     (sourceId: string, targetId: string, operatorName: string) => {
@@ -163,14 +162,13 @@ export function useNodeEdgeInsert(
 
         newNodes.push(newNode);
 
-        hasEditedRef.current = true;
         onNodesChange?.(newNodes);
         setSelectedNodeId(newNodeId);
         setPanelValues({});
         return newNodes;
       });
     },
-    [onNodesChange, pushToUndoStack, setInternalNodes, setSelectedNodeId, setPanelValues, hasEditedRef]
+    [onNodesChange, pushToUndoStack, setInternalNodes, setSelectedNodeId, setPanelValues]
   );
 
   return { insertNodeOnEdge };

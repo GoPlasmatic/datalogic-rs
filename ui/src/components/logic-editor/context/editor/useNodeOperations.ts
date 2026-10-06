@@ -22,7 +22,6 @@ export function useNodeOperations(
   selectedNodeId: string | null,
   setSelectedNodeId: (id: string | null) => void,
   setPanelValues: Dispatch<SetStateAction<Record<string, unknown>>>,
-  hasEditedRef: React.RefObject<boolean>,
   nodes: LogicNode[]
 ) {
   const updateNode = useCallback(
@@ -39,12 +38,11 @@ export function useNodeOperations(
           }
           return node;
         });
-        hasEditedRef.current = true;
         onNodesChange?.(newNodes);
         return newNodes;
       });
     },
-    [onNodesChange, pushToUndoStack, setInternalNodes, hasEditedRef]
+    [onNodesChange, pushToUndoStack, setInternalNodes]
   );
 
   const deleteNode = useCallback(
@@ -53,7 +51,6 @@ export function useNodeOperations(
         pushToUndoStack(prev);
 
         const newNodes = deleteNodeAndDescendants(nodeId, prev);
-        hasEditedRef.current = true;
         if (selectedNodeId === nodeId) {
           setSelectedNodeId(null);
           setPanelValues({});
@@ -62,7 +59,7 @@ export function useNodeOperations(
         return newNodes;
       });
     },
-    [selectedNodeId, onNodesChange, pushToUndoStack, setInternalNodes, setSelectedNodeId, setPanelValues, hasEditedRef]
+    [selectedNodeId, onNodesChange, pushToUndoStack, setInternalNodes, setSelectedNodeId, setPanelValues]
   );
 
   const getChildNodes = useCallback(
@@ -102,12 +99,11 @@ export function useNodeOperations(
         if (!result) return prev;
         pushToUndoStack(prev);
 
-        hasEditedRef.current = true;
         onNodesChange?.(result.nodes);
         return result.nodes;
       });
     },
-    [onNodesChange, pushToUndoStack, setInternalNodes, hasEditedRef]
+    [onNodesChange, pushToUndoStack, setInternalNodes]
   );
 
   const removeArgumentFromNode = useCallback(
@@ -117,12 +113,11 @@ export function useNodeOperations(
         if (!result) return prev;
         pushToUndoStack(prev);
 
-        hasEditedRef.current = true;
         onNodesChange?.(result);
         return result;
       });
     },
-    [onNodesChange, pushToUndoStack, setInternalNodes, hasEditedRef]
+    [onNodesChange, pushToUndoStack, setInternalNodes]
   );
 
   const wrapNodeInOperatorFn = useCallback(
@@ -135,14 +130,13 @@ export function useNodeOperations(
         const wrapperNode = result[result.length - 1];
         const newOperatorId = wrapperNode.id;
 
-        hasEditedRef.current = true;
         onNodesChange?.(result);
         setSelectedNodeId(newOperatorId);
         setPanelValues({});
         return result;
       });
     },
-    [onNodesChange, pushToUndoStack, setInternalNodes, setSelectedNodeId, setPanelValues, hasEditedRef]
+    [onNodesChange, pushToUndoStack, setInternalNodes, setSelectedNodeId, setPanelValues]
   );
 
   const duplicateNodeFn = useCallback(
@@ -152,14 +146,13 @@ export function useNodeOperations(
         if (!result) return prev;
         pushToUndoStack(prev);
 
-        hasEditedRef.current = true;
         onNodesChange?.(result.nodes);
         setSelectedNodeId(result.newRootId);
         setPanelValues({});
         return result.nodes;
       });
     },
-    [pushToUndoStack, onNodesChange, setInternalNodes, setSelectedNodeId, setPanelValues, hasEditedRef]
+    [pushToUndoStack, onNodesChange, setInternalNodes, setSelectedNodeId, setPanelValues]
   );
 
   return {
