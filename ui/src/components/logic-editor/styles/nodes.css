@@ -612,7 +612,7 @@
 }
 
 /* Ensure debug-current node wrapper is above all other nodes */
-.react-flow__node:has(.debug-current) {
+:where(.logic-editor) .react-flow__node:has(.debug-current) {
   z-index: 1000 !important;
 }
 
@@ -1081,7 +1081,7 @@
    ReactFlow Handle Styles
    ============================================ */
 
-.react-flow__handle {
+:where(.logic-editor) .react-flow__handle {
   width: 10px;
   height: 10px;
   border: 2px solid white;
@@ -1091,16 +1091,16 @@
   border-color: var(--bg-primary);
 }
 
-.react-flow__handle-top {
+:where(.logic-editor) .react-flow__handle-top {
   top: -6px;
 }
 
-.react-flow__handle-bottom {
+:where(.logic-editor) .react-flow__handle-bottom {
   bottom: -6px;
 }
 
 /* input handles (connection to parent) now sit on the RIGHT, centred */
-.react-flow__handle-right {
+:where(.logic-editor) .react-flow__handle-right {
   right: -6px;
   top: 50% !important;
   transform: translateY(-50%) !important;
@@ -1108,21 +1108,21 @@
 
 /* left handles are the per-cell branch handles — their vertical position is set
    inline / by .cell-handle, so do NOT force-centre them here */
-.react-flow__handle-left {
+:where(.logic-editor) .react-flow__handle-left {
   left: -6px;
 }
 
 /* Edge styles */
-.react-flow__edge-path {
+:where(.logic-editor) .react-flow__edge-path {
   stroke-width: 2;
 }
 
 /* Custom edge styles for decision branches */
-.react-flow__edge.yes-edge .react-flow__edge-path {
+:where(.logic-editor) .react-flow__edge.yes-edge .react-flow__edge-path {
   stroke: #22C55E;
 }
 
-.react-flow__edge.no-edge .react-flow__edge-path {
+:where(.logic-editor) .react-flow__edge.no-edge .react-flow__edge-path {
   stroke: #EF4444;
 }
 

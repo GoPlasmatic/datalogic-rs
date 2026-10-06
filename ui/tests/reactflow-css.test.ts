@@ -3,7 +3,7 @@
  * scoped to the editor. Regenerate with `node scripts/reactflow-css.mjs`.
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -26,5 +26,20 @@ describe('reactflow-base.css', () => {
 
   it('keeps upstream touch-action on the pane', () => {
     expect(css).toMatch(/:where\(\.logic-editor\) \.react-flow__pane \{[^}]*touch-action: none;/);
+  });
+
+  it('leaves no editor rule that targets every React Flow on the page', () => {
+    const dir = resolve(uiRoot, 'src/components/logic-editor');
+    const files = readdirSync(dir, { recursive: true, encoding: 'utf8' }).filter((f) => f.endsWith('.css'));
+    const leaks: string[] = [];
+    for (const file of files) {
+      const text = readFileSync(resolve(dir, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      for (const m of text.matchAll(/([^{}]+)\{/g)) {
+        for (const selector of m[1].split(',').map((s) => s.trim())) {
+          if (selector.startsWith('.react-flow')) leaks.push(`${file}: ${selector}`);
+        }
+      }
+    }
+    expect(leaks).toEqual([]);
   });
 });
