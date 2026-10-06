@@ -1,0 +1,59 @@
+name: Weekly
+
+# Checks whose inputs change without a commit, or that are too slow or
+# costly for every PR:
+#
+#   - cargo-deny: a RustSec advisory published against a dependency no PR
+#     touched would otherwise surface only at the next dependency change.
+#   - The core crate on macOS and Windows: every per-PR job runs on
+#     linux-x64, and the tensor family reinterprets byte buffers, so the
+#     other first-tier platforms get a full test run here.
+on:
+  schedule:
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deny:
+    name: cargo-deny
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+
+      - uses: ./.github/actions/install-cargo-tools
+        with:
+          cargo-deny: 'true'
+
+      - name: cargo deny (every shipping workspace)
+        run: make deny
+
+  core-tests:
+    name: Core tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-15 is arm64; windows-latest is x64 (MSVC).
+        os: [macos-15, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      # The same run ci.yml's check job gates on: every integration test
+      # (they declare their features as required-features), the
+      # conformance battery in all seven evaluation modes, and the doctests.
+      - name: Test (all features)
+        run: cargo test --workspace --all-features --locked
