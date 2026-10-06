@@ -76,18 +76,16 @@ pub(crate) fn populate_lits(node: &mut CompiledNode) {
     {
         // Cache the fast-predicate detection result so quantifier/filter
         // operators consult `predicate_hint` instead of re-running the
-        // structural detection on every iteration. Re-derive on every
-        // call (rather than guarding with `is_none`) so a clone of an
-        // already-populated tree gets a fresh hint matching the cloned
-        // args — `Box<[PathSegment]>` and `OwnedDataValue` move on clone,
-        // and the cached hint borrows nothing from them anyway.
+        // structural detection on every iteration. The pass runs once
+        // per compile (`Logic::new`); a cloned tree carries the hint along
+        // with its args, which is right because the hint is owned and
+        // borrows nothing from them.
         *predicate_hint =
             crate::operators::array::FastPredicate::try_detect_owned(*opcode, args).map(Box::new);
         // Cache the iterator-input classification for ops that consume
         // `args[0]` as an iterable. Read by `resolve_iter_input` so the
         // runtime shape match collapses to a byte compare. Other opcodes
-        // keep the default `General` (the populate pass overwrites on
-        // every clone).
+        // get `General`.
         *iter_arg_kind = if opcode.iterates_arg0() && !args.is_empty() {
             crate::operators::array::IterArgKind::classify(&args[0])
         } else {

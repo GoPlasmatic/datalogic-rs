@@ -95,8 +95,8 @@ impl Drop for DepthGuard {
 /// JSONLogic compile/evaluate engine.
 ///
 /// Holds the immutable engine state — registered [`crate::CustomOperator`]
-/// implementations, the [`EvaluationConfig`], the optional
-/// preserve-structure flag — and exposes the public surface for parsing
+/// implementations, the [`EvaluationConfig`], the templating, folding and
+/// family settings — and exposes the public surface for parsing
 /// rules ([`Self::compile`]), evaluating them ([`Self::eval`] /
 // `Self::eval_into` is feature-gated on `serde_json`; link it
 // conditionally so default-features `cargo doc` doesn't break.

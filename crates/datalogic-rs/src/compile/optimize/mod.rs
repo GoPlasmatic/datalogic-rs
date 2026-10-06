@@ -1,15 +1,29 @@
 //! Optimization passes for compiled logic trees.
 //!
-//! Each pass is a pure function that transforms a `CompiledNode` tree,
-//! producing an equivalent but more efficient tree. Passes are composable
-//! and independently testable.
+//! Two kinds of pass live here:
 //!
-//! # Adding a new optimization
+//! - **Per-call rewrites**, run by [`optimize`] on each builtin call the
+//!   walker builds, to a fixpoint: `dead_code::eliminate`,
+//!   `constant_fold::fold` and `strength::reduce`. Each takes the node by
+//!   value and returns `(node, changed)`; the ones that consult the
+//!   engine's settings take `&Engine`.
+//! - **Whole-tree passes**, run once by `Logic::compile_inner` on the
+//!   finished tree: `cse::apply`. `constant_fold::fold_static_node`
+//!   evaluates a fully static node at compile time for the walker.
 //!
-//! 1. Create a new file in this directory (e.g., `my_pass.rs`)
-//! 2. Implement a `pub fn optimize(node: CompiledNode, ...) -> CompiledNode`
-//! 3. Call the pass from `optimize()` below
-//! 4. Run `cargo test` — no changes needed in engine.rs or trace.rs
+//! None of them run for a traced compile or on an engine built with
+//! folding off.
+//!
+//! # Adding a per-call rewrite
+//!
+//! 1. Create a new file in this directory (e.g., `my_pass.rs`).
+//! 2. Implement `fn my_pass(node: CompiledNode, ...) -> (CompiledNode, bool)`,
+//!    returning whether it changed anything.
+//! 3. Call it from [`optimize`] below. If its decision reads the engine's
+//!    settings, fold its `changed` into the `observed` flag `optimize`
+//!    returns, so the rule is compiled again on an engine whose settings
+//!    differ.
+//! 4. Run `cargo test --all-features`.
 
 pub(super) mod constant_fold;
 pub(super) mod cse;

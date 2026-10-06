@@ -61,9 +61,9 @@ impl Logic {
     /// have full operator coverage even when the engine has folding on.
     /// `place` records each node's pointer ([`Logic::pointer`]), for a
     /// `Logic` the caller keeps; a one-shot run drops it unread.
-    #[cfg(feature = "trace")]
     /// `templating` is the mode to compile in, as for
     /// [`Self::compile_in_mode`].
+    #[cfg(feature = "trace")]
     pub(crate) fn compile_for_trace(
         logic: &OwnedDataValue,
         engine: &Engine,

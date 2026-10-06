@@ -174,12 +174,11 @@ impl CompileCtx {
         id
     }
 
-    /// Whether to skip the optimizer + constant-fold passes during compile.
-    #[inline]
     /// Record that a fold or an optimizer rewrite evaluated something
     /// under the engine's settings (truthiness, number coercion, NaN and
     /// division handling, loose equality), so the compiled tree is only
     /// right for engines that share them.
+    #[inline]
     pub(crate) fn note_config_fold(&mut self) {
         self.config_folds = true;
     }
@@ -189,6 +188,8 @@ impl CompileCtx {
         self.config_folds
     }
 
+    /// Whether to skip the optimizer + constant-fold passes during compile.
+    #[inline]
     pub(crate) fn skip_fold(&self) -> bool {
         self.skip_fold
     }

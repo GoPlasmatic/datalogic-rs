@@ -1,9 +1,10 @@
 use serde::ser::{Serialize, Serializer};
 
-/// Internal storage for the breadcrumb inside `Error`'s boxed metadata.
-/// Hidden from the public surface so the layout (currently a plain
-/// `Vec<u32>`) can evolve (smallvec, inline buffer, deferred-grow) without
-/// an API change. Construct via `ErrorPath::default()` (empty) or
+/// Internal storage for the breadcrumb, held inline in `Error` (see the
+/// note on `Error::operator` for why the metadata is not boxed). Hidden
+/// from the public surface so the layout (currently a plain `Vec<u32>`)
+/// can evolve (smallvec, inline buffer, deferred-grow) without an API
+/// change. Construct via `ErrorPath::default()` (empty) or
 /// `From<Vec<u32>>`.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ErrorPath {

@@ -93,23 +93,24 @@ pub(crate) enum CompiledNode {
     /// A built-in operator optimized with OpCode dispatch.
     ///
     /// The OpCode enum enables direct dispatch without string lookups,
-    /// significantly improving performance for the built-in operators (64
-    /// canonical operators when every operator feature is enabled).
+    /// significantly improving performance for the built-in operators (one
+    /// opcode per canonical built-in compiled into the build; see
+    /// [`crate::Engine::builtin_operator_names`]).
     ///
     /// `predicate_hint` caches the result of [`crate::operators::array::FastPredicate::try_detect_owned`]
     /// so quantifier/filter operators don't repeat the structural pattern
     /// match on every iteration. Populated post-compile by
     /// [`populate_lits`]; `None` for nodes that aren't a fast-predicate
-    /// shape, and re-derived after every clone (the populate pass overwrites
-    /// the field).
+    /// shape. A clone carries it along, which is right because it is owned
+    /// and borrows nothing from the args.
     ///
     /// `iter_arg_kind` caches the
     /// [`crate::operators::array::IterArgKind::classify`] result for `args[0]`
     /// when this op iterates (filter/map/all/some/none/reduce/merge/min/max).
     /// `IterArgKind::General` for everything else — the dispatcher reads the
     /// kind and forwards it to `resolve_iter_input`, sidestepping the per-call
-    /// pattern match on the iterator input's shape. Re-derived on every
-    /// populate-arena-lits pass so clones stay correct.
+    /// pattern match on the iterator input's shape. Set by the same
+    /// [`populate_lits`] pass.
     BuiltinOperator {
         id: NodeId,
         opcode: OpCode,
@@ -118,7 +119,8 @@ pub(crate) enum CompiledNode {
         iter_arg_kind: crate::operators::array::IterArgKind,
     },
 
-    /// A custom operator registered via `Engine::add_operator`.
+    /// A custom operator registered via
+    /// [`crate::EngineBuilder::add_operator`].
     /// Boxed to reduce enum size (rare variant).
     CustomOperator(Box<CustomOperatorData>),
 

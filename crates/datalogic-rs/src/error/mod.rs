@@ -479,7 +479,7 @@ mod tests {
     #[test]
     fn with_node_ids_round_trips() {
         // Engine boundary calls `with_node_ids` once per escaping error;
-        // the ids land in the boxed metadata slot and read back unchanged.
+        // the ids land in the breadcrumb and read back unchanged.
         let err = Error::invalid_arguments("x").with_node_ids(vec![1, 2, 3]);
         assert_eq!(err.node_ids(), &[1, 2, 3]);
         // Metadata-free errors read back as empty without allocating.
