@@ -380,6 +380,7 @@ fn test_trace_custom_operator_error_propagation() {
 
 /// `sort` by a field records the key of every item when traced, as every
 /// other iterator does, instead of reading the keys on its fast path.
+#[cfg(feature = "ext-array")]
 #[test]
 fn traced_sort_by_a_field_records_each_key() {
     let engine = Engine::new();

@@ -41,8 +41,8 @@ class ErrorMappingTest {
             EvaluateException ex = assertThrows(EvaluateException.class, () -> rule.evaluate("{}"));
             assertEquals("Thrown", ex.errorType());
             assertNotNull(ex.getMessage());
-            // operatorName() is the OUTERMOST failing operator.
-            assertEquals("+", ex.operatorName());
+            // operatorName() is the innermost failing operator.
+            assertEquals("throw", ex.operatorName());
             assertNotNull(ex.pathJson());
             assertTrue(ex.pathJson().startsWith("["), "path should be a JSON array: " + ex.pathJson());
         }
