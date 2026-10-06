@@ -76,6 +76,72 @@ pub struct Logic {
     /// What of an input this rule reads, worked out on first use; see
     /// [`crate::projection`].
     pub(crate) projection: std::sync::OnceLock<Option<Box<crate::projection::Projection>>>,
+    /// For a rule whose compile folded something under the engine's
+    /// settings: its source, to compile it again for an engine that
+    /// would fold it differently; see [`Self::for_engine`]. `None` for
+    /// every other rule.
+    pub(crate) refold: Option<Box<Refold>>,
+}
+
+/// How many differently-configured engines keep their own compile of one
+/// rule (see [`Logic::for_engine`]). Past that, an engine evaluates the
+/// rule as first compiled.
+const REFOLD_SLOTS: usize = 4;
+
+/// The source of a rule whose constants were folded under the compiling
+/// engine's settings, and that rule compiled again on engines with other
+/// settings; see [`Logic::for_engine`].
+#[derive(Clone)]
+pub(crate) struct Refold {
+    source: datavalue::OwnedDataValue,
+    templating: bool,
+    /// The compiling engine's `Engine::fold_fingerprint`.
+    fingerprint: u64,
+    /// `(fingerprint, rule compiled on an engine with it)`, filled on
+    /// first use.
+    others: [std::sync::OnceLock<(u64, Box<Logic>)>; REFOLD_SLOTS],
+}
+
+impl Refold {
+    pub(crate) fn new(
+        source: datavalue::OwnedDataValue,
+        templating: bool,
+        fingerprint: u64,
+    ) -> Self {
+        Self {
+            source,
+            templating,
+            fingerprint,
+            others: Default::default(),
+        }
+    }
+
+    /// The rule compiled on `engine`, from a slot holding `engine`'s
+    /// fingerprint or one filled now. `None` when the compile fails (the
+    /// engine lacks an operator the rule uses, say) or every slot holds
+    /// another fingerprint.
+    #[cold]
+    fn on(&self, engine: &crate::Engine) -> Option<&Logic> {
+        let fingerprint = engine.fold_fingerprint();
+        for slot in &self.others {
+            if slot.get().is_none() {
+                let mut logic =
+                    Logic::compile_in_mode(&self.source, engine, self.templating).ok()?;
+                // Only ever reached through this rule, so it needs no
+                // source of its own.
+                logic.refold = None;
+                // Another thread may fill the slot first; then its entry
+                // is checked like any other.
+                let _ = slot.set((fingerprint, Box::new(logic)));
+            }
+            if let Some((held, logic)) = slot.get()
+                && *held == fingerprint
+            {
+                return Some(logic);
+            }
+        }
+        None
+    }
 }
 
 impl std::fmt::Debug for Logic {
@@ -118,6 +184,28 @@ impl Logic {
             engine_id: 0,
             pointers: None,
             projection: std::sync::OnceLock::new(),
+            refold: None,
+        }
+    }
+
+    /// This rule as `engine` runs it. Compiling folds constant
+    /// subexpressions under the compiling engine's settings (number
+    /// coercion, NaN and division handling, loose equality, truthiness).
+    /// On an engine whose settings differ, a rule that folded something
+    /// is compiled again on that engine, once per distinct setting, so a
+    /// folded constant and the same expression computed at runtime agree.
+    /// Any other rule, and every rule on the engine that compiled it, is
+    /// itself.
+    #[inline]
+    pub(crate) fn for_engine(&self, engine: &crate::Engine) -> &Logic {
+        match &self.refold {
+            Some(refold)
+                if self.engine_id != engine.id()
+                    && refold.fingerprint != engine.fold_fingerprint() =>
+            {
+                refold.on(engine).unwrap_or(self)
+            }
+            _ => self,
         }
     }
 
@@ -126,9 +214,12 @@ impl Logic {
     /// [`Engine::to_builder`](crate::Engine::to_builder).
     ///
     /// Any engine can evaluate a rule in 5.x; on another engine its custom
-    /// operators are looked up by name. In 6.0 a rule evaluates only on
-    /// the engine that compiled it, so a host can use this to find the
-    /// places that evaluate on another one.
+    /// operators are looked up by name, and a rule whose constants were
+    /// folded under different evaluation settings is compiled again on
+    /// that engine (once per distinct setting) so its folded constants
+    /// follow the evaluating engine's settings. In 6.0 a rule evaluates
+    /// only on the engine that compiled it, so a host can use this to
+    /// find the places that evaluate on another one.
     ///
     /// ```rust
     /// use datalogic_rs::Engine;

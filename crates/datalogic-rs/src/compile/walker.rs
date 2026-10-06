@@ -167,6 +167,7 @@ fn custom_operator_node(
         && node_is_static(&node)
         && let Some(value) = optimize::constant_fold::fold_static_node(&node, eng)
     {
+        ctx.note_config_fold();
         return CompiledNode::compile_time_value(Some(ctx.next_id()), value);
     }
     node
@@ -230,10 +231,17 @@ fn compile_builtin(
         && fold
         && !ctx.skip_fold()
     {
-        node = optimize::optimize(node, eng);
+        let (optimized, observed) = optimize::optimize(node, eng);
+        node = optimized;
+        if observed {
+            ctx.note_config_fold();
+        }
+        // Evaluating an operator at compile time may read the engine's
+        // settings (coercion, NaN and division handling, truthiness).
         if node_is_static(&node)
             && let Some(value) = optimize::constant_fold::fold_static_node(&node, eng)
         {
+            ctx.note_config_fold();
             return Ok(CompiledNode::compile_time_value(Some(ctx.next_id()), value));
         }
     }

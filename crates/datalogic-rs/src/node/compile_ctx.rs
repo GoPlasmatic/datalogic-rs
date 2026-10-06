@@ -40,6 +40,9 @@ pub(crate) struct CompileCtx {
     /// `(node id, pointer)` for every id handed out while recording, in id
     /// order.
     pointers: Vec<(u32, Box<str>)>,
+    /// Whether a fold or an optimizer rewrite consulted the engine's
+    /// settings; see [`Self::note_config_fold`].
+    config_folds: bool,
 }
 
 /// `(node id, JSON Pointer)` pairs in id order: what a traced compile
@@ -66,6 +69,7 @@ impl CompileCtx {
             depth: 0,
             pointer: None,
             pointers: Vec::new(),
+            config_folds: false,
         }
     }
 
@@ -81,6 +85,7 @@ impl CompileCtx {
             depth: 0,
             pointer: None,
             pointers: Vec::new(),
+            config_folds: false,
         }
     }
 
@@ -171,6 +176,19 @@ impl CompileCtx {
 
     /// Whether to skip the optimizer + constant-fold passes during compile.
     #[inline]
+    /// Record that a fold or an optimizer rewrite evaluated something
+    /// under the engine's settings (truthiness, number coercion, NaN and
+    /// division handling, loose equality), so the compiled tree is only
+    /// right for engines that share them.
+    pub(crate) fn note_config_fold(&mut self) {
+        self.config_folds = true;
+    }
+
+    /// Whether [`Self::note_config_fold`] was called.
+    pub(crate) fn has_config_folds(&self) -> bool {
+        self.config_folds
+    }
+
     pub(crate) fn skip_fold(&self) -> bool {
         self.skip_fold
     }

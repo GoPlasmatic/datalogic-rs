@@ -217,6 +217,10 @@ pub struct Engine {
     constant_folding: bool,
     /// Configuration for evaluation behavior
     config: EvaluationConfig,
+    /// [`EvaluationConfig::fold_fingerprint`] of `config`, computed once:
+    /// a rule folded under another fingerprint is compiled again before
+    /// it runs here (see `Logic::for_engine`).
+    fold_fingerprint: u64,
     /// The built-in families this engine has, as [`crate::Family`] bits;
     /// see [`crate::EngineBuilder::with_families`].
     families: u32,
@@ -448,6 +452,7 @@ impl Engine {
             templating: templating && cfg!(feature = "templating"),
             template_key_escape,
             constant_folding,
+            fold_fingerprint: config.fold_fingerprint(),
             config,
             families,
         }
@@ -527,6 +532,13 @@ impl Engine {
     #[inline]
     pub(crate) fn id(&self) -> u64 {
         self.id
+    }
+
+    /// The fingerprint of the settings constant folding observes; see
+    /// [`EvaluationConfig::fold_fingerprint`].
+    #[inline]
+    pub(crate) fn fold_fingerprint(&self) -> u64 {
+        self.fold_fingerprint
     }
 
     /// The custom operator registered as `name`.
@@ -872,6 +884,7 @@ impl Engine {
         data: D,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::arena::DataValue<'a>> {
+        let compiled = compiled.for_engine(self);
         let _depth_guard = self.enter_dispatch_boundary()?;
         let data_ref = data.into_arena_for(compiled, self, arena)?;
         let mut ctx = self.new_context(compiled, data_ref);
@@ -1016,6 +1029,7 @@ impl Engine {
         arena: &'a bumpalo::Bump,
         budget: u64,
     ) -> Result<Metered<&'a crate::arena::DataValue<'a>>> {
+        let compiled = compiled.for_engine(self);
         let _depth_guard = self.enter_dispatch_boundary()?;
         let data_ref = data.into_arena_for(compiled, self, arena)?;
         let mut ctx = self.new_context(compiled, data_ref);

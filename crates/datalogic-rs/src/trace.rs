@@ -506,6 +506,7 @@ impl<'e> TracedSession<'e> {
     where
         D: crate::EvalInput<'a>,
     {
+        let compiled = compiled.for_engine(self.engine);
         let expression_tree = ExpressionNode::build_from_compiled(&compiled.root);
         let _depth_guard = match self.engine.enter_dispatch_boundary() {
             Ok(g) => g,

@@ -77,12 +77,12 @@ impl Logic {
 
     #[inline]
     fn compile_inner(
-        logic: &OwnedDataValue,
+        logic_src: &OwnedDataValue,
         engine: &Engine,
         templating: bool,
         mut ctx: CompileCtx,
     ) -> Result<Self> {
-        let mut root = walker::compile_node(logic, Some(engine), templating, &mut ctx)?;
+        let mut root = walker::compile_node(logic_src, Some(engine), templating, &mut ctx)?;
         // CSE runs once over the finished tree, after the per-node fixpoint
         // optimizer (folded shapes are final) and before `Logic::new`'s
         // populate pass (so hints are derived through the wrappers). Gated
@@ -106,6 +106,13 @@ impl Logic {
         let mut logic = Self::new(root, cse_slot_count, needs_ancestor_frames);
         logic.engine_id = engine.id();
         logic.pointers = ctx.take_pointers();
+        if ctx.has_config_folds() {
+            logic.refold = Some(Box::new(crate::node::Refold::new(
+                logic_src.clone(),
+                templating,
+                engine.fold_fingerprint(),
+            )));
+        }
         Ok(logic)
     }
 }

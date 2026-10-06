@@ -445,6 +445,47 @@ impl EvaluationConfig {
         self
     }
 
+    /// A fingerprint of the settings a compile-time fold can observe:
+    /// number coercion, NaN and division handling, loose-equality errors
+    /// and truthiness (a custom truthiness closure counts by identity).
+    /// Two configs with the same fingerprint fold every constant
+    /// subexpression to the same value; see `Logic::for_engine`.
+    pub(crate) fn fold_fingerprint(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let nan: u8 = match self.arithmetic_nan_handling {
+            NanHandling::ThrowError => 0,
+            NanHandling::IgnoreValue => 1,
+            NanHandling::CoerceToZero => 2,
+            NanHandling::ReturnNull => 3,
+        };
+        let division: u8 = match self.division_by_zero {
+            DivisionByZeroHandling::ReturnSaturated => 0,
+            DivisionByZeroHandling::ThrowError => 1,
+            DivisionByZeroHandling::ReturnNull => 2,
+            DivisionByZeroHandling::ReturnInfinity => 3,
+        };
+        let truthy: (u8, usize) = match &self.truthy_evaluator {
+            TruthyEvaluator::JavaScript => (0, 0),
+            TruthyEvaluator::Python => (1, 0),
+            TruthyEvaluator::StrictBoolean => (2, 0),
+            TruthyEvaluator::Custom(f) => (3, Arc::as_ptr(f) as *const () as usize),
+        };
+        let c = &self.numeric_coercion;
+        let mut hasher = std::hash::DefaultHasher::new();
+        (
+            nan,
+            division,
+            self.loose_equality_errors,
+            truthy,
+            c.empty_string_to_zero,
+            c.null_to_zero,
+            c.bool_to_number,
+            c.reject_non_numeric,
+        )
+            .hash(&mut hasher);
+        hasher.finish()
+    }
+
     /// Create a configuration with safe arithmetic (ignores non-numeric values)
     pub fn safe_arithmetic() -> Self {
         Self {

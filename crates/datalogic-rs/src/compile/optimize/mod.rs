@@ -51,18 +51,24 @@ const MAX_FIXPOINT_ITERATIONS: usize = 4;
 ///
 /// Each pass returns `(node, changed)`; the loop exits as soon as all
 /// passes in one iteration report `changed = false`.
-pub(super) fn optimize(node: CompiledNode, engine: &Engine) -> CompiledNode {
+///
+/// Also returns whether any rewrite rested on the engine's settings: dead
+/// code elimination decides by the engine's truthiness, and strength
+/// reduction runs only for a built-in truthiness.
+pub(super) fn optimize(node: CompiledNode, engine: &Engine) -> (CompiledNode, bool) {
     let mut node = node;
     let custom_truthy = matches!(
         engine.config().truthy_evaluator,
         crate::TruthyEvaluator::Custom(_)
     );
+    let mut observed = false;
     for _ in 0..MAX_FIXPOINT_ITERATIONS {
         let mut any_changed = false;
 
         let (n, changed) = dead_code::eliminate(node, engine);
         node = n;
         any_changed |= changed;
+        observed |= changed;
 
         let (n, changed) = constant_fold::fold(node);
         node = n;
@@ -74,6 +80,7 @@ pub(super) fn optimize(node: CompiledNode, engine: &Engine) -> CompiledNode {
             let (n, changed) = strength::reduce(node);
             node = n;
             any_changed |= changed;
+            observed |= changed;
         }
 
         // Cleanup pass — collapse anything strength produced before
@@ -82,10 +89,11 @@ pub(super) fn optimize(node: CompiledNode, engine: &Engine) -> CompiledNode {
         let (n, changed) = dead_code::eliminate(node, engine);
         node = n;
         any_changed |= changed;
+        observed |= changed;
 
         if !any_changed {
             break;
         }
     }
-    node
+    (node, observed)
 }
