@@ -457,6 +457,24 @@ func TestBuilderFailureReleasesHandles(t *testing.T) {
 	}
 }
 
+// A builder dropped without Build (here after a failed setter) is
+// released by its finalizer: the callback handles go with it.
+func TestUnbuiltBuilderReleasesHandles(t *testing.T) {
+	h := func() cgo.Handle {
+		b := NewEngineBuilder().AddOperator("triple", func(string) (string, error) { return "3", nil })
+		if err := b.SetConfigJSON(`{"no_such_key":1}`); err == nil {
+			t.Fatal("want an error for an unknown config key")
+		}
+		return b.reg.handles[0]
+	}()
+	for i := 0; i < 50 && handleLive(h); i++ {
+		forceGC()
+	}
+	if handleLive(h) {
+		t.Fatal("operator handle still live after the unbuilt builder was collected")
+	}
+}
+
 // itoa avoids fmt.Sprintf for trivial int formatting in hot test loops.
 func itoa(n int) string {
 	if n == 0 {

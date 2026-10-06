@@ -317,7 +317,8 @@ if err != nil {
 `Close` is safe to call more than once and from several goroutines at
 once: exactly one call frees the handle. Closing a handle while another
 goroutine is still using it is not supported; finish or join that work
-first. A handle you never close is freed by its GC finalizer.
+first. A handle you never close, and an `EngineBuilder` you never
+`Build`, is freed by its GC finalizer.
 
 ## Performance
 

@@ -130,6 +130,10 @@ func (r *opRegistry) free() {
 //
 // Builders are NOT goroutine-safe — construct from a single goroutine
 // and call Build before sharing the resulting Engine.
+//
+// A builder dropped without Build (say, after a setter failed) is
+// released by its GC finalizer: the native builder and the callbacks
+// registered on it are freed then.
 type EngineBuilder struct {
 	ptr *C.datalogic_engine_builder
 	reg *opRegistry // callback state, handed to the Engine by Build
@@ -145,7 +149,12 @@ func (b *EngineBuilder) fail(err error) {
 
 // NewEngineBuilder creates a fresh, empty builder.
 func NewEngineBuilder() *EngineBuilder {
-	return &EngineBuilder{ptr: C.datalogic_engine_builder_new()}
+	b := &EngineBuilder{ptr: C.datalogic_engine_builder_new()}
+	// Best-effort cleanup for a builder that never reaches Build; Build
+	// clears it. Go finalizes the builder before the registry it points
+	// at, so release still finds the registry intact.
+	runtime.SetFinalizer(b, (*EngineBuilder).release)
+	return b
 }
 
 // Templating toggles the engine's templating mode (multi-key objects
@@ -245,6 +254,7 @@ func (b *EngineBuilder) SetConfigJSON(configJSON string) error {
 	cp, cl := strBytes(configJSON)
 	var cerr *C.datalogic_error
 	rc := C.datalogic_engine_builder_set_config_json(b.ptr, cp, cl, &cerr)
+	runtime.KeepAlive(b)
 	if rc != C.DATALOGIC_STATUS_OK {
 		return takeError(cerr)
 	}
@@ -305,13 +315,15 @@ func (b *EngineBuilder) Build() (*Engine, error) {
 	reg := b.reg
 	b.ptr = nil
 	b.reg = nil
+	runtime.SetFinalizer(b, nil)
 	e := &Engine{ptr: unsafe.Pointer(ePtr), reg: reg}
 	runtime.SetFinalizer(e, (*Engine).Close)
 	return e, nil
 }
 
 // release frees the native builder and reclaims callback handles the
-// engine never picked up. Used on the Build failure paths.
+// engine never picked up. Used on the Build failure paths, and as the
+// finalizer of a builder that never reached Build.
 func (b *EngineBuilder) release() {
 	C.datalogic_engine_builder_free(b.ptr)
 	b.ptr = nil
@@ -319,6 +331,7 @@ func (b *EngineBuilder) release() {
 		b.reg.free()
 		b.reg = nil
 	}
+	runtime.SetFinalizer(b, nil)
 }
 
 //export goDatalogicOpTrampoline
