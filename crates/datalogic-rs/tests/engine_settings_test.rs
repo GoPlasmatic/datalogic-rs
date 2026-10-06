@@ -24,6 +24,8 @@ impl CustomOperator for Echo {
 /// on a builder made from the engine, so a reload that brings the
 /// shadowing family back is refused there too. `to_builder` used to drop
 /// the names.
+// `upper` is a built-in only with the string family compiled in.
+#[cfg(feature = "ext-string")]
 #[test]
 fn to_builder_keeps_the_checked_names() {
     let engine = Engine::builder()

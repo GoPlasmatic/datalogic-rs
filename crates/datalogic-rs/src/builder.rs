@@ -355,6 +355,7 @@ impl EngineBuilder {
     /// ```rust
     /// use datalogic_rs::{Engine, Family};
     ///
+    /// # #[cfg(all(feature = "ext-string", feature = "ext-array"))] {
     /// // The JSONLogic core and the string extensions, nothing else.
     /// let engine = Engine::builder().with_families([Family::ExtString]).build();
     /// assert_eq!(engine.eval_str(r#"{"upper": "a"}"#, "null").unwrap(), r#""A""#);
@@ -362,6 +363,7 @@ impl EngineBuilder {
     /// // engine without `ExtString`.
     /// assert!(engine.eval_str(r#"{"sort": [[2, 1]]}"#, "null").is_err());
     /// assert!(engine.compile_checked(r#"{"sort": [[2, 1]]}"#).is_err());
+    /// # }
     /// ```
     #[must_use = "builder methods return a new builder; chain into `.build()`"]
     pub fn with_families(mut self, families: impl IntoIterator<Item = crate::Family>) -> Self {
@@ -402,6 +404,7 @@ impl EngineBuilder {
     ///     }
     /// }
     ///
+    /// # #[cfg(feature = "ext-string")] {
     /// // `upper` is free without the string family, then taken once it is
     /// // added back.
     /// let builder = Engine::builder()
@@ -410,6 +413,7 @@ impl EngineBuilder {
     ///     .unwrap()
     ///     .with_families([Family::ExtString]);
     /// assert!(builder.try_build().is_err());
+    /// # }
     /// ```
     ///
     /// It also refuses a config whose

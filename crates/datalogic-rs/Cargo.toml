@@ -282,7 +282,15 @@ name = "error_context_test"
 required-features = ["serde_json", "error-handling"]
 
 [[test]]
+name = "error_operator_test"
+required-features = ["trace"]
+
+[[test]]
 name = "error_serialization"
+required-features = ["serde_json"]
+
+[[test]]
+name = "eval_paths_test"
 required-features = ["serde_json"]
 
 [[test]]
@@ -344,6 +352,10 @@ required-features = ["templating", "serde_json"]
 [[test]]
 name = "thread_safety_test"
 required-features = ["serde_json"]
+
+[[test]]
+name = "to_json_round_trip_test"
+required-features = ["serde_json", "trace"]
 
 [[test]]
 name = "trace_pointers_test"

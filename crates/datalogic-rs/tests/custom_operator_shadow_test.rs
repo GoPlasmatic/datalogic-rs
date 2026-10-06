@@ -80,6 +80,8 @@ fn add_operator_is_unchanged() {
     );
 }
 
+// `upper` is a built-in only with the string family compiled in.
+#[cfg(feature = "ext-string")]
 #[test]
 fn try_build_checks_a_name_against_families_set_after_it() {
     use datalogic_rs::Family;
