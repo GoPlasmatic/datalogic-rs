@@ -40,18 +40,18 @@ a deprecation notice on `npm install` pointing them at the new name.
 |---|---|
 | Location | `bindings/<lang>/` (sibling of the other bindings; the core crate lives at `crates/datalogic-rs`) |
 | Workspace | **Excluded** from the root workspace (own `[workspace]` block) |
-| Cargo | `crate-type = ["cdylib", "rlib"]`: `cdylib` for the FFI artifact, `rlib` so Rust consumers can also link it. `bindings/c` additionally emits `staticlib`, because the Go cgo consumer links `libdatalogic_c.a` statically |
-| Dep on core | `datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features = [...explicit list...] }`: the `version` is the semver-compatible floor (every binding pins `"5.0"`), and the binding inlines the feature set it wants |
-| Core feature | **No umbrella feature in core.** The binding owns its operator surface; `crates/datalogic-rs/Cargo.toml` stays free of binding-specific bundling so the published crate is binding-agnostic |
+| Cargo | `crate-type = ["cdylib", "rlib"]`: `cdylib` for the FFI artifact, `rlib` so Rust consumers can also link it. `bindings/c` additionally emits `staticlib`, because the Go cgo consumer links `libdatalogic_c.a` statically; the Go build makes it on its own with the `go-release` profile (no debuginfo, fat LTO) to keep the module tag small |
+| Dep on core | `datalogic-rs = { path = "../../crates/datalogic-rs", version = "...", features = [...] }`: the path builds against the tree; `version` names the oldest core release the binding works with, so raise it when the binding starts calling newer core API |
+| Core features | The binding turns on core's `all-operators` umbrella, which enables every operator family, plus the cross-cutting features it needs (`serde_json`, `trace`, `templating`, `budget`; WASM adds `wasm-clock`). A new operator family joins `all-operators` in `crates/datalogic-rs/Cargo.toml` and reaches every binding with no manifest edit |
 | Tests | The binding's native layout and runner: `tests/` + pytest (Python), `__test__/` + `node --test` (Node), root-level `*_test.go` + `go test` (Go), `src/test/` + JUnit (JVM), xunit (.NET), PHPUnit (PHP), `wasm-pack test` (WASM) |
-| CI | A pair of jobs added to `.github/workflows/release.yml`: `<lang>-build-*` (one or more, possibly a matrix) followed by `publish-<lang>` (`needs: publish-crate` so a binding never ships ahead of core) |
+| CI | A reusable `.github/workflows/release-build-<lang>.yml` that builds, tests and packages the binding (the C-ABI hosts JVM, .NET and PHP share `release-build-c-cdylib.yml` for the native library). `release.yml` calls it as `build-<lang>` and then runs `publish-<lang>`, which `needs: publish-crate` so a binding never ships ahead of core. `ci.yml` also calls `release-build-go.yml`, with uploads off, for its cross-platform matrix |
 | Release tags | `v*` (e.g. `v5.1.0`), a single unified trigger. One tag push runs validate + tests, publishes core, then fans out every binding in parallel. |
 | Versioning | Bindings track the core version exactly (5.3.0 → 5.3.0). `validate` fails if any binding's `Cargo.toml` / `pyproject.toml` / `package.json` / `Datalogic.csproj` / `pom.xml` drifts from core (`composer.json` carries no version: Packagist resolves it from the tag, and the Go module version lives in the `bindings/go/vX.Y.Z` tag). |
 
 ## Why these conventions
 
 - **Excluded from root workspace.** Bindings pull in language-specific
-  build deps (pyo3, napi, jni, …) that bloat the default `cargo test
+  build deps (pyo3, napi, wasm-bindgen, cbindgen, …) that bloat the default `cargo test
   --workspace --all-features` and would force contributors who only
   want to run Rust tests to install language toolchains (Python
   interpreter, Node.js, JDK). Excluding keeps the core's dev loop fast.
@@ -61,23 +61,26 @@ a deprecation notice on `npm install` pointing them at the new name.
   crate (e.g. integration tests, the binding's own benchmarks) link it
   as a normal dep without duplicating source.
 
-- **No umbrella feature in core.** Each binding inlines the explicit
-  feature list it wants in its `datalogic-rs` dep stanza
-  (`features = ["serde_json", "templating", "datetime", …]`). The core
-  crate stays binding-agnostic: adding or removing a binding never
-  touches `crates/datalogic-rs/Cargo.toml`. The trade-off is that bumping a
-  shared operator family across all bindings is a multi-file edit, but
-  that's a rare event and explicit listing makes each binding's surface
-  obvious without cross-referencing.
+- **One umbrella for the operator families.** Every binding exposes
+  every operator family, so each depends on core's `all-operators`
+  feature rather than listing the families. Adding a family is one entry
+  in `all-operators` (core's `operator_names_test` checks that the list
+  names every family in the operator table); listing them per binding
+  meant a multi-file edit, and a binding that missed one quietly lacked
+  its operators. The cross-cutting features (`serde_json`, `trace`,
+  `templating`, `budget`) stay explicit, since not every binding wants
+  each.
 
-- **Single unified release workflow.** Every binding's release jobs
-  live in `.github/workflows/release.yml`. The flow is: validate +
-  tests → publish core → fan out bindings in parallel
-  (wasm → ui chain alongside python wheels → publish-python). A
-  single tag push produces one workflow run with one set of status
-  checks. The trade-off is that a Python wheel-build failure shows up
-  in the same run as core/wasm. The bindings are independent jobs,
-  though, so a failure in one doesn't roll back the others.
+- **One release run, one reusable workflow per binding.** A `v*` tag
+  starts `release.yml`: validate + tests → publish core → fan out the
+  bindings in parallel. Each binding's build lives in its own
+  `release-build-<lang>.yml`, which `release.yml` calls and `ci.yml` can
+  reuse; the publish jobs stay in `release.yml` next to the core
+  publish they depend on. A single tag push produces one workflow run
+  with one set of status checks. The trade-off is that a Python
+  wheel-build failure shows up in the same run as core/wasm. The
+  bindings are independent jobs, though, so a failure in one doesn't
+  roll back the others.
 
 ## Existing bindings
 
