@@ -7,6 +7,9 @@
 // exercise every suite.
 #![cfg(all(feature = "templating", feature = "serde_json"))]
 
+mod common;
+
+use common::suite::{self, Flavour};
 use datalogic_rs::__private::CATALOGUE;
 use datalogic_rs::Engine;
 use serde_json::{Value, json};
@@ -14,6 +17,9 @@ use serde_json::{Value, json};
 use std::env;
 use std::fs;
 use std::path::Path;
+
+/// The suite root, relative to the test binary's cwd (`crates/datalogic-rs`).
+const SUITES: &str = "tests/suites";
 
 /// The engine flavours the suites exercise, keyed by the knobs a test case
 /// can ask for — its `templating` flag and its optional
@@ -337,30 +343,12 @@ fn operator_keys<'v>(rule: &'v Value, out: &mut std::collections::HashSet<&'v st
 
 /// The suites listed in `index.json`, in run order.
 fn indexed_suites() -> Vec<String> {
-    let index = fs::read_to_string("tests/suites/index.json").expect("Failed to read index.json");
-    serde_json::from_str(&index).expect("Failed to parse index.json")
+    suite::index(Path::new(SUITES))
 }
 
 /// Every `.json` suite on disk, relative to `tests/suites/`.
 fn suites_on_disk() -> Vec<String> {
-    fn walk(dir: &Path, root: &Path, out: &mut Vec<String>) {
-        for entry in fs::read_dir(dir).expect("read suite dir") {
-            let path = entry.expect("dir entry").path();
-            if path.is_dir() {
-                walk(&path, root, out);
-            } else if path.extension().is_some_and(|e| e == "json")
-                && path.file_name().is_some_and(|n| n != "index.json")
-            {
-                let rel = path.strip_prefix(root).expect("under root");
-                out.push(rel.to_string_lossy().replace('\\', "/"));
-            }
-        }
-    }
-    let root = Path::new("tests/suites");
-    let mut out = Vec::new();
-    walk(root, root, &mut out);
-    out.sort();
-    out
+    suite::on_disk(Path::new(SUITES))
 }
 
 /// The suites are discovered from disk; `index.json` only fixes their run
@@ -400,11 +388,10 @@ fn every_operator_has_suite_cases() {
     let mut called = std::collections::HashSet::new();
     let mut suites = Vec::new();
     for file in indexed_suites() {
-        let text = fs::read_to_string(format!("tests/suites/{file}")).expect("read suite");
-        suites.push(serde_json::from_str::<Value>(&text).expect("parse suite"));
+        suites.push(suite::entries(&Path::new(SUITES).join(file)));
     }
-    for suite in &suites {
-        for case in suite.as_array().into_iter().flatten() {
+    for entries in &suites {
+        for case in entries {
             if let Some(rule) = case.get("rule") {
                 operator_keys(rule, &mut called);
             }
@@ -445,14 +432,8 @@ fn test_jsonlogic() {
             // Run all tests from index.json
             println!("No JSONLOGIC_TEST_FILE specified, running all tests from index.json\n");
 
-            let index_path = "tests/suites/index.json";
-            let index_contents = fs::read_to_string(index_path).expect("Failed to read index.json");
-
-            let index: Vec<String> =
-                serde_json::from_str(&index_contents).expect("Failed to parse index.json");
-
-            for test_file in index {
-                let test_path = format!("tests/suites/{}", test_file);
+            for test_file in indexed_suites() {
+                let test_path = format!("{SUITES}/{test_file}");
 
                 // Check if file exists
                 if !Path::new(&test_path).exists() {
@@ -559,16 +540,7 @@ fn record_error_case(
 }
 
 fn run_test_file(test_file: &str, engines: &mut Engines) -> (usize, usize, usize) {
-    // Read and parse test file
-    let contents = fs::read_to_string(test_file)
-        .unwrap_or_else(|e| panic!("Failed to read test file {test_file}: {e}"));
-
-    let test_cases: Value = serde_json::from_str(&contents)
-        .unwrap_or_else(|e| panic!("Failed to parse JSON from {test_file}: {e}"));
-
-    let test_array = test_cases
-        .as_array()
-        .expect("Test file should contain an array of test cases");
+    let test_array = suite::entries(Path::new(test_file));
 
     let mut rec = Recorder::default();
 
@@ -623,22 +595,10 @@ fn run_test_file(test_file: &str, engines: &mut Engines) -> (usize, usize, usize
 
         // Pick the engine matching the case's templating flag and its
         // optional template-key escape char.
-        let templating = test_obj
-            .get("templating")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let key_escape = test_obj.get("template_key_escape").map(|v| {
-            let s = v.as_str().unwrap_or_else(|| {
-                panic!("Test case {index}: 'template_key_escape' must be a string")
-            });
-            let mut chars = s.chars();
-            match (chars.next(), chars.next()) {
-                (Some(c), None) => c,
-                _ => panic!(
-                    "Test case {index}: 'template_key_escape' must be exactly one character, got {s:?}"
-                ),
-            }
-        });
+        let Flavour {
+            templating,
+            key_escape,
+        } = Flavour::of(test_obj).unwrap_or_else(|e| panic!("Test case {index}: {e}"));
         // Each case asserts either a `result` or an `error` expectation.
         let expected_error = test_obj.get("error");
         let expected_result = test_obj.get("result");

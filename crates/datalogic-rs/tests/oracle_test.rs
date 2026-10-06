@@ -13,11 +13,13 @@
     feature = "templating"
 ))]
 
+mod common;
 mod oracle;
 
 use std::collections::HashMap;
-use std::fs;
+use std::path::Path;
 
+use common::suite::{self, Flavour};
 use datalogic_rs::{Engine, Error, ErrorKind, EvaluationConfig, MissingVar, ScopedArg};
 use datavalue::OwnedDataValue as V;
 use oracle::Oracle;
@@ -106,15 +108,12 @@ struct Split {
 }
 
 fn suite_cases() -> Vec<(String, usize, Value)> {
-    let index = fs::read_to_string("tests/suites/index.json").expect("read index.json");
-    let files: Vec<String> = serde_json::from_str(&index).expect("parse index.json");
+    let root = Path::new("tests/suites");
     let mut out = Vec::new();
-    for file in files {
-        let text = fs::read_to_string(format!("tests/suites/{file}")).expect("read suite");
-        let suite: Value = serde_json::from_str(&text).expect("parse suite");
-        for (i, case) in suite.as_array().into_iter().flatten().enumerate() {
+    for file in suite::index(root) {
+        for (i, case) in suite::entries(&root.join(&file)).into_iter().enumerate() {
             if case.is_object() {
-                out.push((file.clone(), i, case.clone()));
+                out.push((file.clone(), i, case));
             }
         }
     }
@@ -145,14 +144,11 @@ fn suite_cases_agree(mut flavours: Flavours) {
         if reads_clock(rule_json) {
             continue;
         }
-        let templating = case
-            .get("templating")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
-        let escape = case
-            .get("template_key_escape")
-            .and_then(Value::as_str)
-            .and_then(|s| s.chars().next());
+        let Flavour {
+            templating,
+            key_escape: escape,
+        } = Flavour::of(case.as_object().expect("suite_cases keeps objects"))
+            .unwrap_or_else(|e| panic!("{file} #{index}: {e}"));
         let rule = V::from_json(&rule_json.to_string()).expect("rule");
         let data = V::from_json(&case["data"].to_string()).expect("data");
 
