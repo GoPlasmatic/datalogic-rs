@@ -369,4 +369,23 @@ public class ErrorMappingTests
         Assert.Equal("\"first\"", first);
         Assert.Equal("\"second\"", second);
     }
+
+    // A malformed batch item falls back to tag "InternalError" with the
+    // raw payload as the message, as the Go, JVM and PHP decoders do.
+    [Theory]
+    [InlineData("""{"tag":"Thrown","message":"boom","operator":"throw"}""", "Thrown", "boom", "throw")]
+    [InlineData("""{"message":"no tag"}""", "InternalError", "no tag", null)]
+    [InlineData("""{"tag":7,"message":"bad tag"}""", "InternalError", "bad tag", null)]
+    [InlineData("""{"tag":"Thrown"}""", "Thrown", """{"tag":"Thrown"}""", null)]
+    [InlineData("not json", "InternalError", "not json", null)]
+    public void Malformed_batch_item_falls_back_to_InternalError(
+        string payload, string tag, string message, string? op)
+    {
+        var item = Session.ItemResult(DatalogicStatus.Eval, payload);
+        Assert.False(item.IsSuccess);
+        Assert.Equal(EvaluationStatus.EvaluationError, item.Status);
+        Assert.Equal(tag, item.ErrorTag);
+        Assert.Equal(message, item.ErrorMessage);
+        Assert.Equal(op, item.ErrorOperator);
+    }
 }

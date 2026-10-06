@@ -344,9 +344,12 @@ public sealed class Session : IDisposable
     /// Convert one batch item (status + payload copied out of the
     /// session buffer) into an <see cref="EvaluationResult"/>. Failed
     /// items carry a small JSON object
-    /// <c>{"tag": ..., "message": ..., "operator"?: ...}</c>.
+    /// <c>{"tag": ..., "message": ..., "operator"?: ...}</c>. Should a
+    /// field be missing or not a string, the fallbacks match the Go, JVM
+    /// and PHP decoders: tag <c>"InternalError"</c>, and the raw payload
+    /// as the message.
     /// </summary>
-    private static EvaluationResult ItemResult(DatalogicStatus status, string payload)
+    internal static EvaluationResult ItemResult(DatalogicStatus status, string payload)
     {
         if (status == DatalogicStatus.Ok)
         {
@@ -360,9 +363,9 @@ public sealed class Session : IDisposable
             var root = doc.RootElement;
             if (root.ValueKind == JsonValueKind.Object)
             {
-                if (root.TryGetProperty("tag", out var t)) tag = t.GetString();
-                if (root.TryGetProperty("message", out var m)) message = m.GetString();
-                if (root.TryGetProperty("operator", out var o)) op = o.GetString();
+                tag = StringProperty(root, "tag");
+                message = StringProperty(root, "message");
+                op = StringProperty(root, "operator");
             }
         }
         catch (JsonException)
@@ -370,8 +373,11 @@ public sealed class Session : IDisposable
             // Defensive: surface the raw payload if it isn't the
             // documented error object.
         }
-        return EvaluationResult.Failure((EvaluationStatus)status, tag, message ?? payload, op);
+        return EvaluationResult.Failure((EvaluationStatus)status, tag ?? "InternalError", message ?? payload, op);
     }
+
+    private static string? StringProperty(JsonElement obj, string name)
+        => obj.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
     private void KeepAlive(Rule rule, DataHandle data)
     {
