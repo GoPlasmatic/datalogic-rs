@@ -88,5 +88,18 @@
             "test": 1
         },
         "result": 1
-    }
+    },
+  "# missing returns the paths it was given",
+  {
+    "description": "missing over paths from data",
+    "rule": {"missing": {"var": "paths"}},
+    "data": {"paths": ["a", "b.c"], "a": 1},
+    "result": ["b.c"]
+  },
+  {
+    "description": "missing_some over paths from data",
+    "rule": {"missing_some": [2, {"var": "paths"}]},
+    "data": {"paths": ["a", "b", "c"], "a": 1},
+    "result": ["b", "c"]
+  }
 ]

@@ -198,5 +198,24 @@
     "rule": { "slice": ["hello", 1] },
     "data": null,
     "result": "ello"
+  },
+  "# Stepped string slices index by character",
+  {
+    "description": "Every second character of a non-ASCII string",
+    "rule": {"slice": [{"var": "s"}, 0, null, 2]},
+    "data": {"s": "héllo wörld"},
+    "result": "hlowrd"
+  },
+  {
+    "description": "A non-ASCII string reversed",
+    "rule": {"slice": [{"var": "s"}, null, null, -1]},
+    "data": {"s": "añb€"},
+    "result": "€bña"
+  },
+  {
+    "description": "A stepped slice that selects nothing",
+    "rule": {"slice": [{"var": "s"}, 3, 1, 2]},
+    "data": {"s": "abcdef"},
+    "result": ""
   }
 ]

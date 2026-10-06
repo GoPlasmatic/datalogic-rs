@@ -208,7 +208,7 @@ fn resolve_via_context_stack<'a>(
         ctx.current()
     } else {
         ctx.get_at_level(scope_level as isize)
-            .ok_or(Error::invalid_context_level(scope_level as isize))?
+            .ok_or_else(|| Error::invalid_context_level(scope_level as isize))?
     };
     let av = aref.data();
     if segments.is_empty() {
@@ -289,7 +289,7 @@ fn eval_val_multiarg<'a>(
 
             let path_str = path_str_from_data(path_av, arena);
             let frame_data = frame_data_at_level(ctx, level as isize)
-                .ok_or(Error::invalid_context_level(level as isize))?;
+                .ok_or_else(|| Error::invalid_context_level(level as isize))?;
             return match access_path_str_ref(frame_data, path_str) {
                 Some(av) => Ok(av),
                 None => missed(engine, || path_str.to_string()),
@@ -304,7 +304,7 @@ fn eval_val_multiarg<'a>(
             paths.push(path_str_from_data(av, arena));
         }
         let mut cur = frame_data_at_level(ctx, level as isize)
-            .ok_or(Error::invalid_context_level(level as isize))?;
+            .ok_or_else(|| Error::invalid_context_level(level as isize))?;
         for path in paths.iter() {
             match access_path_str_ref(cur, path) {
                 Some(next) => cur = next,
@@ -389,7 +389,7 @@ fn lookup_array_path<'a>(
             }
 
             let mut cur = frame_data_at_level(ctx, level as isize)
-                .ok_or(Error::invalid_context_level(level as isize))?;
+                .ok_or_else(|| Error::invalid_context_level(level as isize))?;
             for i in 1..arr_len {
                 let item = array_get(path_av, i)
                     .unwrap_or_else(|| crate::arena::singletons::singleton_null());

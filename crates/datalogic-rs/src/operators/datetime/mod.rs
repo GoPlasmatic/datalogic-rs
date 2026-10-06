@@ -185,7 +185,7 @@ pub(crate) fn timestamp<'a>(
 /// `"%mM"`). A literal `%` starts a raw chrono specifier: it and the
 /// following character pass through verbatim, keeping the documented
 /// "raw `%X` works too" behavior.
-fn jsonlogic_to_chrono_format(format: &str) -> String {
+fn jsonlogic_to_chrono_format<'a>(format: &str, arena: &'a Bump) -> &'a str {
     const TOKENS: &[(&str, &str)] = &[
         ("yyyy", "%Y"),
         ("MMMM", "%B"),
@@ -199,7 +199,7 @@ fn jsonlogic_to_chrono_format(format: &str) -> String {
         ("EEE", "%a"),
     ];
 
-    let mut out = String::with_capacity(format.len() + 8);
+    let mut out = bumpalo::collections::String::with_capacity_in(format.len() + 8, arena);
     let mut rest = format;
     'scan: while !rest.is_empty() {
         if let Some(after) = rest.strip_prefix('%') {
@@ -223,22 +223,27 @@ fn jsonlogic_to_chrono_format(format: &str) -> String {
         out.push(chars.next().expect("non-empty rest"));
         rest = chars.as_str();
     }
-    out
+    out.into_bump_str()
 }
 
-/// Render `dt` with the JSONLogic format `fmt`. Writes through
-/// `fmt::Write` rather than `to_string()`: chrono reports a specifier it
-/// does not know (a raw `%Q`, a trailing `%`) as a `fmt::Error`, which
-/// `to_string()` turns into a panic.
-fn render_chrono<Tz: chrono::TimeZone>(dt: &chrono::DateTime<Tz>, fmt: &str) -> Result<String>
+/// Render `dt` with the JSONLogic format `fmt`, straight into the arena.
+/// Writes through `fmt::Write` rather than `to_string()`: chrono reports a
+/// specifier it does not know (a raw `%Q`, a trailing `%`) as a
+/// `fmt::Error`, which `to_string()` turns into a panic.
+fn render_chrono<'a, Tz: chrono::TimeZone>(
+    dt: &chrono::DateTime<Tz>,
+    fmt: &str,
+    arena: &'a Bump,
+) -> Result<&'a str>
 where
     Tz::Offset: std::fmt::Display,
 {
     use std::fmt::Write;
-    let mut out = String::new();
-    write!(out, "{}", dt.format(&jsonlogic_to_chrono_format(fmt)))
+    let chrono_format = jsonlogic_to_chrono_format(fmt, arena);
+    let mut out = bumpalo::collections::String::new_in(arena);
+    write!(out, "{}", dt.format(chrono_format))
         .map_err(|_| Error::invalid_arguments("Invalid date format"))?;
-    Ok(out)
+    Ok(out.into_bump_str())
 }
 
 /// Resolve the optional trailing timezone argument to a chrono-tz zone.
@@ -277,15 +282,14 @@ pub(crate) fn parse_date<'a>(
     tz: Option<&'a CompiledNode>,
 ) -> Result<&'a DataValue<'a>> {
     if let (Some(date), Some(fmt)) = (date_av.as_str(), fmt_av.as_str()) {
-        let chrono_format = jsonlogic_to_chrono_format(fmt);
+        let chrono_format = jsonlogic_to_chrono_format(fmt, cx.arena);
         if let Some(tz) = tz {
             let tz = resolve_tz(cx.eval(tz)?)?;
-            return parse_date_in_zone(date, &chrono_format, tz, cx.arena);
+            return parse_date_in_zone(date, chrono_format, tz, cx.arena);
         }
-        if let Some(dt) = DataDateTime::parse_with_format(date, &chrono_format) {
-            let iso = dt.to_iso_string();
-            let s: &'a str = cx.alloc_str(&iso);
-            return Ok(cx.alloc(DataValue::String(s)));
+        if let Some(dt) = DataDateTime::parse_with_format(date, chrono_format) {
+            // `Display` is the ISO form, rendered without a heap string.
+            return Ok(arith::write_into_arena(cx.arena, dt));
         }
     }
     Err(Error::invalid_arguments("Failed to parse date"))
@@ -331,8 +335,7 @@ fn parse_date_in_zone<'a>(
         dt: zoned.with_timezone(&Utc),
         original_offset: Some(zoned.offset().fix().local_minus_utc()),
     };
-    let s: &'a str = arena.alloc_str(&data_dt.to_iso_string());
-    Ok(arena.alloc(DataValue::String(s)))
+    Ok(arith::write_into_arena(arena, data_dt))
 }
 
 /// Native arena-mode `format_date`. The optional zone is evaluated only
@@ -361,22 +364,20 @@ pub(crate) fn format_date<'a>(
             use chrono::Offset;
             let tz = resolve_tz(cx.eval(tz)?)?;
             let zoned = datetime.dt.with_timezone(&tz);
-            let formatted = if fmt == "z" {
-                offset_to_z_string(zoned.offset().fix().local_minus_utc())
+            let formatted: &'a str = if fmt == "z" {
+                cx.alloc_str(&offset_to_z_string(zoned.offset().fix().local_minus_utc()))
             } else {
-                render_chrono(&zoned, fmt)?
+                render_chrono(&zoned, fmt, cx.arena)?
             };
-            let s: &'a str = cx.alloc_str(&formatted);
-            return Ok(cx.alloc(DataValue::String(s)));
+            return Ok(cx.alloc(DataValue::String(formatted)));
         }
 
-        let formatted = if fmt == "z" {
-            datetime.format(fmt)
+        let formatted: &'a str = if fmt == "z" {
+            cx.alloc_str(&datetime.format(fmt))
         } else {
-            render_chrono(&datetime.dt, fmt)?
+            render_chrono(&datetime.dt, fmt, cx.arena)?
         };
-        let s: &'a str = cx.alloc_str(&formatted);
-        return Ok(cx.alloc(DataValue::String(s)));
+        return Ok(cx.alloc(DataValue::String(formatted)));
     }
 
     Err(Error::invalid_arguments("Failed to format date"))
@@ -422,15 +423,15 @@ pub(crate) fn now<'a>(cx: &mut Cx<'_, 'a>) -> Result<&'a str> {
         dt: now,
         original_offset: Some(0),
     };
-    Ok(cx.alloc_str(&data_dt.to_iso_string()))
+    Ok(arith::write_str_into_arena(cx.arena, data_dt))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::jsonlogic_to_chrono_format;
-
     #[test]
     fn format_tokens_translate_longest_first() {
+        let arena = bumpalo::Bump::new();
+        let jsonlogic_to_chrono_format = |f: &str| super::jsonlogic_to_chrono_format(f, &arena);
         assert_eq!(
             jsonlogic_to_chrono_format("yyyy-MM-dd HH:mm:ss"),
             "%Y-%m-%d %H:%M:%S"

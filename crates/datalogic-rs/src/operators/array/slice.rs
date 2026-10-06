@@ -120,12 +120,15 @@ fn slice_string<'a>(
         return arena.alloc(DataValue::String(&s[byte_a..byte_b]));
     }
 
-    let chars: Vec<char> = s.chars().collect();
-    let result_string: String = slice_indices(chars.len() as i64, start, end, step)
-        .map(|i| chars[i as usize])
-        .collect();
-    let out: &'a str = arena.alloc_str(&result_string);
-    arena.alloc(DataValue::String(out))
+    // Random access by char index: the chars go into an arena buffer, and
+    // the result is built straight into the arena (no heap round-trip).
+    let mut chars = bvec::<char>(arena, s.len());
+    chars.extend(s.chars());
+    let mut out = bumpalo::collections::String::new_in(arena);
+    for i in slice_indices(chars.len() as i64, start, end, step) {
+        out.push(chars[i as usize]);
+    }
+    arena.alloc(DataValue::String(out.into_bump_str()))
 }
 
 #[inline]

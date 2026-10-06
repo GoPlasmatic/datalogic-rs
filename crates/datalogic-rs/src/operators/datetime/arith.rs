@@ -17,12 +17,18 @@ use std::fmt::Display;
 /// only land for streaming `Display` impls like `DataDuration::fmt`.
 #[inline]
 pub(super) fn write_into_arena<'a>(arena: &'a Bump, value: impl Display) -> &'a DataValue<'a> {
+    arena.alloc(DataValue::String(write_str_into_arena(arena, value)))
+}
+
+/// [`write_into_arena`]'s string, without the `DataValue` wrapper.
+#[inline]
+pub(super) fn write_str_into_arena(arena: &Bump, value: impl Display) -> &str {
     use std::fmt::Write;
     let mut buf = bumpalo::collections::String::new_in(arena);
     // `bumpalo::collections::String` writes never fail; `expect` rather than
     // `unwrap_or_default` so a future bug in bumpalo surfaces loudly.
     write!(&mut buf, "{}", value).expect("bumpalo String write is infallible");
-    arena.alloc(DataValue::String(buf.into_bump_str()))
+    buf.into_bump_str()
 }
 
 /// Extract `(DateTime, Duration)` slots from an arena value. The two slots

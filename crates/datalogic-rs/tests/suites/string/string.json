@@ -270,5 +270,18 @@
     "rule": {"lower": {"var": "text"}},
     "data": {"text": "Hello, World 42"},
     "result": "hello, world 42"
+  },
+  "# split returns the parts of its text",
+  {
+    "description": "split on the empty delimiter keeps multi-byte characters whole",
+    "rule": {"split": [{"var": "s"}, ""]},
+    "data": {"s": "hé€"},
+    "result": ["h", "é", "€"]
+  },
+  {
+    "description": "split on a multi-byte delimiter",
+    "rule": {"split": [{"var": "s"}, "€"]},
+    "data": {"s": "a€b€€c"},
+    "result": ["a", "b", "", "c"]
   }
 ]

@@ -276,10 +276,12 @@ pub(crate) fn split<'a>(
     split_arena_normal(text, delim, cx.ctx, cx.arena)
 }
 
+/// The parts borrow `text`, which is already arena-resident (or rule
+/// data that outlives the evaluation), so no part is copied.
 #[cfg(feature = "ext-string")]
 #[inline]
 fn split_arena_normal<'a>(
-    text: &str,
+    text: &'a str,
     delim: &str,
     ctx: &mut ContextStack<'_>,
     arena: &'a Bump,
@@ -296,18 +298,15 @@ fn split_arena_normal<'a>(
         ctx.charge(parts as u64)?;
         let mut items: bumpalo::collections::Vec<'a, DataValue<'a>> =
             bumpalo::collections::Vec::with_capacity_in(parts, arena);
-        for c in text.chars() {
-            // Per-char arena string. For ASCII, a 1-byte alloc per char.
-            let mut buf = bumpalo::collections::String::new_in(arena);
-            buf.push(c);
-            items.push(DataValue::String(buf.into_bump_str()));
+        for (at, c) in text.char_indices() {
+            items.push(DataValue::String(&text[at..at + c.len_utf8()]));
         }
         return Ok(arena.alloc(DataValue::Array(items.into_bump_slice())));
     }
     let mut items: bumpalo::collections::Vec<'a, DataValue<'a>> =
         bumpalo::collections::Vec::new_in(arena);
     for part in text.split(delim) {
-        items.push(DataValue::String(arena.alloc_str(part)));
+        items.push(DataValue::String(part));
     }
     // Charged once the parts exist, to avoid a second scan to count them.
     // Safe to charge after: there are at most as many parts as the text
