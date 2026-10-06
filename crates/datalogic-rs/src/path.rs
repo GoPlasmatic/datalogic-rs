@@ -250,8 +250,8 @@ mod tests {
         let mut index = std::collections::HashMap::new();
         super::walk(&compiled.root, None, String::new(), &mut index);
         let mut out: Vec<_> = index
-            .into_iter()
-            .map(|(_, n)| (n.arg_index, n.json_pointer))
+            .into_values()
+            .map(|n| (n.arg_index, n.json_pointer))
             .collect();
         out.sort_by(|a, b| a.1.cmp(&b.1));
         out

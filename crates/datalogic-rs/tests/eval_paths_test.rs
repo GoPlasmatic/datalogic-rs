@@ -37,7 +37,7 @@ fn every_entry_point_agrees() {
         let arena = datalogic_rs::bumpalo::Bump::new();
         let parsed = DataValue::from_str(DATA, &arena).unwrap();
         let want = engine
-            .evaluate(&compiled, &parsed, &arena)
+            .evaluate(&compiled, parsed, &arena)
             .unwrap()
             .to_json_string();
 
@@ -112,7 +112,7 @@ fn wide_read_sets_project_every_key() {
     let arena = datalogic_rs::bumpalo::Bump::new();
     let parsed = DataValue::from_str(&text, &arena).unwrap();
     let want = engine
-        .evaluate(&compiled, &parsed, &arena)
+        .evaluate(&compiled, parsed, &arena)
         .unwrap()
         .to_json_string();
     for got in [

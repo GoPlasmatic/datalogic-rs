@@ -450,12 +450,11 @@ impl NodeHasher {
 impl Hasher for NodeHasher {
     #[inline]
     fn write(&mut self, bytes: &[u8]) {
-        let mut chunks = bytes.chunks_exact(8);
-        for chunk in &mut chunks {
-            self.mix(u64::from_le_bytes(chunk.try_into().expect("8 bytes")));
+        let (chunks, rest) = bytes.as_chunks::<8>();
+        for chunk in chunks {
+            self.mix(u64::from_le_bytes(*chunk));
         }
         let mut tail = [0u8; 8];
-        let rest = chunks.remainder();
         tail[..rest.len()].copy_from_slice(rest);
         self.mix(u64::from_le_bytes(tail));
     }
