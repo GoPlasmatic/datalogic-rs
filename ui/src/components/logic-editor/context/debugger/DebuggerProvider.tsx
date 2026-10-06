@@ -1,17 +1,24 @@
 import {
   useReducer,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useCallback,
+  useState,
   type ReactNode,
 } from 'react';
 import type { ExecutionStep } from '../../types/trace';
 import type { LogicNode } from '../../types';
 import type { TraceFailure } from '../../utils/trace/trace-failure';
 import { formatValue } from '../../utils/formatting';
-import { DebuggerContext } from './context';
+import { DebuggerContext, DebugNodeStoreContext } from './context';
 import { debuggerReducer, initialState } from './reducer';
 import type { NodeSummary } from './types';
+import { createDebugNodeStore, indexSteps, stepNodeId, type DebugSnapshot } from './node-store';
+
+// Layout effect in the browser (the node store updates before paint), plain
+// effect on the server, where layout effects warn in React 18.
+const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
 // Provider props
 interface DebuggerProviderProps {
@@ -76,39 +83,14 @@ export function DebuggerProvider({
   }, [state.steps, state.currentStepIndex]);
 
   // Current node ID (formatted for React Flow) - use mapping to resolve inlined nodes
-  const currentNodeId = useMemo(() => {
-    if (!currentStep) return null;
-    const traceId = `trace-${currentStep.node_id}`;
-    // Use mapping to find visual node, fallback to trace ID itself
-    return traceNodeMap.get(traceId) ?? traceId;
-  }, [currentStep, traceNodeMap]);
+  const currentNodeId = useMemo(
+    () => (currentStep ? stepNodeId(currentStep, traceNodeMap) : null),
+    [currentStep, traceNodeMap]
+  );
 
-  // Set of executed node IDs (all steps up to current) - use mapping for each
-  const executedNodeIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (let i = 0; i < state.currentStepIndex; i++) {
-      const step = state.steps[i];
-      if (step) {
-        const traceId = `trace-${step.node_id}`;
-        const visualId = traceNodeMap.get(traceId) ?? traceId;
-        ids.add(visualId);
-      }
-    }
-    return ids;
-  }, [state.steps, state.currentStepIndex, traceNodeMap]);
-
-  // Set of error node IDs (steps with errors up to current)
-  const errorNodeIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (let i = 0; i <= state.currentStepIndex; i++) {
-      const step = state.steps[i];
-      if (step?.error) {
-        const traceId = `trace-${step.node_id}`;
-        ids.add(traceNodeMap.get(traceId) ?? traceId);
-      }
-    }
-    return ids;
-  }, [state.steps, state.currentStepIndex, traceNodeMap]);
+  // When each node first ran and first failed: computed once per trace, so
+  // a step answers "executed?" and "in error?" without rescanning the trace.
+  const stepIndex = useMemo(() => indexSteps(state.steps, traceNodeMap), [state.steps, traceNodeMap]);
 
   // Build parent map from nodes for path highlighting
   const parentMap = useMemo(() => {
@@ -146,6 +128,40 @@ export function DebuggerProvider({
     return first.done ? null : first.value;
   }, [failedNodeIds]);
 
+  // Per-node state for node components, through a store they subscribe to
+  // node by node (see useNodeDebugState).
+  const snapshot = useMemo<DebugSnapshot>(
+    () => ({
+      isActive: state.isActive,
+      currentStepIndex: state.currentStepIndex,
+      stepCount: state.steps.length,
+      currentStep,
+      currentNodeId,
+      firstRunAt: stepIndex.firstRunAt,
+      firstErrorAt: stepIndex.firstErrorAt,
+      pathNodeIds,
+      failedNodeIds,
+      primaryFailedNodeId,
+      traceError: traceError ?? null,
+    }),
+    [
+      state.isActive,
+      state.currentStepIndex,
+      state.steps.length,
+      currentStep,
+      currentNodeId,
+      stepIndex,
+      pathNodeIds,
+      failedNodeIds,
+      primaryFailedNodeId,
+      traceError,
+    ]
+  );
+  const [nodeStore] = useState(() => createDebugNodeStore(snapshot));
+  useIsomorphicLayoutEffect(() => {
+    nodeStore.setSnapshot(snapshot);
+  }, [nodeStore, snapshot]);
+
   // Control callbacks
   const play = useCallback(() => dispatch({ type: 'PLAY' }), []);
   const pause = useCallback(() => dispatch({ type: 'PAUSE' }), []);
@@ -161,8 +177,6 @@ export function DebuggerProvider({
       state,
       currentStep,
       currentNodeId,
-      executedNodeIds,
-      errorNodeIds,
       pathNodeIds,
       traceNodeMap,
       failedNodeIds,
@@ -182,8 +196,6 @@ export function DebuggerProvider({
       state,
       currentStep,
       currentNodeId,
-      executedNodeIds,
-      errorNodeIds,
       pathNodeIds,
       traceNodeMap,
       failedNodeIds,
@@ -201,5 +213,9 @@ export function DebuggerProvider({
     ]
   );
 
-  return <DebuggerContext.Provider value={value}>{children}</DebuggerContext.Provider>;
+  return (
+    <DebuggerContext.Provider value={value}>
+      <DebugNodeStoreContext.Provider value={nodeStore}>{children}</DebugNodeStoreContext.Provider>
+    </DebuggerContext.Provider>
+  );
 }

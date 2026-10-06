@@ -1,6 +1,5 @@
-import { memo, useContext } from 'react';
+import { memo } from 'react';
 import { useNodeDebugState } from '../../context';
-import { DebuggerContext } from '../../context/debugger/context';
 import { DebugInfoBubble } from '../DebugInfoBubble';
 
 interface NodeDebugBubbleProps {
@@ -18,7 +17,6 @@ export const NodeDebugBubble = memo(function NodeDebugBubble({
   position = 'top',
 }: NodeDebugBubbleProps) {
   const debugState = useNodeDebugState(nodeId);
-  const debugger_ = useContext(DebuggerContext);
 
   if (!debugState) return null;
 
@@ -27,15 +25,8 @@ export const NodeDebugBubble = memo(function NodeDebugBubble({
   }
 
   // At rest: surface the trace failure on the innermost failed node
-  if (
-    debugState.isFailed &&
-    !debugState.isCurrent &&
-    debugger_ &&
-    debugger_.state.currentStepIndex < 0 &&
-    debugger_.primaryFailedNodeId === nodeId &&
-    debugger_.traceError
-  ) {
-    return <DebugInfoBubble failure={debugger_.traceError} position={position} />;
+  if (debugState.failure) {
+    return <DebugInfoBubble failure={debugState.failure} position={position} />;
   }
 
   return null;

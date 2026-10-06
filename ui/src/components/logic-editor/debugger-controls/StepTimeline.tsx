@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { useDebuggerContext } from '../context';
 import { formatResultValue } from '../utils/formatting';
 import { getValueColorClass } from '../utils/type-helpers';
 import { formatTraceFailure, traceFailureType } from '../utils/trace/trace-failure';
+import { stepNodeId } from '../context/debugger/node-store';
+import type { NodeSummary } from '../context/debugger/types';
+import type { ExecutionStep } from '../types/trace';
 
 interface StepTimelineProps {
   /** Element the panel is anchored to; the panel mounts in its `.logic-editor-body` (or `.logic-editor`) ancestor */
@@ -92,54 +95,18 @@ export function StepTimeline({ anchor, onClose }: StepTimelineProps) {
 
       <div className="dl-debugger-timeline-list" ref={listRef}>
         {rows.map(({ step, index }) => {
-          const traceId = `trace-${step.node_id}`;
-          const visualId = traceNodeMap.get(traceId) ?? traceId;
-          const summary = nodeSummaries.get(visualId);
-          const hasError = !!step.error;
-          const hasIteration = step.iteration_index !== undefined && step.iteration_total !== undefined;
-          const isCurrent = index === currentStepIndex;
-          const isDone = currentStepIndex >= 0 && index < currentStepIndex;
-          const className = [
-            'dl-debugger-timeline-row',
-            isCurrent && 'is-current',
-            isDone && 'is-done',
-            hasError && 'is-error',
-          ]
-            .filter(Boolean)
-            .join(' ');
-
+          const visualId = stepNodeId(step, traceNodeMap);
           return (
-            <button
-              type="button"
+            <TimelineRow
               key={step.step_id ?? index}
-              className={className}
-              data-step-index={index}
-              onClick={() => goToStep(index)}
-              aria-current={isCurrent ? 'step' : undefined}
-              title={summary?.detail || undefined}
-            >
-              <span className="dl-debugger-timeline-index">{index + 1}</span>
-              <span className="dl-debugger-timeline-node">
-                <span className="dl-debugger-timeline-label">{summary?.label ?? visualId}</span>
-                {summary?.detail && (
-                  <span className="dl-debugger-timeline-detail">{summary.detail}</span>
-                )}
-              </span>
-              {hasIteration && (
-                <span className="dl-debugger-timeline-iter">
-                  {(step.iteration_index ?? 0) + 1}/{step.iteration_total}
-                </span>
-              )}
-              {hasError ? (
-                <span className="dl-debugger-timeline-result is-error" title={step.error ?? undefined}>
-                  error
-                </span>
-              ) : (
-                <span className={`dl-debugger-timeline-result ${getValueColorClass(step.result)}`}>
-                  {formatResultValue(step.result)}
-                </span>
-              )}
-            </button>
+              step={step}
+              index={index}
+              visualId={visualId}
+              summary={nodeSummaries.get(visualId)}
+              isCurrent={index === currentStepIndex}
+              isDone={currentStepIndex >= 0 && index < currentStepIndex}
+              onSelect={goToStep}
+            />
           );
         })}
         {rows.length === 0 && (
@@ -150,3 +117,72 @@ export function StepTimeline({ anchor, onClose }: StepTimelineProps) {
     host
   );
 }
+
+interface TimelineRowProps {
+  step: ExecutionStep;
+  index: number;
+  visualId: string;
+  summary: NodeSummary | undefined;
+  isCurrent: boolean;
+  isDone: boolean;
+  onSelect: (index: number) => void;
+}
+
+/**
+ * One step. Memoized: a step changes the props of at most two rows (the old
+ * and the new current), so the rest are skipped instead of re-rendering
+ * the whole list on every step of playback.
+ */
+const TimelineRow = memo(function TimelineRow({
+  step,
+  index,
+  visualId,
+  summary,
+  isCurrent,
+  isDone,
+  onSelect,
+}: TimelineRowProps) {
+  const hasError = !!step.error;
+  const hasIteration = step.iteration_index !== undefined && step.iteration_total !== undefined;
+  const className = [
+    'dl-debugger-timeline-row',
+    isCurrent && 'is-current',
+    isDone && 'is-done',
+    hasError && 'is-error',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  return (
+    <button
+      type="button"
+      className={className}
+      data-step-index={index}
+      onClick={() => onSelect(index)}
+      aria-current={isCurrent ? 'step' : undefined}
+      title={summary?.detail || undefined}
+    >
+      <span className="dl-debugger-timeline-index">{index + 1}</span>
+      <span className="dl-debugger-timeline-node">
+        <span className="dl-debugger-timeline-label">{summary?.label ?? visualId}</span>
+        {summary?.detail && (
+          <span className="dl-debugger-timeline-detail">{summary.detail}</span>
+        )}
+      </span>
+      {hasIteration && (
+        <span className="dl-debugger-timeline-iter">
+          {(step.iteration_index ?? 0) + 1}/{step.iteration_total}
+        </span>
+      )}
+      {hasError ? (
+        <span className="dl-debugger-timeline-result is-error" title={step.error ?? undefined}>
+          error
+        </span>
+      ) : (
+        <span className={`dl-debugger-timeline-result ${getValueColorClass(step.result)}`}>
+          {formatResultValue(step.result)}
+        </span>
+      )}
+    </button>
+  );
+});

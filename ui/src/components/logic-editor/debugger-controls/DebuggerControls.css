@@ -360,6 +360,10 @@
   cursor: pointer;
   font: inherit;
   transition: background 0.12s ease, border-color 0.12s ease;
+  /* Long traces: let the browser skip layout and paint for rows scrolled
+     out of view. `auto` remembers each row's size once it has rendered. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 40px;
 }
 .dl-debugger-timeline-row:hover {
   background: var(--surface-2);

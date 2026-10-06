@@ -39,8 +39,6 @@ export interface DebuggerContextValue {
   state: DebuggerState;
   currentStep: ExecutionStep | null;
   currentNodeId: string | null;
-  executedNodeIds: Set<string>;
-  errorNodeIds: Set<string>; // Node IDs that encountered errors
   pathNodeIds: Set<string>; // Node IDs on the path from current node to root
   /** Trace node id (`trace-N`) -> visual node id, as produced by traceToNodes */
   traceNodeMap: Map<string, string>;
@@ -72,4 +70,6 @@ export interface NodeDebugState {
   isError: boolean; // Node encountered an error during evaluation
   isFailed: boolean; // Node is on the engine's failure breadcrumb
   step: ExecutionStep | null;
+  /** At rest, on the innermost failed node only: the trace failure to show. */
+  failure: TraceFailure | null;
 }
