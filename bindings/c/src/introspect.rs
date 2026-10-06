@@ -2,21 +2,12 @@
 //! truthiness. Every result that is a document is JSON in an owned
 //! [`Buf`], in the formats `datalogic-bind` defines for every binding.
 
-use std::sync::Arc;
-
 use datalogic_rs::CheckMode;
 
-use crate::engine::Engine;
+use crate::engine::{Engine, compile_into, engine_ref};
 use crate::error::{Error, Status, fail};
 use crate::rule::Rule;
-use crate::{Buf, guard_status, str_from_raw};
-
-/// Whether a built-in operator of this build answers to `name`.
-pub(crate) fn builtin_answers_to(name: &str) -> bool {
-    datalogic_rs::Engine::new()
-        .builtin_operator_names()
-        .any(|n| n == name)
-}
+use crate::{Buf, guard_status, put_buf, str_from_raw};
 
 /// How [`datalogic_engine_compile_mode`] and [`datalogic_engine_check`]
 /// read a rule. Passed as a `uint32_t`.
@@ -44,15 +35,6 @@ fn mode_from(raw: u32) -> Result<CheckMode, Error> {
     }
 }
 
-unsafe fn engine_ref<'a>(engine: *const Engine) -> Result<&'a Engine, Error> {
-    unsafe { engine.as_ref() }.ok_or_else(|| Error::invalid_arg("engine pointer is null"))
-}
-
-unsafe fn put_buf(out: *mut Buf, json: String) -> Status {
-    unsafe { *out = Buf::from_vec(json.into_bytes()) };
-    Status::Ok
-}
-
 /// [`crate::datalogic_engine_compile`] in an explicit [`DatalogicMode`]
 /// (`mode` 0, 1 or 2), whatever mode the engine was built with.
 ///
@@ -68,40 +50,12 @@ pub unsafe extern "C" fn datalogic_engine_compile_mode(
     out_rule: *mut *mut Rule,
     err: *mut *mut Error,
 ) -> Status {
-    guard_status(err, || {
-        let engine = match unsafe { engine_ref(engine) } {
-            Ok(e) => e,
-            Err(e) => return unsafe { fail(err, e) },
-        };
-        if out_rule.is_null() {
-            return unsafe { fail(err, Error::invalid_arg("out_rule pointer is null")) };
-        }
-        let mode = match mode_from(mode) {
-            Ok(m) => m,
-            Err(e) => return unsafe { fail(err, e) },
-        };
-        let src = match unsafe { str_from_raw("rule_json", rule_json, rule_len) } {
-            Ok(s) => s,
-            Err(e) => return unsafe { fail(err, e) },
-        };
-        let compiled = match mode {
-            CheckMode::Strict => engine.inner.compile_strict(src),
-            CheckMode::Template => engine.inner.compile_template(src),
-            _ => engine.inner.compile(src),
-        };
-        match compiled {
-            Ok(logic) => {
-                unsafe {
-                    *out_rule = Box::into_raw(Box::new(Rule {
-                        engine: engine.inner.clone(),
-                        logic: Arc::new(logic),
-                    }));
-                }
-                Status::Ok
-            }
-            Err(e) => unsafe { fail(err, Error::from_engine(&e, None)) },
-        }
-    })
+    unsafe {
+        compile_into(engine, rule_json, rule_len, out_rule, err, |engine, src| {
+            let mode = mode_from(mode)?;
+            datalogic_bind::compile_in(engine, src, mode).map_err(|e| Error::from_engine(&e, None))
+        })
+    }
 }
 
 /// Compile a rule, refusing it if [`datalogic_engine_check`] finds any
@@ -120,31 +74,13 @@ pub unsafe extern "C" fn datalogic_engine_compile_checked(
     out_rule: *mut *mut Rule,
     err: *mut *mut Error,
 ) -> Status {
-    guard_status(err, || {
-        let engine = match unsafe { engine_ref(engine) } {
-            Ok(e) => e,
-            Err(e) => return unsafe { fail(err, e) },
-        };
-        if out_rule.is_null() {
-            return unsafe { fail(err, Error::invalid_arg("out_rule pointer is null")) };
-        }
-        let src = match unsafe { str_from_raw("rule_json", rule_json, rule_len) } {
-            Ok(s) => s,
-            Err(e) => return unsafe { fail(err, e) },
-        };
-        match engine.inner.compile_checked(src) {
-            Ok(logic) => {
-                unsafe {
-                    *out_rule = Box::into_raw(Box::new(Rule {
-                        engine: engine.inner.clone(),
-                        logic: Arc::new(logic),
-                    }));
-                }
-                Status::Ok
-            }
-            Err(e) => unsafe { fail(err, Error::from_compile(&e)) },
-        }
-    })
+    unsafe {
+        compile_into(engine, rule_json, rule_len, out_rule, err, |engine, src| {
+            engine
+                .compile_checked(src)
+                .map_err(|e| Error::from_compile(&e))
+        })
+    }
 }
 
 /// Every problem the engine can see in a rule before it runs, as a JSON

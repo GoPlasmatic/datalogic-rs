@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 package com.goplasmatic.datalogic;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.goplasmatic.datalogic.internal.DatalogicNative;
 
 import java.lang.foreign.Arena;
@@ -20,6 +21,8 @@ import java.util.List;
  * always win.
  */
 public final class EngineBuilder {
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     private MemorySegment handle;
     private boolean consumed;
     // Strongly retain every registered bridge until the resulting
@@ -163,7 +166,7 @@ public final class EngineBuilder {
         }
         String json;
         try {
-            json = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(families);
+            json = MAPPER.writeValueAsString(families);
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
             throw new IllegalArgumentException("families", e);
         }

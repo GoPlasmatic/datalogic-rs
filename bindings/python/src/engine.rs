@@ -6,8 +6,8 @@ use std::sync::Arc;
 use datalogic_rs::bumpalo::Bump;
 use datalogic_rs::operator::EvalContext;
 use datalogic_rs::{
-    CustomOperator, DataValue, Engine as RsEngine, Error as DlError, EvaluationConfig, Logic,
-    Result as DlResult,
+    CheckMode, CustomOperator, DataValue, Engine as RsEngine, Error as DlError, EvaluationConfig,
+    Logic, Result as DlResult,
 };
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyString};
@@ -105,19 +105,16 @@ impl Engine {
             builder = builder.with_families(families);
         }
         if let Some(prefix) = template_key_escape {
-            let mut chars = prefix.chars();
-            match (chars.next(), chars.next()) {
-                (Some(c), None) => builder = builder.with_template_key_escape(c),
-                _ => {
-                    return Err(engine_error_to_pyerr(
-                        py,
-                        &DlError::invalid_arguments(
-                            "template_key_escape must be exactly one character",
-                        ),
-                        None,
-                    ));
-                }
-            }
+            let c = datalogic_bind::single_char(prefix).ok_or_else(|| {
+                engine_error_to_pyerr(
+                    py,
+                    &DlError::invalid_arguments(
+                        "template_key_escape must be exactly one character",
+                    ),
+                    None,
+                )
+            })?;
+            builder = builder.with_template_key_escape(c);
         }
         if let Some(cfg) = config {
             // Accept a JSON string as-is; anything else (normally a dict)
@@ -159,33 +156,20 @@ impl Engine {
     ///     or a ``str`` containing the rule as JSON.
     fn compile(&self, py: Python<'_>, rule: &Bound<'_, PyAny>) -> PyResult<Rule> {
         let logic = compile_inner(py, &self.inner, rule)?;
-        Ok(Rule {
-            engine: self.inner.clone(),
-            logic,
-        })
+        Ok(self.rule(logic))
     }
 
     /// Compile ``rule`` in templating mode, whatever this engine was built
     /// with: a multi-key object is an output template and an unknown key
     /// an output field.
     fn compile_template(&self, py: Python<'_>, rule: &Bound<'_, PyAny>) -> PyResult<Rule> {
-        let logic = with_rule(py, rule, |r| match r {
-            RuleSrc::Text(s) => self.inner.compile_template(s),
-            RuleSrc::Json(v) => self.inner.compile_template(v),
-        })?
-        .map_err(|e| engine_error_to_pyerr(py, &e, None))?;
-        Ok(self.rule(logic))
+        self.compile_in(py, rule, CheckMode::Template)
     }
 
     /// Compile ``rule`` outside templating mode, whatever this engine was
     /// built with: a multi-key object or an unknown operator is an error.
     fn compile_strict(&self, py: Python<'_>, rule: &Bound<'_, PyAny>) -> PyResult<Rule> {
-        let logic = with_rule(py, rule, |r| match r {
-            RuleSrc::Text(s) => self.inner.compile_strict(s),
-            RuleSrc::Json(v) => self.inner.compile_strict(v),
-        })?
-        .map_err(|e| engine_error_to_pyerr(py, &e, None))?;
-        Ok(self.rule(logic))
+        self.compile_in(py, rule, CheckMode::Strict)
     }
 
     /// Compile ``rule``, refusing it if :meth:`check` finds any error.
@@ -196,7 +180,7 @@ impl Engine {
             RuleSrc::Json(v) => self.inner.compile_checked(v),
         })?
         .map_err(|e| crate::error::compile_error_to_pyerr(py, &e))?;
-        Ok(self.rule(logic))
+        Ok(self.rule(Arc::new(logic)))
     }
 
     /// Every problem this engine can see in ``rule`` before it runs, as a
@@ -216,7 +200,7 @@ impl Engine {
             RuleSrc::Text(s) => self.inner.check(s, mode),
             RuleSrc::Json(v) => self.inner.check(v, mode),
         })?;
-        json_to_py(py, &datalogic_bind::diagnostics_json(&diagnostics))
+        value_to_pyobject(py, &datalogic_bind::diagnostics_value(&diagnostics))
     }
 
     /// Every built-in operator this engine evaluates, as a list of dicts:
@@ -224,7 +208,7 @@ impl Engine {
     /// ``max_args``, ``reads_context``, ``effect``, ``cost`` and
     /// ``scoped_arg``.
     fn operators(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        json_to_py(py, &datalogic_bind::operators_json(&self.inner))
+        value_to_pyobject(py, &datalogic_bind::operators_value(&self.inner))
     }
 
     /// Whether ``value`` is truthy under this engine's configured
@@ -334,11 +318,27 @@ impl Engine {
 /// worker threads to evaluate in parallel; the binding releases the GIL
 /// around each Rust evaluate call.
 impl Engine {
-    fn rule(&self, logic: Logic) -> Rule {
+    fn rule(&self, logic: Arc<Logic>) -> Rule {
         Rule {
             engine: self.inner.clone(),
-            logic: Arc::new(logic),
+            logic,
         }
+    }
+
+    /// Compile ``rule`` as ``mode`` reads it, whatever this engine was
+    /// built with.
+    fn compile_in(
+        &self,
+        py: Python<'_>,
+        rule: &Bound<'_, PyAny>,
+        mode: CheckMode,
+    ) -> PyResult<Rule> {
+        let logic = with_rule(py, rule, |r| match r {
+            RuleSrc::Text(s) => datalogic_bind::compile_in(&self.inner, s, mode),
+            RuleSrc::Json(v) => datalogic_bind::compile_in(&self.inner, v, mode),
+        })?
+        .map_err(|e| engine_error_to_pyerr(py, &e, None))?;
+        Ok(self.rule(Arc::new(logic)))
     }
 }
 
@@ -358,13 +358,6 @@ fn with_rule<T>(
     }
     let value = dict_to_value(py, rule)?;
     Ok(f(RuleSrc::Json(&value)))
-}
-
-/// Parse a JSON wire string from `datalogic_bind` into Python objects.
-fn json_to_py(py: Python<'_>, json: &str) -> PyResult<Py<PyAny>> {
-    let value: Value =
-        serde_json::from_str(json).map_err(|e| crate::error::parse_error(py, e.to_string()))?;
-    value_to_pyobject(py, &value)
 }
 
 #[pyclass(name = "Rule", module = "datalogic_py", frozen)]
@@ -390,7 +383,7 @@ impl Rule {
     /// ``computed_reads``, ``reads_complete``, ``reads_data``,
     /// ``operators``, ``custom_operators`` and ``deterministic``.
     fn facts(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        json_to_py(py, &datalogic_bind::facts_json(&self.logic.facts()))
+        value_to_pyobject(py, &datalogic_bind::facts_value(&self.logic.facts()))
     }
 
     /// Evaluate against ``data`` and return the result as a Python value.

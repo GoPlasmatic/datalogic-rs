@@ -90,6 +90,13 @@ type EngineBuilder struct {
 	err     error        // first registration error; surfaced by Build
 }
 
+// fail records err as the builder's error unless one is already recorded.
+func (b *EngineBuilder) fail(err error) {
+	if b.err == nil {
+		b.err = err
+	}
+}
+
 // NewEngineBuilder creates a fresh, empty builder.
 func NewEngineBuilder() *EngineBuilder {
 	return &EngineBuilder{ptr: C.datalogic_engine_builder_new()}
@@ -114,10 +121,7 @@ func (b *EngineBuilder) TemplateKeyEscape(r rune) *EngineBuilder {
 	var cerr *C.datalogic_error
 	rc := C.datalogic_engine_builder_set_template_key_escape(b.ptr, C.uint32_t(r), &cerr)
 	if rc != C.DATALOGIC_STATUS_OK {
-		err := takeError(cerr)
-		if b.err == nil {
-			b.err = err
-		}
+		b.fail(takeError(cerr))
 	}
 	return b
 }
@@ -135,19 +139,14 @@ func (b *EngineBuilder) Families(names ...string) *EngineBuilder {
 	}
 	js, err := json.Marshal(names)
 	if err != nil {
-		if b.err == nil {
-			b.err = err
-		}
+		b.fail(err)
 		return b
 	}
 	cp, cl := strBytes(string(js))
 	var cerr *C.datalogic_error
 	rc := C.datalogic_engine_builder_set_families(b.ptr, cp, cl, &cerr)
 	if rc != C.DATALOGIC_STATUS_OK {
-		err := takeError(cerr)
-		if b.err == nil {
-			b.err = err
-		}
+		b.fail(takeError(cerr))
 	}
 	return b
 }
@@ -228,10 +227,7 @@ func (b *EngineBuilder) AddOperator(name string, fn OperatorFunc) *EngineBuilder
 		&cerr,
 	)
 	if rc != C.DATALOGIC_STATUS_OK {
-		err := takeError(cerr)
-		if b.err == nil {
-			b.err = err
-		}
+		b.fail(takeError(cerr))
 	}
 	return b
 }

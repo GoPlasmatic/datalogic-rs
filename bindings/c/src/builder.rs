@@ -354,23 +354,11 @@ pub unsafe extern "C" fn datalogic_engine_builder_add_operator(
                 callback,
                 user_data: AtomicPtr::new(user_data),
             };
-            if handle.strict_names {
-                // `try_add_operator` consumes the builder; on refusal the
-                // registrations so far are kept by rebuilding without it.
-                if crate::builtin_answers_to(&name_owned) {
-                    handle.inner = Some(b);
-                    return unsafe {
-                        fail(
-                            err,
-                            Error::from_engine(
-                                &datalogic_rs::Error::configuration_error(format!(
-                                    "custom operator `{name_owned}` would never run: a built-in operator answers to that name"
-                                )),
-                                None,
-                            ),
-                        )
-                    };
-                }
+            if handle.strict_names
+                && let Err(e) = b.check_operator_name(&name_owned)
+            {
+                handle.inner = Some(b);
+                return unsafe { fail(err, Error::from_engine(&e, None)) };
             }
             handle.inner = Some(b.add_operator(name_owned, op));
         }

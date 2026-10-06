@@ -180,9 +180,7 @@ func (e *Engine) Compile(ruleJSON string) (*Rule, error) {
 	if rc != C.DATALOGIC_STATUS_OK {
 		return nil, takeError(cerr)
 	}
-	r := &Rule{ptr: rulePtr}
-	runtime.SetFinalizer(r, (*Rule).Close)
-	return r, nil
+	return newRule(rulePtr), nil
 }
 
 // Apply compiles ruleJSON and evaluates it against dataJSON in one call,

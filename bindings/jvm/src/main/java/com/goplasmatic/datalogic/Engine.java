@@ -86,14 +86,26 @@ public class Engine implements AutoCloseable {
      */
     public Rule compile(String ruleJson) {
         if (ruleJson == null) throw new NullPointerException("ruleJson");
+        return compileWith(ruleJson, (rule, out, errSlot) ->
+                (int) DatalogicNative.ENGINE_COMPILE.invokeExact(
+                        handle(), rule, rule.byteSize(), out, errSlot));
+    }
+
+    /** One native compile entry point, called with the rule text and the out slots. */
+    @FunctionalInterface
+    private interface NativeCompile {
+        int call(MemorySegment rule, MemorySegment out, MemorySegment errSlot) throws Throwable;
+    }
+
+    /** What every compile method shares: marshal the rule, call, wrap the handle. */
+    private Rule compileWith(String ruleJson, NativeCompile compile) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment rule = DatalogicNative.utf8(arena, ruleJson);
             MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
             MemorySegment errSlot = arena.allocate(ValueLayout.ADDRESS);
             int status;
             try {
-                status = (int) DatalogicNative.ENGINE_COMPILE.invokeExact(
-                        handle(), rule, rule.byteSize(), out, errSlot);
+                status = compile.call(rule, out, errSlot);
             } catch (Throwable t) {
                 throw DatalogicException.propagate(t);
             }
@@ -118,22 +130,9 @@ public class Engine implements AutoCloseable {
     public Rule compileMode(String ruleJson, CompileMode mode) {
         if (ruleJson == null) throw new NullPointerException("ruleJson");
         if (mode == null) throw new NullPointerException("mode");
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment rule = DatalogicNative.utf8(arena, ruleJson);
-            MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
-            MemorySegment errSlot = arena.allocate(ValueLayout.ADDRESS);
-            int status;
-            try {
-                status = (int) DatalogicNative.ENGINE_COMPILE_MODE.invokeExact(
-                        handle(), rule, rule.byteSize(), mode.code(), out, errSlot);
-            } catch (Throwable t) {
-                throw DatalogicException.propagate(t);
-            }
-            if (status != DatalogicNative.STATUS_OK) {
-                throw DatalogicException.fromNative(status, errSlot, "compile failed");
-            }
-            return new Rule(out.get(ValueLayout.ADDRESS, 0), this);
-        }
+        return compileWith(ruleJson, (rule, out, errSlot) ->
+                (int) DatalogicNative.ENGINE_COMPILE_MODE.invokeExact(
+                        handle(), rule, rule.byteSize(), mode.code(), out, errSlot));
     }
 
     /**
@@ -144,22 +143,9 @@ public class Engine implements AutoCloseable {
      */
     public Rule compileChecked(String ruleJson) {
         if (ruleJson == null) throw new NullPointerException("ruleJson");
-        try (Arena arena = Arena.ofConfined()) {
-            MemorySegment rule = DatalogicNative.utf8(arena, ruleJson);
-            MemorySegment out = arena.allocate(ValueLayout.ADDRESS);
-            MemorySegment errSlot = arena.allocate(ValueLayout.ADDRESS);
-            int status;
-            try {
-                status = (int) DatalogicNative.ENGINE_COMPILE_CHECKED.invokeExact(
-                        handle(), rule, rule.byteSize(), out, errSlot);
-            } catch (Throwable t) {
-                throw DatalogicException.propagate(t);
-            }
-            if (status != DatalogicNative.STATUS_OK) {
-                throw DatalogicException.fromNative(status, errSlot, "compile failed");
-            }
-            return new Rule(out.get(ValueLayout.ADDRESS, 0), this);
-        }
+        return compileWith(ruleJson, (rule, out, errSlot) ->
+                (int) DatalogicNative.ENGINE_COMPILE_CHECKED.invokeExact(
+                        handle(), rule, rule.byteSize(), out, errSlot));
     }
 
     /**

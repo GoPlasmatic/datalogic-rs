@@ -21,7 +21,8 @@ const (
 	ModeTemplate Mode = C.DATALOGIC_MODE_TEMPLATE
 )
 
-func (e *Engine) newRule(ptr *C.datalogic_rule) *Rule {
+// newRule wraps a compiled rule handle, freed when the Rule is collected.
+func newRule(ptr *C.datalogic_rule) *Rule {
 	r := &Rule{ptr: ptr}
 	runtime.SetFinalizer(r, (*Rule).Close)
 	return r
@@ -38,7 +39,7 @@ func (e *Engine) CompileMode(ruleJSON string, mode Mode) (*Rule, error) {
 	if rc != C.DATALOGIC_STATUS_OK {
 		return nil, takeError(cerr)
 	}
-	return e.newRule(rulePtr), nil
+	return newRule(rulePtr), nil
 }
 
 // CompileTemplate compiles ruleJSON in templating mode.
@@ -63,7 +64,7 @@ func (e *Engine) CompileChecked(ruleJSON string) (*Rule, error) {
 	if rc != C.DATALOGIC_STATUS_OK {
 		return nil, takeError(cerr)
 	}
-	return e.newRule(rulePtr), nil
+	return newRule(rulePtr), nil
 }
 
 // Check returns every problem the engine can see in ruleJSON before it

@@ -88,28 +88,7 @@ public sealed class Engine : IDisposable
     /// <see cref="Rule"/> that can be evaluated against many inputs.
     /// </summary>
     /// <exception cref="ParseException">The rule JSON is malformed or uses an unknown operator.</exception>
-    public Rule Compile(string ruleJson)
-    {
-        ArgumentNullException.ThrowIfNull(ruleJson);
-        unsafe
-        {
-            using var ruleU8 = Utf8Input.From(ruleJson, stackalloc byte[Utf8Input.StackBufferSize]);
-            var err = IntPtr.Zero;
-            DatalogicStatus status;
-            IntPtr rulePtr;
-            fixed (byte* rp = ruleU8.Span)
-            {
-                status = NativeMethods.datalogic_engine_compile(
-                    Handle, rp, (nuint)ruleU8.Span.Length, out rulePtr, ref err);
-            }
-            if (status != DatalogicStatus.Ok)
-            {
-                throw DatalogicException.FromNative(status, err, "compile failed");
-            }
-            GC.KeepAlive(this);
-            return new Rule(rulePtr);
-        }
-    }
+    public Rule Compile(string ruleJson) => CompileMode(ruleJson, Datalogic.CompileMode.Engine);
 
     /// <summary>Compile <paramref name="ruleJson"/> in templating mode, whatever this engine's mode.</summary>
     public Rule CompileTemplate(string ruleJson) => CompileMode(ruleJson, Datalogic.CompileMode.Template);

@@ -47,14 +47,12 @@ fn parse_key_escape(value: &JsValue) -> Result<Option<char>, JsValue> {
             "options.templateKeyEscape must be a single-character string",
         )
     })?;
-    let mut chars = s.chars();
-    match (chars.next(), chars.next()) {
-        (Some(c), None) => Ok(Some(c)),
-        _ => Err(input_err_to_js(
+    datalogic_bind::single_char(&s).map(Some).ok_or_else(|| {
+        input_err_to_js(
             "parse-options",
             "options.templateKeyEscape must be exactly one character",
-        )),
-    }
+        )
+    })
 }
 
 /// Serialize an `Error` (the merged structured form) for the JS boundary.
@@ -590,10 +588,7 @@ impl Engine {
             .inner
             .compile_arc(logic)
             .map_err(|e| engine_err_to_js(&e))?;
-        Ok(Rule {
-            engine: self.inner.clone(),
-            compiled,
-        })
+        Ok(self.rule(compiled))
     }
 
     /// Compile `logic` in templating mode, whatever this engine was built
@@ -605,7 +600,7 @@ impl Engine {
             .inner
             .compile_template(logic)
             .map_err(|e| engine_err_to_js(&e))?;
-        Ok(self.rule(compiled))
+        Ok(self.rule(Arc::new(compiled)))
     }
 
     /// Compile `logic` outside templating mode, whatever this engine was
@@ -616,7 +611,7 @@ impl Engine {
             .inner
             .compile_strict(logic)
             .map_err(|e| engine_err_to_js(&e))?;
-        Ok(self.rule(compiled))
+        Ok(self.rule(Arc::new(compiled)))
     }
 
     /// Compile `logic`, refusing it if `check` finds any error.
@@ -634,7 +629,7 @@ impl Engine {
                 &format!(r#"{{"type":"CompileError","diagnostics":{diagnostics}}}"#),
             )
         })?;
-        Ok(self.rule(compiled))
+        Ok(self.rule(Arc::new(compiled)))
     }
 
     /// Every problem this engine can see in `logic` before it runs, as a
@@ -745,10 +740,10 @@ impl Engine {
 }
 
 impl Engine {
-    fn rule(&self, logic: Logic) -> Rule {
+    fn rule(&self, compiled: Arc<Logic>) -> Rule {
         Rule {
             engine: self.inner.clone(),
-            compiled: Arc::new(logic),
+            compiled,
         }
     }
 }
@@ -1299,17 +1294,9 @@ fn outcomes_to_js(outcomes: &[BatchOutcome]) -> Result<Array, JsValue> {
 /// Pull `{ templating, customOperators, config }` out of a JS options
 /// object. Anything missing falls back to the zero value (no templating,
 /// no ops, default config).
-#[allow(clippy::type_complexity)]
 fn parse_engine_options(options: &JsValue) -> Result<EngineOptions, JsValue> {
     if options.is_null() || options.is_undefined() {
-        return Ok(EngineOptions {
-            templating: false,
-            key_escape: None,
-            custom_ops: Vec::new(),
-            config: None,
-            strict_names: false,
-            families: None,
-        });
+        return Ok(EngineOptions::default());
     }
     let obj: &Object = options
         .dyn_ref::<Object>()
@@ -1380,6 +1367,7 @@ fn parse_engine_options(options: &JsValue) -> Result<EngineOptions, JsValue> {
 }
 
 /// What `parse_engine_options` reads.
+#[derive(Default)]
 struct EngineOptions {
     templating: bool,
     key_escape: Option<char>,

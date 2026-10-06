@@ -329,3 +329,55 @@ fn builder_escape_and_strict_names() {
         datalogic_engine_free(engine);
     }
 }
+
+#[test]
+fn strict_names_follow_the_families() {
+    // With ExtString left out, `upper` is no built-in's name, so a strict
+    // builder takes it, while a core name is still refused.
+    let builder = datalogic_engine_builder_new();
+    let families = br#"["ExtArray"]"#;
+    unsafe {
+        datalogic_engine_builder_set_strict_operator_names(builder, 1);
+        assert_eq!(
+            datalogic_engine_builder_set_families(
+                builder,
+                families.as_ptr(),
+                families.len(),
+                std::ptr::null_mut()
+            ),
+            Status::Ok
+        );
+    }
+    let add = |name: &[u8]| unsafe {
+        datalogic_engine_builder_add_operator(
+            builder,
+            name.as_ptr(),
+            name.len(),
+            Some(one),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    };
+    assert_eq!(add(b"upper"), Status::Ok);
+    assert_eq!(add(b"if"), Status::Eval);
+    let engine = unsafe { datalogic_engine_builder_build(builder) };
+    let rule = br#"{"upper": "a"}"#;
+    let mut out = empty();
+    let status = unsafe {
+        datalogic_engine_apply(
+            engine,
+            rule.as_ptr(),
+            rule.len(),
+            b"null".as_ptr(),
+            4,
+            &mut out,
+            std::ptr::null_mut(),
+        )
+    };
+    assert_eq!(status, Status::Ok);
+    assert_eq!(take(out), serde_json::json!(1));
+    unsafe {
+        datalogic_engine_builder_free(builder);
+        datalogic_engine_free(engine);
+    }
+}

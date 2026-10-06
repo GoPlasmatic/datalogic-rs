@@ -6,8 +6,8 @@ use std::sync::Arc;
 use datalogic_rs::bumpalo::Bump;
 use datalogic_rs::operator::EvalContext;
 use datalogic_rs::{
-    CustomOperator, DataValue, Engine as RsEngine, Error as DlError, EvaluationConfig, Logic,
-    Result as DlResult,
+    CheckMode, CustomOperator, DataValue, Engine as RsEngine, Error as DlError, EvaluationConfig,
+    Logic, Result as DlResult,
 };
 use napi::bindgen_prelude::*;
 use napi::sys;
@@ -154,19 +154,14 @@ impl Engine {
         // ignoring it: an option that looks accepted but does nothing is
         // worse than a loud failure.
         if let Some(prefix) = key_escape {
-            let mut chars = prefix.chars();
-            match (chars.next(), chars.next()) {
-                (Some(c), None) => builder = builder.with_template_key_escape(c),
-                _ => {
-                    return Err(engine_error(
-                        &env,
-                        &DlError::invalid_arguments(
-                            "templateKeyEscape must be exactly one character",
-                        ),
-                        None,
-                    ));
-                }
-            }
+            let c = datalogic_bind::single_char(&prefix).ok_or_else(|| {
+                engine_error(
+                    &env,
+                    &DlError::invalid_arguments("templateKeyEscape must be exactly one character"),
+                    None,
+                )
+            })?;
+            builder = builder.with_template_key_escape(c);
         }
         // JS `null` arrives as `Value::Null` rather than `None` through
         // the serde bridge; treat both as "not provided", matching the
@@ -203,10 +198,7 @@ impl Engine {
     #[napi]
     pub fn compile(&self, env: Env, rule: Value) -> Result<Rule> {
         let logic = compile_inner(&env, &self.inner, rule)?;
-        Ok(Rule {
-            engine: self.inner.clone(),
-            logic,
-        })
+        Ok(self.rule(logic))
     }
 
     /// Compile `rule` in templating mode, whatever this engine was built
@@ -214,24 +206,14 @@ impl Engine {
     /// output field.
     #[napi]
     pub fn compile_template(&self, env: Env, rule: Value) -> Result<Rule> {
-        let logic = with_rule(rule, |r| match r {
-            RuleSrc::Text(s) => self.inner.compile_template(s),
-            RuleSrc::Json(v) => self.inner.compile_template(v),
-        })
-        .map_err(|e| engine_error(&env, &e, None))?;
-        Ok(self.rule(logic))
+        self.compile_in(&env, rule, CheckMode::Template)
     }
 
     /// Compile `rule` outside templating mode, whatever this engine was
     /// built with: a multi-key object or an unknown operator is an error.
     #[napi]
     pub fn compile_strict(&self, env: Env, rule: Value) -> Result<Rule> {
-        let logic = with_rule(rule, |r| match r {
-            RuleSrc::Text(s) => self.inner.compile_strict(s),
-            RuleSrc::Json(v) => self.inner.compile_strict(v),
-        })
-        .map_err(|e| engine_error(&env, &e, None))?;
-        Ok(self.rule(logic))
+        self.compile_in(&env, rule, CheckMode::Strict)
     }
 
     /// Compile `rule`, refusing it if `check` finds any error. Throws
@@ -243,7 +225,7 @@ impl Engine {
             RuleSrc::Json(v) => self.inner.compile_checked(v),
         })
         .map_err(|e| crate::error::compile_error(&env, &e))?;
-        Ok(self.rule(logic))
+        Ok(self.rule(Arc::new(logic)))
     }
 
     /// Every problem this engine can see in `rule` before it runs, as an
@@ -255,14 +237,11 @@ impl Engine {
     pub fn check(&self, env: Env, rule: Value, mode: Option<String>) -> Result<Value> {
         let mode = datalogic_bind::check_mode(mode.as_deref())
             .map_err(|msg| engine_error(&env, &DlError::invalid_arguments(msg), None))?;
-        let diagnostics = match &rule {
-            Value::String(s) => self.inner.check(s.as_str(), mode),
-            other => self.inner.check(other, mode),
-        };
-        Ok(
-            serde_json::from_str(&datalogic_bind::diagnostics_json(&diagnostics))
-                .unwrap_or(Value::Array(Vec::new())),
-        )
+        let diagnostics = with_rule(rule, |r| match r {
+            RuleSrc::Text(s) => self.inner.check(s, mode),
+            RuleSrc::Json(v) => self.inner.check(v, mode),
+        });
+        Ok(datalogic_bind::diagnostics_value(&diagnostics))
     }
 
     /// Every built-in operator this engine evaluates: name, aliases,
@@ -272,8 +251,7 @@ impl Engine {
         ts_return_type = "Array<{ name: string; aliases: string[]; family: string; feature: string | null; min_args: number; max_args: number | null; reads_context: boolean; effect: string; cost: string; scoped_arg: number | 'last' | null }>"
     )]
     pub fn operators(&self) -> Value {
-        serde_json::from_str(&datalogic_bind::operators_json(&self.inner))
-            .unwrap_or(Value::Array(Vec::new()))
+        datalogic_bind::operators_value(&self.inner)
     }
 
     /// Whether `value` is truthy under this engine's configured
@@ -379,11 +357,22 @@ impl Engine {
 }
 
 impl Engine {
-    fn rule(&self, logic: Logic) -> Rule {
+    fn rule(&self, logic: Arc<Logic>) -> Rule {
         Rule {
             engine: self.inner.clone(),
-            logic: Arc::new(logic),
+            logic,
         }
+    }
+
+    /// Compile `rule` as `mode` reads it, whatever this engine was built
+    /// with.
+    fn compile_in(&self, env: &Env, rule: Value, mode: CheckMode) -> Result<Rule> {
+        let logic = with_rule(rule, |r| match r {
+            RuleSrc::Text(s) => datalogic_bind::compile_in(&self.inner, s, mode),
+            RuleSrc::Json(v) => datalogic_bind::compile_in(&self.inner, v, mode),
+        })
+        .map_err(|e| engine_error(env, &e, None))?;
+        Ok(self.rule(Arc::new(logic)))
     }
 }
 
@@ -427,8 +416,7 @@ impl Rule {
         ts_return_type = "{ reads: string[][]; computed_reads: boolean; reads_complete: boolean; reads_data: boolean; operators: string[]; custom_operators: string[]; deterministic: boolean }"
     )]
     pub fn facts(&self) -> Value {
-        serde_json::from_str(&datalogic_bind::facts_json(&self.logic.facts()))
-            .unwrap_or(Value::Null)
+        datalogic_bind::facts_value(&self.logic.facts())
     }
 
     /// Evaluate against `data` and return the result as a JS value.

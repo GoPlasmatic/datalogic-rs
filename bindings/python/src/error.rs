@@ -63,9 +63,8 @@ create_exception!(
 pub fn compile_error_to_pyerr(py: Python<'_>, err: &datalogic_rs::CompileError) -> PyErr {
     let pyerr = CompileError::new_err(err.to_string());
     let _ = pyerr.value(py).setattr("error_type", "CompileError");
-    if let Ok(diagnostics) = serde_json::from_str::<serde_json::Value>(
-        &datalogic_bind::diagnostics_json(&err.diagnostics),
-    ) && let Ok(obj) = crate::conv::value_to_pyobject(py, &diagnostics)
+    if let Ok(obj) =
+        crate::conv::value_to_pyobject(py, &datalogic_bind::diagnostics_value(&err.diagnostics))
     {
         let _ = pyerr.value(py).setattr("diagnostics", obj);
     }

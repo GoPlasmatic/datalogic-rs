@@ -20,7 +20,7 @@ use std::collections::BTreeMap;
 
 use datalogic_rs::{
     CheckMode, DataValue, Diagnostic, Engine, Error, ExecutionStep, ExpressionNode, Facts, Family,
-    Logic, OperatorInfo, ScopedArg, TracedRun,
+    IntoLogic, Logic, OperatorInfo, ScopedArg, TracedRun,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -59,8 +59,21 @@ pub fn traced_run_json(run: &TracedRun<String>) -> String {
 /// `pointers`.
 pub fn traced_json(engine: &Engine, rule: &str, data: &str) -> String {
     let tracer = engine.trace();
-    let Ok(logic) = tracer.compile(rule) else {
-        return traced_run_json(&tracer.eval_str(rule, data));
+    let logic = match tracer.compile(rule) {
+        Ok(logic) => logic,
+        // What `eval_str` reports for a rule that does not compile, without
+        // compiling it a second time.
+        Err(e) => {
+            return traced_run_json(&TracedRun {
+                result: Err(e),
+                steps: Vec::new(),
+                expression_tree: ExpressionNode {
+                    id: 0,
+                    expression: String::new(),
+                    children: Vec::new(),
+                },
+            });
+        }
     };
     let run = tracer.eval(&logic, data);
     let run = TracedRun {
@@ -107,15 +120,15 @@ fn traced_wire(run: &TracedRun<String>, logic: Option<&Logic>) -> String {
 }
 
 /// The largest operation budget a JavaScript number carries exactly.
-pub const MAX_SAFE_BUDGET: f64 = 9_007_199_254_740_991.0;
+const MAX_SAFE_BUDGET: f64 = 9_007_199_254_740_991.0;
 
 /// The message for a budget that is not a whole number of operations.
-pub const BUDGET_ERROR: &str = "budget must be a whole number of operations >= 1";
+const BUDGET_ERROR: &str = "budget must be a whole number of operations >= 1";
 
 /// Validate a budget a JavaScript host passed as a number: `None` stays
 /// `None` (the engine's own budget applies), a whole number from 1 to
 /// [`MAX_SAFE_BUDGET`] is taken, anything else is [`BUDGET_ERROR`].
-pub fn budget_from_f64(budget: Option<f64>) -> Result<Option<u64>, &'static str> {
+fn budget_from_f64(budget: Option<f64>) -> Result<Option<u64>, &'static str> {
     match budget {
         None => Ok(None),
         Some(n) if n.is_finite() && n >= 1.0 && n.fract() == 0.0 && n <= MAX_SAFE_BUDGET => {
@@ -164,7 +177,7 @@ pub fn parse_result<'a>(
 
 /// One built-in operator in the catalogue schema, keys in catalogue order.
 #[derive(Serialize)]
-pub struct OperatorJson<'a> {
+struct OperatorJson<'a> {
     name: &'a str,
     aliases: &'a [&'a str],
     family: &'a str,
@@ -204,15 +217,34 @@ impl<'a> From<&'a OperatorInfo> for OperatorJson<'a> {
 /// Every built-in operator `engine` evaluates
 /// ([`Engine::operators`]), as a JSON array in the catalogue schema.
 pub fn operators_json(engine: &Engine) -> String {
+    with_operators(engine, |rows| serde_json::to_string(rows)).unwrap_or_else(|_| "[]".to_string())
+}
+
+/// [`operators_json`] as a [`Value`], for a host that converts one.
+pub fn operators_value(engine: &Engine) -> Value {
+    with_operators(engine, |rows| serde_json::to_value(rows))
+        .unwrap_or_else(|_| Value::Array(Vec::new()))
+}
+
+fn with_operators<T>(engine: &Engine, f: impl FnOnce(&[OperatorJson<'_>]) -> T) -> T {
     let ops: Vec<OperatorInfo> = engine.operators().collect();
     let rows: Vec<OperatorJson<'_>> = ops.iter().map(OperatorJson::from).collect();
-    serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_string())
+    f(&rows)
 }
 
 /// A rule's [`Facts`] as JSON. `reads` lists each path as its segments
 /// (`[["user", "id"], ["items"]]`), which keeps a key containing a dot
 /// unambiguous.
 pub fn facts_json(facts: &Facts) -> String {
+    serde_json::to_string(&facts_wire(facts)).unwrap_or_default()
+}
+
+/// [`facts_json`] as a [`Value`], for a host that converts one.
+pub fn facts_value(facts: &Facts) -> Value {
+    serde_json::to_value(facts_wire(facts)).unwrap_or(Value::Null)
+}
+
+fn facts_wire(facts: &Facts) -> impl Serialize + '_ {
     #[derive(Serialize)]
     struct Wire<'a> {
         reads: Vec<&'a [String]>,
@@ -223,7 +255,7 @@ pub fn facts_json(facts: &Facts) -> String {
         custom_operators: &'a [String],
         deterministic: bool,
     }
-    serde_json::to_string(&Wire {
+    Wire {
         reads: facts.reads().iter().map(|p| p.segments()).collect(),
         computed_reads: facts.has_computed_reads(),
         reads_complete: facts.reads_complete(),
@@ -231,13 +263,17 @@ pub fn facts_json(facts: &Facts) -> String {
         operators: facts.operators(),
         custom_operators: facts.custom_operators(),
         deterministic: facts.is_deterministic(),
-    })
-    .unwrap_or_default()
+    }
 }
 
 /// Diagnostics from [`Engine::check`] as a JSON array.
 pub fn diagnostics_json(diagnostics: &[Diagnostic]) -> String {
     serde_json::to_string(diagnostics).unwrap_or_else(|_| "[]".to_string())
+}
+
+/// [`diagnostics_json`] as a [`Value`], for a host that converts one.
+pub fn diagnostics_value(diagnostics: &[Diagnostic]) -> Value {
+    serde_json::to_value(diagnostics).unwrap_or_else(|_| Value::Array(Vec::new()))
 }
 
 /// The [`Family`] a host names, by its catalogue name (`"ExtString"`,
@@ -278,6 +314,27 @@ pub fn check_mode(name: Option<&str>) -> Result<CheckMode, String> {
         Some(other) => Err(format!(
             "unknown check mode {other:?} (expected \"engine\", \"strict\" or \"template\")"
         )),
+    }
+}
+
+/// Compile `rule` the way `mode` reads it: [`Engine::compile`] for
+/// [`CheckMode::Engine`], [`Engine::compile_strict`],
+/// [`Engine::compile_template`].
+pub fn compile_in<R: IntoLogic>(engine: &Engine, rule: R, mode: CheckMode) -> Result<Logic, Error> {
+    match mode {
+        CheckMode::Strict => engine.compile_strict(rule),
+        CheckMode::Template => engine.compile_template(rule),
+        _ => engine.compile(rule),
+    }
+}
+
+/// The one character of a template key escape a host passed, or `None`
+/// when it is empty or longer; each binding words its own refusal.
+pub fn single_char(s: &str) -> Option<char> {
+    let mut chars = s.chars();
+    match (chars.next(), chars.next()) {
+        (Some(c), None) => Some(c),
+        _ => None,
     }
 }
 

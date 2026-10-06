@@ -69,9 +69,42 @@ pub unsafe extern "C" fn datalogic_engine_compile(
     out_rule: *mut *mut Rule,
     err: *mut *mut Error,
 ) -> Status {
+    unsafe {
+        compile_into(engine, rule_json, rule_len, out_rule, err, |engine, src| {
+            engine
+                .compile(src)
+                .map_err(|e| Error::from_engine(&e, None))
+        })
+    }
+}
+
+/// The engine behind a handle, or the error for a null one.
+///
+/// # Safety
+///
+/// `engine` is null or a valid handle that outlives `'a`.
+pub(crate) unsafe fn engine_ref<'a>(engine: *const Engine) -> Result<&'a Engine, Error> {
+    unsafe { engine.as_ref() }.ok_or_else(|| Error::invalid_arg("engine pointer is null"))
+}
+
+/// What every compile entry point shares: check the handles, read the rule
+/// text, and store the rule `compile` makes in `*out_rule`.
+///
+/// # Safety
+///
+/// As [`datalogic_engine_compile`].
+pub(crate) unsafe fn compile_into(
+    engine: *const Engine,
+    rule_json: *const u8,
+    rule_len: usize,
+    out_rule: *mut *mut Rule,
+    err: *mut *mut Error,
+    compile: impl FnOnce(&RsEngine, &str) -> Result<datalogic_rs::Logic, Error>,
+) -> Status {
     guard_status(err, || {
-        let Some(engine) = (unsafe { engine.as_ref() }) else {
-            return unsafe { fail(err, Error::invalid_arg("engine pointer is null")) };
+        let engine = match unsafe { engine_ref(engine) } {
+            Ok(e) => e,
+            Err(e) => return unsafe { fail(err, e) },
         };
         if out_rule.is_null() {
             return unsafe { fail(err, Error::invalid_arg("out_rule pointer is null")) };
@@ -80,17 +113,17 @@ pub unsafe extern "C" fn datalogic_engine_compile(
             Ok(s) => s,
             Err(e) => return unsafe { fail(err, e) },
         };
-        match engine.inner.compile_arc(rule_src) {
+        match compile(&engine.inner, rule_src) {
             Ok(logic) => {
                 unsafe {
                     *out_rule = Box::into_raw(Box::new(Rule {
                         engine: engine.inner.clone(),
-                        logic,
+                        logic: Arc::new(logic),
                     }));
                 }
                 Status::Ok
             }
-            Err(e) => unsafe { fail(err, Error::from_engine(&e, None)) },
+            Err(e) => unsafe { fail(err, e) },
         }
     })
 }
@@ -119,8 +152,9 @@ pub unsafe extern "C" fn datalogic_engine_apply(
     err: *mut *mut Error,
 ) -> Status {
     guard_status(err, || {
-        let Some(engine) = (unsafe { engine.as_ref() }) else {
-            return unsafe { fail(err, Error::invalid_arg("engine pointer is null")) };
+        let engine = match unsafe { engine_ref(engine) } {
+            Ok(e) => e,
+            Err(e) => return unsafe { fail(err, e) },
         };
         if out.is_null() {
             return unsafe { fail(err, Error::invalid_arg("out pointer is null")) };

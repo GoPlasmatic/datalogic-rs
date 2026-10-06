@@ -136,6 +136,16 @@ pub unsafe extern "C" fn datalogic_buf_free(buf: Buf) {
 
 // =============== shared entry-point plumbing ===============
 
+/// Store `json` in `*out` as an owned [`Buf`].
+///
+/// # Safety
+///
+/// `out` is non-null and writable.
+pub(crate) unsafe fn put_buf(out: *mut Buf, json: String) -> Status {
+    unsafe { *out = Buf::from_vec(json.into_bytes()) };
+    Status::Ok
+}
+
 /// Borrow a caller `(ptr, len)` byte range as `&str`, or produce the
 /// `InvalidArg` error naming the parameter. A NULL pointer with zero
 /// length reads as the empty string (which then fails JSON parsing with

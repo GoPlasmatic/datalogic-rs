@@ -19,7 +19,7 @@ use datalogic_rs::Engine as RsEngine;
 
 use crate::engine::Engine;
 use crate::error::{Error, Status, fail};
-use crate::{Buf, ffi_guard, guard_status, str_from_raw};
+use crate::{Buf, ffi_guard, guard_status, put_buf, str_from_raw};
 
 /// Trace-enabled handle over a [`datalogic_rs::Engine`]
 /// (`struct datalogic_traced_session`). Constructed via
@@ -106,8 +106,11 @@ pub unsafe extern "C" fn datalogic_traced_session_evaluate(
             Ok(s) => s,
             Err(e) => return unsafe { fail(err, e) },
         };
-        let json = datalogic_bind::traced_json(&session.engine, rule_src, data);
-        unsafe { *out = Buf::from_vec(json.into_bytes()) };
-        Status::Ok
+        unsafe {
+            put_buf(
+                out,
+                datalogic_bind::traced_json(&session.engine, rule_src, data),
+            )
+        }
     })
 }

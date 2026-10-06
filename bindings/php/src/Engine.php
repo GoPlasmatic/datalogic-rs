@@ -78,16 +78,28 @@ class Engine
     /** Compile a JSONLogic rule (JSON-string) into a reusable {@see Rule}. */
     public function compile(string $ruleJson): Rule
     {
-        $ffi = Native::ffi();
-        $out = $ffi->new('datalogic_rule*');
-        $err = Native::newErrorOut();
-        $rc = $ffi->datalogic_engine_compile(
+        return $this->compileWith(fn ($ffi, $out, $err) => $ffi->datalogic_engine_compile(
             $this->handle(),
             $ruleJson,
             strlen($ruleJson),
             FFI::addr($out),
             FFI::addr($err),
-        );
+        ));
+    }
+
+    /**
+     * What every compile method shares: `$call` makes one native compile
+     * call into the given out slots; a failure throws, a success wraps the
+     * rule handle.
+     *
+     * @param callable(FFI, CData, CData): int $call
+     */
+    private function compileWith(callable $call): Rule
+    {
+        $ffi = Native::ffi();
+        $out = $ffi->new('datalogic_rule*');
+        $err = Native::newErrorOut();
+        $rc = $call($ffi, $out, $err);
         if ($rc !== Native::STATUS_OK) {
             throw DatalogicException::fromNative($rc, $err, 'compile failed');
         }
@@ -112,21 +124,14 @@ class Engine
      */
     public function compileMode(string $ruleJson, int $mode): Rule
     {
-        $ffi = Native::ffi();
-        $out = $ffi->new('datalogic_rule*');
-        $err = Native::newErrorOut();
-        $rc = $ffi->datalogic_engine_compile_mode(
+        return $this->compileWith(fn ($ffi, $out, $err) => $ffi->datalogic_engine_compile_mode(
             $this->handle(),
             $ruleJson,
             strlen($ruleJson),
             $mode,
             FFI::addr($out),
             FFI::addr($err),
-        );
-        if ($rc !== Native::STATUS_OK) {
-            throw DatalogicException::fromNative($rc, $err, 'compile failed');
-        }
-        return new Rule($out);
+        ));
     }
 
     /**
@@ -136,20 +141,13 @@ class Engine
      */
     public function compileChecked(string $ruleJson): Rule
     {
-        $ffi = Native::ffi();
-        $out = $ffi->new('datalogic_rule*');
-        $err = Native::newErrorOut();
-        $rc = $ffi->datalogic_engine_compile_checked(
+        return $this->compileWith(fn ($ffi, $out, $err) => $ffi->datalogic_engine_compile_checked(
             $this->handle(),
             $ruleJson,
             strlen($ruleJson),
             FFI::addr($out),
             FFI::addr($err),
-        );
-        if ($rc !== Native::STATUS_OK) {
-            throw DatalogicException::fromNative($rc, $err, 'compile failed');
-        }
-        return new Rule($out);
+        ));
     }
 
     /**
