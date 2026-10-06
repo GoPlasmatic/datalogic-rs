@@ -52,13 +52,12 @@ pub(crate) fn type_<'a>(_cx: &mut Cx<'_, 'a>, av: &'a DataValue<'a>) -> Result<&
     // Datetime/duration object detection (e.g. {"datetime": "..."}).
     #[cfg(feature = "datetime")]
     {
-        if let DataValue::Object(pairs) = av {
-            if pairs.iter().any(|(k, _)| *k == "datetime") {
-                return Ok(crate::arena::singletons::singleton_type_name("datetime"));
-            }
-            if pairs.iter().any(|(k, _)| *k == "timestamp") {
-                return Ok(crate::arena::singletons::singleton_type_name("duration"));
-            }
+        use crate::operators::datetime::sentinel_str;
+        if sentinel_str(av, "datetime").is_some() {
+            return Ok(crate::arena::singletons::singleton_type_name("datetime"));
+        }
+        if sentinel_str(av, "timestamp").is_some() {
+            return Ok(crate::arena::singletons::singleton_type_name("duration"));
         }
     }
 

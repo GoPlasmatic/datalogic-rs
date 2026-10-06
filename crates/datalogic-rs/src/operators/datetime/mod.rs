@@ -92,16 +92,7 @@ pub(crate) fn extract_datetime(av: &DataValue<'_>) -> Option<DataDateTime> {
     match av {
         DataValue::DateTime(dt) => Some(*dt),
         DataValue::String(s) => DataDateTime::parse(s),
-        DataValue::Object(pairs) => {
-            for (k, v) in *pairs {
-                if *k == "datetime"
-                    && let DataValue::String(s) = v
-                {
-                    return DataDateTime::parse(s);
-                }
-            }
-            None
-        }
+        DataValue::Object(_) => DataDateTime::parse(sentinel_str(av, "datetime")?),
         _ => None,
     }
 }
@@ -112,30 +103,34 @@ pub(crate) fn extract_duration(av: &DataValue<'_>) -> Option<DataDuration> {
     match av {
         DataValue::Duration(d) => Some(*d),
         DataValue::String(s) => DataDuration::parse(s),
-        DataValue::Object(pairs) => {
-            for (k, v) in *pairs {
-                if *k == "timestamp"
-                    && let DataValue::String(s) = v
-                {
-                    return DataDuration::parse(s);
-                }
-            }
-            None
-        }
+        DataValue::Object(_) => DataDuration::parse(sentinel_str(av, "timestamp")?),
         _ => None,
     }
 }
 
-/// True iff this arena Object has a `datetime` key (boundary form).
+/// The string under `key` when `av` is the boundary form `{key: "..."}`:
+/// an object with that one key and a string value. A record that merely
+/// carries a `datetime` or `timestamp` field beside others is ordinary
+/// data, not a datetime: treating it as one made `===`, `in`, `distinct`,
+/// `switch` and `type` judge two different records by that field alone.
 #[inline]
-fn is_datetime_object(av: &DataValue<'_>) -> bool {
-    matches!(av, DataValue::Object(pairs) if pairs.iter().any(|(k, _)| *k == "datetime"))
+pub(crate) fn sentinel_str<'v>(av: &'v DataValue<'_>, key: &str) -> Option<&'v str> {
+    match av {
+        DataValue::Object([(k, DataValue::String(s))]) if *k == key => Some(*s),
+        _ => None,
+    }
 }
 
-/// True iff this arena Object has a `timestamp` key (boundary form).
+/// True iff this arena value is the `{"datetime": "..."}` boundary form.
+#[inline]
+fn is_datetime_object(av: &DataValue<'_>) -> bool {
+    sentinel_str(av, "datetime").is_some()
+}
+
+/// True iff this arena value is the `{"timestamp": "..."}` boundary form.
 #[inline]
 fn is_duration_object(av: &DataValue<'_>) -> bool {
-    matches!(av, DataValue::Object(pairs) if pairs.iter().any(|(k, _)| *k == "timestamp"))
+    sentinel_str(av, "timestamp").is_some()
 }
 
 /// Native arena-mode `datetime`. Returns the input unchanged if it parses
@@ -229,6 +224,21 @@ fn jsonlogic_to_chrono_format(format: &str) -> String {
         rest = chars.as_str();
     }
     out
+}
+
+/// Render `dt` with the JSONLogic format `fmt`. Writes through
+/// `fmt::Write` rather than `to_string()`: chrono reports a specifier it
+/// does not know (a raw `%Q`, a trailing `%`) as a `fmt::Error`, which
+/// `to_string()` turns into a panic.
+fn render_chrono<Tz: chrono::TimeZone>(dt: &chrono::DateTime<Tz>, fmt: &str) -> Result<String>
+where
+    Tz::Offset: std::fmt::Display,
+{
+    use std::fmt::Write;
+    let mut out = String::new();
+    write!(out, "{}", dt.format(&jsonlogic_to_chrono_format(fmt)))
+        .map_err(|_| Error::invalid_arguments("Invalid date format"))?;
+    Ok(out)
 }
 
 /// Resolve the optional trailing timezone argument to a chrono-tz zone.
@@ -354,18 +364,17 @@ pub(crate) fn format_date<'a>(
             let formatted = if fmt == "z" {
                 offset_to_z_string(zoned.offset().fix().local_minus_utc())
             } else {
-                zoned.format(&jsonlogic_to_chrono_format(fmt)).to_string()
+                render_chrono(&zoned, fmt)?
             };
             let s: &'a str = cx.alloc_str(&formatted);
             return Ok(cx.alloc(DataValue::String(s)));
         }
 
-        let chrono_format = if fmt == "z" {
-            fmt.to_string()
+        let formatted = if fmt == "z" {
+            datetime.format(fmt)
         } else {
-            jsonlogic_to_chrono_format(fmt)
+            render_chrono(&datetime.dt, fmt)?
         };
-        let formatted = datetime.format(&chrono_format);
         let s: &'a str = cx.alloc_str(&formatted);
         return Ok(cx.alloc(DataValue::String(s)));
     }
