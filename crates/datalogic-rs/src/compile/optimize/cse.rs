@@ -43,15 +43,17 @@
 //!
 //! # Equivalence
 //!
-//! Occurrences are bucketed by a bottom-up structural hash and verified
-//! with strict structural equality: `1` and `1.0` are distinct (they
+//! Occurrences are bucketed by a bottom-up structural hash (each node's
+//! hash is built from its children's, in the same single post-order walk
+//! that works out size, purity and iterator content) and verified with
+//! strict structural equality: `1` and `1.0` are distinct (they
 //! render differently), floats compare by bit pattern, object literals
 //! compare order-sensitively, and the derived fields (`id`,
 //! `predicate_hint`, `iter_arg_kind`, `lit`) are skipped — structurally
 //! identical subtrees always carry different ids.
 
 use std::collections::HashMap;
-use std::collections::hash_map::DefaultHasher;
+
 use std::hash::{Hash, Hasher};
 
 use datavalue::{NumberValue, OwnedDataValue};
@@ -70,9 +72,16 @@ const MIN_NODE_COUNT: usize = 8;
 /// Run the pass over a finished compile tree. Returns the number of memo
 /// slots assigned (0 = no `Cse` nodes were inserted).
 pub(crate) fn apply(root: &mut CompiledNode) -> u16 {
-    let mut table = ClassTable::default();
+    let mut walk = Walk::default();
     let mut choices = Vec::new();
-    collect(root, &mut table, &mut choices);
+    walk.visit(root, true, &mut choices);
+    // Record in pre-order, as a top-down walk meets the candidates, so
+    // slot numbering follows the rule's reading order.
+    walk.candidates.sort_unstable_by_key(|c| c.preorder);
+    let mut table = ClassTable::default();
+    for candidate in walk.candidates {
+        table.record(candidate.node, candidate.hash, candidate.choices);
+    }
     table.assign_slots();
     if table.slot_count == 0 {
         return 0;
@@ -108,25 +117,38 @@ struct ClassTable {
     /// `(hash, index-in-bucket)` in first-seen order, so slot numbering is
     /// deterministic regardless of `HashMap` iteration order.
     order: Vec<(u64, usize)>,
+    /// Each recorded occurrence, by node address, with its class. Phase 2
+    /// looks occurrences up here rather than hashing every subtree again.
+    /// Addresses are stable: phase 1 does not touch the tree, and phase 2
+    /// moves only the node it wraps, after looking it up, while every
+    /// child stays in its parent's heap allocation.
+    by_node: HashMap<usize, (u64, usize)>,
     slot_count: u16,
 }
 
 impl ClassTable {
-    fn record(&mut self, node: &CompiledNode, choices: &[(usize, u32)]) {
-        let hash = subtree_hash(node);
+    fn record(&mut self, node: &CompiledNode, hash: u64, choices: ChoicePath) {
+        let address = node as *const CompiledNode as usize;
         let bucket = self.buckets.entry(hash).or_default();
-        for class in bucket.iter_mut() {
-            if structural_eq(&class.exemplar, node) {
-                class.occurrences.push(choices.into());
-                return;
+        let index = match bucket
+            .iter()
+            .position(|class| structural_eq(&class.exemplar, node))
+        {
+            Some(index) => {
+                bucket[index].occurrences.push(choices);
+                index
             }
-        }
-        bucket.push(Class {
-            exemplar: node.clone(),
-            occurrences: vec![choices.into()],
-            slot: None,
-        });
-        self.order.push((hash, bucket.len() - 1));
+            None => {
+                bucket.push(Class {
+                    exemplar: node.clone(),
+                    occurrences: vec![choices],
+                    slot: None,
+                });
+                self.order.push((hash, bucket.len() - 1));
+                bucket.len() - 1
+            }
+        };
+        self.by_node.insert(address, (hash, index));
     }
 
     fn assign_slots(&mut self) {
@@ -148,48 +170,123 @@ impl ClassTable {
         }
     }
 
-    /// Slot for `node` if it belongs to a shared class. Phase 2 only calls
-    /// this on pristine (not-yet-wrapped) subtrees, so hashing matches
-    /// phase 1 exactly.
+    /// Slot for `node` if phase 1 recorded it as an occurrence of a shared
+    /// class. Phase 2 visits exactly the positions phase 1 recorded from,
+    /// on the untouched nodes, so the lookup by address finds them.
     fn match_slot(&self, node: &CompiledNode) -> Option<u16> {
-        if !matches!(node, CompiledNode::BuiltinOperator { .. }) {
-            return None;
-        }
-        let bucket = self.buckets.get(&subtree_hash(node))?;
-        bucket
-            .iter()
-            .find(|c| c.slot.is_some() && structural_eq(&c.exemplar, node))
-            .and_then(|c| c.slot)
+        let (hash, index) = self.by_node.get(&(node as *const CompiledNode as usize))?;
+        self.buckets.get(hash)?.get(*index)?.slot
     }
 }
 
-/// Phase 1 walk: record every candidate subtree, skipping never-cacheable
-/// argument positions (occurrences there are never wrapped, so they must
-/// not count toward the ≥ 2 threshold either) and tracking the
-/// exclusive-choice path so [`ClassTable::assign_slots`] can prune classes
-/// whose occurrences never co-run.
-fn collect(node: &CompiledNode, table: &mut ClassTable, choices: &mut Vec<(usize, u32)>) {
-    if is_candidate(node) {
-        table.record(node, choices);
-    }
-    match node {
-        CompiledNode::BuiltinOperator { opcode, args, .. } => {
-            let identity = node as *const CompiledNode as usize;
-            for (i, child) in args.iter().enumerate() {
-                if child_never_cacheable(*opcode, i, args.len()) {
-                    continue;
-                }
-                let is_choice_arm = if_value_arm(*opcode, i, args.len());
-                if is_choice_arm {
-                    choices.push((identity, i as u32));
-                }
-                collect(child, table, choices);
-                if is_choice_arm {
-                    choices.pop();
+/// What phase 1 knows about a subtree once its children are done: the
+/// facts the candidate rule and the class buckets need, each computed once
+/// from the children's rather than by walking the subtree again.
+#[derive(Clone, Copy)]
+struct Meta {
+    /// Bottom-up structural hash: the node's own fields and its children's
+    /// hashes. See [`hash_local`].
+    hash: u64,
+    /// Node count, this node included.
+    size: usize,
+    /// Every node in the subtree passes [`is_cse_pure_local`].
+    pure: bool,
+    /// An iterator opcode appears somewhere in the subtree.
+    has_iter: bool,
+}
+
+/// A candidate occurrence found by phase 1.
+struct Candidate<'t> {
+    node: &'t CompiledNode,
+    hash: u64,
+    choices: ChoicePath,
+    /// Position in a pre-order walk, for recording in reading order.
+    preorder: usize,
+}
+
+/// Phase 1: one post-order walk that computes every node's [`Meta`] and
+/// collects the candidates.
+#[derive(Default)]
+struct Walk<'t> {
+    candidates: Vec<Candidate<'t>>,
+    preorder: usize,
+    /// Child hashes of the nodes on the current path, consumed by each
+    /// parent once its children are done.
+    hashes: Vec<u64>,
+}
+
+impl<'t> Walk<'t> {
+    /// Visit `node`, returning its [`Meta`]. `record` is false under a
+    /// never-cacheable argument position: those occurrences are never
+    /// wrapped, so they must not count toward the ≥ 2 threshold either,
+    /// but their facts still feed the parent's. `choices` is the
+    /// exclusive-choice path, so [`ClassTable::assign_slots`] can prune
+    /// classes whose occurrences never co-run.
+    fn visit(
+        &mut self,
+        node: &'t CompiledNode,
+        record: bool,
+        choices: &mut Vec<(usize, u32)>,
+    ) -> Meta {
+        // The memo wrapper is transparent; pristine trees have none.
+        if let CompiledNode::Cse(data) = node {
+            return self.visit(&data.inner, record, choices);
+        }
+        let preorder = self.preorder;
+        self.preorder += 1;
+        let base = self.hashes.len();
+        let mut meta = Meta {
+            hash: 0,
+            size: 1,
+            pure: is_cse_pure_local(node),
+            has_iter: matches!(
+                node,
+                CompiledNode::BuiltinOperator { opcode, .. } if opcode.meta().is_iterator()
+            ),
+        };
+        match node {
+            CompiledNode::BuiltinOperator { opcode, args, .. } => {
+                let identity = node as *const CompiledNode as usize;
+                for (i, child) in args.iter().enumerate() {
+                    let child_record = record && !child_never_cacheable(*opcode, i, args.len());
+                    let is_choice_arm = if_value_arm(*opcode, i, args.len());
+                    if is_choice_arm {
+                        choices.push((identity, i as u32));
+                    }
+                    let child_meta = self.visit(child, child_record, choices);
+                    if is_choice_arm {
+                        choices.pop();
+                    }
+                    self.take(&mut meta, child_meta);
                 }
             }
+            _ => node.visit_indexed_children(&mut |_, child| {
+                let child_meta = self.visit(child, record, choices);
+                self.take(&mut meta, child_meta);
+            }),
         }
-        _ => node.visit_indexed_children(&mut |_, child| collect(child, table, choices)),
+        let mut hasher = NodeHasher::default();
+        hash_local(node, &mut self.hashes[base..].iter(), &mut hasher);
+        self.hashes.truncate(base);
+        meta.hash = hasher.finish();
+        if record && is_candidate(node, meta) {
+            self.candidates.push(Candidate {
+                node,
+                hash: meta.hash,
+                choices: choices.as_slice().into(),
+                preorder,
+            });
+        }
+        meta
+    }
+
+    /// Fold a child's facts into its parent's.
+    #[inline]
+    fn take(&mut self, parent: &mut Meta, child: Meta) {
+        self.hashes.push(child.hash);
+        parent.size += child.size;
+        parent.pure &= child.pure;
+        parent.has_iter |= child.has_iter;
     }
 }
 
@@ -236,14 +333,10 @@ fn if_value_arm(opcode: OpCode, index: usize, len: usize) -> bool {
 /// Candidate rule: a pure builtin operator that either contains an
 /// iterator opcode (aggregates — the real-world target) or is at least
 /// [`MIN_NODE_COUNT`] nodes.
-fn is_candidate(node: &CompiledNode) -> bool {
-    if !matches!(node, CompiledNode::BuiltinOperator { .. }) {
-        return false;
-    }
-    if !is_cse_pure(node) {
-        return false;
-    }
-    contains_iterator_op(node) || node_count(node) >= MIN_NODE_COUNT
+fn is_candidate(node: &CompiledNode, meta: Meta) -> bool {
+    matches!(node, CompiledNode::BuiltinOperator { .. })
+        && meta.pure
+        && (meta.has_iter || meta.size >= MIN_NODE_COUNT)
 }
 
 // ---------------------------------------------------------------------------
@@ -307,92 +400,102 @@ fn child_never_cacheable(opcode: OpCode, index: usize, len: usize) -> bool {
 // Purity
 // ---------------------------------------------------------------------------
 
-/// True when evaluating this subtree at `depth() == 0` is a pure function
+/// The node's own part of the purity rule; a subtree is pure when every
+/// node in it is. Pure means evaluating it at `depth() == 0` is a function
 /// of (root data, engine config): deterministic, side-effect-free, and
 /// safe to serve from a memo on repeat occurrences. Context readers
 /// (`Var`, `Missing`, `Exists`) are pure *under the runtime depth gate* —
 /// at depth 0 they resolve against the root.
-fn is_cse_pure(node: &CompiledNode) -> bool {
+fn is_cse_pure_local(node: &CompiledNode) -> bool {
     match node {
-        CompiledNode::Value { .. } => true,
-        CompiledNode::Array { nodes, .. } => nodes.iter().all(is_cse_pure),
-        CompiledNode::BuiltinOperator { opcode, args, .. } => {
-            opcode.meta().cse_pure() && args.iter().all(is_cse_pure)
-        }
+        CompiledNode::BuiltinOperator { opcode, .. } => opcode.meta().cse_pure(),
         // Opaque user code: may be non-deterministic, stateful, or
         // re-entrant. Never memoize.
         CompiledNode::CustomOperator(_) => false,
-        CompiledNode::Cse(data) => is_cse_pure(&data.inner),
         // Conservative: templating output shape. Excluded per the Stage 1
         // design; can be relaxed to per-field purity later.
         #[cfg(feature = "templating")]
         CompiledNode::StructuredObject(_) => false,
-        CompiledNode::Var { default_value, .. } => default_value.as_deref().is_none_or(is_cse_pure),
-        #[cfg(feature = "ext-control")]
-        CompiledNode::Exists(_) => true,
         #[cfg(feature = "error-handling")]
         CompiledNode::Throw(_) => false,
-        CompiledNode::Missing(data) => data.args.iter().all(|arg| match arg {
-            CompiledMissingArg::Now(_) => true,
-            CompiledMissingArg::Later(n) => is_cse_pure(n),
-        }),
-        CompiledNode::MissingSome(data) => {
-            let min_ok = match &data.min_present {
-                CompiledMissingMin::Now(_) => true,
-                CompiledMissingMin::Later(n) => is_cse_pure(n),
-            };
-            let paths_ok = match &data.paths {
-                CompiledMissingPaths::Now(_) => true,
-                CompiledMissingPaths::Later(n) => is_cse_pure(n),
-            };
-            min_ok && paths_ok
-        }
         // Always errors — an Ok-only memo would never fill; wrapping is
         // pure overhead.
         CompiledNode::InvalidArgs { .. } => false,
+        // Values, arrays, reads and `missing` are pure when their children
+        // are; `Cse` is transparent.
+        _ => true,
     }
-}
-
-// ---------------------------------------------------------------------------
-// Subtree metrics
-// ---------------------------------------------------------------------------
-
-fn node_count(node: &CompiledNode) -> usize {
-    let mut count = 1;
-    node.visit_indexed_children(&mut |_, child| count += node_count(child));
-    count
-}
-
-fn contains_iterator_op(node: &CompiledNode) -> bool {
-    if let CompiledNode::BuiltinOperator { opcode, .. } = node
-        && opcode.meta().is_iterator()
-    {
-        return true;
-    }
-    let mut found = false;
-    node.visit_indexed_children(&mut |_, child| {
-        if !found {
-            found = contains_iterator_op(child);
-        }
-    });
-    found
 }
 
 // ---------------------------------------------------------------------------
 // Structural hash + strict structural equality
 // ---------------------------------------------------------------------------
 //
-// Invariant: `structural_eq(a, b)` ⇒ `subtree_hash(a) == subtree_hash(b)`.
-// Both skip the derived fields (`id`, `predicate_hint`, `iter_arg_kind`,
-// `lit`) and both treat floats by bit pattern, so the pair stays in sync.
+/// The per-node hasher. Every node of every compiled rule is hashed once,
+/// so it is a cheap multiply-rotate mix (the FxHash scheme) rather than
+/// SipHash: the hashes only bucket candidates, and a collision costs one
+/// [`structural_eq`] that tells the classes apart.
+#[derive(Default)]
+struct NodeHasher(u64);
 
-fn subtree_hash(node: &CompiledNode) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    hash_node(node, &mut hasher);
-    hasher.finish()
+impl NodeHasher {
+    const SEED: u64 = 0x51_7c_c1_b7_27_22_0a_95;
+
+    #[inline]
+    fn mix(&mut self, word: u64) {
+        self.0 = (self.0.rotate_left(5) ^ word).wrapping_mul(Self::SEED);
+    }
 }
 
-fn hash_node<H: Hasher>(node: &CompiledNode, h: &mut H) {
+impl Hasher for NodeHasher {
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        let mut chunks = bytes.chunks_exact(8);
+        for chunk in &mut chunks {
+            self.mix(u64::from_le_bytes(chunk.try_into().expect("8 bytes")));
+        }
+        let mut tail = [0u8; 8];
+        let rest = chunks.remainder();
+        tail[..rest.len()].copy_from_slice(rest);
+        self.mix(u64::from_le_bytes(tail));
+    }
+
+    #[inline]
+    fn write_u8(&mut self, n: u8) {
+        self.mix(u64::from(n));
+    }
+
+    #[inline]
+    fn write_u32(&mut self, n: u32) {
+        self.mix(u64::from(n));
+    }
+
+    #[inline]
+    fn write_u64(&mut self, n: u64) {
+        self.mix(n);
+    }
+
+    #[inline]
+    fn write_usize(&mut self, n: usize) {
+        self.mix(n as u64);
+    }
+
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
+// Invariant: `structural_eq(a, b)` ⇒ equal bottom-up hashes. Both skip the
+// derived fields (`id`, `predicate_hint`, `iter_arg_kind`, `lit`) and both
+// treat floats by bit pattern, so the pair stays in sync.
+
+/// Hash `node`'s own fields, taking each child's hash from `kids` (in
+/// [`CompiledNode::visit_indexed_children`] order) instead of hashing the
+/// child's subtree again. A node's hash is therefore built once, from its
+/// children's.
+fn hash_local<H: Hasher>(node: &CompiledNode, kids: &mut std::slice::Iter<'_, u64>, h: &mut H) {
+    let mut child = |h: &mut H| h.write_u64(*kids.next().expect("one hash per child"));
     match node {
         CompiledNode::Value { value, .. } => {
             h.write_u8(0);
@@ -401,37 +504,36 @@ fn hash_node<H: Hasher>(node: &CompiledNode, h: &mut H) {
         CompiledNode::Array { nodes, .. } => {
             h.write_u8(1);
             h.write_usize(nodes.len());
-            for n in nodes.iter() {
-                hash_node(n, h);
+            for _ in nodes.iter() {
+                child(h);
             }
         }
         CompiledNode::BuiltinOperator { opcode, args, .. } => {
             h.write_u8(2);
             h.write_u8(*opcode as u8);
             h.write_usize(args.len());
-            for a in args.iter() {
-                hash_node(a, h);
+            for _ in args.iter() {
+                child(h);
             }
         }
         CompiledNode::CustomOperator(data) => {
             h.write_u8(3);
             data.name.hash(h);
             h.write_usize(data.args.len());
-            for a in data.args.iter() {
-                hash_node(a, h);
+            for _ in data.args.iter() {
+                child(h);
             }
         }
-        // Transparent: the pass only sees pristine trees, but stay
-        // consistent if a wrapped subtree is ever hashed.
-        CompiledNode::Cse(data) => hash_node(&data.inner, h),
+        // Transparent: the walk hashes the wrapped node in its place.
+        CompiledNode::Cse(_) => child(h),
         #[cfg(feature = "templating")]
         CompiledNode::StructuredObject(data) => {
             h.write_u8(4);
             h.write_usize(data.fields.len());
             data.escape.hash(h);
-            for (key, n) in data.fields.iter() {
+            for (key, _) in data.fields.iter() {
                 key.hash(h);
-                hash_node(n, h);
+                child(h);
             }
         }
         CompiledNode::Var {
@@ -448,9 +550,9 @@ fn hash_node<H: Hasher>(node: &CompiledNode, h: &mut H) {
             reduce_hint.hash(h);
             metadata_hint.hash(h);
             match default_value {
-                Option::Some(d) => {
+                Option::Some(_) => {
                     h.write_u8(1);
-                    hash_node(d, h);
+                    child(h);
                 }
                 Option::None => h.write_u8(0),
             }
@@ -475,9 +577,9 @@ fn hash_node<H: Hasher>(node: &CompiledNode, h: &mut H) {
                         h.write_u8(0);
                         path.hash(h);
                     }
-                    CompiledMissingArg::Later(n) => {
+                    CompiledMissingArg::Later(_) => {
                         h.write_u8(1);
-                        hash_node(n, h);
+                        child(h);
                     }
                 }
             }
@@ -489,9 +591,9 @@ fn hash_node<H: Hasher>(node: &CompiledNode, h: &mut H) {
                     h.write_u8(0);
                     h.write_usize(*n);
                 }
-                CompiledMissingMin::Later(n) => {
+                CompiledMissingMin::Later(_) => {
                     h.write_u8(1);
-                    hash_node(n, h);
+                    child(h);
                 }
             }
             match &data.paths {
@@ -502,9 +604,9 @@ fn hash_node<H: Hasher>(node: &CompiledNode, h: &mut H) {
                         path.hash(h);
                     }
                 }
-                CompiledMissingPaths::Later(n) => {
+                CompiledMissingPaths::Later(_) => {
                     h.write_u8(1);
-                    hash_node(n, h);
+                    child(h);
                 }
             }
         }

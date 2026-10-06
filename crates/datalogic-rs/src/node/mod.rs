@@ -248,7 +248,7 @@ impl CompiledNode {
     /// post-compile populate pass, the static-byte estimator, and the
     /// path resolver all defer to this rather than pattern-matching every
     /// variant themselves.
-    pub(crate) fn visit_indexed_children<F: FnMut(u32, &CompiledNode)>(&self, f: &mut F) {
+    pub(crate) fn visit_indexed_children<'s, F: FnMut(u32, &'s CompiledNode)>(&'s self, f: &mut F) {
         match self {
             CompiledNode::Value { .. } => {}
             CompiledNode::Array { nodes, .. } => {
