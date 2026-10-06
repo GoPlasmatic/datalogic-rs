@@ -97,7 +97,7 @@ class LifecycleTest {
     }
 
     @Test
-    void unclosed_handles_are_released_without_crashing() throws InterruptedException {
+    void unclosed_handles_and_builders_are_released_without_crashing() throws InterruptedException {
         for (int i = 0; i < 20; i++) {
             dropUnclosedHandles();
         }
@@ -117,6 +117,10 @@ class LifecycleTest {
         engine.openSession();
         engine.openTracedSession();
         DataHandle.parse("{}");
+        // A builder abandoned after a failed setter.
+        assertThrows(EvaluateException.class, () -> Engine.builder()
+                .addOperator("one", args -> "1")
+                .setConfigJson("{\"no_such_key\":1}"));
     }
 
     /** Run {@code action} from eight threads released at the same moment. */

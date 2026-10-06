@@ -10,6 +10,7 @@ import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.lang.ref.Reference;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,11 +20,16 @@ import java.util.List;
  * collides with a built-in ({@code +}, {@code if}, {@code var}, …)
  * silently dispatches to the built-in at evaluation time — built-ins
  * always win.
+ *
+ * <p>A builder dropped without {@link #build()} (for instance after a
+ * setter threw) is released by a {@link java.lang.ref.Cleaner} once it is
+ * unreachable: the native builder is freed then, and the upcall stubs go
+ * with their automatic arena.
  */
 public final class EngineBuilder {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private MemorySegment handle;
+    private final NativeHandle handle;
     private boolean consumed;
     // Strongly retain every registered bridge until the resulting
     // Engine (and everything compiled from it) goes away; the upcall
@@ -36,23 +42,31 @@ public final class EngineBuilder {
     private Arena stubArena;
 
     EngineBuilder() {
+        MemorySegment h;
         try {
-            handle = (MemorySegment) DatalogicNative.BUILDER_NEW.invokeExact();
+            h = (MemorySegment) DatalogicNative.BUILDER_NEW.invokeExact();
         } catch (Throwable t) {
             throw DatalogicException.propagate(t);
         }
-        if (handle.address() == 0) {
+        if (h.address() == 0) {
             throw new DatalogicException("datalogic_engine_builder_new returned null", null, null, null);
         }
+        handle = new NativeHandle(this, h, DatalogicNative.BUILDER_FREE, "EngineBuilder");
+    }
+
+    private MemorySegment handle() {
+        return handle.get();
     }
 
     /** Toggle templating mode on the resulting engine. */
     public EngineBuilder withTemplating(boolean enabled) {
         ensureFresh();
         try {
-            DatalogicNative.BUILDER_SET_TEMPLATING.invokeExact(handle, enabled ? 1 : 0);
+            DatalogicNative.BUILDER_SET_TEMPLATING.invokeExact(handle(), enabled ? 1 : 0);
         } catch (Throwable t) {
             throw DatalogicException.propagate(t);
+        } finally {
+            Reference.reachabilityFence(this);
         }
         return this;
     }
@@ -69,9 +83,11 @@ public final class EngineBuilder {
             int status;
             try {
                 status = (int) DatalogicNative.BUILDER_SET_TEMPLATE_KEY_ESCAPE.invokeExact(
-                        handle, codePoint, errSlot);
+                        handle(), codePoint, errSlot);
             } catch (Throwable t) {
                 throw DatalogicException.propagate(t);
+            } finally {
+                Reference.reachabilityFence(this);
             }
             if (status != DatalogicNative.STATUS_OK) {
                 throw DatalogicException.fromNative(status, errSlot, "set_template_key_escape failed");
@@ -89,9 +105,11 @@ public final class EngineBuilder {
     public EngineBuilder withStrictOperatorNames(boolean enabled) {
         ensureFresh();
         try {
-            DatalogicNative.BUILDER_SET_STRICT_OPERATOR_NAMES.invokeExact(handle, enabled ? 1 : 0);
+            DatalogicNative.BUILDER_SET_STRICT_OPERATOR_NAMES.invokeExact(handle(), enabled ? 1 : 0);
         } catch (Throwable t) {
             throw DatalogicException.propagate(t);
+        } finally {
+            Reference.reachabilityFence(this);
         }
         return this;
     }
@@ -135,9 +153,11 @@ public final class EngineBuilder {
             int status;
             try {
                 status = (int) DatalogicNative.BUILDER_SET_CONFIG_JSON.invokeExact(
-                        handle, config, config.byteSize(), errSlot);
+                        handle(), config, config.byteSize(), errSlot);
             } catch (Throwable t) {
                 throw DatalogicException.propagate(t);
+            } finally {
+                Reference.reachabilityFence(this);
             }
             if (status != DatalogicNative.STATUS_OK) {
                 throw DatalogicException.fromNative(status, errSlot, "set_config_json failed");
@@ -176,9 +196,11 @@ public final class EngineBuilder {
             int status;
             try {
                 status = (int) DatalogicNative.BUILDER_SET_FAMILIES.invokeExact(
-                        handle, names, names.byteSize(), errSlot);
+                        handle(), names, names.byteSize(), errSlot);
             } catch (Throwable t) {
                 throw DatalogicException.propagate(t);
+            } finally {
+                Reference.reachabilityFence(this);
             }
             if (status != DatalogicNative.STATUS_OK) {
                 throw DatalogicException.fromNative(status, errSlot, "set_families failed");
@@ -211,9 +233,11 @@ public final class EngineBuilder {
             int status;
             try {
                 status = (int) DatalogicNative.BUILDER_ADD_OPERATOR.invokeExact(
-                        handle, nameSeg, nameSeg.byteSize(), stub, MemorySegment.NULL, errSlot);
+                        handle(), nameSeg, nameSeg.byteSize(), stub, MemorySegment.NULL, errSlot);
             } catch (Throwable t) {
                 throw DatalogicException.propagate(t);
+            } finally {
+                Reference.reachabilityFence(this);
             }
             if (status != DatalogicNative.STATUS_OK) {
                 throw DatalogicException.fromNative(status, errSlot, "add_operator failed");
@@ -230,12 +254,14 @@ public final class EngineBuilder {
         ensureFresh();
         MemorySegment enginePtr;
         try {
-            enginePtr = (MemorySegment) DatalogicNative.BUILDER_BUILD.invokeExact(handle);
-            DatalogicNative.BUILDER_FREE.invokeExact(handle);
+            enginePtr = (MemorySegment) DatalogicNative.BUILDER_BUILD.invokeExact(handle());
         } catch (Throwable t) {
             throw DatalogicException.propagate(t);
+        } finally {
+            Reference.reachabilityFence(this);
         }
-        handle = null;
+        // Per the C ABI contract the drained builder still needs freeing.
+        handle.close();
         consumed = true;
         if (enginePtr.address() == 0) {
             throw new DatalogicException("builder build failed", null, null, null);
@@ -245,7 +271,6 @@ public final class EngineBuilder {
 
     private void ensureFresh() {
         if (consumed) throw new IllegalStateException("EngineBuilder has already been built");
-        if (handle == null) throw new IllegalStateException("EngineBuilder is invalid");
     }
 
     /**
