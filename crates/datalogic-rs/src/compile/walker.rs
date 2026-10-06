@@ -69,8 +69,10 @@ fn compile_multi_key_object(
         let fields: Vec<_> = pairs
             .iter()
             .map(|(key, val)| {
-                compile_node(val, engine, templating, ctx)
-                    .map(|compiled_val| (key.clone(), compiled_val))
+                let mark = ctx.descend(key);
+                let compiled = compile_node(val, engine, templating, ctx);
+                ctx.ascend(mark);
+                compiled.map(|compiled_val| (key.clone(), compiled_val))
             })
             .collect::<Result<Vec<_>>>()?;
         // Multi-key object keys are already literal, so the escape changes
@@ -119,7 +121,11 @@ fn compile_operator_invocation(
         }
     }
 
-    if let Ok(opcode) = op_name.parse::<OpCode>() {
+    let builtin = match engine {
+        Some(engine) => engine.builtin(op_name),
+        None => op_name.parse::<OpCode>().ok(),
+    };
+    if let Some(opcode) = builtin {
         return compile_builtin(op_name, opcode, args_value, engine, templating, fold, ctx);
     }
 
@@ -128,8 +134,10 @@ fn compile_operator_invocation(
         return compile_templating_unknown(op_name, args_value, engine, templating, fold, ctx);
     }
 
-    let args = compile_args(args_value, engine, templating, ctx)?;
-    Ok(custom_operator_node(op_name, args, engine, fold, ctx))
+    let mark = ctx.descend(op_name);
+    let args = compile_args(args_value, engine, templating, ctx);
+    ctx.ascend(mark);
+    Ok(custom_operator_node(op_name, args?, engine, fold, ctx))
 }
 
 /// Build a `CustomOperator` node from an op name and its already-compiled
@@ -188,7 +196,10 @@ fn compile_builtin(
         return Ok(node);
     }
 
-    let mut args = compile_builtin_args(meta.literal_args, args_value, engine, templating, ctx)?;
+    let mark = ctx.descend(op_name);
+    let args = compile_builtin_args(meta.literal_args, args_value, engine, templating, ctx);
+    ctx.ascend(mark);
+    let mut args = args?;
 
     if let Some(CompileHook::Args(hook)) = meta.compile {
         let hook_args = HookArgs {
@@ -267,8 +278,10 @@ fn compile_templating_unknown(
     if let Some(eng) = engine
         && eng.has_custom_operator(op_name)
     {
-        let args = compile_args(args_value, engine, templating, ctx)?;
-        return Ok(custom_operator_node(op_name, args, engine, fold, ctx));
+        let mark = ctx.descend(op_name);
+        let args = compile_args(args_value, engine, templating, ctx);
+        ctx.ascend(mark);
+        return Ok(custom_operator_node(op_name, args?, engine, fold, ctx));
     }
     single_field_object(op_name, args_value, engine, templating, false, ctx)
 }
@@ -288,8 +301,10 @@ fn single_field_object(
     escaped: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
-    let compiled_val = compile_node(value, engine, templating, ctx)?;
-    let fields = vec![(key.to_string(), compiled_val)].into_boxed_slice();
+    let mark = ctx.descend(key);
+    let compiled_val = compile_node(value, engine, templating, ctx);
+    ctx.ascend(mark);
+    let fields = vec![(key.to_string(), compiled_val?)].into_boxed_slice();
     Ok(CompiledNode::StructuredObject(Box::new(
         crate::node::StructuredObjectData {
             id: Some(ctx.next_id()),
@@ -319,7 +334,8 @@ fn compile_array(
 ) -> Result<CompiledNode> {
     let nodes = arr
         .iter()
-        .map(|v| compile_node(v, engine, templating, ctx))
+        .enumerate()
+        .map(|(i, v)| indexed(i, ctx, |ctx| compile_node(v, engine, templating, ctx)))
         .collect::<Result<Vec<_>>>()?;
 
     let nodes_boxed = nodes.into_boxed_slice();
@@ -356,19 +372,27 @@ fn compile_builtin_args(
     if literal == LiteralArgs::None {
         return compile_args(value, engine, templating, ctx);
     }
-    let items = match value {
-        OwnedDataValue::Array(arr) => arr.as_slice(),
-        other => std::slice::from_ref(other),
+    let (items, listed) = match value {
+        OwnedDataValue::Array(arr) => (arr.as_slice(), true),
+        other => (std::slice::from_ref(other), false),
     };
     let len = items.len();
     items
         .iter()
         .enumerate()
         .map(|(i, v)| {
-            if literal.reads(i, len) {
-                compile_as_written(v, engine, templating, ctx)
+            let compile = |ctx: &mut CompileCtx| {
+                if literal.reads(i, len) {
+                    compile_as_written(v, engine, templating, ctx)
+                } else {
+                    compile_node(v, engine, templating, ctx)
+                }
+            };
+            // A lone argument is the operator's value itself, not item 0.
+            if listed {
+                indexed(i, ctx, compile)
             } else {
-                compile_node(v, engine, templating, ctx)
+                compile(ctx)
             }
         })
         .collect::<Result<Vec<_>>>()
@@ -408,7 +432,8 @@ fn compile_as_written(
         }
         OwnedDataValue::Array(items) => items
             .iter()
-            .map(|v| compile_as_written(v, engine, templating, ctx))
+            .enumerate()
+            .map(|(i, v)| indexed(i, ctx, |ctx| compile_as_written(v, engine, templating, ctx)))
             .collect::<Result<Vec<_>>>()
             .map(|nodes| CompiledNode::Array {
                 id: Some(ctx.next_id()),
@@ -432,9 +457,19 @@ pub(super) fn compile_args(
     match value {
         OwnedDataValue::Array(arr) => arr
             .iter()
-            .map(|v| compile_node(v, engine, templating, ctx))
+            .enumerate()
+            .map(|(i, v)| indexed(i, ctx, |ctx| compile_node(v, engine, templating, ctx)))
             .collect::<Result<Vec<_>>>()
             .map(Vec::into_boxed_slice),
         _ => Ok(vec![compile_node(value, engine, templating, ctx)?].into_boxed_slice()),
     }
+}
+
+/// Run `compile` with array index `i` appended to the recorded pointer.
+#[inline]
+fn indexed<T>(i: usize, ctx: &mut CompileCtx, compile: impl FnOnce(&mut CompileCtx) -> T) -> T {
+    let mark = ctx.descend_index(i);
+    let out = compile(ctx);
+    ctx.ascend(mark);
+    out
 }

@@ -116,6 +116,49 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   keep their operator registrations in step. A generated test checks
   every suite case: each mode gives the same compiled rule and outcome as
   an engine built in that mode.
+- **`CustomOperator::check`** lets a custom operator validate a call's
+  arguments as written, before anything runs. `Engine::check` and
+  `compile_checked` call it for each call whose argument count fits the
+  operator's declaration; `compile` does not. It returns
+  `Diagnostic::error` or `Diagnostic::warning`, optionally narrowed with
+  `at_argument(i)`, and the checker fills in the JSON Pointer and the
+  operator name, under the new code `DiagnosticCode::OperatorCheck`. The
+  default accepts every call. `Box<dyn CustomOperator>` and `Arc<T>`
+  forward it.
+- **Operator families at runtime.** `EngineBuilder::with_families(..)`
+  keeps an engine to the JSONLogic core plus the families it names
+  (`Family::ExtString`, `Family::DateTime`, ...), whatever this build
+  compiled in; by default an engine has every compiled family, as before.
+  A family left out is not there for that engine: its names compile as
+  unknown operators (an error at evaluation, or from `compile_checked`
+  and `check`), as output fields in templating mode, or as a custom
+  operator registered under that name. `Engine::operators()`,
+  `builtin_operator_names()`, `check`'s suggestions and
+  `try_add_operator` follow the engine's families. The set applies at
+  compile time: a rule compiled on another engine keeps its operators.
+  New public type: `Family` (`#[non_exhaustive]`, every family named in
+  every build, with `Family::ALL`, `name()` and `is_compiled()`). This is
+  the 5.x step towards turning the `ext-*` features into runtime
+  families in 6.0.
+- **Trace node pointers.** `TracedSession::compile(rule)` compiles a rule
+  the way the one-shot trace does (no folding) and records, for every node
+  id, the RFC 6901 JSON Pointer of the rule value that node was compiled
+  from. `Logic::pointer(id)` and `Logic::pointers()` read them back, so a
+  debugger places each `ExpressionNode` and `ExecutionStep` in the rule as
+  written (`"/if/1"`, `"/!"` for a lone argument, the key as written for an
+  alias such as `?:`) instead of re-deriving the compiler's canonical forms.
+  An ordinary compile records none.
+- **`Logic::compiled_on(&engine)`** tells whether that engine instance
+  compiled the rule (not one built alike or rebuilt from it). Any engine
+  can still evaluate any rule; in 6.0 a rule evaluates only on its own
+  engine, so a host can use this to find the places that rely on the
+  name lookup now.
+- **`Engine::to_builder()`** starts a builder from a running engine: the
+  same custom operators, config, templating mode, template key escape and
+  folding setting. Both engines share each operator instance, so a host
+  that rebuilds on every reload changes only what differs instead of
+  registering every operator again. The engine now stores its operators
+  as `Arc<dyn CustomOperator>`.
 - **`CustomOperator::info`** lets a custom operator declare what the
   engine may assume about it, as a `CustomOperatorInfo`: whether it is
   deterministic, whether it reads the data context, and how many arguments
@@ -170,6 +213,19 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   `crates/datalogic-bind` (not published), which defines the traced-run,
   catalogue, facts and diagnostics JSON and the custom-operator bridge,
   replacing four copies of the trace serialiser and the type-name helper.
+- **Operator families in every binding**: `families` (Node, WASM,
+  Python), `Families` (Go), `withFamilies` (JVM, PHP), `WithFamilies`
+  (.NET), over the new C entry point
+  `datalogic_engine_builder_set_families` (a JSON array of family names).
+  An unknown family name is a `ConfigurationError`; five scenarios check
+  the option in all eight bindings.
+- **Traced runs carry `pointers`.** Every binding's `evaluateWithTrace`
+  envelope (`datalogic_bind::traced_json`) adds `pointers`, mapping each
+  node id to the JSON Pointer of the rule value it was compiled from; the
+  JVM, .NET and PHP `TracedRun` models expose it (`pointers()`,
+  `Pointers`, `$pointers`). It is absent when the rule does not compile.
+  `schemas/trace.v1.json` lists it, and two scenarios check it in all eight
+  bindings.
 - **A scenario suite every binding runs** (`bindings/scenarios/api.json`),
   and a test that keeps PHP's FFI header and the JVM and .NET native
   declarations in step with the generated `datalogic.h`.
@@ -182,6 +238,14 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 ### Fixed (UI)
 
+- **The debugger places trace steps by the engine's pointers.** It matched
+  each trace node to the rule by re-implementing the compiler's canonical
+  forms (alias folding, `var` / `val` normalisation, single-argument
+  unwrapping) and fell back to loose and positional guesses, so a compiler
+  change could silently attach steps to the wrong node. It now resolves each
+  node's pointer against the rule it shows and pairs operands by identity;
+  `child-matching.ts` and its heuristics are gone, and a step the tree does
+  not list goes to the node whose pointer encloses it.
 - **Adding a case to a `switch` in the editor works again.** The editor
   compared the operator's argument limit (3) against the node's cells (a
   `switch` with one case has four), so "add case" did nothing once the
@@ -297,6 +361,22 @@ compared with the engine on every suite case and on generated rules.
 
 ### Performance
 
+- **Evaluating against an owned, serde or `Roots` input brings in only
+  what the rule reads.** A compiled rule whose reads are all known
+  (`Logic::facts()`, `reads_complete()`) and that does not read the whole
+  input now views just those paths: on the way down each path only the
+  object keys it names, and the whole value at its end. Reading one field
+  of an 8 MB context through `Engine::evaluate` or a `Session` takes 36 ns
+  owned and 41 ns serde, where viewing the whole input took 2.96 ms and
+  15.7 ms; a 1 KB context is 3 to 12 times faster. `Roots` keeps only the
+  roots a rule reads. Results are unchanged: every suite case gives the
+  same outcome projected and whole, under default, unfolded and
+  `MissingVar::Error` engines. A rule with a computed path, a custom
+  operator that reads the context, or a read of the whole input is viewed
+  whole as before, as is a rule evaluated on an engine other than the one
+  that compiled it, and traced runs. JSON text and `ParsedData` inputs
+  are unaffected. `tools/benchmark` gains a `projection` binary for these
+  numbers.
 - **`filter`, `all`, `some` and `none` over a comparison predicate are
   faster and no longer layout-sensitive.** The recognised predicate shape
   is now dispatched once per call instead of once per item. Over 1,000

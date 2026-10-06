@@ -67,6 +67,15 @@ pub struct Logic {
     /// `ContextStack` skip the list entirely. See
     /// [`crate::compile::scope::resolve`].
     pub(crate) needs_ancestor_frames: bool,
+    /// The id of the engine that compiled this rule; see
+    /// [`Self::compiled_on`].
+    pub(crate) engine_id: u64,
+    /// `(node id, JSON Pointer)` in id order, for a rule compiled for
+    /// tracing; see [`Self::pointer`].
+    pub(crate) pointers: Option<super::compile_ctx::NodePointers>,
+    /// What of an input this rule reads, worked out on first use; see
+    /// [`crate::projection`].
+    pub(crate) projection: std::sync::OnceLock<Option<Box<crate::projection::Projection>>>,
 }
 
 impl std::fmt::Debug for Logic {
@@ -106,7 +115,81 @@ impl Logic {
             root_op_name,
             cse_slot_count,
             needs_ancestor_frames,
+            engine_id: 0,
+            pointers: None,
+            projection: std::sync::OnceLock::new(),
         }
+    }
+
+    /// Whether `engine` compiled this rule: the same engine instance, not
+    /// one built alike or rebuilt from it with
+    /// [`Engine::to_builder`](crate::Engine::to_builder).
+    ///
+    /// Any engine can evaluate a rule in 5.x; on another engine its custom
+    /// operators are looked up by name. In 6.0 a rule evaluates only on
+    /// the engine that compiled it, so a host can use this to find the
+    /// places that evaluate on another one.
+    ///
+    /// ```rust
+    /// use datalogic_rs::Engine;
+    ///
+    /// let boot = Engine::new();
+    /// let serving = Engine::new();
+    /// let logic = boot.compile(r#"{"var": "x"}"#).unwrap();
+    /// assert!(logic.compiled_on(&boot));
+    /// assert!(!logic.compiled_on(&serving));
+    /// ```
+    pub fn compiled_on(&self, engine: &crate::Engine) -> bool {
+        self.engine_id == engine.id()
+    }
+
+    /// The [RFC 6901](https://www.rfc-editor.org/rfc/rfc6901) JSON Pointer
+    /// of the source value that node `id` was compiled from: `""` for the
+    /// whole rule, `"/if/1"` for the second argument of a top-level `if`,
+    /// `"/!"` for the lone argument of `{"!": x}`. A node the compiler adds
+    /// for a call (a computed `var` path, say) points at that call.
+    ///
+    /// Recorded only for a rule compiled with
+    /// [`TracedSession::compile`](crate::TracedSession::compile); `None`
+    /// for any other rule and for an id it does not have. A trace's
+    /// [`ExpressionNode::id`](crate::ExpressionNode) and
+    /// [`ExecutionStep::node_id`](crate::ExecutionStep) are such ids, so a
+    /// debugger can place every step in the rule it shows.
+    pub fn pointer(&self, id: u32) -> Option<&str> {
+        let pointers = self.pointers.as_deref()?;
+        pointers
+            .binary_search_by_key(&id, |(node, _)| *node)
+            .ok()
+            .map(|at| &*pointers[at].1)
+    }
+
+    /// The read projection to evaluate this rule with on `engine`, or
+    /// `None` to view the whole input. Only on the engine that compiled the
+    /// rule: the facts it rests on trust each custom operator's declaration
+    /// as compiled, and another engine may run another operator of that
+    /// name.
+    #[inline]
+    pub(crate) fn projection_for(
+        &self,
+        engine: &crate::Engine,
+    ) -> Option<&crate::projection::Projection> {
+        if !self.compiled_on(engine) {
+            return None;
+        }
+        self.projection
+            .get_or_init(|| crate::projection::Projection::of(&self.facts()).map(Box::new))
+            .as_deref()
+    }
+
+    /// Every `(node id, pointer)` [`Self::pointer`] knows, in id order;
+    /// empty unless the rule was compiled with
+    /// [`TracedSession::compile`](crate::TracedSession::compile).
+    pub fn pointers(&self) -> impl Iterator<Item = (u32, &str)> {
+        self.pointers
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .map(|(id, pointer)| (*id, &**pointer))
     }
 
     /// Check if this compiled logic is static (can be evaluated without context)

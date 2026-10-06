@@ -74,6 +74,24 @@ pub trait EvalInput<'a>: sealed::Sealed {
     /// Implementations either pass through an existing arena reference (zero
     /// cost), allocate one node, or deep-convert from an owned tree.
     fn into_arena_value(self, arena: &'a Bump) -> Result<&'a DataValue<'a>>;
+
+    /// [`Self::into_arena_value`] for evaluating `logic` on `engine`: an
+    /// owned or `serde_json` input brings in only what the rule reads (see
+    /// `crate::projection`). Internal to the evaluate paths.
+    #[doc(hidden)]
+    #[inline]
+    fn into_arena_for(
+        self,
+        logic: &crate::Logic,
+        engine: &crate::Engine,
+        arena: &'a Bump,
+    ) -> Result<&'a DataValue<'a>>
+    where
+        Self: Sized,
+    {
+        let _ = (logic, engine);
+        self.into_arena_value(arena)
+    }
 }
 
 impl<'a> sealed::Sealed for &'a DataValue<'a> {}
@@ -123,6 +141,19 @@ impl<'a> EvalInput<'a> for &'a OwnedDataValue {
     fn into_arena_value(self, arena: &'a Bump) -> Result<&'a DataValue<'a>> {
         Ok(arena.alloc(self.view_in(arena)))
     }
+
+    #[inline]
+    fn into_arena_for(
+        self,
+        logic: &crate::Logic,
+        engine: &crate::Engine,
+        arena: &'a Bump,
+    ) -> Result<&'a DataValue<'a>> {
+        Ok(arena.alloc(match logic.projection_for(engine) {
+            Some(projection) => projection.owned(self, arena),
+            None => self.view_in(arena),
+        }))
+    }
 }
 
 impl sealed::Sealed for &crate::ParsedData {}
@@ -141,6 +172,19 @@ impl<'a> EvalInput<'a> for &'a serde_json::Value {
     fn into_arena_value(self, arena: &'a Bump) -> Result<&'a DataValue<'a>> {
         let av = crate::arena::value_to_data(self, arena);
         Ok(arena.alloc(av))
+    }
+
+    #[inline]
+    fn into_arena_for(
+        self,
+        logic: &crate::Logic,
+        engine: &crate::Engine,
+        arena: &'a Bump,
+    ) -> Result<&'a DataValue<'a>> {
+        Ok(arena.alloc(match logic.projection_for(engine) {
+            Some(projection) => projection.serde(self, arena),
+            None => crate::arena::value_to_data(self, arena),
+        }))
     }
 }
 

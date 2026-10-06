@@ -176,6 +176,48 @@ macro_rules! operators {
             )* )*
         ];
 
+        /// A family of built-in operators: the JSONLogic core, or one of the
+        /// extension families a Cargo feature compiles in. Every family is
+        /// named in every build; [`Family::is_compiled`] says whether this
+        /// build has it. See
+        /// [`EngineBuilder::with_families`](crate::EngineBuilder::with_families).
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+        #[non_exhaustive]
+        pub enum Family {
+            $(
+                #[doc = concat!("The `", stringify!($fam), "` family (`", stringify!($gate), "`).")]
+                $fam,
+            )*
+        }
+
+        impl Family {
+            /// Every family, in table order, compiled into this build or not.
+            pub const ALL: &'static [Family] = &[ $( Family::$fam, )* ];
+
+            /// The family's name as [`Engine::operators`](crate::Engine::operators)
+            /// reports it in [`OperatorInfo::family`](crate::OperatorInfo::family)
+            /// (`"Core"`, `"ExtString"`, ...).
+            pub const fn name(self) -> &'static str {
+                match self {
+                    $( Family::$fam => stringify!($fam), )*
+                }
+            }
+
+            /// Whether this build compiled the family in (its Cargo feature
+            /// is on). The core always is.
+            pub const fn is_compiled(self) -> bool {
+                match self {
+                    $( Family::$fam => cfg!($gate), )*
+                }
+            }
+
+            /// This family's bit in an engine's family set.
+            #[inline]
+            pub(crate) const fn bit(self) -> u32 {
+                1 << (self as u32)
+            }
+        }
+
         impl std::str::FromStr for OpCode {
             type Err = ();
 
@@ -235,6 +277,13 @@ macro_rules! operators {
                             OP
                         }
                     )* )*
+                }
+            }
+
+            /// The family the row belongs to.
+            pub(crate) const fn family(self) -> Family {
+                match self {
+                    $( $( #[cfg($gate)] OpCode::$v => Family::$fam, )* )*
                 }
             }
 
@@ -660,6 +709,16 @@ impl OpCode {
 /// Every name [`OpCode`]'s `from_str` accepts in this build: canonical
 /// names and their aliases, in table order. Derived from the table, so it
 /// cannot drift from dispatch.
+#[cfg(test)]
 pub(crate) fn builtin_operator_names() -> impl Iterator<Item = &'static str> {
     NAMES.iter().copied()
+}
+
+/// [`builtin_operator_names`] of the families in `families` (a set of
+/// [`Family::bit`]s).
+pub(crate) fn builtin_operator_names_in(families: u32) -> impl Iterator<Item = &'static str> {
+    NAMES.iter().copied().filter(move |name| {
+        name.parse::<OpCode>()
+            .is_ok_and(|op| families & op.family().bit() != 0)
+    })
 }

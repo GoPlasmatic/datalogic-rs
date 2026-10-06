@@ -109,6 +109,21 @@ impl<'r> RootValue<'r> {
         }
     }
 
+    /// [`Self::view_in`], keeping only what `under` reads.
+    fn project_in<'a>(self, under: crate::projection::Under<'_>, arena: &'a Bump) -> DataValue<'a>
+    where
+        'r: 'a,
+    {
+        match self.0 {
+            Part::Owned(v) => under.owned(v, arena),
+            #[cfg(feature = "serde_json")]
+            Part::Json(v) => under.serde(v, arena),
+            // Already in an arena: kept as is, at no cost.
+            Part::Parsed(v) => *v.value(),
+            Part::Arena(v) => *v,
+        }
+    }
+
     fn to_owned_value(self) -> OwnedDataValue {
         match self.0 {
             Part::Owned(v) => v.clone(),
@@ -171,6 +186,25 @@ impl<'r> Roots<'r> {
         arena.alloc(DataValue::Object(fields))
     }
 
+    /// [`Self::view_in`] for a rule with read projection `projection`:
+    /// only the roots it reads, each projected.
+    fn projected_in<'a>(
+        &self,
+        projection: &crate::projection::Projection,
+        arena: &'a Bump,
+    ) -> &'a DataValue<'a>
+    where
+        'r: 'a,
+    {
+        let mut kept = bumpalo::collections::Vec::new_in(arena);
+        for (name, value) in &self.parts {
+            if let Some(under) = projection.under(name) {
+                kept.push((*name, value.project_in(under, arena)));
+            }
+        }
+        arena.alloc(DataValue::Object(kept.into_bump_slice()))
+    }
+
     fn to_owned_value(&self) -> OwnedDataValue {
         OwnedDataValue::Object(
             self.parts
@@ -213,6 +247,19 @@ impl<'a, 'r: 'a> EvalInput<'a> for &'a Roots<'r> {
     fn into_arena_value(self, arena: &'a Bump) -> Result<&'a DataValue<'a>> {
         Ok(self.view_in(arena))
     }
+
+    #[inline]
+    fn into_arena_for(
+        self,
+        logic: &crate::Logic,
+        engine: &crate::Engine,
+        arena: &'a Bump,
+    ) -> Result<&'a DataValue<'a>> {
+        Ok(match logic.projection_for(engine) {
+            Some(projection) => self.projected_in(projection, arena),
+            None => self.view_in(arena),
+        })
+    }
 }
 
 impl sealed::Sealed for Roots<'_> {}
@@ -220,6 +267,19 @@ impl<'a, 'r: 'a> EvalInput<'a> for Roots<'r> {
     #[inline]
     fn into_arena_value(self, arena: &'a Bump) -> Result<&'a DataValue<'a>> {
         Ok(self.view_in(arena))
+    }
+
+    #[inline]
+    fn into_arena_for(
+        self,
+        logic: &crate::Logic,
+        engine: &crate::Engine,
+        arena: &'a Bump,
+    ) -> Result<&'a DataValue<'a>> {
+        Ok(match logic.projection_for(engine) {
+            Some(projection) => self.projected_in(projection, arena),
+            None => self.view_in(arena),
+        })
     }
 }
 

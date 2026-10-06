@@ -82,8 +82,12 @@ impl OperatorInfo {
     }
 }
 
-/// Every operator compiled into this build that has a name, in table order.
-/// Internal opcodes (no name) are left out.
-pub(crate) fn operators() -> impl Iterator<Item = OperatorInfo> {
-    OpCode::ALL.iter().filter_map(|op| OperatorInfo::of(*op))
+/// Every operator of the families in `families` (a set of family bits)
+/// compiled into this build that has a name, in table order. Internal
+/// opcodes (no name) are left out.
+pub(crate) fn operators_in(families: u32) -> impl Iterator<Item = OperatorInfo> {
+    OpCode::ALL
+        .iter()
+        .filter(move |op| families & op.family().bit() != 0)
+        .filter_map(|op| OperatorInfo::of(*op))
 }

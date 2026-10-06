@@ -338,6 +338,29 @@ impl<'e> TracedSession<'e> {
         })
     }
 
+    /// Compile `rule` the way the one-shot entry points do: the optimizer
+    /// and constant folding off, so every operator surfaces a step, and a
+    /// JSON Pointer recorded for every node ([`crate::Logic::pointer`]).
+    /// Evaluate it with [`Self::eval`] or [`Self::eval_borrowed`] to trace
+    /// it as many times as needed and place each step in the rule.
+    ///
+    /// ```rust
+    /// use datalogic_rs::Engine;
+    ///
+    /// let engine = Engine::new();
+    /// let logic = engine.trace().compile(r#"{"if": [{"var": "a"}, 1, 2]}"#).unwrap();
+    /// let run = engine.trace().eval(&logic, r#"{"a": true}"#);
+    /// let first = &run.steps[0];
+    /// assert_eq!(logic.pointer(first.node_id), Some("/if/0"));
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// The rule does not parse or does not compile.
+    pub fn compile<R: crate::IntoLogic>(&self, rule: R) -> crate::Result<crate::Logic> {
+        crate::Logic::compile_for_trace(&rule.into_owned_logic()?, self.engine)
+    }
+
     /// One-shot traced evaluation with JSON-string boundary on both
     /// sides. Compiles internally with the optimizer + constant-fold
     /// passes disabled, so the trace surfaces every operator in the

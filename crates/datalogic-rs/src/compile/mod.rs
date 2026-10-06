@@ -65,7 +65,7 @@ impl Logic {
             logic,
             engine,
             engine.is_templating_enabled(),
-            CompileCtx::no_fold(),
+            CompileCtx::no_fold().recording_pointers(),
         )
     }
 
@@ -97,6 +97,9 @@ impl Logic {
         // pass. Unconditional, unlike folding and CSE: the runtime reads the
         // annotation, so the traced / no-fold path needs it too.
         let needs_ancestor_frames = scope::resolve(&mut root);
-        Ok(Self::new(root, cse_slot_count, needs_ancestor_frames))
+        let mut logic = Self::new(root, cse_slot_count, needs_ancestor_frames);
+        logic.engine_id = engine.id();
+        logic.pointers = ctx.take_pointers();
+        Ok(logic)
     }
 }

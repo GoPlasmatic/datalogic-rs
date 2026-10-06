@@ -6,6 +6,7 @@
 //! `with_config_and_structure`).
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::CustomOperator;
 use crate::config::EvaluationConfig;
@@ -51,8 +52,13 @@ pub struct EngineBuilder {
     templating: bool,
     template_key_escape: Option<char>,
     constant_folding: bool,
-    operators: HashMap<String, Box<dyn CustomOperator>>,
+    operators: HashMap<String, Arc<dyn CustomOperator>>,
+    /// The built-in families the engine has, as [`crate::Family`] bits.
+    families: u32,
 }
+
+/// Every family bit: the default family set.
+pub(crate) const ALL_FAMILIES: u32 = u32::MAX;
 
 impl Default for EngineBuilder {
     fn default() -> Self {
@@ -70,6 +76,7 @@ impl EngineBuilder {
             template_key_escape: None,
             constant_folding: true,
             operators: HashMap::new(),
+            families: ALL_FAMILIES,
         }
     }
 
@@ -195,7 +202,7 @@ impl EngineBuilder {
     where
         T: CustomOperator + 'static,
     {
-        self.operators.insert(name.into(), Box::new(operator));
+        self.operators.insert(name.into(), Arc::new(operator));
         self
     }
 
@@ -237,13 +244,65 @@ impl EngineBuilder {
         T: CustomOperator + 'static,
     {
         let name = name.into();
-        if let Ok(builtin) = name.parse::<crate::OpCode>() {
+        if let Some(builtin) = crate::engine::builtin_in(self.families, &name) {
             return Err(crate::Error::configuration_error(format!(
                 "custom operator `{name}` would never run: the built-in operator `{}` answers to that name",
                 builtin.as_str()
             )));
         }
         Ok(self.add_operator(name, operator))
+    }
+
+    /// Keep the engine to the JSONLogic core and the extension families
+    /// named here; by default it has every family this build compiled in.
+    /// A family left out (or not compiled in) is not there for this engine:
+    /// its operator names compile as unknown operators, as output fields in
+    /// templating mode, or as a custom operator registered under that name.
+    /// [`Engine::operators`] and [`Engine::builtin_operator_names`] list
+    /// only what the engine has, and [`Self::try_add_operator`] refuses only
+    /// those names. [`Family::Core`](crate::Family::Core) is always there,
+    /// named or not.
+    ///
+    /// The set applies when a rule is compiled. A rule compiled on another
+    /// engine keeps its operators wherever it is evaluated.
+    ///
+    /// ```rust
+    /// use datalogic_rs::{Engine, Family};
+    ///
+    /// // The JSONLogic core and the string extensions, nothing else.
+    /// let engine = Engine::builder().with_families([Family::ExtString]).build();
+    /// assert_eq!(engine.eval_str(r#"{"upper": "a"}"#, "null").unwrap(), r#""A""#);
+    /// // `sort` is an unknown operator here, as `length` would be on an
+    /// // engine without `ExtString`.
+    /// assert!(engine.eval_str(r#"{"sort": [[2, 1]]}"#, "null").is_err());
+    /// assert!(engine.compile_checked(r#"{"sort": [[2, 1]]}"#).is_err());
+    /// ```
+    #[must_use = "builder methods return a new builder; chain into `.build()`"]
+    pub fn with_families(mut self, families: impl IntoIterator<Item = crate::Family>) -> Self {
+        self.families = families
+            .into_iter()
+            .fold(crate::Family::Core.bit(), |set, f| set | f.bit());
+        self
+    }
+
+    /// A builder holding `engine`'s operators and settings: the
+    /// [`Engine::to_builder`] seam.
+    pub(crate) fn from_engine_parts(
+        config: EvaluationConfig,
+        templating: bool,
+        template_key_escape: Option<char>,
+        constant_folding: bool,
+        operators: HashMap<String, Arc<dyn CustomOperator>>,
+        families: u32,
+    ) -> Self {
+        Self {
+            config,
+            templating,
+            template_key_escape,
+            constant_folding,
+            operators,
+            families,
+        }
     }
 
     /// Finalise the builder into an immutable [`Engine`] engine.
@@ -254,6 +313,7 @@ impl EngineBuilder {
             self.template_key_escape,
             self.constant_folding,
             self.operators,
+            self.families,
         )
     }
 }

@@ -217,6 +217,17 @@ pub struct Engine {
     constant_folding: bool,
     /// Configuration for evaluation behavior
     config: EvaluationConfig,
+    /// The built-in families this engine has, as [`crate::Family`] bits;
+    /// see [`crate::EngineBuilder::with_families`].
+    families: u32,
+}
+
+/// The built-in operator `name` names among the families in `families`.
+#[inline]
+pub(crate) fn builtin_in(families: u32, name: &str) -> Option<crate::OpCode> {
+    name.parse::<crate::OpCode>()
+        .ok()
+        .filter(|op| families & op.family().bit() != 0)
 }
 
 mod dispatch;
@@ -227,12 +238,12 @@ static NEXT_ENGINE_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU
 /// The custom operators registered on an engine, addressable by name and,
 /// for the rules the engine compiles, by slot.
 pub(super) struct CustomOperators {
-    ops: Vec<Box<dyn crate::CustomOperator>>,
+    ops: Vec<std::sync::Arc<dyn crate::CustomOperator>>,
     slots: HashMap<String, u32>,
 }
 
 impl CustomOperators {
-    fn new(operators: HashMap<String, Box<dyn crate::CustomOperator>>) -> Self {
+    fn new(operators: HashMap<String, std::sync::Arc<dyn crate::CustomOperator>>) -> Self {
         let mut ops = Vec::with_capacity(operators.len());
         let mut slots = HashMap::with_capacity(operators.len());
         for (name, op) in operators {
@@ -268,6 +279,19 @@ impl CustomOperators {
 
     fn names(&self) -> impl Iterator<Item = &str> {
         self.slots.keys().map(String::as_str)
+    }
+
+    /// Every registration, sharing each operator instance.
+    fn shared(&self) -> HashMap<String, std::sync::Arc<dyn crate::CustomOperator>> {
+        self.slots
+            .iter()
+            .map(|(name, &slot)| {
+                (
+                    name.clone(),
+                    std::sync::Arc::clone(&self.ops[slot as usize]),
+                )
+            })
+            .collect()
     }
 }
 
@@ -346,6 +370,40 @@ impl Engine {
         crate::EngineBuilder::new()
     }
 
+    /// A builder that starts from this engine: the same custom operators,
+    /// config, templating mode, template key escape and folding setting.
+    /// Change what differs and call [`build`](crate::EngineBuilder::build)
+    /// for a new engine; this one is untouched.
+    ///
+    /// Both engines share each operator instance (and any state it holds),
+    /// so a host that rebuilds on every reload does not register its
+    /// operators again. Rules compiled on this engine still evaluate on the
+    /// new one, looking their custom operators up by name.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use datalogic_rs::{Engine, EvaluationConfig, MissingVar};
+    ///
+    /// let running = Engine::new();
+    /// let reloaded = running
+    ///     .to_builder()
+    ///     .with_config(EvaluationConfig::default().with_missing_var(MissingVar::Error))
+    ///     .build();
+    /// assert!(reloaded.eval_str(r#"{"var": "x"}"#, "{}").is_err());
+    /// assert_eq!(running.eval_str(r#"{"var": "x"}"#, "{}").unwrap(), "null");
+    /// ```
+    pub fn to_builder(&self) -> crate::EngineBuilder {
+        crate::EngineBuilder::from_engine_parts(
+            self.config.clone(),
+            self.templating,
+            self.template_key_escape,
+            self.constant_folding,
+            self.custom_operators.shared(),
+            self.families,
+        )
+    }
+
     /// Open a [`crate::Session`] handle that owns a reusable arena and
     /// returns owned results, so callers don't need to manage a
     /// [`bumpalo::Bump`] themselves.
@@ -381,7 +439,8 @@ impl Engine {
         _templating: bool,
         _template_key_escape: Option<char>,
         constant_folding: bool,
-        operators: HashMap<String, Box<dyn crate::CustomOperator>>,
+        operators: HashMap<String, std::sync::Arc<dyn crate::CustomOperator>>,
+        families: u32,
     ) -> Self {
         Self {
             id: NEXT_ENGINE_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
@@ -390,6 +449,7 @@ impl Engine {
             template_key_escape: _template_key_escape,
             constant_folding,
             config,
+            families,
         }
     }
 
@@ -416,6 +476,7 @@ impl Engine {
             None,
             true,
             HashMap::new(),
+            crate::builder::ALL_FAMILIES,
         )
     }
 
@@ -461,6 +522,17 @@ impl Engine {
     /// [`Self::operators`].
     pub fn custom_operator_info(&self, name: &str) -> Option<crate::CustomOperatorInfo> {
         self.custom_operators.get(name).map(|op| op.info())
+    }
+
+    /// This engine's process-unique id.
+    #[inline]
+    pub(crate) fn id(&self) -> u64 {
+        self.id
+    }
+
+    /// The custom operator registered as `name`.
+    pub(crate) fn custom_operator(&self, name: &str) -> Option<&dyn crate::CustomOperator> {
+        self.custom_operators.get(name)
     }
 
     /// Whether the iterator fast paths may read fields inline. They read a
@@ -517,7 +589,7 @@ impl Engine {
     /// assert!(!names.contains(&"lenght"));
     /// ```
     pub fn builtin_operator_names(&self) -> impl Iterator<Item = &'static str> + use<> {
-        crate::operators::table::builtin_operator_names()
+        crate::operators::table::builtin_operator_names_in(self.families)
     }
 
     /// Every built-in operator compiled into this build, described by its
@@ -546,7 +618,14 @@ impl Engine {
     /// assert!(val.reads_context);
     /// ```
     pub fn operators(&self) -> impl Iterator<Item = crate::OperatorInfo> + use<> {
-        crate::operators::info::operators()
+        crate::operators::info::operators_in(self.families)
+    }
+
+    /// The built-in operator `name` names on this engine: a name of a
+    /// family it has ([`crate::EngineBuilder::with_families`]).
+    #[inline]
+    pub(crate) fn builtin(&self, name: &str) -> Option<crate::OpCode> {
+        builtin_in(self.families, name)
     }
 
     // ============================================================
@@ -795,7 +874,7 @@ impl Engine {
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::arena::DataValue<'a>> {
         let _depth_guard = self.enter_dispatch_boundary()?;
-        let data_ref = data.into_arena_value(arena)?;
+        let data_ref = data.into_arena_for(compiled, self, arena)?;
         let mut ctx = self.new_context(compiled, data_ref);
         match self.dispatch_node(&compiled.root, &mut ctx, arena) {
             Ok(av) => Ok(av),
@@ -934,7 +1013,7 @@ impl Engine {
         budget: u64,
     ) -> Result<Metered<&'a crate::arena::DataValue<'a>>> {
         let _depth_guard = self.enter_dispatch_boundary()?;
-        let data_ref = data.into_arena_value(arena)?;
+        let data_ref = data.into_arena_for(compiled, self, arena)?;
         let mut ctx = self.new_context(compiled, data_ref);
         ctx.set_budget(budget);
         match self.dispatch_node(&compiled.root, &mut ctx, arena) {

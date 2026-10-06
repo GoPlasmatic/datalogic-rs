@@ -34,7 +34,17 @@ pub(crate) struct CompileCtx {
     next_id: NonZeroU32,
     skip_fold: bool,
     depth: usize,
+    /// The JSON Pointer of the value being compiled, while pointers are
+    /// recorded ([`Self::recording_pointers`]); `None` otherwise.
+    pointer: Option<String>,
+    /// `(node id, pointer)` for every id handed out while recording, in id
+    /// order.
+    pointers: Vec<(u32, Box<str>)>,
 }
+
+/// `(node id, JSON Pointer)` pairs in id order: what a traced compile
+/// records (see [`crate::Logic::pointer`]).
+pub(crate) type NodePointers = Box<[(u32, Box<str>)]>;
 
 const ID_ONE: NonZeroU32 = match NonZeroU32::new(1) {
     Some(n) => n,
@@ -54,6 +64,8 @@ impl CompileCtx {
             next_id: ID_ONE,
             skip_fold: false,
             depth: 0,
+            pointer: None,
+            pointers: Vec::new(),
         }
     }
 
@@ -67,7 +79,61 @@ impl CompileCtx {
             next_id: ID_ONE,
             skip_fold: true,
             depth: 0,
+            pointer: None,
+            pointers: Vec::new(),
         }
+    }
+
+    /// Record, for every node id handed out, the JSON Pointer of the source
+    /// value being compiled at the time (see [`crate::Logic::pointer`]).
+    #[cfg(feature = "trace")]
+    pub(crate) fn recording_pointers(mut self) -> Self {
+        self.pointer = Some(String::new());
+        self
+    }
+
+    /// Descend into `token` (an operator key, a template key or an array
+    /// index) while recording. Returns the mark to [`Self::ascend`] to.
+    #[inline]
+    pub(crate) fn descend(&mut self, token: &str) -> usize {
+        let Some(pointer) = &mut self.pointer else {
+            return 0;
+        };
+        let mark = pointer.len();
+        pointer.push('/');
+        for c in token.chars() {
+            match c {
+                '~' => pointer.push_str("~0"),
+                '/' => pointer.push_str("~1"),
+                c => pointer.push(c),
+            }
+        }
+        mark
+    }
+
+    /// [`Self::descend`] into array index `index`.
+    #[inline]
+    pub(crate) fn descend_index(&mut self, index: usize) -> usize {
+        if self.pointer.is_none() {
+            return 0;
+        }
+        self.descend(&index.to_string())
+    }
+
+    /// Return to the pointer [`Self::descend`] left.
+    #[inline]
+    pub(crate) fn ascend(&mut self, mark: usize) {
+        if let Some(pointer) = &mut self.pointer {
+            pointer.truncate(mark);
+        }
+    }
+
+    /// The recorded `(id, pointer)` pairs, in id order; `None` when not
+    /// recording.
+    pub(crate) fn take_pointers(&mut self) -> Option<NodePointers> {
+        self.pointer
+            .is_some()
+            .then(|| std::mem::take(&mut self.pointers).into_boxed_slice())
     }
 
     /// Enter one level of rule nesting during compilation. Errors once
@@ -100,6 +166,9 @@ impl CompileCtx {
     pub(crate) fn next_id(&mut self) -> NonZeroU32 {
         let id = self.next_id;
         self.next_id = self.next_id.saturating_add(1);
+        if let Some(pointer) = &self.pointer {
+            self.pointers.push((id.get(), pointer.as_str().into()));
+        }
         id
     }
 

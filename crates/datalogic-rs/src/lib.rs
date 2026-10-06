@@ -112,6 +112,7 @@ pub mod operator;
 mod operators;
 mod parsed_data;
 mod path;
+mod projection;
 mod result_output;
 mod roots;
 #[cfg(feature = "serde_json")]
@@ -199,6 +200,7 @@ pub use facts::{DataPath, Facts};
 pub use logic_input::IntoLogic;
 pub use node::Logic;
 pub use operators::info::{OperatorInfo, ScopedArg};
+pub use operators::table::Family;
 pub use parsed_data::ParsedData;
 pub use path::PathStep;
 pub use result_output::FromDataValue;
@@ -333,6 +335,58 @@ pub trait CustomOperator: Send + Sync {
     fn info(&self) -> CustomOperatorInfo {
         CustomOperatorInfo::opaque()
     }
+
+    /// Validate a call's arguments as written, before anything runs.
+    /// [`Engine::check`] and [`Engine::compile_checked`] call it for every
+    /// call to this operator whose argument count fits
+    /// [`info`](Self::info); [`Engine::compile`] does not.
+    ///
+    /// `args` is the call's argument list as JSON: `{"op": [a, b]}` gives
+    /// `[a, b]`, and a lone argument that is not an array (`{"op": a}`)
+    /// gives `[a]`. An argument that is an expression arrives as written,
+    /// so an operator call is a one-key object (`{"var": "x"}`) and only a
+    /// literal can be checked as a value.
+    ///
+    /// Return [`Diagnostic::error`] for a call that will fail (it stops
+    /// [`Engine::compile_checked`]) or [`Diagnostic::warning`] for one that
+    /// runs but probably not as meant, narrowed with
+    /// [`Diagnostic::at_argument`]. The checker fills in the location and
+    /// the operator name. The default accepts every call.
+    ///
+    /// ```rust
+    /// use datalogic_rs::datavalue::OwnedDataValue;
+    /// use datalogic_rs::{CheckMode, CustomOperator, DataValue, Diagnostic, Engine, Result};
+    /// use datalogic_rs::operator::EvalContext;
+    ///
+    /// struct Table;
+    /// impl CustomOperator for Table {
+    ///     fn evaluate<'a>(
+    ///         &self,
+    ///         args: &[&'a DataValue<'a>],
+    ///         _ctx: &mut EvalContext<'_, 'a>,
+    ///         _arena: &'a datalogic_rs::bumpalo::Bump,
+    ///     ) -> Result<&'a DataValue<'a>> {
+    ///         Ok(args[0])
+    ///     }
+    ///
+    ///     fn check(&self, args: &[OwnedDataValue]) -> std::result::Result<(), Diagnostic> {
+    ///         match args.first() {
+    ///             Some(OwnedDataValue::String(name)) if name != "users" => {
+    ///                 Err(Diagnostic::error(format!("no table {name:?}")).at_argument(0))
+    ///             }
+    ///             _ => Ok(()),
+    ///         }
+    ///     }
+    /// }
+    ///
+    /// let engine = Engine::builder().add_operator("table", Table).build();
+    /// let diags = engine.check(r#"{"table": ["orders"]}"#, CheckMode::Engine);
+    /// assert_eq!(diags[0].pointer, "/table/0");
+    /// ```
+    fn check(&self, args: &[datavalue::OwnedDataValue]) -> std::result::Result<(), Diagnostic> {
+        let _ = args;
+        Ok(())
+    }
 }
 
 /// What the engine may assume about a [`CustomOperator`], returned by
@@ -434,6 +488,11 @@ impl CustomOperator for Box<dyn CustomOperator> {
     fn info(&self) -> CustomOperatorInfo {
         (**self).info()
     }
+
+    #[inline]
+    fn check(&self, args: &[datavalue::OwnedDataValue]) -> std::result::Result<(), Diagnostic> {
+        (**self).check(args)
+    }
 }
 
 // `Arc<T>` delegates the same way, so one operator instance (and any state
@@ -455,5 +514,10 @@ impl<T: CustomOperator + ?Sized> CustomOperator for std::sync::Arc<T> {
     #[inline]
     fn info(&self) -> CustomOperatorInfo {
         (**self).info()
+    }
+
+    #[inline]
+    fn check(&self, args: &[datavalue::OwnedDataValue]) -> std::result::Result<(), Diagnostic> {
+        (**self).check(args)
     }
 }

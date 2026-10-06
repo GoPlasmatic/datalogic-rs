@@ -245,7 +245,7 @@ impl<'engine, E: Deref<Target = Engine>> Session<'engine, E> {
         D: EvalInput<'a>,
     {
         let arena: &'a Bump = &self.arena;
-        let av = data.into_arena_value(arena)?;
+        let av = data.into_arena_for(compiled, &self.engine, arena)?;
         let result = self.engine.evaluate(compiled, av, arena)?;
         R::from_arena(result)
     }
@@ -317,7 +317,7 @@ impl<'engine, E: Deref<Target = Engine>> Session<'engine, E> {
         D: EvalInput<'a>,
     {
         let arena: &'a Bump = &self.arena;
-        let av = data.into_arena_value(arena)?;
+        let av = data.into_arena_for(compiled, &self.engine, arena)?;
         let metered = self.engine.evaluate_metered(compiled, av, arena, budget)?;
         Ok(crate::Metered {
             value: crate::FromDataValue::from_arena(metered.value)?,
@@ -356,7 +356,7 @@ impl<'engine, E: Deref<Target = Engine>> Session<'engine, E> {
         D: EvalInput<'a>,
     {
         let arena: &'a Bump = &self.arena;
-        let av = data.into_arena_value(arena)?;
+        let av = data.into_arena_for(compiled, &self.engine, arena)?;
         self.engine.evaluate(compiled, av, arena)
     }
 }

@@ -66,6 +66,9 @@ pub enum DiagnosticCode {
     /// The compiler rejected the rule for a reason the checks above do not
     /// cover.
     Compile,
+    /// A custom operator's own [`check`](crate::CustomOperator::check)
+    /// rejected the call.
+    OperatorCheck,
 }
 
 /// One problem in a rule, located by an RFC 6901 JSON Pointer into it.
@@ -85,6 +88,43 @@ pub struct Diagnostic {
     pub pointer: String,
     /// The operator (or key) the problem is about, when there is one.
     pub operator: Option<String>,
+}
+
+impl Diagnostic {
+    /// An error from a custom operator's
+    /// [`check`](crate::CustomOperator::check): the call will fail, so
+    /// [`Engine::compile_checked`](crate::Engine::compile_checked) refuses
+    /// the rule. It points at the whole call until
+    /// [`Self::at_argument`] narrows it.
+    pub fn error(message: impl Into<String>) -> Self {
+        Self::from_operator(Severity::Error, message.into())
+    }
+
+    /// A warning from a custom operator's
+    /// [`check`](crate::CustomOperator::check): the call runs, but probably
+    /// not as meant.
+    pub fn warning(message: impl Into<String>) -> Self {
+        Self::from_operator(Severity::Warning, message.into())
+    }
+
+    /// Point at argument `index` of the call instead of the whole call. In
+    /// a diagnostic an operator returns, `pointer` is relative to the call
+    /// (`"/1"` for argument 1); the checker places it in the rule.
+    #[must_use]
+    pub fn at_argument(mut self, index: usize) -> Self {
+        self.pointer = format!("/{index}");
+        self
+    }
+
+    fn from_operator(severity: Severity, message: String) -> Self {
+        Diagnostic {
+            code: DiagnosticCode::OperatorCheck,
+            severity,
+            message,
+            pointer: String::new(),
+            operator: None,
+        }
+    }
 }
 
 impl fmt::Display for Diagnostic {
@@ -267,11 +307,12 @@ impl Checker<'_> {
             OwnedDataValue::Array(items) => items.len(),
             _ => 1,
         };
-        if let Ok(opcode) = op.parse::<OpCode>() {
+        if let Some(opcode) = self.engine.builtin(op) {
             self.builtin(op, opcode, argv, count, pointer);
             return;
         }
-        if let Some(info) = self.engine.custom_operator_info(op) {
+        if let Some(custom) = self.engine.custom_operator(op) {
+            let info = custom.info();
             if count < info.min_args || info.max_args.is_some_and(|max| count > max) {
                 let message = format!(
                     "`{op}` takes {}, not {count}",
@@ -284,6 +325,14 @@ impl Checker<'_> {
                     op,
                     message,
                 );
+            } else {
+                let args = match argv {
+                    OwnedDataValue::Array(items) => items.as_slice(),
+                    other => std::slice::from_ref(other),
+                };
+                if let Err(d) = custom.check(args) {
+                    self.operator_diagnostic(d, op, argv, pointer);
+                }
             }
             self.args(op, argv, pointer);
             return;
@@ -315,6 +364,34 @@ impl Checker<'_> {
             message,
         );
         self.args(op, argv, pointer);
+    }
+
+    /// Place a diagnostic a custom operator returned: its pointer is
+    /// relative to the call (empty, or `"/i"` for argument `i`).
+    fn operator_diagnostic(
+        &mut self,
+        mut d: Diagnostic,
+        op: &str,
+        argv: &OwnedDataValue,
+        pointer: &str,
+    ) {
+        let relative = std::mem::take(&mut d.pointer);
+        let mut placed = pointer.to_string();
+        if !relative.is_empty() {
+            push_token(&mut placed, op);
+            // A lone argument that is not an array is the argument list's
+            // only member, written in place: argument 0 is the call's value.
+            match (argv, relative.strip_prefix("/0")) {
+                (OwnedDataValue::Array(_), _) => placed.push_str(&relative),
+                (_, Some(rest)) if rest.is_empty() || rest.starts_with('/') => {
+                    placed.push_str(rest)
+                }
+                _ => placed.push_str(&relative),
+            }
+        }
+        d.pointer = placed;
+        d.operator.get_or_insert_with(|| op.to_string());
+        self.out.push(d);
     }
 
     fn builtin(
@@ -421,7 +498,7 @@ impl Checker<'_> {
     /// almost any short key is one edit from `+` or `in`.
     fn similar_operator(&self, key: &str) -> Option<String> {
         let close = |name: &str| name.chars().count() >= 3 && edit_distance(key, name) == 1;
-        if let Some(name) = crate::operators::table::builtin_operator_names().find(|n| close(n)) {
+        if let Some(name) = self.engine.builtin_operator_names().find(|n| close(n)) {
             return Some(name.to_string());
         }
         let mut custom: Vec<&str> = self
