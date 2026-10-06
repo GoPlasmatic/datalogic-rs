@@ -2,18 +2,15 @@
 name = "datalogic-rs"
 version = "5.8.0"
 edition.workspace = true
-# Floor is inherited, not chosen: `datavalue-rs` 0.3 declares
-# `rust-version = "1.98"`, and it is a non-optional dependency, so every
-# build of this crate needs 1.98 whether or not `tensor` is on. The
-# previous 1.85 floor tracked edition 2024 and the crate's own language
-# use, which is still 1.85 — nothing here needs 1.98 directly. Requires
-# `datavalue-rs >= 0.3.1`: 0.2.2 and earlier printed whole floats outside
-# i64's exact range through a saturating cast (`float_to_str`'s fast path
-# mirrors the fixed Display and would break byte-parity against them), the
-# `Tensor` variant the `tensor` feature matches on arrived in 0.3, and
-# `OwnedDataValue::view_in`, which lets an owned context be evaluated
-# without copying its strings and tensor bytes, arrived in 0.3.1.
-rust-version = "1.98"
+# 1.98, set on the workspace: see the comment on `rust-version` in the root
+# Cargo.toml for why. Requires `datavalue-rs >= 0.3.1`: 0.2.2 and earlier
+# printed whole floats outside i64's exact range through a saturating cast
+# (`float_to_str`'s fast path mirrors the fixed Display and would break
+# byte-parity against them), the `Tensor` variant the `tensor` feature
+# matches on arrived in 0.3, and `OwnedDataValue::view_in`, which lets an
+# owned context be evaluated without copying its strings and tensor bytes,
+# arrived in 0.3.1.
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
@@ -153,15 +150,15 @@ all-operators = [
 # bump deliberately when a newer dep API is taken, otherwise the
 # minimal-versions resolver may pick a too-old variant that lacks the
 # feature we use.
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = { version = "1.0.151", optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true, optional = true }
 chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"], optional = true }
 # IANA timezone table for the optional trailing zone argument on
 # `format_date` / `parse_date`. 0.10.x tracks chrono 0.4.x. Rides the
 # `datetime` feature (see the feature comment above).
 chrono-tz = { version = "0.10", default-features = false, features = ["std"], optional = true }
 datavalue = { version = "0.3.1", package = "datavalue-rs", features = ["serde"] }
-bumpalo = { version = "3.20", features = ["collections"] }
+bumpalo = { workspace = true, features = ["collections"] }
 # Number -> string rendering on the `cat` / string-coercion hot path
 # (`arena::value::strings`). Both render digits without the `core::fmt`
 # machinery; ryu is used only where its output provably matches `Display`
@@ -189,7 +186,7 @@ self_cell = "1.3.0"
 [dev-dependencies]
 tokio = { version = "1.53", features = ["full"] }
 futures = "0.3.34"
-serde_json = "1.0.151"
+serde_json = { workspace = true }
 # Property-based tests (`tests/property_test.rs`). Floor kept current for
 # the same minimal-versions reason as [dependencies] above.
 proptest = "1.11"

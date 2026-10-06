@@ -2,6 +2,7 @@
 name = "datalogic-bench"
 version = "0.1.0"
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
@@ -24,13 +25,16 @@ datalogic-rs = { path = "../../crates/datalogic-rs", features = [
     "templating",
     "all-operators",
 ] }
-serde_json = "1.0"
-bumpalo = "3"
+serde_json = { workspace = true }
+bumpalo = { workspace = true }
 
 # Native Rust competitor crates. Each gates one optional dep + one
 # `Subject` impl in `src/bin/compare.rs`. Off by default so the basic
 # matrix (datalogic-rs tiers + Node subjects) doesn't pull them in.
 jsonlogic-rs = { version = "0.5", optional = true }
+
+[lints]
+workspace = true
 
 # `compare` binary subjects are gated so the default build doesn't pull in
 # every other JSONLogic crate. Add a feature per subject and wire it in

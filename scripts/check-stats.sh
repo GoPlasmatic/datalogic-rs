@@ -11,7 +11,7 @@
 #   - tools/benchmark/BENCHMARK.md  → performance geomeans (the GEOMEAN
 #     constant below; update it when the quarterly benchmark refresh
 #     lands, in the same commit that updates BENCHMARK.md)
-#   - crates/datalogic-rs/Cargo.toml `rust-version` → the MSRV quoted in
+#   - Cargo.toml `[workspace.package] rust-version` → the MSRV quoted in
 #     CONTRIBUTING.md, DEVELOPMENT.md, the crate README badge and the
 #     installation page
 #
@@ -52,8 +52,8 @@ suites=${stat%% suites*}
 cases=${stat##*/ }
 cases=${cases%% cases*}
 GEOMEAN="10.3 ns"   # BENCHMARK.md cross-library geomean, captured 2026-07-17
-msrv=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' crates/datalogic-rs/Cargo.toml | head -1)
-[ -n "$msrv" ] || err "crates/datalogic-rs/Cargo.toml declares no rust-version"
+msrv=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+[ -n "$msrv" ] || err "Cargo.toml [workspace.package] declares no rust-version"
 
 # --- conformance counts -------------------------------------------------
 # Every phrasing the docs use to quote the battery. The sweep covers every
@@ -181,7 +181,7 @@ done
 if [ "$fail" -ne 0 ]; then
   echo >&2
   echo "Stats drifted. Canonical sources: scripts/conformance-count.sh," >&2
-  echo "tools/benchmark/BENCHMARK.md and crates/datalogic-rs/Cargo.toml." >&2
+  echo "tools/benchmark/BENCHMARK.md and the root Cargo.toml." >&2
   echo "Fix count quotes with 'scripts/check-stats.sh --write'; fix the" >&2
   echo "rest by hand (or, after a benchmark refresh, the constants here)." >&2
   exit 1
