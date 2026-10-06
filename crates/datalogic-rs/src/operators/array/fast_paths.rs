@@ -44,7 +44,7 @@ pub(super) fn allowed(ctx: &ContextStack<'_>, engine: &Engine) -> bool {
 }
 
 #[cfg(all(test, feature = "serde_json"))]
-use super::helpers::FusedMapBody;
+use super::fused::FusedMapBody;
 
 #[cfg(all(test, feature = "serde_json"))]
 mod tests {

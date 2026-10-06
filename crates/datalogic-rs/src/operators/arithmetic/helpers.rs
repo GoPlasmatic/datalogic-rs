@@ -59,7 +59,7 @@ pub(super) fn alloc_number<'a>(arena: &'a Bump, n: NumberValue) -> &'a DataValue
 /// exactly-i64-representable result back to `Integer`, unlike
 /// `NumberValue`'s own `add`/`sub`/`mul` which leave it `Float`. The
 /// `map` / `reduce` fast paths reproduce this exact decision in
-/// `operators::array::helpers::combine`; `tests/fast_arith_test.rs` checks
+/// `operators::array::fused::combine`; `tests/fast_arith_test.rs` checks
 /// them against general dispatch.
 #[inline]
 pub(super) fn try_int_op(

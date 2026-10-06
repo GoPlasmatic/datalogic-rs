@@ -8,10 +8,8 @@ use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 use datavalue::NumberValue;
 
-use super::helpers::{
-    FieldCursor, FusedMapBody, IterArgKind, IterSrc, ResolvedInput, arith_number,
-    resolve_iter_input, with_arith,
-};
+use super::fused::{FieldCursor, FusedMapBody, arith_number, with_arith};
+use super::input::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
 use super::nesting::AccumulatorDepth;
 
 /// `reduce` — folds an array into a single value via an accumulator. Input
@@ -216,7 +214,7 @@ fn try_fused_reduce_map<'a>(
 }
 
 /// The fused loop. Both the per-item map and the fold run through the
-/// shared exact combine (`helpers::combine`, via [`arith_number`] for the
+/// shared exact combine (`fused::combine`, via [`arith_number`] for the
 /// map and `with_arith!` for the fold, whose operation and accumulator side
 /// are fixed outside the loop), which applies the binary arithmetic
 /// operators' own representation rules — so the fused result matches what the unfused

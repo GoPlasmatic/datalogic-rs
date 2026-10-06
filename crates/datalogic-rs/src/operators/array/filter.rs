@@ -6,10 +6,9 @@ use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 use std::ops::ControlFlow;
 
-use super::helpers::{
-    FastPredicate, FieldCursor, Items, IterSrc, for_each_iter_array, for_each_iter_object,
-    try_extract_filter_field_cmp,
-};
+use super::fused::FieldCursor;
+use super::helpers::{FastPredicate, try_extract_filter_field_cmp};
+use super::input::{Items, IterSrc, for_each_iter_array, for_each_iter_object};
 
 /// `filter`: the items (or object pairs) whose predicate is truthy. A
 /// scalar source is an error.

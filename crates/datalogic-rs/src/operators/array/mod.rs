@@ -15,12 +15,19 @@
 //!   rows, gated on `feature = "ext-array"`).
 //! - [`distinct`] — `distinct` (dedup by value or computed key, gated on
 //!   `feature = "ext-array"`).
-//! - [`helpers`] — shared infrastructure: `IterSrc`, `ResolvedInput`,
-//!   `resolve_iter_input` (used by every iterator op), `FastPredicate`
-//!   (filter / quantifier fast paths), and a few small comparison helpers.
+//! - [`input`] — iterator input: `IterSrc`, `ResolvedInput`, `Items`,
+//!   `resolve_iter_input` (used by every iterator op, and where the
+//!   per-item charge is taken), and the per-item body loops.
+//! - [`helpers`] — `FastPredicate` (filter / quantifier fast paths) and
+//!   the loop-invariance test.
+//! - [`fused`] — the fused `map` / `reduce` pieces: `FieldCursor`, the
+//!   exact arithmetic combine, `FusedMapBody`.
+//! - [`fast_paths`] — the list of every fast path and the gate they share.
 
 mod fast_paths;
+mod fused;
 mod helpers;
+mod input;
 
 mod filter;
 mod map;
@@ -62,4 +69,5 @@ pub(crate) use sort::evaluate_sort;
 
 // Iterator-input infrastructure consumed by `arithmetic` (and other crate
 // callers) to compose with array results.
-pub(crate) use helpers::{FastPredicate, Items, IterArgKind, ResolvedInput, resolve_iter_input};
+pub(crate) use helpers::FastPredicate;
+pub(crate) use input::{Items, IterArgKind, ResolvedInput, resolve_iter_input};

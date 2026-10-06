@@ -5,7 +5,7 @@ use crate::operators::comparison::compare_equals;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
-use super::helpers::{Items, IterSrc};
+use super::input::{Items, IterSrc};
 
 /// `distinct: [array]` (dedup by value) or `distinct: [array, key_expr]`
 /// (dedup by computed key). First occurrence wins in both forms, so output

@@ -7,7 +7,7 @@ use crate::node::{MetadataHint, ReduceHint};
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
-use super::helpers::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
+use super::input::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
 
 /// `sort`. Borrows input via `IterSrc` (no input clone), runs
 /// `slice::sort_by` over indices, and emits `DataValue::Array` re-borrowing

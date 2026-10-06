@@ -5,7 +5,7 @@ use crate::operators::comparison::compare_equals;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
-use super::helpers::Items;
+use super::input::Items;
 
 /// `group_by: [array, key_expr]` → array of `{key, items}` objects.
 ///

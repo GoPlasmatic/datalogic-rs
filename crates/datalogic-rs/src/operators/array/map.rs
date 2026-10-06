@@ -8,10 +8,8 @@ use bumpalo::Bump;
 use datavalue::{NumberValue, OwnedDataValue};
 use std::ops::ControlFlow;
 
-use super::helpers::{
-    FieldCursor, FusedMapBody, Items, IterSrc, for_each_iter_array, for_each_iter_object,
-};
-use super::helpers::{combine_ints, with_arith, with_ops};
+use super::fused::{FieldCursor, FusedMapBody, combine_ints, with_arith, with_ops};
+use super::input::{Items, IterSrc, for_each_iter_array, for_each_iter_object};
 
 /// `map`: the body's value for each item (or object pair). A scalar source
 /// is mapped as a one-item collection. Body fast path for var/field-extract
@@ -76,7 +74,7 @@ fn map_fused<'a>(
 /// dominant `{*: [{val:[]}, 2]}` style of arithmetic-with-literal map
 /// bodies seen in real workloads.
 ///
-/// Each element goes through [`combine`](super::helpers::combine) with the operation and operand
+/// Each element goes through [`combine`](super::fused::combine) with the operation and operand
 /// order fixed outside the loop, so results match the arithmetic
 /// operators exactly. Returns `None` if the literal or any value is not a
 /// number, or a field is missing: the caller falls through to the general

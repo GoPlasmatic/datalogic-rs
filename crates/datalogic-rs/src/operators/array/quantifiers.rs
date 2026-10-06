@@ -7,7 +7,8 @@ use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 use std::ops::ControlFlow;
 
-use super::helpers::{FastPredicate, Items, for_each_iter_array, for_each_iter_object};
+use super::helpers::FastPredicate;
+use super::input::{Items, for_each_iter_array, for_each_iter_object};
 
 impl Quant {
     /// The predicate result that settles the answer early: `false` for
