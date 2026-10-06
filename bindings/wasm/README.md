@@ -418,8 +418,12 @@ evaluations over data handles that skip result serialization entirely:
 - `session.evaluateBool(rule, handle): boolean`: result must be a
   strict JSON boolean; any other type throws an `Error` named
   `TypeMismatch` (e.g. `"result is not a boolean (got number)"`).
-- `session.evaluateNumber(rule, handle): number`: accepts any JSON
-  number (JS has one number type); otherwise throws `TypeMismatch`.
+- `session.evaluateInt(rule, handle): number`: a whole JSON number a JS
+  number holds exactly (`|n| <= 2^53 - 1`); otherwise throws
+  `TypeMismatch`.
+- `session.evaluateFloat(rule, handle): number`: accepts any JSON
+  number; otherwise throws `TypeMismatch`. (`evaluateNumber` is its
+  older name.)
 - `session.evaluateTruthy(rule, handle): boolean`: collapses **any**
   result through the engine's configured truthiness rules (the same
   coercion `if` / `and` / `or` apply). Never type-mismatches.
@@ -480,6 +484,7 @@ values throw a `ConfigurationError`:
 | `arithmetic_nan_handling` | `"throw_error"` \| `"ignore_value"` \| `"coerce_to_zero"` \| `"return_null"` |
 | `division_by_zero` | `"return_saturated"` \| `"throw_error"` \| `"return_null"` \| `"return_infinity"` |
 | `loose_equality_errors` | boolean |
+| `missing_var` | `"null"` (default: a missing variable reads as `null`) \| `"error"` (throws `VariableNotFound`) |
 | `truthy_evaluator` | `"javascript"` \| `"python"` \| `"strict_boolean"` |
 | `numeric_coercion` | object of booleans: `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
 | `max_recursion_depth` | integer >= 1 |

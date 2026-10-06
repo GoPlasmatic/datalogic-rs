@@ -357,9 +357,10 @@ impl CompiledRule {
     /// * `templating` - If true, enables templating mode (multi-key objects compile to output-shaping templates with embedded JSONLogic)
     /// * `config` - Optional evaluation config: a JSON string or a plain
     ///   object with keys such as `preset` (`"default"` | `"safe_arithmetic"`
-    ///   | `"strict"`), `division_by_zero`, `truthy_evaluator`,
-    ///   `numeric_coercion`, `max_recursion_depth`. Omit (or pass
-    ///   `undefined` / `null`) for default semantics.
+    ///   | `"strict"`), `division_by_zero`, `missing_var`, `truthy_evaluator`,
+    ///   `numeric_coercion`, `max_recursion_depth`, `ops_budget` (the full
+    ///   list is on [`Engine`]). Omit (or pass `undefined` / `null`) for
+    ///   default semantics.
     /// * `templateKeyEscape` - Optional single-character prefix that marks a
     ///   template key as a literal output field instead of an operator
     ///   invocation. Unset by default. With `"$"`, `{"$type": ...}` emits the
@@ -367,9 +368,9 @@ impl CompiledRule {
     ///   ...}` emits a literal `$type`. Only meaningful with `templating`.
     ///
     /// # Throws
-    /// An `Error` named `ParseError` for malformed logic,
-    /// `ConfigurationError` for an invalid config, or `InvalidArguments`
-    /// for a `templateKeyEscape` that is not exactly one character.
+    /// An `Error` named `ParseError` for malformed logic or for a
+    /// `templateKeyEscape` that is not exactly one character (with `stage:
+    /// "parse-options"`), or `ConfigurationError` for an invalid config.
     #[wasm_bindgen(constructor)]
     pub fn new(
         logic: &str,
@@ -519,14 +520,15 @@ impl CustomOperator for JsOperator {
 /// template key and an escaped key is never resolved as an operator: with
 /// `"$"`, `{"$type": ...}` emits the key `type` and `{"$$type": ...}` emits
 /// a literal `$type`. Anything other than a one-character string rejects
-/// with `InvalidArguments`.
+/// with a `ParseError` (`stage: "parse-options"`).
 ///
 /// `config` tunes evaluation semantics. Pass either a JSON string or a
 /// plain object; accepted keys (all optional): `preset` (`"default"` |
 /// `"safe_arithmetic"` | `"strict"`), `arithmetic_nan_handling`,
-/// `division_by_zero`, `loose_equality_errors`, `truthy_evaluator`,
-/// `numeric_coercion`, `max_recursion_depth`. Unknown keys or values
-/// reject with a `ConfigurationError`.
+/// `division_by_zero`, `loose_equality_errors`, `missing_var`,
+/// `truthy_evaluator`, `numeric_coercion`, `max_recursion_depth`,
+/// `ops_budget`. Unknown keys or values reject with a
+/// `ConfigurationError`.
 ///
 /// `customOperators` registers a JS function under each name. The function
 /// receives the evaluated args as a JSON-array string (e.g. `"[1, 2, \"x\"]"`)
