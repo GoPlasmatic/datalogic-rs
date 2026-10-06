@@ -318,6 +318,24 @@ impl CustomOperators {
 /// keeping this fallback outlined keeps those sites small (I-cache), and
 /// the cold hint steers the branch layout toward the pre-built `lit` path
 /// that every compiled literal takes.
+/// The error path of `dispatch_node`: push `node` onto the breadcrumb and,
+/// when no deeper node has named the error, name it after `node`'s
+/// operator. The first node to see an error on its way up is the innermost
+/// one that failed, so [`crate::Error::operator`] names the operator that
+/// actually failed (a custom operator included), and the plain and traced
+/// paths agree on it. Outlined and cold for the same I-cache reason as
+/// [`literal_fallback`].
+#[cold]
+#[inline(never)]
+fn record_failure(
+    err: &mut crate::Error,
+    node: &CompiledNode,
+    ctx: &mut crate::arena::ContextStack<'_>,
+) {
+    ctx.push_error_step(node.id());
+    err.name_operator_from(node);
+}
+
 #[cold]
 #[inline(never)]
 fn literal_fallback<'a>(
@@ -890,7 +908,7 @@ impl Engine {
         let mut ctx = self.new_context(compiled, data_ref);
         match self.dispatch_node(&compiled.root, &mut ctx, arena) {
             Ok(av) => Ok(av),
-            Err(e) => Err(e.decorated(ctx.take_error_path(), compiled, true)),
+            Err(e) => Err(e.decorated(ctx.take_error_path(), compiled)),
         }
     }
 
@@ -1039,7 +1057,7 @@ impl Engine {
                 value,
                 ops: ctx.ops_spent(),
             }),
-            Err(e) => Err(e.decorated(ctx.take_error_path(), compiled, true)),
+            Err(e) => Err(e.decorated(ctx.take_error_path(), compiled)),
         }
     }
 
@@ -1309,16 +1327,16 @@ impl Engine {
         // compiler already resolved, not work the rule asked for. With
         // the `budget` feature off `charge` is an inlined `Ok(())`, so
         // this folds to the bare inner dispatch.
-        let result = match ctx.charge(1) {
+        let mut result = match ctx.charge(1) {
             Ok(()) => dispatch::dispatch_node_inner(self, node, ctx, arena),
             Err(e) => Err(e),
         };
 
-        // Accumulate the failing node's id on every Err. We always pay
-        // the (single) Vec::push since errors are rare and structured-error
-        // consumers need the breadcrumb.
-        if result.is_err() {
-            ctx.push_error_step(node.id());
+        // Accumulate the failing node's id on every Err, and name the
+        // innermost failing operator. Errors are rare, so this is one cold
+        // call and structured-error consumers get the breadcrumb.
+        if let Err(e) = &mut result {
+            record_failure(e, node, ctx);
         }
 
         #[cfg(feature = "trace")]

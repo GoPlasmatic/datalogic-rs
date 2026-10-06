@@ -51,8 +51,8 @@ impl std::error::Error for MessageError {}
 ///
 /// The `kind` field carries the failure category and any variant-specific
 /// payload. `operator` and `node_ids` are populated by the public
-/// `evaluate*` entry points: `operator` names the outermost operator that
-/// produced the error, and `node_ids` is a breadcrumb of compiled-node ids
+/// `evaluate*` entry points: `operator` names the innermost operator that
+/// failed, and `node_ids` is a breadcrumb of compiled-node ids
 /// from the failure site toward the root (leaf-to-root). Use
 /// [`Error::resolve_path`] to translate the ids into structured
 /// [`crate::PathStep`]s callers can act on.
@@ -76,7 +76,7 @@ impl std::error::Error for MessageError {}
 pub struct Error {
     /// What went wrong. Pattern-matched by callers; stays public.
     pub kind: ErrorKind,
-    /// Outermost operator that produced the error, when known. Stored as
+    /// The operator that failed, when known. Stored as
     /// `Cow<'static, str>` so built-in op names (the dominant case) are
     /// zero-allocation `Cow::Borrowed` references; only dynamic
     /// custom-operator names carry an owned `String` via `Cow::Owned`.
@@ -106,7 +106,12 @@ impl Error {
         }
     }
 
-    /// Outermost operator that produced this error, when known.
+    /// The operator that failed, when known: the innermost operator on
+    /// [`Self::node_ids`], so a failing custom operator nested inside
+    /// built-ins is named itself. The same on every evaluation path,
+    /// traced or not. When no node on the path has an operator name, the
+    /// rule's root operator stands in.
+    ///
     /// Returns `None` for parse/compile errors and for raw constructor sites
     /// that didn't call [`Self::with_operator`].
     #[inline]
@@ -134,7 +139,8 @@ impl Error {
         self.kind.code()
     }
 
-    /// Attach the outermost operator name and return self.
+    /// Attach the name of the operator that failed and return self. An
+    /// error that leaves an evaluation already named keeps that name.
     ///
     /// Accepts anything convertible to `Cow<'static, str>` — passing a
     /// `&'static str` literal stays zero-allocation; a `String` becomes
@@ -308,8 +314,8 @@ impl Error {
     }
 
     /// Decorate an error from a public `evaluate*` boundary with the
-    /// breadcrumb path (raw ids only — see below) and the outermost
-    /// operator name. Marked `#[cold]` + `#[inline(never)]` so the
+    /// breadcrumb path (raw ids only — see below) and, when nothing
+    /// deeper named one, the root operator name. Marked `#[cold]` + `#[inline(never)]` so the
     /// dispatch caller's `Err` arm shrinks to a single call instruction,
     /// keeping the hot `Ok` arm's I-cache footprint tight.
     ///
@@ -324,27 +330,28 @@ impl Error {
     /// the same cost paid once at the catch site rather than at every
     /// boundary crossing.
     ///
-    /// `prefer_existing_op` controls whether to fall back to
-    /// `compiled.root_op_name` when no operator was already attached:
-    /// the `Engine::evaluate*` sites pass `true` (only attach if a
-    /// deeper site didn't name a more specific failing op);
-    /// `TracedSession` passes `false` to preserve its prior
-    /// unconditional-overwrite behavior.
+    /// The operator is the innermost one on the breadcrumb, named on the
+    /// way up by [`Self::name_operator_from`]. Only when no node on the
+    /// path has an operator name (or the error was raised outside any
+    /// node) does the root operator stand in. Every evaluation entry
+    /// point, traced or not, applies the same rule.
     #[cold]
     #[inline(never)]
-    pub(crate) fn decorated(
-        mut self,
-        node_ids: Vec<u32>,
-        compiled: &crate::Logic,
-        prefer_existing_op: bool,
-    ) -> Self {
+    pub(crate) fn decorated(mut self, node_ids: Vec<u32>, compiled: &crate::Logic) -> Self {
         self.node_ids = node_ids.into();
-        if (!prefer_existing_op || self.operator.is_none())
-            && let Some(name) = compiled.root_op_name.clone()
-        {
-            self.operator = Some(name);
+        if self.operator.is_none() {
+            self.operator = compiled.root_op_name.clone();
         }
         self
+    }
+
+    /// Name this error after `node`'s operator, unless a deeper node (or
+    /// the site that raised it) already named it.
+    #[inline]
+    pub(crate) fn name_operator_from(&mut self, node: &crate::CompiledNode) {
+        if self.operator.is_none() {
+            self.operator = node.operator_name();
+        }
     }
 
     /// Canonical NaN error — `{"type": "NaN"}` thrown via [`Error::thrown`].
