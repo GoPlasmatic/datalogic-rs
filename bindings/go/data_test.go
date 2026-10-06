@@ -6,6 +6,7 @@ package datalogic
 // empty-string inputs.
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -495,6 +496,10 @@ func TestErrorFieldsThroughV2(t *testing.T) {
 	}
 	if !strings.HasPrefix(derr.PathJSON, "[") {
 		t.Errorf("want PathJSON to be a JSON array, got %q", derr.PathJSON)
+	}
+	var nodeIDs []uint64
+	if err := json.Unmarshal([]byte(derr.NodeIDsJSON), &nodeIDs); err != nil || len(nodeIDs) == 0 {
+		t.Errorf("want NodeIDsJSON to be a non-empty JSON array of ids, got %q", derr.NodeIDsJSON)
 	}
 	if !strings.Contains(derr.Error(), "Thrown") {
 		t.Errorf("Error() should include the tag, got %q", derr.Error())
