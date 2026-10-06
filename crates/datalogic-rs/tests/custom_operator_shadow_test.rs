@@ -79,3 +79,45 @@ fn add_operator_is_unchanged() {
         "1"
     );
 }
+
+#[test]
+fn try_build_checks_a_name_against_families_set_after_it() {
+    use datalogic_rs::Family;
+    // Free when registered, taken once the string family is back.
+    let builder = Engine::builder()
+        .with_families([Family::ExtArray])
+        .try_add_operator("upper", Answer)
+        .unwrap()
+        .with_families([Family::ExtString]);
+    assert!(builder.check_operator_names().is_err());
+    let err = builder.try_build().err().unwrap();
+    assert!(
+        matches!(err.kind, ErrorKind::ConfigurationError(_)),
+        "{err:?}"
+    );
+    // Still free with the final families: builds.
+    let engine = Engine::builder()
+        .try_add_operator("answer", Answer)
+        .unwrap()
+        .with_families([Family::ExtArray])
+        .try_build()
+        .unwrap();
+    assert_eq!(engine.eval_str(r#"{"answer": []}"#, "null").unwrap(), "42");
+}
+
+#[cfg(feature = "templating")]
+#[test]
+fn a_name_beginning_with_the_template_key_escape_is_refused() {
+    let builder = Engine::builder()
+        .with_templating(true)
+        .with_template_key_escape('$');
+    assert!(builder.check_operator_name("$up").is_err());
+    assert!(builder.check_operator_name("up$").is_ok());
+    // Set after the operator: try_build catches it.
+    let builder = Engine::builder()
+        .with_templating(true)
+        .try_add_operator("$up", Answer)
+        .unwrap()
+        .with_template_key_escape('$');
+    assert!(builder.try_build().is_err());
+}

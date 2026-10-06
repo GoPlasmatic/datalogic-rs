@@ -107,12 +107,14 @@ pub(crate) struct StructuredObjectData {
     /// out; keeping the source form here is what lets `to_json` round-trip
     /// (a stored bare `type` would re-parse as the `type` operator).
     pub fields: Box<[(String, CompiledNode)]>,
-    /// Whether any key in `fields` carries the engine's escape prefix.
+    /// The compiling engine's escape prefix, when any key in `fields`
+    /// carries it. Recorded rather than read from the evaluating engine,
+    /// so a rule keeps its output keys on an engine with another escape.
     /// Two jobs: it gates the per-key strip at evaluation time so
     /// unescaped templates pay nothing, and it makes the node non-static
     /// so constant folding can't collapse it into an object literal whose
     /// keys have already lost their escape.
-    pub has_escaped_keys: bool,
+    pub escape: Option<char>,
 }
 
 /// Compile-time resolution of *which context frame* a variable reference

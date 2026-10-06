@@ -158,3 +158,47 @@ fn fast_predicates_match_the_general_path() {
             .join("\n")
     );
 }
+
+/// Equality fast paths compare as the operators do: numbers as `f64`
+/// under `===`, and, with `datetime`, two strings that spell the same
+/// instant as equal. Each rule's result matches the traced run and the
+/// comparison written outside an iterator.
+#[test]
+fn equality_fast_paths_compare_as_the_operators_do() {
+    let engine = Engine::new();
+    let mut cases = vec![
+        (
+            json!({"===": [{"var": "k"}, 9007199254740992u64]}),
+            json!({"k": 9007199254740993u64}),
+        ),
+        (json!({"===": [{"var": "k"}, 1.0]}), json!({"k": 1})),
+        (json!({"!==": [{"var": "k"}, 1]}), json!({"k": 1.0})),
+    ];
+    if cfg!(feature = "datetime") {
+        for op in ["==", "===", "!=", "!=="] {
+            cases.push((
+                json!({op: [{"var": "k"}, "2024-01-01T00:00:00Z"]}),
+                json!({"k": "2024-01-01T00:00:00+00:00"}),
+            ));
+        }
+        cases.push((
+            json!({"in": [{"var": "k"}, ["2024-01-01T00:00:00Z", "x"]]}),
+            json!({"k": "2024-01-01T00:00:00+00:00"}),
+        ));
+    }
+    for (pred, item) in cases {
+        let alone = engine
+            .eval_str(&pred.to_string(), &item.to_string())
+            .unwrap();
+        let data = json!({ "xs": [item] }).to_string();
+        for consumer in ["filter", "some", "all", "none"] {
+            let rule = json!({ consumer: [{"var": "xs"}, pred] }).to_string();
+            let fast = engine.eval_str(&rule, &data).unwrap();
+            let general = engine.trace().eval_str(&rule, &data).result.unwrap();
+            assert_eq!(fast, general, "{rule}");
+            if consumer == "some" {
+                assert_eq!(fast, alone, "{rule} vs {pred} alone");
+            }
+        }
+    }
+}

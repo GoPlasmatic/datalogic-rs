@@ -313,6 +313,9 @@ impl<R> TracedRun<R> {
 /// the borrowed-result lifetime tied to the run.
 pub struct TracedSession<'e> {
     engine: &'e crate::Engine,
+    /// Compile in templating mode: the engine's own unless
+    /// [`Self::with_mode`] chose one.
+    templating: bool,
 }
 
 impl<'e> TracedSession<'e> {
@@ -320,7 +323,39 @@ impl<'e> TracedSession<'e> {
     /// [`crate::Engine::trace`].
     #[inline]
     pub(crate) fn new(engine: &'e crate::Engine) -> Self {
-        Self { engine }
+        Self {
+            engine,
+            templating: engine.is_templating_enabled(),
+        }
+    }
+
+    /// Compile rules in `mode` instead of the engine's own: as
+    /// [`Engine::compile_template`](crate::Engine::compile_template) does
+    /// for [`CheckMode::Template`](crate::CheckMode::Template), as
+    /// [`Engine::compile_strict`](crate::Engine::compile_strict) does for
+    /// [`CheckMode::Strict`](crate::CheckMode::Strict). Applies to
+    /// [`Self::compile`], [`Self::eval_str`] and [`Self::eval_into`], so a
+    /// rule compiled in a mode is traced in it.
+    ///
+    /// ```rust
+    /// # #[cfg(feature = "templating")] {
+    /// use datalogic_rs::{CheckMode, Engine};
+    ///
+    /// let engine = Engine::new();
+    /// let rule = r#"{"user": {"var": "name"}, "source": "api"}"#;
+    /// assert!(engine.trace().compile(rule).is_err());
+    /// let run = engine.trace().with_mode(CheckMode::Template).eval_str(rule, r#"{"name": "a"}"#);
+    /// assert_eq!(run.result.unwrap(), r#"{"user":"a","source":"api"}"#);
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn with_mode(mut self, mode: crate::CheckMode) -> Self {
+        self.templating = match mode {
+            crate::CheckMode::Template => true,
+            crate::CheckMode::Strict => false,
+            _ => self.engine.is_templating_enabled(),
+        };
+        self
     }
 
     /// Traced evaluation of a pre-compiled [`crate::Logic`] returning
@@ -358,7 +393,12 @@ impl<'e> TracedSession<'e> {
     ///
     /// The rule does not parse or does not compile.
     pub fn compile<R: crate::IntoLogic>(&self, rule: R) -> crate::Result<crate::Logic> {
-        crate::Logic::compile_for_trace(&rule.into_owned_logic()?, self.engine, true)
+        crate::Logic::compile_for_trace(
+            &rule.into_owned_logic()?,
+            self.engine,
+            self.templating,
+            true,
+        )
     }
 
     /// One-shot traced evaluation with JSON-string boundary on both
@@ -416,10 +456,9 @@ impl<'e> TracedSession<'e> {
         R: crate::IntoLogic,
         D: crate::OwnedInput,
     {
-        let compiled = match rule
-            .into_owned_logic()
-            .and_then(|owned| crate::Logic::compile_for_trace(&owned, self.engine, false))
-        {
+        let compiled = match rule.into_owned_logic().and_then(|owned| {
+            crate::Logic::compile_for_trace(&owned, self.engine, self.templating, false)
+        }) {
             Ok(compiled) => compiled,
             Err(e) => return Self::compile_failed(e),
         };

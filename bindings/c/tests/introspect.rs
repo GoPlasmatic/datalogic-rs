@@ -381,3 +381,67 @@ fn strict_names_follow_the_families() {
         datalogic_engine_free(engine);
     }
 }
+
+fn tag_of(err: *mut Error) -> String {
+    let mut len = 0;
+    let tag = unsafe { datalogic_error_tag(err, &mut len) };
+    let out = s(tag, len);
+    unsafe { datalogic_error_free(err) };
+    out
+}
+
+#[test]
+fn strict_names_hold_whatever_order_the_setters_come_in() {
+    let builder = datalogic_engine_builder_new();
+    let families = |json: &[u8], err: *mut *mut Error| unsafe {
+        datalogic_engine_builder_set_families(builder, json.as_ptr(), json.len(), err)
+    };
+    unsafe { datalogic_engine_builder_set_strict_operator_names(builder, 1) };
+    assert_eq!(
+        families(br#"["ExtArray"]"#, std::ptr::null_mut()),
+        Status::Ok
+    );
+    // `upper` is free without the string family.
+    let status = unsafe {
+        datalogic_engine_builder_add_operator(
+            builder,
+            b"upper".as_ptr(),
+            5,
+            Some(one),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    };
+    assert_eq!(status, Status::Ok);
+    // Bringing the string family back would hide it: refused, unchanged.
+    let mut err: *mut Error = std::ptr::null_mut();
+    assert_ne!(families(br#"["ExtString"]"#, &mut err), Status::Ok);
+    assert_eq!(tag_of(err), "ConfigurationError");
+    // Likewise an escape the name begins with.
+    let mut err: *mut Error = std::ptr::null_mut();
+    let status =
+        unsafe { datalogic_engine_builder_set_template_key_escape(builder, 'u' as u32, &mut err) };
+    assert_ne!(status, Status::Ok);
+    assert_eq!(tag_of(err), "ConfigurationError");
+
+    let engine = unsafe { datalogic_engine_builder_build(builder) };
+    let rule = br#"{"upper": "a"}"#;
+    let mut out = empty();
+    let status = unsafe {
+        datalogic_engine_apply(
+            engine,
+            rule.as_ptr(),
+            rule.len(),
+            b"null".as_ptr(),
+            4,
+            &mut out,
+            std::ptr::null_mut(),
+        )
+    };
+    assert_eq!(status, Status::Ok);
+    assert_eq!(take(out), serde_json::json!(1));
+    unsafe {
+        datalogic_engine_builder_free(builder);
+        datalogic_engine_free(engine);
+    }
+}

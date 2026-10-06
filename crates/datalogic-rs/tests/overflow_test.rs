@@ -477,3 +477,29 @@ fn test_reduce_fold_above_2_53_matches_general_path() {
         );
     }
 }
+
+/// Partial constant folding gives what left-to-right evaluation gives:
+/// integer overflow into `f64`, `f64` rounding and numeric-string coercion
+/// do not regroup.
+#[test]
+fn partial_folding_matches_unfolded_evaluation() {
+    let folded = Engine::new();
+    let unfolded = Engine::builder().with_constant_folding(false).build();
+    for (rule, data) in [
+        (
+            r#"{"+":[{"var":"x"},9223372036854775807,1,-9223372036854775807]}"#,
+            r#"{"x":5}"#,
+        ),
+        (r#"{"*":[0.1,{"var":"x"},10]}"#, r#"{"x":3}"#),
+        (r#"{"+":[1,{"var":"x"},"5"]}"#, r#"{"x":9007199254740993}"#),
+        (r#"{"+":[1,2,{"var":"x"}]}"#, r#"{"x":"9007199254740993"}"#),
+        (r#"{"+":[1,2,{"var":"x"},{"var":"x"}]}"#, r#"{"x":4}"#),
+        (r#"{"*":[2,3,{"var":"x"},0.5]}"#, r#"{"x":7}"#),
+    ] {
+        assert_eq!(
+            folded.eval_str(rule, data).unwrap(),
+            unfolded.eval_str(rule, data).unwrap(),
+            "{rule} on {data}"
+        );
+    }
+}

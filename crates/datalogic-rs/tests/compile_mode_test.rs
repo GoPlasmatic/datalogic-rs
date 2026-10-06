@@ -253,3 +253,32 @@ mod suites {
         );
     }
 }
+
+/// A traced compile reads the rule in the mode it is given, so the
+/// debugger can trace a rule compiled with `compile_template` or
+/// `compile_strict`.
+#[test]
+fn a_trace_compiles_in_the_mode_it_is_given() {
+    use datalogic_rs::CheckMode;
+    let template = r#"{"user": {"var": "name"}, "source": "api"}"#;
+    let plain = Engine::new();
+    assert!(plain.compile_template(template).is_ok());
+    assert!(plain.trace().compile(template).is_err());
+    let run = plain
+        .trace()
+        .with_mode(CheckMode::Template)
+        .eval_str(template, r#"{"name": "a"}"#);
+    assert_eq!(run.result.unwrap(), r#"{"user":"a","source":"api"}"#);
+    assert!(!run.steps.is_empty());
+
+    let templating = Engine::builder().with_templating(true).build();
+    let typo = r#"{"sourec": "api"}"#;
+    // Strictly, an unknown operator fails when it runs.
+    let logic = templating.compile_strict(typo).unwrap();
+    assert!(templating.session().eval_str(&logic, "null").is_err());
+    assert!(templating.trace().eval_str(typo, "null").result.is_ok());
+    let strict = templating.trace().with_mode(CheckMode::Strict);
+    assert!(strict.eval_str(typo, "null").result.is_err());
+    // A multi-key object does not compile strictly at all.
+    assert!(strict.compile(template).is_err());
+}

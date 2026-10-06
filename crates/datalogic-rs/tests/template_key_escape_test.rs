@@ -489,3 +489,24 @@ fn trace_shows_the_source_key() {
     );
     assert!(!run.steps.is_empty());
 }
+
+/// A compiled template keeps the output keys of the engine that compiled
+/// it: a reload with another escape (or none) strips what the compiling
+/// engine's escape marked, and nothing else.
+#[test]
+fn a_rule_keeps_its_keys_on_an_engine_with_another_escape() {
+    let compiling = escaped_engine();
+    let reloaded = compiling.to_builder().with_template_key_escape('#').build();
+    let plain = Engine::builder().with_templating(true).build();
+    for rule in [
+        json!({"$type": 1, "k": 2}),
+        json!({"$type": 1}),
+        json!({"#type": 1, "$k": 2}),
+    ] {
+        let logic = compiling.compile(&rule).unwrap();
+        let on = |e: &Engine| e.session().eval_str(&logic, "null").unwrap();
+        let want = on(&compiling);
+        assert_eq!(on(&reloaded), want, "{rule}");
+        assert_eq!(on(&plain), want, "{rule}");
+    }
+}

@@ -128,3 +128,34 @@ fn result_of_an_evaluation() {
     assert_eq!(out, json!({}));
     assert!(!engine.truthy_of(&out));
 }
+
+/// Folding must not change a result under a custom evaluator: collapsing
+/// `!(!x)` into `!!x` (and the other nested truth forms) assumes a boolean
+/// is its own truthiness, which a custom evaluator need not keep.
+#[test]
+fn nested_truth_operators_under_a_custom_evaluator_are_not_collapsed() {
+    let even = || {
+        TruthyEvaluator::custom(|v: &OwnedDataValue| {
+            v.as_i64().map(|n| n % 2 == 0).unwrap_or(false)
+        })
+    };
+    let build = |fold: bool| {
+        Engine::builder()
+            .with_config(EvaluationConfig::default().with_truthy_evaluator(even()))
+            .with_constant_folding(fold)
+            .build()
+    };
+    let (folded, unfolded) = (build(true), build(false));
+    for rule in [
+        json!({"!!": [{"!": [{"var": "n"}]}]}),
+        json!({"!": [{"!!": [{"var": "n"}]}]}),
+        json!({"!": [{"!": [{"var": "n"}]}]}),
+        json!({"!!": [{"!!": [{"var": "n"}]}]}),
+    ] {
+        for n in [2, 3] {
+            let data = json!({ "n": n });
+            let run = |e: &Engine| e.eval_str(&rule.to_string(), &data.to_string()).unwrap();
+            assert_eq!(run(&folded), run(&unfolded), "{rule} with n={n}");
+        }
+    }
+}

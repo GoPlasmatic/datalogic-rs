@@ -362,7 +362,7 @@ pub(crate) fn node_is_static(node: &CompiledNode) -> bool {
         // almost always contain a `var` anyway, so little folding is lost.
         #[cfg(feature = "templating")]
         CompiledNode::StructuredObject(data) => {
-            !data.has_escaped_keys && data.fields.iter().all(|(_, node)| node_is_static(node))
+            data.escape.is_none() && data.fields.iter().all(|(_, node)| node_is_static(node))
         }
         CompiledNode::Missing(_) | CompiledNode::MissingSome(_) => false,
         // InvalidArgs is dynamic — it raises an error at runtime.

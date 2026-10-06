@@ -338,8 +338,12 @@ datalogic_status datalogic_engine_builder_set_template_key_escape(datalogic_engi
 /**
  * When `enabled != 0`, a later [`datalogic_engine_builder_add_operator`]
  * with a name a built-in answers to (`length`, `var`, an alias such as
- * `?:`) fails with tag `ConfigurationError` instead of registering an
- * operator that would never run. Set it before adding operators.
+ * `?:`) or beginning with the template key escape fails with tag
+ * `ConfigurationError` instead of registering an operator that would
+ * never run. A later [`datalogic_engine_builder_set_families`] or
+ * [`datalogic_engine_builder_set_template_key_escape`] under which an
+ * operator registered so would no longer run fails the same way and
+ * leaves the builder unchanged. Set it before adding operators.
  *
  * # Safety
  *
@@ -356,9 +360,10 @@ void datalogic_engine_builder_set_strict_operator_names(datalogic_engine_builder
  * field spells them). By default the engine has every family this build
  * compiled in. A family left out is not there for the engine: its names
  * compile as unknown operators (or template output fields), and a custom
- * operator may take them. Set it before adding operators when strict
- * operator names are on. An unknown family name fails with tag
- * `"ConfigurationError"` and leaves the builder unchanged.
+ * operator may take them. With strict operator names on, families that
+ * bring back a built-in named like an operator already registered fail
+ * with tag `"ConfigurationError"`, as an unknown family name does; either
+ * leaves the builder unchanged.
  *
  * # Safety
  *

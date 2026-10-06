@@ -216,20 +216,7 @@ pub(crate) fn compare_equals(
     #[cfg(feature = "datetime")]
     {
         use crate::operators::datetime::{extract_datetime, extract_duration};
-        let probe_dt = match (left, right) {
-            (DataValue::Number(_) | DataValue::Bool(_) | DataValue::Null, _)
-            | (_, DataValue::Number(_) | DataValue::Bool(_) | DataValue::Null) => false,
-            // A tensor is never a datetime sentinel, so skip the probe.
-            #[cfg(feature = "tensor")]
-            (DataValue::Tensor(_), _) | (_, DataValue::Tensor(_)) => false,
-            (DataValue::String(s), _) | (_, DataValue::String(s))
-                if !could_be_datetime_or_duration(s) =>
-            {
-                false
-            }
-            _ => true,
-        };
-        if probe_dt {
+        if datetime_probe(ProbeSide::of(left), ProbeSide::of(right)) {
             ctx.charge(object_len(left).saturating_add(object_len(right)))?;
             // Fast path: strings in the strict ISO shape with identical
             // designator and precision are temporally equal iff byte-equal;
@@ -277,6 +264,70 @@ pub(crate) fn compare_equals(
         return container_eq(left, right, ctx);
     }
     Ok(left == right)
+}
+
+/// What [`datetime_probe`] needs to know about one operand of an equality.
+#[derive(Clone, Copy)]
+// Read only by the `datetime` probe.
+#[cfg_attr(not(feature = "datetime"), allow(dead_code))]
+pub(crate) enum ProbeSide<'s> {
+    /// A number, boolean, null or tensor: never a datetime or duration.
+    Scalar,
+    /// A string, which may spell a datetime or duration.
+    Str(&'s str),
+    /// Anything else (an array, an object, a datetime or duration value).
+    Other,
+}
+
+impl<'s> ProbeSide<'s> {
+    #[inline]
+    pub(crate) fn of(v: &'s DataValue<'_>) -> Self {
+        match v {
+            DataValue::Number(_) | DataValue::Bool(_) | DataValue::Null => ProbeSide::Scalar,
+            #[cfg(feature = "tensor")]
+            DataValue::Tensor(_) => ProbeSide::Scalar,
+            DataValue::String(s) => ProbeSide::Str(s),
+            _ => ProbeSide::Other,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn of_owned(v: &'s datavalue::OwnedDataValue) -> Self {
+        use datavalue::OwnedDataValue;
+        match v {
+            OwnedDataValue::Number(_) | OwnedDataValue::Bool(_) | OwnedDataValue::Null => {
+                ProbeSide::Scalar
+            }
+            #[cfg(feature = "tensor")]
+            OwnedDataValue::Tensor(_) => ProbeSide::Scalar,
+            OwnedDataValue::String(s) => ProbeSide::Str(s),
+            _ => ProbeSide::Other,
+        }
+    }
+}
+
+/// Whether [`compare_equals`] tries the two operands as datetimes or
+/// durations before comparing them as they are: never when either is a
+/// scalar or a string that cannot spell one. A fast path that compares
+/// without the probe must hand such a pair to the general path. Always
+/// `false` without the `datetime` feature.
+#[inline]
+pub(crate) fn datetime_probe(left: ProbeSide<'_>, right: ProbeSide<'_>) -> bool {
+    #[cfg(feature = "datetime")]
+    {
+        match (left, right) {
+            (ProbeSide::Scalar, _) | (_, ProbeSide::Scalar) => false,
+            (ProbeSide::Str(s), _) | (_, ProbeSide::Str(s)) if !could_be_datetime_or_duration(s) => {
+                false
+            }
+            _ => true,
+        }
+    }
+    #[cfg(not(feature = "datetime"))]
+    {
+        let _ = (left, right);
+        false
+    }
 }
 
 /// Pairs in an object operand, 0 for anything else.

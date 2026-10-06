@@ -72,12 +72,17 @@ fn filter_strict_eq_field_fast_path<'a>(
     let mut results = bvec::<DataValue<'a>>(arena, len);
     for i in 0..len {
         let item = src.get(i);
-        let matches = match field.resolve(item) {
-            Some(av) => av == invariant_val,
-            // A missing field is `var`'s implicit null, which strictly
-            // equals a null invariant like any present null.
-            None => invariant_val.is_null(),
-        };
+        // A missing field is `var`'s implicit null. Compared as `===`
+        // compares, so numbers compare as `f64` and datetime strings as
+        // instants, whatever path the filter takes.
+        let av = field.resolve(item).unwrap_or(&DataValue::Null);
+        let matches = crate::operators::comparison::compare_equals(
+            av,
+            invariant_val,
+            true,
+            engine,
+            ctx,
+        )?;
         if matches == is_eq {
             results.push(*item);
         }

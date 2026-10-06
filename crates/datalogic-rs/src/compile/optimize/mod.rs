@@ -40,8 +40,9 @@ const MAX_FIXPOINT_ITERATIONS: usize = 4;
 /// Passes are applied in order until none report a change or
 /// [`MAX_FIXPOINT_ITERATIONS`] is reached. Per iteration:
 /// 1. Dead code elimination (remove unreachable branches)
-/// 2. Constant folding (fold static args in commutative ops, pre-coerce numeric strings)
-/// 3. Strength reduction (double negation collapse, etc.)
+/// 2. Constant folding (the leading integer literals of `+` / `*`, adjacent `cat` strings)
+/// 3. Strength reduction (double negation collapse, etc.), skipped under a
+///    custom truthy evaluator
 /// 4. Dead code elimination (cleanup pass — catches branches that
 ///    became unreachable from the strength-reduction output, so the
 ///    fixpoint converges in one iteration instead of two for compound
@@ -52,6 +53,10 @@ const MAX_FIXPOINT_ITERATIONS: usize = 4;
 /// passes in one iteration report `changed = false`.
 pub(super) fn optimize(node: CompiledNode, engine: &Engine) -> CompiledNode {
     let mut node = node;
+    let custom_truthy = matches!(
+        engine.config().truthy_evaluator,
+        crate::TruthyEvaluator::Custom(_)
+    );
     for _ in 0..MAX_FIXPOINT_ITERATIONS {
         let mut any_changed = false;
 
@@ -59,13 +64,17 @@ pub(super) fn optimize(node: CompiledNode, engine: &Engine) -> CompiledNode {
         node = n;
         any_changed |= changed;
 
-        let (n, changed) = constant_fold::fold(node, engine);
+        let (n, changed) = constant_fold::fold(node);
         node = n;
         any_changed |= changed;
 
-        let (n, changed) = strength::reduce(node);
-        node = n;
-        any_changed |= changed;
+        // The truth compositions assume a boolean is its own truthiness,
+        // which a custom truthy evaluator need not keep.
+        if !custom_truthy {
+            let (n, changed) = strength::reduce(node);
+            node = n;
+            any_changed |= changed;
+        }
 
         // Cleanup pass — collapse anything strength produced before
         // exiting the iteration, instead of leaving it to the next

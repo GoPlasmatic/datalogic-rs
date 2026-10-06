@@ -386,7 +386,7 @@ impl FastPredicate {
                 // which strict-compares like any other value (`null === null`
                 // is true) — total semantics, no coercion anywhere in `===`.
                 let av = Self::resolve_value(var_path, item).unwrap_or(&DataValue::Null);
-                Some(value_equals_serde(av, literal) != *negate)
+                strict_eq_literal(av, literal).map(|eq| eq != *negate)
             }
             FastPredicate::NumericCmp {
                 var_path,
@@ -427,20 +427,20 @@ impl FastPredicate {
                 literal,
                 negate,
             } => match Self::resolve_value(var_path, item) {
-                // Same-type loose equality is plain equality; any other
-                // value shape (including a missing field's implicit null)
-                // needs the general path's coercion table.
-                Some(DataValue::String(s)) => Some((*s == &**literal) != *negate),
+                // Same-type loose equality is plain equality, short of the
+                // datetime probe; any other value shape (including a
+                // missing field's implicit null) needs the general path's
+                // coercion table.
+                Some(DataValue::String(s)) => str_eq(s, literal).map(|eq| eq != *negate),
                 _ => None,
             },
             FastPredicate::InStrLits { var_path, items } => {
-                let found = match Self::resolve_value(var_path, item) {
-                    Some(DataValue::String(s)) => items.iter().any(|lit| &**lit == *s),
+                match Self::resolve_value(var_path, item) {
+                    Some(DataValue::String(s)) => str_in(s, items),
                     // `in` is strict-equality membership: a non-string (or
                     // missing) needle never equals a string literal.
-                    _ => false,
-                };
-                Some(found)
+                    _ => Some(false),
+                }
             }
             FastPredicate::AllOf(preds) => {
                 for p in preds.iter() {
@@ -518,24 +518,22 @@ impl FastPredicate {
             } => scan_leaf(src, var_path, on_item, |v| {
                 // A missing field is `var`'s implicit null.
                 let av = v.unwrap_or(&DataValue::Null);
-                Some(value_equals_serde(av, literal) != *negate)
+                strict_eq_literal(av, literal).map(|eq| eq != *negate)
             }),
             FastPredicate::LooseStrEq {
                 var_path,
                 literal,
                 negate,
             } => scan_leaf(src, var_path, on_item, |v| match v {
-                Some(DataValue::String(s)) => Some((*s == &**literal) != *negate),
+                Some(DataValue::String(s)) => str_eq(s, literal).map(|eq| eq != *negate),
                 // Any other shape needs the general path's coercion table.
                 _ => None,
             }),
             FastPredicate::InStrLits { var_path, items } => {
-                scan_leaf(src, var_path, on_item, |v| {
-                    Some(match v {
-                        Some(DataValue::String(s)) => items.iter().any(|lit| &**lit == *s),
-                        // Strict-equality membership: a non-string never matches.
-                        _ => false,
-                    })
+                scan_leaf(src, var_path, on_item, |v| match v {
+                    Some(DataValue::String(s)) => str_in(s, items),
+                    // Strict-equality membership: a non-string never matches.
+                    _ => Some(false),
                 })
             }
             // `Truthy` only occurs inside a combinator.
@@ -591,6 +589,47 @@ fn number(value: Option<&DataValue<'_>>) -> Option<f64> {
         Some(DataValue::Number(n)) => Some(n.as_f64()),
         _ => None,
     }
+}
+
+/// `av === literal` as [`compare_equals`] answers it, or `None` (the
+/// general path decides) when that tries the pair as datetimes first.
+/// Numbers compare as `f64`, as strict equality compares them.
+///
+/// [`compare_equals`]: crate::operators::comparison::compare_equals
+#[inline(always)]
+fn strict_eq_literal(av: &DataValue<'_>, literal: &datavalue::OwnedDataValue) -> Option<bool> {
+    use crate::operators::comparison::{ProbeSide, datetime_probe};
+    if datetime_probe(ProbeSide::of(av), ProbeSide::of_owned(literal)) {
+        return None;
+    }
+    Some(match (av, literal) {
+        (DataValue::Number(a), datavalue::OwnedDataValue::Number(b)) => a.as_f64() == b.as_f64(),
+        _ => value_equals_serde(av, literal),
+    })
+}
+
+/// Two strings' equality, strict or loose (the same for two strings), or
+/// `None` when the general path would compare them as datetimes or
+/// durations first.
+#[inline(always)]
+fn str_eq(s: &str, literal: &str) -> Option<bool> {
+    use crate::operators::comparison::{ProbeSide, datetime_probe};
+    if datetime_probe(ProbeSide::Str(s), ProbeSide::Str(literal)) {
+        return None;
+    }
+    Some(s == literal)
+}
+
+/// Whether `s` strictly equals one of `items`, or `None` when a pair needs
+/// the datetime probe.
+#[inline]
+fn str_in(s: &str, items: &[Box<str>]) -> Option<bool> {
+    for lit in items {
+        if str_eq(s, lit)? {
+            return Some(true);
+        }
+    }
+    Some(false)
 }
 
 /// Strict equality between a [`DataValue`] (arena) and an

@@ -206,15 +206,11 @@ fn evaluate_structured_object<'a>(
         return Ok(crate::arena::singletons::singleton_empty_object());
     }
     // Keys are stored in their source form, so an escaped template strips
-    // one prefix per key here. Hoisted out of the loop and gated on the
-    // compile-time flag: an ordinary template never even looks at the
-    // engine setting. `strip_prefix` takes a `char`, so a multi-byte
-    // escape is handled without any byte-boundary arithmetic.
-    let escape = if data.has_escaped_keys {
-        engine.template_key_escape()
-    } else {
-        None
-    };
+    // one prefix per key here: the compiling engine's, recorded on the
+    // node, so another engine's escape does not change the output keys.
+    // `strip_prefix` takes a `char`, so a multi-byte escape is handled
+    // without any byte-boundary arithmetic.
+    let escape = data.escape;
     let mut pairs: bumpalo::collections::Vec<'a, (&'a str, DataValue<'a>)> =
         bumpalo::collections::Vec::with_capacity_in(data.fields.len(), arena);
     for (key, n) in data.fields.iter() {

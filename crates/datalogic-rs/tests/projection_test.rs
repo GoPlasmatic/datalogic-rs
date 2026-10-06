@@ -460,5 +460,8 @@ fn a_very_long_read_path_does_not_overflow() {
     let path = vec!["a"; 50_000].join(".");
     let logic = engine.compile(&json!({ "var": path })).unwrap();
     let data = json!({"a": {"a": 1}});
-    assert_eq!(all_ways(&engine, &logic, &data), ["ok null", "ok null", "ok null"]);
+    assert_eq!(
+        all_ways(&engine, &logic, &data),
+        ["ok null", "ok null", "ok null"]
+    );
 }

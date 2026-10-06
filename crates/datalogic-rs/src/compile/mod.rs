@@ -62,14 +62,17 @@ impl Logic {
     /// `place` records each node's pointer ([`Logic::pointer`]), for a
     /// `Logic` the caller keeps; a one-shot run drops it unread.
     #[cfg(feature = "trace")]
+    /// `templating` is the mode to compile in, as for
+    /// [`Self::compile_in_mode`].
     pub(crate) fn compile_for_trace(
         logic: &OwnedDataValue,
         engine: &Engine,
+        templating: bool,
         place: bool,
     ) -> Result<Self> {
         let ctx = CompileCtx::no_fold();
         let ctx = if place { ctx.recording_pointers() } else { ctx };
-        Self::compile_inner(logic, engine, engine.is_templating_enabled(), ctx)
+        Self::compile_inner(logic, engine, templating, ctx)
     }
 
     #[inline]

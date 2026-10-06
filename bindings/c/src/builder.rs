@@ -118,6 +118,19 @@ pub struct EngineBuilder {
     strict_names: bool,
 }
 
+impl EngineBuilder {
+    /// With strict names on, refuse settings under which an operator
+    /// already registered would no longer run: the families or template
+    /// key escape a setter is about to give `next`.
+    fn recheck(&self, next: &datalogic_rs::EngineBuilder) -> Result<(), Error> {
+        if !self.strict_names {
+            return Ok(());
+        }
+        next.check_operator_names()
+            .map_err(|e| Error::from_engine(&e, None))
+    }
+}
+
 /// Construct a new engine builder. Release the handle via
 /// [`datalogic_engine_builder_free`] (still required after a successful
 /// [`datalogic_engine_builder_build`], which only drains the inner
@@ -192,7 +205,12 @@ pub unsafe extern "C" fn datalogic_engine_builder_set_template_key_escape(
             };
         };
         if let Some(b) = handle.inner.take() {
-            handle.inner = Some(b.with_template_key_escape(c));
+            let next = b.clone().with_template_key_escape(c);
+            if let Err(e) = handle.recheck(&next) {
+                handle.inner = Some(b);
+                return unsafe { fail(err, e) };
+            }
+            handle.inner = Some(next);
         }
         Status::Ok
     })
@@ -200,8 +218,12 @@ pub unsafe extern "C" fn datalogic_engine_builder_set_template_key_escape(
 
 /// When `enabled != 0`, a later [`datalogic_engine_builder_add_operator`]
 /// with a name a built-in answers to (`length`, `var`, an alias such as
-/// `?:`) fails with tag `ConfigurationError` instead of registering an
-/// operator that would never run. Set it before adding operators.
+/// `?:`) or beginning with the template key escape fails with tag
+/// `ConfigurationError` instead of registering an operator that would
+/// never run. A later [`datalogic_engine_builder_set_families`] or
+/// [`datalogic_engine_builder_set_template_key_escape`] under which an
+/// operator registered so would no longer run fails the same way and
+/// leaves the builder unchanged. Set it before adding operators.
 ///
 /// # Safety
 ///
@@ -222,9 +244,10 @@ pub unsafe extern "C" fn datalogic_engine_builder_set_strict_operator_names(
 /// field spells them). By default the engine has every family this build
 /// compiled in. A family left out is not there for the engine: its names
 /// compile as unknown operators (or template output fields), and a custom
-/// operator may take them. Set it before adding operators when strict
-/// operator names are on. An unknown family name fails with tag
-/// `"ConfigurationError"` and leaves the builder unchanged.
+/// operator may take them. With strict operator names on, families that
+/// bring back a built-in named like an operator already registered fail
+/// with tag `"ConfigurationError"`, as an unknown family name does; either
+/// leaves the builder unchanged.
 ///
 /// # Safety
 ///
@@ -258,7 +281,12 @@ pub unsafe extern "C" fn datalogic_engine_builder_set_families(
             }
         };
         if let Some(b) = handle.inner.take() {
-            handle.inner = Some(b.with_families(families));
+            let next = b.clone().with_families(families);
+            if let Err(e) = handle.recheck(&next) {
+                handle.inner = Some(b);
+                return unsafe { fail(err, e) };
+            }
+            handle.inner = Some(next);
         }
         Status::Ok
     })
@@ -354,13 +382,17 @@ pub unsafe extern "C" fn datalogic_engine_builder_add_operator(
                 callback,
                 user_data: AtomicPtr::new(user_data),
             };
-            if handle.strict_names
-                && let Err(e) = b.check_operator_name(&name_owned)
-            {
-                handle.inner = Some(b);
-                return unsafe { fail(err, Error::from_engine(&e, None)) };
+            if handle.strict_names {
+                if let Err(e) = b.check_operator_name(&name_owned) {
+                    handle.inner = Some(b);
+                    return unsafe { fail(err, Error::from_engine(&e, None)) };
+                }
+                // Checked above, so this registers; through `try_add_operator`
+                // so later setters check the name again.
+                handle.inner = b.try_add_operator(name_owned, op).ok();
+            } else {
+                handle.inner = Some(b.add_operator(name_owned, op));
             }
-            handle.inner = Some(b.add_operator(name_owned, op));
         }
         Status::Ok
     })

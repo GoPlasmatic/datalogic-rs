@@ -46,6 +46,7 @@ use crate::engine::Engine;
 ///   [`Self::with_constant_folding`] when you need every operator to
 ///   survive in the compiled tree (e.g. for tooling that walks the
 ///   structure or applies its own rewrites).
+#[derive(Clone)]
 #[must_use = "the builder is consumed by `.build()`"]
 pub struct EngineBuilder {
     config: EvaluationConfig,
@@ -55,6 +56,9 @@ pub struct EngineBuilder {
     operators: HashMap<String, Arc<dyn CustomOperator>>,
     /// The built-in families the engine has, as [`crate::Family`] bits.
     families: u32,
+    /// The names registered through [`Self::try_add_operator`], which
+    /// [`Self::try_build`] checks again against the final settings.
+    checked_names: Vec<String>,
 }
 
 /// Every family bit: the default family set.
@@ -77,6 +81,7 @@ impl EngineBuilder {
             constant_folding: true,
             operators: HashMap::new(),
             families: ALL_FAMILIES,
+            checked_names: Vec::new(),
         }
     }
 
@@ -245,13 +250,22 @@ impl EngineBuilder {
     {
         let name = name.into();
         self.check_operator_name(&name)?;
-        Ok(self.add_operator(name, operator))
+        let mut builder = self.add_operator(name.clone(), operator);
+        builder.checked_names.push(name);
+        Ok(builder)
     }
 
     /// The refusal [`Self::try_add_operator`] gives a custom operator named
     /// `name`, without registering anything: a `ConfigurationError` when a
-    /// built-in of this builder's families answers to the name. For a host
-    /// that must keep the builder whether or not the name is taken.
+    /// built-in of this builder's families answers to the name, or when
+    /// the name begins with the [template key
+    /// escape](Self::with_template_key_escape), which makes such a key an
+    /// output field. For a host that must keep the builder whether or not
+    /// the name is taken.
+    ///
+    /// The check reads the builder's settings when it is called; set
+    /// [`Self::with_families`] and the escape first, or build with
+    /// [`Self::try_build`], which checks every such name again.
     ///
     /// ```rust
     /// use datalogic_rs::{Engine, Family};
@@ -262,13 +276,34 @@ impl EngineBuilder {
     /// assert!(core.check_operator_name("upper").is_ok());
     /// ```
     pub fn check_operator_name(&self, name: &str) -> crate::Result<()> {
-        match crate::engine::builtin_in(self.families, name) {
-            Some(builtin) => Err(crate::Error::configuration_error(format!(
+        if let Some(builtin) = crate::engine::builtin_in(self.families, name) {
+            return Err(crate::Error::configuration_error(format!(
                 "custom operator `{name}` would never run: the built-in operator `{}` answers to that name",
                 builtin.as_str()
-            ))),
-            None => Ok(()),
+            )));
         }
+        if let Some(escape) = self.template_key_escape
+            && name.starts_with(escape)
+        {
+            return Err(crate::Error::configuration_error(format!(
+                "custom operator `{name}` would never run in a template: it begins with the template key escape `{escape}`"
+            )));
+        }
+        Ok(())
+    }
+
+    /// [`Self::check_operator_name`] for every name registered through
+    /// [`Self::try_add_operator`], against the builder's settings now: a
+    /// name checked before [`Self::with_families`] or
+    /// [`Self::with_template_key_escape`] changed them may be taken since.
+    ///
+    /// # Errors
+    ///
+    /// The first name's `ConfigurationError`, in registration order.
+    pub fn check_operator_names(&self) -> crate::Result<()> {
+        self.checked_names
+            .iter()
+            .try_for_each(|name| self.check_operator_name(name))
     }
 
     /// Keep the engine to the JSONLogic core and the extension families
@@ -320,7 +355,45 @@ impl EngineBuilder {
             constant_folding,
             operators,
             families,
+            checked_names: Vec::new(),
         }
+    }
+
+    /// [`Self::build`], first checking every name registered through
+    /// [`Self::try_add_operator`] again ([`Self::check_operator_names`]),
+    /// so the refusal holds whatever order the settings were given in.
+    ///
+    /// ```rust
+    /// use datalogic_rs::{CustomOperator, DataValue, Engine, Family, Result, operator::EvalContext};
+    ///
+    /// struct Up;
+    /// impl CustomOperator for Up {
+    ///     fn evaluate<'a>(
+    ///         &self,
+    ///         args: &[&'a DataValue<'a>],
+    ///         _ctx: &mut EvalContext<'_, 'a>,
+    ///         _arena: &'a datalogic_rs::bumpalo::Bump,
+    ///     ) -> Result<&'a DataValue<'a>> {
+    ///         Ok(args[0])
+    ///     }
+    /// }
+    ///
+    /// // `upper` is free without the string family, then taken once it is
+    /// // added back.
+    /// let builder = Engine::builder()
+    ///     .with_families([Family::ExtArray])
+    ///     .try_add_operator("upper", Up)
+    ///     .unwrap()
+    ///     .with_families([Family::ExtString]);
+    /// assert!(builder.try_build().is_err());
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// The first name's `ConfigurationError`, in registration order.
+    pub fn try_build(self) -> crate::Result<Engine> {
+        self.check_operator_names()?;
+        Ok(self.build())
     }
 
     /// Finalise the builder into an immutable [`Engine`] engine.

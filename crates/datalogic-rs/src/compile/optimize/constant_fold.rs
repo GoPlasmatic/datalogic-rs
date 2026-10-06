@@ -1,23 +1,23 @@
 //! Partial constant folding pass.
 //!
-//! Folds static arguments in commutative/associative operators:
-//! - `{"+": [1, 2, {"var": "x"}, 3]}` → `{"+": [6, {"var": "x"}]}`
+//! Folds literal arguments where the result cannot change:
+//! - `{"+": [1, 2, {"var": "x"}, 3]}` → `{"+": [3, {"var": "x"}, 3]}`
+//!   (the leading integers of a variadic `+` / `*`; see [`try_partial_fold`])
 //! - `{"cat": ["hello ", "world", {"var": "name"}]}` → `{"cat": ["hello world", {"var": "name"}]}`
-//! - `{"*": [2, {"var": "x"}, 5]}` → `{"*": [10, {"var": "x"}]}`
 //!
 //! Numeric string literals are deliberately NOT pre-coerced — see the note in [`fold`].
 
 use crate::Engine;
 use crate::OpCode;
-use crate::node::{CompiledNode, SYNTHETIC_ID, node_is_static};
-use crate::operators::meta::Algebra;
-use datavalue::OwnedDataValue;
+use crate::node::CompiledNode;
+use crate::operators::meta::{Algebra, ArithOp};
+use datavalue::{NumberValue, OwnedDataValue};
 
 /// Apply partial constant folding to a compiled node.
 ///
 /// Returns `(node, changed)` where `changed` is `true` if the pass rewrote
 /// the input. Used by the optimiser pipeline to drive fixpoint iteration.
-pub(crate) fn fold(node: CompiledNode, engine: &Engine) -> (CompiledNode, bool) {
+pub(crate) fn fold(node: CompiledNode) -> (CompiledNode, bool) {
     // NOTE: a `precoerce_numeric_strings` pass used to run here, rewriting
     // numeric string literals in arithmetic contexts into number literals
     // (`{"+": ["5", x]}` → `{"+": [5, x]}`). It was removed as unsound: at
@@ -26,14 +26,14 @@ pub(crate) fn fold(node: CompiledNode, engine: &Engine) -> (CompiledNode, bool) 
     // integral float — takes the exact-integer paths, so the rewrite
     // changed observable results (e.g. `3 + "9007199254740990"`), caught
     // by the differential property oracle. `try_partial_fold` below stays
-    // sound because it evaluates static args through the real engine.
+    // sound by folding only what leaves the evaluator's state unchanged.
     match &node {
         CompiledNode::BuiltinOperator {
             id, opcode, args, ..
         } => {
-            // Partial fold for associative operators with mixed static/dynamic args
-            if is_associative(*opcode) && args.len() >= 2 {
-                match try_partial_fold(*id, *opcode, args, engine) {
+            // Partial fold of the leading literals of `+` / `*`
+            if associative_op(*opcode).is_some() {
+                match try_partial_fold(*id, *opcode, args) {
                     Some(new) => (new, true),
                     None => (node, false),
                 }
@@ -50,55 +50,75 @@ pub(crate) fn fold(node: CompiledNode, engine: &Engine) -> (CompiledNode, bool) 
     }
 }
 
-/// Whether the operator's static arguments may be regrouped and folded
-/// together, read from its table row's `algebra`.
-fn is_associative(opcode: OpCode) -> bool {
-    matches!(opcode.meta().algebra, Some(Algebra::Arith(op)) if op.is_associative())
+/// The arithmetic of an operator whose leading literal arguments may be
+/// folded together, read from its table row's `algebra`.
+fn associative_op(opcode: OpCode) -> Option<ArithOp> {
+    match opcode.meta().algebra {
+        Some(Algebra::Arith(op)) if op.is_associative() => Some(op),
+        _ => None,
+    }
 }
 
-/// Try to fold static args in a commutative operator.
-/// E.g., `{"+": [1, {"var":"x"}, 2, 3]}` → `{"+": [6, {"var":"x"}]}`
+/// Fold the leading integer literals of a variadic `+` or `*`.
+/// E.g., `{"+": [1, 2, {"var":"x"}, 3]}` → `{"+": [3, {"var":"x"}, 3]}`.
+///
+/// The fold must leave the evaluator in the state it would have reached on
+/// its own, so it is narrower than associativity alone allows:
+///
+/// - Only a *leading* run: the evaluator accumulates left to right, and an
+///   integer that overflows into `f64`, `f64` rounding and numeric-string
+///   coercion are not associative, so a literal after a dynamic argument
+///   cannot be moved ahead of it.
+/// - Only integer literals, folded exactly: the accumulator after an
+///   exact-integer run is that integer, as the folded literal starts it. A
+///   run that overflows is left alone.
+/// - Only when three or more arguments remain: the two-argument forms
+///   coerce and dispatch differently from the variadic one (datetime
+///   arithmetic, string-to-integer coercion), so `[1, 2, x]` stays as is.
 fn try_partial_fold(
     outer_id: crate::node::NodeId,
     opcode: OpCode,
     args: &[CompiledNode],
-    engine: &Engine,
 ) -> Option<CompiledNode> {
-    // Count first (no cloning): need at least 2 static args to fold, and at
-    // least 1 dynamic to be "partial". Bail before cloning any subtree.
-    let static_count = args.iter().filter(|a| node_is_static(a)).count();
-    if static_count < 2 || static_count == args.len() {
+    let op = associative_op(opcode)?;
+    let lead = args
+        .iter()
+        .take_while(|a| {
+            matches!(
+                a,
+                CompiledNode::Value {
+                    value: OwnedDataValue::Number(NumberValue::Integer(_)),
+                    ..
+                }
+            )
+        })
+        .count();
+    // At least two to fold, and three arguments left after folding.
+    if lead < 2 || args.len() - lead + 1 < 3 {
         return None;
     }
-
-    let mut static_args: Vec<CompiledNode> = Vec::with_capacity(static_count);
-    let mut dynamic_args: Vec<CompiledNode> = Vec::with_capacity(args.len() - static_count);
-
-    for arg in args {
-        if node_is_static(arg) {
-            static_args.push(arg.clone());
-        } else {
-            dynamic_args.push(arg.clone());
-        }
-    }
-
-    // Evaluate the static portion. The transient node is purely local — it
-    // doesn't appear in the compiled tree, so synthetic ids are fine.
-    let static_node = CompiledNode::BuiltinOperator {
-        id: SYNTHETIC_ID,
-        opcode,
-        args: static_args.into_boxed_slice(),
-        predicate_hint: None,
-        iter_arg_kind: crate::operators::array::IterArgKind::General,
+    let combine = match op {
+        ArithOp::Mul => i64::checked_mul,
+        _ => i64::checked_add,
     };
-    let folded_value = fold_static_node(&static_node, engine)?;
+    let folded = args[..lead]
+        .iter()
+        .try_fold(op.right_identity(), |acc, a| match a {
+            CompiledNode::Value {
+                value: OwnedDataValue::Number(NumberValue::Integer(i)),
+                ..
+            } => combine(acc, *i),
+            _ => None,
+        })?;
 
-    // Reconstruct: [folded_constant, ...dynamic_args]. The folded literal
-    // gets SYNTHETIC_ID (literals never emit trace steps). The outer op keeps
+    // Reconstruct: [folded_constant, ...rest]. The folded literal gets
+    // SYNTHETIC_ID (literals never emit trace steps). The outer op keeps
     // its original id so tracing / error reporting still point at the source.
-    let mut new_args = Vec::with_capacity(1 + dynamic_args.len());
-    new_args.push(CompiledNode::synthetic_value(folded_value));
-    new_args.extend(dynamic_args);
+    let mut new_args = Vec::with_capacity(1 + args.len() - lead);
+    new_args.push(CompiledNode::synthetic_value(OwnedDataValue::Number(
+        NumberValue::Integer(folded),
+    )));
+    new_args.extend(args[lead..].iter().cloned());
 
     Some(CompiledNode::BuiltinOperator {
         id: outer_id,
@@ -214,34 +234,83 @@ mod tests {
         OwnedDataValue::from_json(s).unwrap()
     }
 
+    /// The folded literal of `args`' partial fold, and how many arguments
+    /// the call keeps; `None` when nothing folds.
+    fn partial(opcode: OpCode, args: Vec<CompiledNode>) -> Option<(OwnedDataValue, usize)> {
+        let (result, changed) = fold(builtin(opcode, args));
+        if !changed {
+            return None;
+        }
+        let CompiledNode::BuiltinOperator { args, .. } = &result else {
+            panic!("expected BuiltinOperator");
+        };
+        let CompiledNode::Value { value, .. } = &args[0] else {
+            panic!("expected folded value");
+        };
+        Some((value.clone(), args.len()))
+    }
+
     #[test]
     fn test_partial_fold_add() {
-        let engine = Engine::new();
-        let node = builtin(
+        let got = partial(
             OpCode::Add,
             vec![val(ov("1")), val(ov("2")), var_node("x"), val(ov("3"))],
         );
-        let (result, _changed) = fold(node, &engine);
-        if let CompiledNode::BuiltinOperator { args, .. } = &result {
-            assert_eq!(args.len(), 2);
-            if let CompiledNode::Value { value, .. } = &args[0] {
-                assert_eq!(value.as_i64(), Some(6));
-            } else {
-                panic!("expected folded value");
-            }
-        } else {
-            panic!("expected BuiltinOperator");
+        assert_eq!(got, Some((ov("3"), 3)));
+        let got = partial(
+            OpCode::Multiply,
+            vec![
+                val(ov("2")),
+                val(ov("3")),
+                val(ov("4")),
+                var_node("x"),
+                var_node("y"),
+            ],
+        );
+        assert_eq!(got, Some((ov("24"), 3)));
+    }
+
+    /// Folding must leave the evaluator where it would have been: only a
+    /// leading run of integers that folds exactly, and only while the call
+    /// stays variadic.
+    #[test]
+    fn partial_folds_that_could_change_the_result_are_left_alone() {
+        let max = || val(ov(&i64::MAX.to_string()));
+        for (opcode, args) in [
+            // Not leading: `x` is accumulated before the literals.
+            (
+                OpCode::Add,
+                vec![var_node("x"), val(ov("1")), val(ov("2")), var_node("y")],
+            ),
+            // Overflows in the fold.
+            (
+                OpCode::Add,
+                vec![max(), val(ov("1")), var_node("x"), var_node("y")],
+            ),
+            // Floats round differently regrouped.
+            (
+                OpCode::Multiply,
+                vec![val(ov("0.1")), val(ov("10")), var_node("x"), var_node("y")],
+            ),
+            // A numeric string coerces, so it is not an integer literal.
+            (
+                OpCode::Add,
+                vec![val(ov("1")), val(ov("\"5\"")), var_node("x"), var_node("y")],
+            ),
+            // Two arguments would be left: the two-argument form differs.
+            (OpCode::Add, vec![val(ov("1")), val(ov("2")), var_node("x")]),
+        ] {
+            assert_eq!(partial(opcode, args), None);
         }
     }
 
     #[test]
     fn test_fold_cat_adjacent() {
-        let engine = Engine::new();
         let node = builtin(
             OpCode::Concat,
             vec![val(ov("\"hello \"")), val(ov("\"world\"")), var_node("x")],
         );
-        let (result, _changed) = fold(node, &engine);
+        let (result, _changed) = fold(node);
         if let CompiledNode::BuiltinOperator { args, .. } = &result {
             assert_eq!(args.len(), 2);
             if let CompiledNode::Value { value, .. } = &args[0] {
@@ -255,9 +324,8 @@ mod tests {
         // A numeric string literal must stay a string: at runtime a string
         // operand keeps the arithmetic in f64 space, so rewriting it into a
         // number literal changes observable results beyond 2^53.
-        let engine = Engine::new();
         let node = builtin(OpCode::Add, vec![val(ov("\"5\"")), var_node("x")]);
-        let (result, changed) = fold(node, &engine);
+        let (result, changed) = fold(node);
         assert!(!changed);
         if let CompiledNode::BuiltinOperator { args, .. } = &result {
             assert!(matches!(

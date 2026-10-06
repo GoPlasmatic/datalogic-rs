@@ -58,7 +58,14 @@ pub fn traced_run_json(run: &TracedRun<String>) -> String {
 /// gives the same failed envelope as [`traced_run_json`], without
 /// `pointers`.
 pub fn traced_json(engine: &Engine, rule: &str, data: &str) -> String {
-    let tracer = engine.trace();
+    traced_json_in(engine, rule, data, CheckMode::Engine)
+}
+
+/// [`traced_json`] with `rule` compiled the way `mode` reads it, as
+/// [`compile_in`] compiles it, so a rule a host compiles as a template is
+/// traced as one.
+pub fn traced_json_in(engine: &Engine, rule: &str, data: &str, mode: CheckMode) -> String {
+    let tracer = engine.trace().with_mode(mode);
     let logic = match tracer.compile(rule) {
         Ok(logic) => logic,
         // What `eval_str` reports for a rule that does not compile, without

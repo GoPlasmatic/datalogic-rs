@@ -76,13 +76,14 @@ fn compile_multi_key_object(
         // Multi-key object keys are already literal, so the escape changes
         // nothing about *routing* here — it only has to be recorded so the
         // evaluator strips the prefix and folding leaves the node alone.
-        let escape = engine.and_then(|e| e.template_key_escape());
-        let has_escaped_keys = key_escape_present(&fields, escape);
+        let escape = engine
+            .and_then(|e| e.template_key_escape())
+            .filter(|&c| key_escape_present(&fields, c));
         return Ok(CompiledNode::StructuredObject(Box::new(
             crate::node::StructuredObjectData {
                 id: Some(ctx.next_id()),
                 fields: fields.into_boxed_slice(),
-                has_escaped_keys,
+                escape,
             },
         )));
     }
@@ -115,7 +116,7 @@ fn compile_operator_invocation(
         // stabilised in 1.88.
         let escape = engine.and_then(|e| e.template_key_escape());
         if escape.is_some_and(|c| op_name.starts_with(c)) {
-            return single_field_object(op_name, args_value, engine, templating, true, ctx);
+            return single_field_object(op_name, args_value, engine, templating, escape, ctx);
         }
     }
 
@@ -280,22 +281,23 @@ fn compile_templating_unknown(
         })?;
         return Ok(custom_operator_node(op_name, args, engine, fold, ctx));
     }
-    single_field_object(op_name, args_value, engine, templating, false, ctx)
+    single_field_object(op_name, args_value, engine, templating, None, ctx)
 }
 
 /// Compile `{key: value}` into a one-field structured-object template.
 ///
 /// Shared by the two templating routes that produce one: an unknown
 /// operator key (which is just a literal field), and an escaped key (which
-/// bypassed operator resolution entirely). `escaped` records which route
-/// arrived here — see [`crate::node::StructuredObjectData::has_escaped_keys`].
+/// bypassed operator resolution entirely). `escape` is the prefix the key
+/// carries on the escaped route, `None` on the other — see
+/// [`crate::node::StructuredObjectData::escape`].
 #[cfg(feature = "templating")]
 fn single_field_object(
     key: &str,
     value: &OwnedDataValue,
     engine: Option<&Engine>,
     templating: bool,
-    escaped: bool,
+    escape: Option<char>,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
     let compiled_val = keyed(key, ctx, |ctx| compile_node(value, engine, templating, ctx))?;
@@ -304,18 +306,14 @@ fn single_field_object(
         crate::node::StructuredObjectData {
             id: Some(ctx.next_id()),
             fields,
-            has_escaped_keys: escaped,
+            escape,
         },
     )))
 }
 
-/// Whether any field key carries `escape`. `None` (no escape configured)
-/// short-circuits to `false` so unescaped templates skip the scan.
+/// Whether any field key carries `escape`.
 #[cfg(feature = "templating")]
-fn key_escape_present(fields: &[(String, CompiledNode)], escape: Option<char>) -> bool {
-    let Some(escape) = escape else {
-        return false;
-    };
+fn key_escape_present(fields: &[(String, CompiledNode)], escape: char) -> bool {
     fields.iter().any(|(key, _)| key.starts_with(escape))
 }
 

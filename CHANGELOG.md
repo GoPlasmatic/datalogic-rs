@@ -299,9 +299,9 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   against the catalogue's new argument counts.
 - **Nested `!` / `!!` always collapse to one operator.** The optimizer
   already rewrote `!(!x)` to `!!x` and `!!(!!x)` to `!!x`; it now also
-  rewrites `!(!!x)` and `!!(!x)` to `!x`. Results are unchanged; a rule
-  with that shape shows the shorter form in `Logic::to_json()` and in
-  traces.
+  rewrites `!(!!x)` and `!!(!x)` to `!x`, except under a custom truthy
+  evaluator (see Fixed). Results are unchanged; a rule with that shape
+  shows the shorter form in `Logic::to_json()` and in traces.
 - **Tensor error precedence.** When a tensor operator call has two
   problems, a different one may now be reported: a missing argument is
   reported before any argument is evaluated, and an error raised while
@@ -360,6 +360,30 @@ compared with the engine on every suite case and on generated rules.
   exactly as the arithmetic operators compute it. This also affected
   `reduce` over such a `map` when the fold could not be fused (for
   example with a non-number initial value).
+
+- **Partial constant folding of `+` and `*` gives what evaluation gives.**
+  The static arguments of a call with dynamic ones were regrouped and
+  folded together, but integer overflow into `f64`, `f64` rounding and
+  numeric-string coercion do not regroup:
+  `{"*": [0.1, {"var": "x"}, 10]}` was `3` folded and
+  `3.0000000000000004` with folding off. Only a leading run of integer
+  literals that folds exactly is folded now, and only while three or more
+  arguments remain, since the two-argument forms coerce differently.
+- **Iterator predicates compare as `==`, `===` and `in` do.** The
+  `filter` / `all` / `some` / `none` fast paths compared integers exactly
+  under `===` (the operator compares numbers as `f64`) and compared two
+  strings byte for byte, without the `datetime` feature's check for two
+  spellings of one instant. `{"filter": [xs, {"===": [{"var": "k"},
+  9007199254740992]}]}` over `k = 9007199254740993` returned `[]` though
+  the bare `===` is true, and `"2024-01-01T00:00:00Z"` did not match
+  `"2024-01-01T00:00:00+00:00"` inside an iterator. A comparison that
+  needs the datetime check now runs on the general path.
+- **Nested `!` / `!!` keep their meaning under a custom truthy
+  evaluator.** Folding collapsed `{"!": [{"!": [x]}]}` into `{"!!": [x]}`
+  (and, new in this release, the other nested forms), which assumes a
+  boolean's truthiness is itself; a `TruthyEvaluator::Custom` need not
+  agree. The collapse is skipped under a custom evaluator, as the CSE
+  pass already was.
 
 ### Performance
 
