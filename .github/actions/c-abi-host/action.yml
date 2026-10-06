@@ -1,32 +1,29 @@
 name: Build C ABI (host target)
 description: |
-  Sets up the stable Rust toolchain, primes a shared cargo cache keyed on
-  the C ABI source tree, and builds bindings/c for the host platform with
-  the release profile. Used by every job that needs the host's
-  libdatalogic_c.{so,dylib,dll}/.a + cbindgen-generated header for local
-  testing or staging — dotnet/jvm/php tests, smoke jobs, and publish-go's
-  header generation.
+  Sets up the stable Rust toolchain, restores a shared cargo cache for the
+  C ABI workspace, and builds bindings/c for the host platform with the
+  release profile from its committed Cargo.lock. Used by every job that
+  needs the host's libdatalogic_c.{so,dylib,dll}/.a + cbindgen-generated
+  header for local testing or staging — dotnet/jvm/php tests, smoke jobs,
+  and publish-go's header generation.
 
-  All callers share a single cache key (no per-job `-dotnet/-jvm/-php`
-  suffix), so the first job's build warms the cache for everyone else on
-  the same SHA.
+  All callers on one OS share a single cache (no per-job `-dotnet/-jvm/-php`
+  suffix), so the first job's build warms the cache for everyone else.
 
 runs:
   using: composite
   steps:
     - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
 
+    # Keyed on the toolchain and bindings/c's Cargo.toml + Cargo.lock;
+    # caches dependencies only, so a change to the core or the ABI source
+    # always rebuilds those crates.
     - name: Cache cargo (C ABI host build)
-      uses: actions/cache@v5
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
-        path: |
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          bindings/c/target/
-        key: ${{ runner.os }}-c-host-${{ hashFiles('bindings/c/Cargo.toml', 'bindings/c/src/**', 'crates/datalogic-rs/Cargo.toml', 'crates/datalogic-rs/src/**') }}
-        restore-keys: ${{ runner.os }}-c-host-
+        shared-key: c-host
+        workspaces: bindings/c -> target
 
     - name: Build C ABI (release)
       shell: bash
-      run: cargo build --release --manifest-path bindings/c/Cargo.toml
+      run: cargo build --release --locked --manifest-path bindings/c/Cargo.toml

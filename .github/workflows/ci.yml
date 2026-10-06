@@ -8,6 +8,7 @@ on:
       - '*.md'
       - 'LICENSE'
       - '.github/workflows/docs.yml'
+      - '.github/workflows/docs-check.yml'
   pull_request:
     branches: [main]
     paths-ignore:
@@ -15,10 +16,20 @@ on:
       - '*.md'
       - 'LICENSE'
       - '.github/workflows/docs.yml'
+      - '.github/workflows/docs-check.yml'
+  # release.yml runs this whole workflow against the tagged commit before
+  # anything publishes, so a release passes exactly the gates a PR does
+  # (feature matrix, MSRV, minimal versions, docs, examples, every binding)
+  # instead of a narrower copy of them. Docs-only changes skip CI above;
+  # docs-check.yml covers those.
+  workflow_call:
 
+# On a PR, a newer push makes the running checks moot, so cancel them. On
+# main, let every run finish: back-to-back merges must each end with a
+# result, or a broken commit hides behind the one that cancelled it.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Least privilege for the whole workflow. CI only ever reads the repo —
 # it builds, tests, and lints. Nothing here creates a release, pushes a
@@ -41,44 +52,58 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      # Marketing stats (conformance counts, benchmark geomean) are quoted
-      # in READMEs and badges; this fails the build when a quote drifts
-      # from its canonical source. Runs before toolchain setup — it only
-      # needs bash + python3.
+      # Marketing stats (conformance counts, benchmark geomean, MSRV) are
+      # quoted in READMEs and badges; this fails the build when a quote
+      # drifts from its canonical source. Count drift only warns here (the
+      # release validate job runs it with --strict). Runs before toolchain
+      # setup — it only needs bash + python3.
       - name: Check quoted stats against canonical sources
         run: bash scripts/check-stats.sh
 
+      # Every feature-gated integration test declares the same features as
+      # `[[test]] required-features`, so it is skipped, not compiled to an
+      # empty binary, when they are off.
+      - name: Check integration tests' required-features
+        run: bash scripts/check-test-features.sh
+
       # Toolchain + shared cargo cache + `make fmt-check` / `make clippy`
       # over every Cargo manifest — bare `cargo fmt --all` / `cargo clippy
-      # --workspace` only see the two root-workspace members. Factored into
-      # a composite action shared with release.yml's validate job so a
-      # release can never validate against a narrower lint surface than a
-      # PR. The toolchain and cache it sets up also serve the steps below.
+      # --workspace` only see the root-workspace members. Factored into
+      # a composite action; the toolchain and cache it sets up also serve
+      # the steps below.
       - name: Lint (fmt + clippy, every manifest)
         uses: ./.github/actions/rust-lint
 
       - name: Run tests
         # `--all-features` is required to exercise the gated integration
-        # tests: most live behind `serde_json`, and the JSONLogic suite
-        # runner additionally needs `templating`. Without these flags,
-        # those tests silently skip and the CI step succeeds without
-        # exercising them.
-        run: cargo test --workspace --all-features
+        # tests: most declare `required-features = ["serde_json", ...]`,
+        # and the JSONLogic suite runner additionally needs `templating`;
+        # without them cargo skips those targets. `--locked`: the committed
+        # Cargo.lock must already describe the manifests, so a PR that
+        # changes a dependency has to commit the resolution it was tested
+        # with.
+        run: cargo test --workspace --all-features --locked
 
       - name: Run tests (no default features)
         # The default (feature-free) build ships only the JSONLogic baseline
-        # and no external deps. Its behavioral tests are gated on `serde_json`,
-        # so this mainly guards that the minimal build keeps compiling and its
+        # and no external deps. Its behavioral tests need `serde_json`, so
+        # this mainly guards that the minimal build keeps compiling and its
         # doctests pass; the `--all-features` run above never exercises it.
-        run: cargo test -p datalogic-rs --no-default-features
+        run: cargo test -p datalogic-rs --no-default-features --locked
 
-      - name: Build examples (all features)
-        # Catches example drift on any feature-gated example
-        # (serde_json / templating / datetime / trace / error-handling).
-        # Each `[[example]]` in crates/datalogic-rs/Cargo.toml has
-        # `required-features = [...]`, so only `--all-features` reaches
-        # every example.
-        run: cargo build -p datalogic-rs --examples --all-features
+      - name: Run examples (all features)
+        # Builds and runs every example, so one that compiles but panics or
+        # prints the wrong thing cannot rot unnoticed. Each `[[example]]`
+        # with feature needs declares `required-features`, so only
+        # `--all-features` reaches every one.
+        run: |
+          set -euo pipefail
+          for f in crates/datalogic-rs/examples/*.rs; do
+            name=$(basename "$f" .rs)
+            echo "::group::example $name"
+            cargo run -p datalogic-rs --all-features --locked --example "$name"
+            echo "::endgroup::"
+          done
 
       - name: Build docs (deny warnings)
         # Treat broken intra-doc links and missing-docs warnings as
@@ -95,8 +120,51 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
         run: |
-          cargo doc -p datalogic-rs --all-features --no-deps
-          cargo doc -p datalogic-rs --no-deps
+          cargo doc -p datalogic-rs --all-features --no-deps --locked
+          cargo doc -p datalogic-rs --no-deps --locked
+
+  # Semver gate on the published crate's public API. Compares the tree
+  # against the newest release on crates.io and fails on any breaking
+  # change: 5.x promises none, so `--release-type minor` (additions are
+  # fine without a version bump on a PR). The release validate job runs it
+  # again without the flag, so a patch release cannot carry an addition.
+  semver:
+    name: Semver (cargo-semver-checks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+
+      - uses: ./.github/actions/install-cargo-tools
+        with:
+          cargo-semver-checks: 'true'
+
+      - name: Check the public API against the last release
+        run: cargo semver-checks check-release -p datalogic-rs --all-features --release-type minor
+
+  # cargo-deny over every shipping workspace: RustSec advisories, the
+  # license allow list, crates.io as the only source (deny.toml). The
+  # weekly run in scheduled.yml catches advisories published against
+  # dependencies no PR touched.
+  deny:
+    name: cargo-deny
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+
+      - uses: ./.github/actions/install-cargo-tools
+        with:
+          cargo-deny: 'true'
+
+      - name: cargo deny (every shipping workspace)
+        run: make deny
 
   feature-matrix:
     name: Feature (${{ matrix.feature }})
@@ -107,10 +175,15 @@ jobs:
     # breaks only for the user who enables one feature on its own. Each
     # leg here builds exactly one feature to catch that.
     #
-    # `build`, not `test`: most integration tests are gated on
-    # `serde_json` and would silently skip under the other legs, so the
-    # run would report success without exercising anything. Compiling
-    # each feature standalone is the property worth guarding.
+    # `build`, not `test`: most integration tests need `serde_json` and
+    # would be skipped under the other legs. Compiling each feature
+    # standalone is the property worth guarding.
+    #
+    # Warnings are errors: an unused import or dead item that only shows
+    # up with one feature on is exactly what this matrix exists to find,
+    # and clippy (all features) cannot see it.
+    env:
+      RUSTFLAGS: -D warnings
     strategy:
       fail-fast: false
       matrix:
@@ -140,26 +213,21 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
 
+      # One cache per leg: each builds a different feature set.
       - name: Cache cargo
-        uses: actions/cache@v5
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-featmat-${{ matrix.feature }}-${{ hashFiles('Cargo.toml', 'crates/datalogic-rs/Cargo.toml') }}
-          restore-keys: ${{ runner.os }}-cargo-featmat-${{ matrix.feature }}-
+          key: featmat-${{ matrix.feature }}
 
       - name: Build with only `${{ matrix.feature }}` enabled
-        run: cargo build -p datalogic-rs --no-default-features --features ${{ matrix.feature }}
+        run: cargo build -p datalogic-rs --no-default-features --features ${{ matrix.feature }} --locked
 
   feature-combos:
     name: Conformance (${{ matrix.combo }})
     runs-on: ubuntu-latest
     # `feature-matrix` above can only *build* its legs: the conformance runner
-    # is gated on `serde_json` + `templating`, so a single-feature leg compiles
-    # it to nothing and reports success without evaluating a single rule.
+    # requires `serde_json` + `templating`, so a single-feature leg skips it
+    # without evaluating a single rule.
     #
     # These legs pair that baseline with one operator family at a time, so the
     # battery actually runs. It used to fail here — the index lists every suite
@@ -171,9 +239,9 @@ jobs:
     strategy:
       fail-fast: false
       # `include` entries rather than a bare list of feature strings: the
-      # cache key below is per leg, and `actions/cache` rejects a key
-      # containing a comma. Expressions have no `replace()`, so each leg
-      # carries a comma-free `slug` for the key to interpolate instead.
+      # cache key below is per leg, and a cache key cannot contain a
+      # comma. Expressions have no `replace()`, so each leg carries a
+      # comma-free `slug` for the key to interpolate instead.
       matrix:
         include:
           - combo: serde_json,templating,trace
@@ -210,24 +278,16 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
 
+      # Keyed per combo like `feature-matrix`: the legs build different
+      # feature sets, so one shared `target/` would be rebuilt by every
+      # leg but the one that saved it.
       - name: Cache cargo
-        uses: actions/cache@v5
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          # Keyed per combo like `feature-matrix`: the legs build different
-          # feature sets, so one shared `target/` would be rebuilt by every
-          # leg but the one that saved it.
-          key: ${{ runner.os }}-cargo-combos-${{ matrix.slug }}-${{ hashFiles('Cargo.toml', 'crates/datalogic-rs/Cargo.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-combos-${{ matrix.slug }}-
-            ${{ runner.os }}-cargo-combos-
+          key: combos-${{ matrix.slug }}
 
       - name: Test with `${{ matrix.combo }}`
-        run: cargo test -p datalogic-rs --no-default-features --features ${{ matrix.combo }}
+        run: cargo test -p datalogic-rs --no-default-features --features ${{ matrix.combo }} --locked
 
   msrv:
     name: MSRV (Rust 1.98)
@@ -238,25 +298,22 @@ jobs:
 
       # Floor tracks `datavalue-rs` 0.3, which declares 1.98; the
       # library's own language use is still well below that.
+      # scripts/check-stats.sh fails if this drifts from `rust-version`.
       - name: Setup Rust 1.98 (matches `rust-version` in Cargo.toml)
         uses: dtolnay/rust-toolchain@1.98.0
 
-      - name: Cache cargo (separate from stable to avoid toolchain mix)
-        uses: actions/cache@v5
+      # rust-cache keys on the toolchain version, so this never mixes
+      # with the stable jobs' artifacts.
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-msrv-${{ hashFiles('Cargo.toml', 'crates/datalogic-rs/Cargo.toml', 'tools/benchmark/Cargo.toml') }}
-          restore-keys: ${{ runner.os }}-cargo-msrv-
+          key: msrv
 
       # Build only — test infra (proc-macros, tooling) often outgrows MSRV
       # without the library code itself doing so. We want to catch the
       # library-code regression, not chase tooling churn.
       - name: Build (all features)
-        run: cargo build --workspace --all-features
+        run: cargo build --workspace --all-features --locked
 
   minimal-versions:
     name: Minimal-versions resolve
@@ -278,6 +335,8 @@ jobs:
       - name: Setup stable toolchain
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
 
+      # Rewrites the committed Cargo.lock in this checkout only; the
+      # build below must therefore not pass `--locked`.
       - name: Resolve with minimal versions
         run: cargo +nightly update -Z minimal-versions
 
@@ -305,6 +364,35 @@ jobs:
     with:
       upload-artifact: false
 
+  # The Go binding against the newest Go release. go-cgo above runs the
+  # version go.mod declares (the floor) across every platform; this one
+  # leg catches a new Go release breaking the cgo glue before users do.
+  go-stable:
+    name: Go binding (Go stable)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: 'stable'
+
+      - uses: ./.github/actions/c-abi-host
+
+      # Stage the host staticlib and header where the cgo build tags look
+      # (lib/linux_amd64/, include/), as release-build-go.yml does.
+      - name: Stage staticlib + header into bindings/go/
+        run: |
+          mkdir -p bindings/go/lib/linux_amd64 bindings/go/include
+          cp bindings/c/target/release/libdatalogic_c.a bindings/go/lib/linux_amd64/
+          cp bindings/c/include/datalogic.h bindings/go/include/
+
+      - name: go test
+        working-directory: bindings/go
+        run: |
+          go version
+          go test ./...
+
   # C ABI smoke. bindings/c is excluded from the root workspace so
   # `cargo test --workspace` in the check job skips it — without this
   # job, a regression in the C ABI's extern "C" surface (NULL handling,
@@ -327,7 +415,7 @@ jobs:
       # error with path, NULL-safety). The composite already built the lib
       # and regenerated the cbindgen header via build.rs.
       - name: Test C ABI smoke surface
-        run: cargo test --manifest-path bindings/c/Cargo.toml
+        run: cargo test --manifest-path bindings/c/Cargo.toml --locked
 
       - name: Verify cbindgen-generated header is up to date
         # The header is committed; the build regenerates it. If the
@@ -367,22 +455,30 @@ jobs:
         with:
           tool: wasm-pack@0.14.0
 
+      # Pinned binaryen (wasm-opt), shared with release-build-wasm.yml so
+      # the size gate below measures what the release ships.
       - name: Install binaryen
-        run: sudo apt-get update && sudo apt-get install -y binaryen
+        uses: ./.github/actions/install-binaryen
 
       - name: Cache cargo
-        uses: actions/cache@v5
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            bindings/wasm/target/
-          key: ${{ runner.os }}-wasm-${{ hashFiles('bindings/wasm/Cargo.toml') }}
-          restore-keys: ${{ runner.os }}-wasm-
+          workspaces: bindings/wasm -> target
+
+      # build.sh runs wasm-pack, which resolves against bindings/wasm's
+      # Cargo.lock but cannot be handed `--locked`; this fails instead if
+      # the lockfile no longer describes the manifest.
+      - name: Verify bindings/wasm/Cargo.lock is current
+        run: cargo metadata --locked --format-version 1 --manifest-path bindings/wasm/Cargo.toml > /dev/null
 
       - name: Build WASM
         run: cd bindings/wasm && ./build.sh
+
+      # Fails above +5% gzip growth against scripts/wasm-size.baseline
+      # (warns above +3%). An intended change commits a new baseline with
+      # `scripts/check-wasm-size.sh --update`.
+      - name: WASM size gate
+        run: bash scripts/check-wasm-size.sh
 
       - name: Test WASM (node)
         # Runs the committed `#[wasm_bindgen_test]` cases (tests/web.rs),
@@ -413,11 +509,14 @@ jobs:
           node examples/custom-operator.mjs
 
       # Hand the built pkg/ to the ui-build job below — saves it the cost
-      # of repeating the wasm build from scratch.
+      # of repeating the wasm build from scratch. Not named `wasm-pkg`:
+      # release.yml runs this workflow in the same run as its own
+      # build-wasm job, which uploads that name, and artifact names are
+      # unique per run.
       - name: Upload wasm-pkg
         uses: actions/upload-artifact@v7
         with:
-          name: wasm-pkg
+          name: ci-wasm-pkg
           path: bindings/wasm/pkg/
           if-no-files-found: error
 
@@ -439,15 +538,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
 
       - name: Cache cargo
-        uses: actions/cache@v5
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            bindings/python/target/
-          key: ${{ runner.os }}-python-${{ hashFiles('bindings/python/Cargo.toml') }}
-          restore-keys: ${{ runner.os }}-python-
+          workspaces: bindings/python -> target
 
       # `maturin develop` requires a virtualenv (or conda env) — it installs
       # the freshly-built wheel into the active interpreter's site-packages.
@@ -461,9 +554,10 @@ jobs:
           echo "VIRTUAL_ENV=$PWD/.venv" >> "$GITHUB_ENV"
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
+      # Pinned, dependencies included, so a tool release cannot change the
+      # result of re-running a commit.
       - name: Install build + test deps
-        working-directory: bindings/python
-        run: pip install --upgrade pip maturin pytest mypy
+        run: python -m pip install -r .github/requirements/python-ci.txt
 
       # `maturin develop --release` builds the binding and installs it
       # into the active venv in one shot. Using --release because debug
@@ -471,7 +565,7 @@ jobs:
       # dominate the test run.
       - name: Build + install binding
         working-directory: bindings/python
-        run: maturin develop --release
+        run: maturin develop --release --locked
 
       - name: Run pytest
         working-directory: bindings/python
@@ -512,19 +606,20 @@ jobs:
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
 
       - name: Cache cargo
-        uses: actions/cache@v5
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            bindings/node/target/
-          key: ${{ runner.os }}-node-${{ hashFiles('bindings/node/Cargo.toml', 'bindings/node/src/**', 'crates/datalogic-rs/Cargo.toml', 'crates/datalogic-rs/src/**') }}
-          restore-keys: ${{ runner.os }}-node-
+          workspaces: bindings/node -> target
 
+      # Strict: a package.json that no longer matches package-lock.json is
+      # an error, not a fresh resolve.
       - name: Install npm deps
         working-directory: bindings/node
-        run: npm ci || npm install
+        run: npm ci
+
+      # napi-cli drives cargo itself; this fails if bindings/node's
+      # Cargo.lock no longer describes the manifest.
+      - name: Verify bindings/node/Cargo.lock is current
+        run: cargo metadata --locked --format-version 1 --manifest-path bindings/node/Cargo.toml > /dev/null
 
       # `napi build --platform --release` emits
       # datalogic-node.<triple>.node + index.js + index.d.ts. Mirrors
@@ -546,12 +641,13 @@ jobs:
           node examples/compile-once-evaluate-many.mjs
           node examples/custom-operator.mjs
 
-  # UI lint + library build. The UI's npm dep on @goplasmatic/datalogic-wasm
-  # would normally resolve from the registry; we link the locally-built
-  # WASM pkg/ instead so PR CI doesn't depend on the published artifact
-  # matching this branch's source.
+  # UI lint, tests, type check and library build, against the WASM engine
+  # wasm-build just built from this branch. Nothing in the UI resolves
+  # @goplasmatic/datalogic-wasm from node_modules: the Vite, Vitest and
+  # TypeScript configs alias it to ui/vendor/datalogic, which `npm run
+  # sync-wasm` fills from ../bindings/wasm/pkg.
   ui-build:
-    name: UI lint + build
+    name: UI lint, test + build
     needs: wasm-build
     runs-on: ubuntu-latest
     steps:
@@ -564,25 +660,43 @@ jobs:
       - name: Download wasm-pkg
         uses: actions/download-artifact@v8
         with:
-          name: wasm-pkg
+          name: ci-wasm-pkg
           path: bindings/wasm/pkg/
 
-      # npm link semantics: the linked package's version takes precedence
-      # at `npm install` time even if the registry has a different one.
-      # Matches the release-time flow in publish-ui.
-      - name: Link local WASM into UI
-        run: |
-          cd bindings/wasm/pkg && npm link
-          cd ../../../ui && npm link @goplasmatic/datalogic-wasm
-
+      # Strict: fails when package.json and package-lock.json disagree
+      # instead of quietly resolving afresh.
       - name: Install UI dependencies
-        run: cd ui && npm install
+        working-directory: ui
+        run: npm ci
+
+      # `npm test` and `tsc -b` read the vendored engine but have no
+      # lifecycle hook that syncs it (only dev / build* do), so sync it
+      # explicitly before either runs.
+      - name: Vendor the freshly built WASM engine
+        working-directory: ui
+        run: npm run sync-wasm
 
       - name: Lint UI
-        run: cd ui && npm run lint
+        working-directory: ui
+        run: npm run lint
+
+      # The guard suites (catalogue.test.ts pins operators.json against
+      # the picker, registry.test.ts, wasm-typings.test.ts, round trips,
+      # trace mapping) evaluate against the vendored engine.
+      - name: Test UI
+        working-directory: ui
+        run: npm test
+
+      # The library build is Vite-only and does not type-check; the docs
+      # site's `npm run build` does (`tsc -b && vite build`), so a type
+      # error used to surface only after merge.
+      - name: Type-check UI
+        working-directory: ui
+        run: npx tsc -b
 
       - name: Build UI library
-        run: cd ui && npm run build:lib
+        working-directory: ui
+        run: npm run build:lib
 
   # .NET binding smoke. Single platform — the binding is P/Invoke over
   # the C ABI's cdylib, so the .NET-side logic (LibraryImport stubs,
@@ -618,18 +732,23 @@ jobs:
           dotnet run -c Release --project examples -- custom-operator
 
   # JVM binding smoke. Same rationale as dotnet-test — the binding is
-  # java.lang.foreign (FFM) over the C ABI's cdylib. JDK 25 here (current
-  # LTS); the binding compiles at --release 22, its floor.
+  # java.lang.foreign (FFM) over the C ABI's cdylib. The binding compiles
+  # at --release 22, its floor, so it runs on JDK 22 (the floor, now past
+  # end of life but what pom.xml promises) and JDK 25 (current LTS).
   jvm-test:
-    name: JVM binding test
+    name: JVM binding test (JDK ${{ matrix.java }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['22', '25']
     steps:
       - uses: actions/checkout@v6
 
       - uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
-          java-version: '25'
+          java-version: ${{ matrix.java }}
 
       - name: Cache Maven repository
         uses: actions/cache@v5
@@ -657,16 +776,21 @@ jobs:
           java --enable-native-access=ALL-UNNAMED -cp "target/classes:$(cat target/cp.txt)" -Ddatalogic.library.path=../c/target/release examples/CompileOnceEvaluateMany.java
           java --enable-native-access=ALL-UNNAMED -cp "target/classes:$(cat target/cp.txt)" -Ddatalogic.library.path=../c/target/release examples/CustomOperator.java
 
-  # PHP binding smoke. Same rationale — PHP FFI over the C ABI.
+  # PHP binding smoke. Same rationale — PHP FFI over the C ABI. 8.4 is
+  # the floor composer.json declares; 8.5 is the newest release.
   php-test:
-    name: PHP binding test
+    name: PHP binding test (PHP ${{ matrix.php }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.4', '8.5']
     steps:
       - uses: actions/checkout@v6
 
       - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
-          php-version: '8.4'
+          php-version: ${{ matrix.php }}
           extensions: ffi, json
           coverage: none
 

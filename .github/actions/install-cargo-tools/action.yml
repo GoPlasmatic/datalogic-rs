@@ -1,0 +1,56 @@
+name: Install pinned cargo tools
+description: |
+  Installs prebuilt, checksum-verified releases of the cargo subcommands
+  the gates use, on a Linux x86_64 runner, into ~/.cargo/bin. Pinned so a
+  tool release cannot change what a gate accepts between two runs of the
+  same commit; downloaded rather than `cargo install`ed so a gate costs
+  seconds, not a compile.
+
+  To bump a tool, change its version and sha256 together (each project
+  publishes the checksum next to its release asset).
+
+inputs:
+  cargo-deny:
+    description: Install cargo-deny
+    required: false
+    default: 'false'
+  cargo-semver-checks:
+    description: Install cargo-semver-checks
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Install cargo-deny 0.20.2
+      if: inputs.cargo-deny == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        v=0.20.2
+        sha=9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f
+        asset="cargo-deny-${v}-x86_64-unknown-linux-musl.tar.gz"
+        curl -sSfL --retry 3 -o "$RUNNER_TEMP/$asset" \
+          "https://github.com/EmbarkStudios/cargo-deny/releases/download/${v}/${asset}"
+        echo "${sha}  $RUNNER_TEMP/$asset" | sha256sum -c -
+        mkdir -p ~/.cargo/bin
+        tar -xzf "$RUNNER_TEMP/$asset" -C "$RUNNER_TEMP"
+        install -m 0755 "$RUNNER_TEMP/cargo-deny-${v}-x86_64-unknown-linux-musl/cargo-deny" ~/.cargo/bin/
+        cargo deny --version
+
+    # 0.51 reads the rustdoc JSON format of Rust 1.98; an older release
+    # rejects it ("unsupported rustdoc format"). Bump it with the toolchain.
+    - name: Install cargo-semver-checks 0.51.0
+      if: inputs.cargo-semver-checks == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        v=0.51.0
+        sha=cacadafaa5cd27ae6d05a74a103266917ebab4c5e43c898360e177d4fbf06a65
+        asset="cargo-semver-checks-x86_64-unknown-linux-gnu.tar.gz"
+        curl -sSfL --retry 3 -o "$RUNNER_TEMP/$asset" \
+          "https://github.com/obi1kenobi/cargo-semver-checks/releases/download/v${v}/${asset}"
+        echo "${sha}  $RUNNER_TEMP/$asset" | sha256sum -c -
+        mkdir -p ~/.cargo/bin
+        tar -xzf "$RUNNER_TEMP/$asset" -C ~/.cargo/bin cargo-semver-checks
+        cargo semver-checks --version
