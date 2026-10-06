@@ -113,32 +113,16 @@ fn ryu_matches_display(s: &str) -> bool {
     sig <= 15
 }
 
-/// Config-aware truthiness for `DataValue`.
+/// Config-aware truthiness for `DataValue`: the engine's configured
+/// [`crate::TruthyEvaluator`], through the one shared implementation
+/// ([`crate::operators::truthy::truthy_by`]).
 ///
 /// `#[inline(always)]` because the function ends up inside the per-iteration
 /// general path of every quantifier/filter — outlining was paying a real call
 /// per item even though the hot branch is just the JavaScript default.
 #[inline(always)]
 pub(crate) fn truthy_arena(v: &DataValue<'_>, engine: &crate::Engine) -> bool {
-    use crate::config::TruthyEvaluator;
-    match &engine.config().truthy_evaluator {
-        TruthyEvaluator::JavaScript => super::truthy_js_arena(v),
-        // Python differs from JavaScript on exactly one value: `NaN`.
-        // `float('nan')` is truthy in Python, falsy in JavaScript. Every
-        // other rule (0, "", empty collections) coincides, so delegate.
-        // Must stay in lockstep with `truthy_owned`, which the constant
-        // folder consults — see the note there.
-        TruthyEvaluator::Python => match v {
-            DataValue::Number(n) if n.is_nan() => true,
-            _ => super::truthy_js_arena(v),
-        },
-        TruthyEvaluator::StrictBoolean => match v {
-            DataValue::Null => false,
-            DataValue::Bool(b) => *b,
-            _ => true,
-        },
-        TruthyEvaluator::Custom(f) => f(&v.to_owned()),
-    }
+    crate::operators::truthy::truthy_by(v, &engine.config().truthy_evaluator)
 }
 
 #[cfg(test)]

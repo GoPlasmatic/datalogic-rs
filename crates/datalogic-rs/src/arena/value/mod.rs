@@ -27,27 +27,3 @@ pub(crate) use traversal::{
 };
 
 pub use datavalue::DataValue;
-
-/// JavaScript-style default truthiness for a [`DataValue`].
-/// `truthy_arena` (config-aware) delegates here for both `JavaScript` and
-/// `Python`, which differ only in their treatment of `NaN` — the `Python`
-/// arm handles that case before falling through. Operators can call this
-/// directly when they need the default rules unconditionally.
-#[inline]
-pub(crate) fn truthy_js_arena(v: &DataValue<'_>) -> bool {
-    match v {
-        DataValue::Null => false,
-        DataValue::Bool(b) => *b,
-        DataValue::Number(n) => !n.is_zero() && !n.is_nan(),
-        DataValue::String(s) => !s.is_empty(),
-        DataValue::Array(items) => !items.is_empty(),
-        DataValue::Object(pairs) => !pairs.is_empty(),
-        #[cfg(feature = "datetime")]
-        DataValue::DateTime(_) | DataValue::Duration(_) => true,
-        // A tensor is a container, so it follows the container rule:
-        // empty is falsy. `numel` is the product of the shape, which is
-        // 1 for a 0-d tensor (a scalar) and 0 as soon as any axis is 0.
-        #[cfg(feature = "tensor")]
-        DataValue::Tensor(t) => t.numel() > 0,
-    }
-}
