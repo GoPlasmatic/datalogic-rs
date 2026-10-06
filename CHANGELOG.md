@@ -213,6 +213,14 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   cargo-deny, a docs check, a WASM size gate, fuzzing and weekly macOS /
   Windows runs, and the release runs all of CI on the tag before
   publishing. Integration tests declare their `required-features`.
+- **Dependency updates.** Every Rust lockfile refreshed (`napi` 3.14.2
+  in the Node binding). UI: `@xyflow/react` 12.12.0 (its bundled base
+  CSS regenerated), `vite` 8.3.3, `vitest` 5.0.3, `eslint` 10.12.0,
+  `typescript-eslint` 8.71.1, `lucide-react` 1.52.0 and smaller bumps;
+  `source-map-js` 1.2.2 (#82, an event-loop DoS advisory). TypeScript stays on
+  6.x until `typescript-eslint` admits 7. Node: `@napi-rs/cli` 3.10.8.
+  JVM: `maven-jar-plugin` 3.5.1. .NET, Python, PHP and Go were already
+  current.
 
 ## [5.8.0] - 2026-10-05
 
