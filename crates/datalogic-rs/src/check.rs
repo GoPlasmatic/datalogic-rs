@@ -13,7 +13,8 @@ use std::fmt;
 use datavalue::OwnedDataValue;
 use serde::Serialize;
 
-use crate::operators::meta::{ArgsForm, Extra, Miss};
+use crate::node::MAX_COMPILE_DEPTH;
+use crate::operators::meta::{ArgsForm, Effect, Extra, Miss};
 use crate::{Engine, OpCode};
 
 /// Which mode a rule is checked in. See [`Engine::check`](crate::Engine::check).
@@ -198,6 +199,10 @@ pub(crate) fn check(engine: &Engine, rule: &OwnedDataValue, templating: bool) ->
             None
         },
         out: Vec::new(),
+        depth: 0,
+        too_deep: false,
+        protected: 0,
+        unread: 0,
     };
     checker.node(rule, &mut String::new());
     checker.out
@@ -208,6 +213,18 @@ struct Checker<'e> {
     templating: bool,
     escape: Option<char>,
     out: Vec<Diagnostic>,
+    /// Nesting depth, counted as the compiler counts it, so a rule too
+    /// deep to compile is reported instead of overflowing the stack here.
+    depth: usize,
+    /// The depth error has been reported (once per rule).
+    too_deep: bool,
+    /// Inside this many arms whose errors `try` catches: an error there
+    /// cannot fail the rule, so it is reported as a warning.
+    protected: usize,
+    /// Inside this many arguments the call never evaluates: only what
+    /// stops the rule compiling (reported directly, not through
+    /// [`Self::report`]) is reported there.
+    unread: usize,
 }
 
 /// Run `f` with `token` appended to `pointer`, then restore it.
@@ -227,6 +244,14 @@ impl Checker<'_> {
         operator: &str,
         message: String,
     ) {
+        if self.unread > 0 {
+            return;
+        }
+        let severity = if self.protected > 0 {
+            Severity::Warning
+        } else {
+            severity
+        };
         self.out.push(Diagnostic {
             code,
             severity,
@@ -237,6 +262,28 @@ impl Checker<'_> {
     }
 
     fn node(&mut self, node: &OwnedDataValue, pointer: &mut String) {
+        if self.depth >= MAX_COMPILE_DEPTH {
+            if !self.too_deep {
+                self.too_deep = true;
+                self.out.push(Diagnostic {
+                    code: DiagnosticCode::Compile,
+                    severity: Severity::Error,
+                    message: format!(
+                        "rule nesting exceeds the maximum compile depth of {}",
+                        MAX_COMPILE_DEPTH
+                    ),
+                    pointer: pointer.clone(),
+                    operator: None,
+                });
+            }
+            return;
+        }
+        self.depth += 1;
+        self.node_inner(node, pointer);
+        self.depth -= 1;
+    }
+
+    fn node_inner(&mut self, node: &OwnedDataValue, pointer: &mut String) {
         match node {
             OwnedDataValue::Object(pairs) if pairs.len() > 1 => {
                 if self.templating {
@@ -271,13 +318,42 @@ impl Checker<'_> {
 
     /// Check each argument, where the compiler would compile it.
     fn args(&mut self, op: &str, argv: &OwnedDataValue, pointer: &mut String) {
+        self.args_where(op, argv, pointer, |_| ArgUse::Runs);
+    }
+
+    /// Check the arguments as `uses` says each one runs: an argument never
+    /// evaluated cannot fail the rule, so only what stops it compiling is
+    /// reported there, and one whose errors are caught has its errors
+    /// reported as warnings.
+    fn args_where(
+        &mut self,
+        op: &str,
+        argv: &OwnedDataValue,
+        pointer: &mut String,
+        uses: impl Fn(usize) -> ArgUse,
+    ) {
+        let one = |this: &mut Self, i: usize, item: &OwnedDataValue, p: &mut String| match uses(i) {
+            // Still walked: the compiler compiles it, so a rule that
+            // cannot compile is still reported.
+            ArgUse::Never => {
+                this.unread += 1;
+                this.node(item, p);
+                this.unread -= 1;
+            }
+            ArgUse::Runs => this.node(item, p),
+            ArgUse::Caught => {
+                this.protected += 1;
+                this.node(item, p);
+                this.protected -= 1;
+            }
+        };
         under(pointer, op, |p| match argv {
             OwnedDataValue::Array(items) => {
                 for (i, item) in items.iter().enumerate() {
-                    under(p, &i.to_string(), |p| self.node(item, p));
+                    under(p, &i.to_string(), |p| one(self, i, item, p));
                 }
             }
-            other => self.node(other, p),
+            other => one(self, 0, other, p),
         });
     }
 
@@ -376,6 +452,12 @@ impl Checker<'_> {
         }
         d.pointer = placed;
         d.operator.get_or_insert_with(|| op.to_string());
+        if self.unread > 0 {
+            return;
+        }
+        if self.protected > 0 {
+            d.severity = Severity::Warning;
+        }
         self.out.push(d);
     }
 
@@ -409,7 +491,13 @@ impl Checker<'_> {
 
         let arity = opcode.arity();
         let (min, max) = (arity.min as usize, arity.max.map(usize::from));
+        // Which arguments the call can evaluate: all of them, unless the
+        // count makes it return a fixed value or skip the extras.
+        let mut reads = ..count;
         if count < min {
+            if let Miss::Return(_) = meta.on_missing {
+                reads = ..0;
+            }
             if matches!(meta.on_missing, Miss::InvalidArgs | Miss::Err(_)) {
                 let message = format!("`{op}` takes {}, not {count}", describe_count(min, max));
                 self.report(
@@ -431,21 +519,27 @@ impl Checker<'_> {
                         describe_count(min, Some(max))
                     ),
                 ),
-                Extra::Ignore => (
-                    Severity::Warning,
-                    format!(
-                        "`{op}` reads {}; the other {} never evaluated",
-                        describe_count(min, Some(max)),
-                        plural(count - max, "argument is", "arguments are")
-                    ),
-                ),
-                Extra::Return(_) => (
-                    Severity::Warning,
-                    format!(
-                        "`{op}` takes {}; with {count} it returns a fixed value without evaluating them",
-                        describe_count(min, Some(max))
-                    ),
-                ),
+                Extra::Ignore => {
+                    reads = ..max;
+                    (
+                        Severity::Warning,
+                        format!(
+                            "`{op}` reads {}; the other {} never evaluated",
+                            describe_count(min, Some(max)),
+                            plural(count - max, "argument is", "arguments are")
+                        ),
+                    )
+                }
+                Extra::Return(_) => {
+                    reads = ..0;
+                    (
+                        Severity::Warning,
+                        format!(
+                            "`{op}` takes {}; with {count} it returns a fixed value without evaluating them",
+                            describe_count(min, Some(max))
+                        ),
+                    )
+                }
             };
             self.report(
                 DiagnosticCode::ArgumentCount,
@@ -475,7 +569,22 @@ impl Checker<'_> {
             );
         }
 
-        self.args(op, argv, pointer);
+        // A catching operator (`try`) catches the errors of every arm but
+        // the last.
+        let caught = if matches!(meta.effect, Effect::Catches) {
+            count.saturating_sub(1)
+        } else {
+            0
+        };
+        self.args_where(op, argv, pointer, |i| {
+            if !reads.contains(&i) {
+                ArgUse::Never
+            } else if i < caught {
+                ArgUse::Caught
+            } else {
+                ArgUse::Runs
+            }
+        });
     }
 
     /// An operator name one edit from `key`, if any: built-in names first,
@@ -494,6 +603,17 @@ impl Checker<'_> {
         custom.sort_unstable();
         custom.first().map(|n| n.to_string())
     }
+}
+
+/// Whether a call can evaluate one of its arguments.
+#[derive(Clone, Copy)]
+enum ArgUse {
+    /// Never evaluated at this argument count.
+    Never,
+    /// Evaluated, and an error there fails the call.
+    Runs,
+    /// Evaluated, and an error there is caught (a `try` arm).
+    Caught,
 }
 
 fn plural(n: usize, one: &str, many: &str) -> String {

@@ -124,3 +124,53 @@ fn engines_built_alike_are_still_different_engines() {
     let logic = first.compile(r#"{"a": []}"#).unwrap();
     assert_eq!(run(&second, &logic), "2");
 }
+
+/// Declares an argument count and returns its last argument, so a call
+/// that slipped past the count check would index out of bounds.
+struct Second(datalogic_rs::CustomOperatorInfo);
+
+impl CustomOperator for Second {
+    fn info(&self) -> datalogic_rs::CustomOperatorInfo {
+        self.0
+    }
+
+    fn evaluate<'a>(
+        &self,
+        args: &[&'a DataValue<'a>],
+        _ctx: &mut EvalContext<'_, 'a>,
+        _arena: &'a datalogic_rs::bumpalo::Bump,
+    ) -> Result<&'a DataValue<'a>> {
+        Ok(args[1])
+    }
+}
+
+#[test]
+fn another_engine_checks_its_own_operators_argument_count() {
+    use datalogic_rs::CustomOperatorInfo;
+    // Compiled where "op" takes any count; served where it needs exactly 2.
+    let compiling = Engine::builder()
+        .add_operator("op", Second(CustomOperatorInfo::opaque()))
+        .build();
+    let serving = Engine::builder()
+        .add_operator(
+            "op",
+            Second(CustomOperatorInfo::opaque().with_args(2, Some(2))),
+        )
+        .build();
+    let logic = compiling.compile(r#"{"op": [1]}"#).unwrap();
+    assert!(run(&serving, &logic).starts_with("err InvalidArguments"));
+
+    // The other way round: compiled where "op" takes 1, served where it
+    // takes any count, so the 2-argument call runs.
+    let compiling = Engine::builder()
+        .add_operator(
+            "op",
+            Second(CustomOperatorInfo::opaque().with_args(1, Some(1))),
+        )
+        .build();
+    let serving = Engine::builder()
+        .add_operator("op", Second(CustomOperatorInfo::opaque()))
+        .build();
+    let logic = compiling.compile(r#"{"op": [1, 2]}"#).unwrap();
+    assert_eq!(run(&serving, &logic), "2");
+}

@@ -258,15 +258,24 @@ fn evaluate_custom_operator<'a>(
     arena: &'a bumpalo::Bump,
 ) -> crate::Result<&'a crate::arena::DataValue<'a>> {
     use crate::arena::DataValue;
-    let op = match data.slot {
-        Some((engine_id, slot)) if engine_id == engine.id => engine.custom_operators.at(slot),
-        _ => engine
-            .custom_operators
-            .get(&data.name)
-            .ok_or_else(|| Error::invalid_operator(data.name.clone()))?,
+    // On the compiling engine the slot is the operator the rule was
+    // compiled against, so its compile-time declaration holds. Any other
+    // engine (another instance, a `to_builder()` reload) may register a
+    // different operator under the name, so ask that one what it accepts.
+    let (op, info) = match data.slot {
+        Some((engine_id, slot)) if engine_id == engine.id => {
+            (engine.custom_operators.at(slot), data.info)
+        }
+        _ => {
+            let op = engine
+                .custom_operators
+                .get(&data.name)
+                .ok_or_else(|| Error::invalid_operator(data.name.clone()))?;
+            (op, op.info())
+        }
     };
     // The declared argument count, checked before any argument runs.
-    if !data.info.accepts(data.args.len()) {
+    if !info.accepts(data.args.len()) {
         return Err(Error::invalid_args().with_operator(data.name.clone()));
     }
     let mut args: bumpalo::collections::Vec<'a, &'a DataValue<'a>> =

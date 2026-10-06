@@ -30,6 +30,9 @@ use datavalue::OwnedDataValue;
 use crate::Facts;
 use crate::arena::DataValue;
 
+/// The longest read path a projection is built for; see [`Projection::of`].
+const MAX_PATH_SEGMENTS: usize = crate::node::MAX_COMPILE_DEPTH;
+
 /// The paths a rule reads, as a trie: each node is what is read under one
 /// key. [`Projection::of`] is `None` when an evaluation needs the whole
 /// input.
@@ -45,13 +48,18 @@ impl Projection {
     /// What of an input a rule with `facts` reads, or `None` when it may
     /// read anything (a computed path, a custom operator that reads the
     /// context) or reads the whole input.
+    ///
+    /// Also `None` for a path longer than [`MAX_PATH_SEGMENTS`]: building,
+    /// walking and dropping the trie recurse once per segment, and a path's
+    /// length is bounded only by the rule's size, so a very long one is
+    /// read from the whole input instead.
     pub(crate) fn of(facts: &Facts) -> Option<Self> {
         if !facts.reads_complete() {
             return None;
         }
         let mut root = Projection::default();
         for path in facts.reads() {
-            if path.is_root() {
+            if path.is_root() || path.segments().len() > MAX_PATH_SEGMENTS {
                 return None;
             }
             root.insert(path.segments());

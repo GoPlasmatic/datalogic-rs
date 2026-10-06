@@ -136,10 +136,15 @@ func (s *Session) EvaluateMetered(rule *Rule, dataJSON string, budget uint64) (s
 	var cerr *C.datalogic_error
 	rc := C.datalogic_session_evaluate_metered(
 		s.cptr(), rule.cptr(), dp, dl, C.uint64_t(budget), &outPtr, &outLen, &ops, &cerr)
-	runtime.KeepAlive(s)
-	runtime.KeepAlive(rule)
 	if rc != C.DATALOGIC_STATUS_OK {
+		runtime.KeepAlive(s)
+		runtime.KeepAlive(rule)
 		return "", 0, takeError(cerr)
 	}
-	return goStringN(outPtr, outLen), uint64(ops), nil
+	// The result borrows the session's buffer — copy it before the
+	// session can be collected.
+	out := goStringN(outPtr, outLen)
+	runtime.KeepAlive(s)
+	runtime.KeepAlive(rule)
+	return out, uint64(ops), nil
 }

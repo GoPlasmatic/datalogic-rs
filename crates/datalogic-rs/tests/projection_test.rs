@@ -450,3 +450,15 @@ fn roots_bring_in_only_what_is_read() {
         "projected {projected}, whole {whole}"
     );
 }
+
+/// A read path is as long as the rule makes it; one far past any sane
+/// nesting is read from the whole input rather than recursing once per
+/// segment to build its projection.
+#[test]
+fn a_very_long_read_path_does_not_overflow() {
+    let engine = Engine::new();
+    let path = vec!["a"; 50_000].join(".");
+    let logic = engine.compile(&json!({ "var": path })).unwrap();
+    let data = json!({"a": {"a": 1}});
+    assert_eq!(all_ways(&engine, &logic, &data), ["ok null", "ok null", "ok null"]);
+}

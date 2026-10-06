@@ -510,3 +510,68 @@ fn corpus() {
         println!("  {n:5}  {code}");
     }
 }
+
+// ── depth and arguments that never fail the rule ───────────────────────
+
+#[test]
+fn check_rejects_exactly_the_rules_too_deep_to_compile() {
+    let engine = Engine::new();
+    for depth in 250..=262 {
+        let mut rule = json!(true);
+        for _ in 0..depth {
+            rule = json!({ "!": [rule] });
+        }
+        let compiles = engine.compile(&rule).is_ok();
+        let diags = check(&engine, rule.clone());
+        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Error).collect();
+        assert_eq!(errors.is_empty(), compiles, "depth {depth}: {diags:?}");
+        if !compiles {
+            assert_eq!(errors.len(), 1, "one depth error, not one per level");
+            assert_eq!(errors[0].code, Compile);
+            assert!(engine.compile_checked(&rule).is_err());
+        }
+    }
+}
+
+#[test]
+fn arguments_the_call_never_evaluates_are_not_errors() {
+    let engine = Engine::new();
+    for rule in [
+        // Too few arguments: `in` returns false, `switch` null, unevaluated.
+        json!({"in": [{"typo": 1}]}),
+        json!({"switch": [{"typo": 1}]}),
+        // Extra arguments `!` never reads.
+        json!({"!": [true, {"typo": 1}]}),
+    ] {
+        let diags = check(&engine, rule.clone());
+        assert!(
+            diags.iter().all(|d| d.severity == Warning),
+            "{rule}: {diags:?}"
+        );
+        assert!(engine.compile_checked(&rule).is_ok(), "{rule}");
+    }
+    // An argument `!` does read is still checked.
+    assert_eq!(
+        summary(&check(&engine, json!({"!": [{"typo": 1}, true]}))),
+        vec![
+            (ArgumentCount, Warning, s("")),
+            (UnknownOperator, Error, s("/!/0")),
+        ]
+    );
+}
+
+#[test]
+fn an_error_a_try_arm_catches_is_a_warning() {
+    let engine = Engine::new();
+    let rule = json!({"try": [{"risky_operation": []}, {"var": "type"}]});
+    assert_eq!(
+        summary(&check(&engine, rule.clone())),
+        vec![(UnknownOperator, Warning, s("/try/0"))]
+    );
+    assert!(engine.compile_checked(&rule).is_ok());
+    // The last arm's error is not caught.
+    assert_eq!(
+        summary(&check(&engine, json!({"try": [1, {"typo": []}]}))),
+        vec![(UnknownOperator, Error, s("/try/1"))]
+    );
+}
