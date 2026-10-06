@@ -7,6 +7,8 @@ use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 use datavalue::NumberValue;
 
+#[cfg(feature = "datetime")]
+use super::helpers::fold_values;
 use super::helpers::{
     FoldState, FoldStepOutcome, NanAction, VariadicFoldSpec, alloc_number, coerce_pair_f64,
     coerce_pair_int, handle_nan, is_literal_array, try_int_op, variadic_fold,
@@ -31,18 +33,90 @@ pub(crate) fn evaluate_add<'a>(
     if args.len() == 2 {
         return add_two_arg(&args[0], &args[1], ctx, engine, arena);
     }
-    variadic_fold(
-        args,
-        ctx,
-        engine,
-        arena,
-        VariadicFoldSpec {
-            int_init: 0,
-            float_init: 0.0,
-            i_combine: i64::checked_add,
-            f_combine: |a, b| a + b,
-        },
-    )
+    #[cfg(feature = "datetime")]
+    if let Some(sum) = add_temporal_variadic(args, ctx, engine, arena)? {
+        return Ok(sum);
+    }
+    variadic_fold(args, ctx, engine, arena, ADD_FOLD)
+}
+
+/// The numeric fold of a variadic `+`.
+const ADD_FOLD: VariadicFoldSpec = VariadicFoldSpec {
+    int_init: 0,
+    float_init: 0.0,
+    i_combine: i64::checked_add,
+    f_combine: |a, b| a + b,
+};
+
+/// A variadic `+` whose first operand is a datetime or duration: the sum,
+/// folded left to right as the two-argument `+` adds a pair, when every
+/// operand is a datetime or duration and at most one is a datetime.
+///
+/// Returns `None` without evaluating anything when the first operand is
+/// a number (or not temporal), for the numeric fold. When a later operand
+/// breaks the sum, the operands so far are handed to the numeric fold,
+/// which treats each as the non-numeric value it is (NaN handling).
+#[cfg(feature = "datetime")]
+fn add_temporal_variadic<'a>(
+    args: &'a [CompiledNode],
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
+    arena: &'a Bump,
+) -> Result<Option<&'a DataValue<'a>>> {
+    use crate::operators::datetime::arith::Temporal;
+    // Cheap pre-check on the node, so a numeric sum pays nothing: only an
+    // operator call or a non-numeric literal can produce a temporal value.
+    if let CompiledNode::Value { value, .. } = &args[0]
+        && value.as_number().is_some()
+    {
+        return Ok(None);
+    }
+    let first = engine.dispatch_node(&args[0], ctx, arena)?;
+    let numeric = first.as_i64().is_some() || coerce_to_number_cfg(first, engine).is_some();
+    let mut acc = match (numeric, Temporal::of(first)) {
+        (false, Some(t)) => t,
+        _ => return numeric_fold_from(first, &args[1..], ctx, engine, arena, ADD_FOLD).map(Some),
+    };
+    for (i, arg) in args.iter().enumerate().skip(1) {
+        let av = engine.dispatch_node(arg, ctx, arena)?;
+        match Temporal::of(av).and_then(|t| acc.add(t)) {
+            Some(sum) => acc = sum,
+            None => {
+                // Not a temporal sum: resume as the numeric fold, which
+                // meets `args[..i]` as non-numeric operands, then `av`.
+                let mut state = FoldState::new(ADD_FOLD.int_init, ADD_FOLD.float_init);
+                for _ in 0..i {
+                    if let FoldStepOutcome::ReturnNull = state.step(
+                        None,
+                        None,
+                        ADD_FOLD.i_combine,
+                        ADD_FOLD.f_combine,
+                        ctx,
+                        engine,
+                    )? {
+                        return Ok(Some(crate::arena::singletons::singleton_null()));
+                    }
+                }
+                return fold_values(state, av, &args[i + 1..], ctx, engine, arena, ADD_FOLD)
+                    .map(Some);
+            }
+        }
+    }
+    Ok(Some(acc.into_value(arena)))
+}
+
+/// [`variadic_fold`] with the first operand already evaluated.
+#[cfg(feature = "datetime")]
+fn numeric_fold_from<'a>(
+    first: &'a DataValue<'a>,
+    rest: &'a [CompiledNode],
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
+    arena: &'a Bump,
+    spec: VariadicFoldSpec,
+) -> Result<&'a DataValue<'a>> {
+    let state = FoldState::new(spec.int_init, spec.float_init);
+    fold_values(state, first, rest, ctx, engine, arena, spec)
 }
 
 #[inline]
@@ -299,6 +373,10 @@ fn subtract_variadic<'a>(
         .or_else(|| try_coerce_to_integer_cfg(first_av, engine));
     let float_init = match coerce_to_number_cfg(first_av, engine) {
         Some(f) => f,
+        #[cfg(feature = "datetime")]
+        None if let Some(first) = crate::operators::datetime::arith::Temporal::of(first_av) => {
+            return subtract_temporal_variadic(first, &args[1..], ctx, engine, arena);
+        }
         None => return Err(crate::Error::nan_at(ctx)),
     };
     let mut state = FoldState::new(int_init.unwrap_or_default(), float_init);
@@ -326,6 +404,28 @@ fn subtract_variadic<'a>(
         }
     }
     Ok(state.finalize(arena))
+}
+
+/// A variadic `-` from a datetime or duration: folded left to right as the
+/// two-argument `-` subtracts a pair. An operand the running value cannot
+/// be reduced by is NaN, as any non-numeric start of a variadic `-` is.
+#[cfg(feature = "datetime")]
+fn subtract_temporal_variadic<'a>(
+    first: crate::operators::datetime::arith::Temporal,
+    rest: &'a [CompiledNode],
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
+    arena: &'a Bump,
+) -> Result<&'a DataValue<'a>> {
+    use crate::operators::datetime::arith::Temporal;
+    let mut acc = first;
+    for arg in rest {
+        let av = engine.dispatch_node(arg, ctx, arena)?;
+        acc = Temporal::of(av)
+            .and_then(|t| acc.sub(t))
+            .ok_or_else(|| crate::Error::nan_at(ctx))?;
+    }
+    Ok(acc.into_value(arena))
 }
 
 /// 1-arg `+` / `*`: literal-array reject, then either array-fold the elements

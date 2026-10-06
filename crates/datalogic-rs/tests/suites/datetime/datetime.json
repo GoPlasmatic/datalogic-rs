@@ -285,5 +285,87 @@
         "rule": {"type": {"var": "a"}},
         "data": {"a": {"timestamp": "1d"}},
         "result": "duration"
-    }
+    },
+  "# DateTime arithmetic with more than two operands, and in either order",
+  {
+    "description": "Duration plus datetime (either order)",
+    "rule": {"+": [{"timestamp": "1d"}, {"datetime": "2022-07-06T13:20:06Z"}]},
+    "data": null,
+    "result": "2022-07-07T13:20:06Z"
+  },
+  {
+    "description": "Duration string plus datetime from data",
+    "rule": {"+": ["1d", {"var": "d"}]},
+    "data": {"d": "2022-07-06T13:20:06Z"},
+    "requires": ["datetime"],
+    "result": "2022-07-07T13:20:06Z"
+  },
+  {
+    "description": "Datetime plus two durations",
+    "rule": {"+": [{"datetime": "2022-07-06T13:20:06Z"}, {"timestamp": "1d"}, {"timestamp": "12h"}]},
+    "data": null,
+    "result": "2022-07-08T01:20:06Z"
+  },
+  {
+    "description": "Datetime from data plus two duration strings",
+    "rule": {"+": [{"var": "d"}, "1d", "1d"]},
+    "data": {"d": "2022-07-06T13:20:06Z"},
+    "requires": ["datetime"],
+    "result": "2022-07-08T13:20:06Z"
+  },
+  {
+    "description": "Duration, datetime, duration",
+    "rule": {"+": ["1d", {"var": "d"}, "2h"]},
+    "data": {"d": "2022-07-06T13:20:06Z"},
+    "requires": ["datetime"],
+    "result": "2022-07-07T15:20:06Z"
+  },
+  {
+    "description": "Three durations",
+    "rule": {"+": [{"var": "a"}, "2h", "3m"]},
+    "data": {"a": "1d"},
+    "requires": ["datetime"],
+    "result": "1d:2h:3m:0s"
+  },
+  {
+    "description": "Two datetimes have no sum, however many operands",
+    "rule": {"+": [{"var": "d"}, "1d", {"var": "d"}]},
+    "data": {"d": "2022-07-06T13:20:06Z"},
+    "requires": ["datetime"],
+    "error": {"type": "NaN"}
+  },
+  {
+    "description": "A number in a datetime sum is NaN",
+    "rule": {"+": [{"var": "d"}, "1d", 5]},
+    "data": {"d": "2022-07-06T13:20:06Z"},
+    "requires": ["datetime"],
+    "error": {"type": "NaN"}
+  },
+  {
+    "description": "Datetime minus two durations",
+    "rule": {"-": [{"var": "d"}, "1d", "1d"]},
+    "data": {"d": "2022-07-06T13:20:06Z"},
+    "requires": ["datetime"],
+    "result": "2022-07-04T13:20:06Z"
+  },
+  {
+    "description": "Datetime minus datetime minus duration",
+    "rule": {"-": [{"datetime": "2022-07-08T13:20:06Z"}, {"datetime": "2022-07-06T13:20:06Z"}, {"timestamp": "1d"}]},
+    "data": null,
+    "result": "1d:0h:0m:0s"
+  },
+  {
+    "description": "A number in a datetime difference is NaN",
+    "rule": {"-": [{"var": "d"}, "1d", 3]},
+    "data": {"d": "2022-07-06T13:20:06Z"},
+    "requires": ["datetime"],
+    "error": {"type": "NaN"}
+  },
+  {
+    "description": "Duration minus datetime is NaN",
+    "rule": {"-": ["1d", {"var": "d"}]},
+    "data": {"d": "2022-07-06T13:20:06Z"},
+    "requires": ["datetime"],
+    "error": {"type": "NaN"}
+  }
 ]

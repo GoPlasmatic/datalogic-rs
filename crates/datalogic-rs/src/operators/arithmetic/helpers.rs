@@ -281,3 +281,27 @@ fn step_value(
         engine,
     )
 }
+
+/// [`variadic_fold`] resumed from `state` with `first` already evaluated,
+/// then the remaining `rest` operands.
+#[cfg(feature = "datetime")]
+pub(super) fn fold_values<'a>(
+    mut state: FoldState,
+    first: &'a DataValue<'a>,
+    rest: &'a [crate::CompiledNode],
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
+    arena: &'a Bump,
+    spec: VariadicFoldSpec,
+) -> Result<&'a DataValue<'a>> {
+    if let FoldStepOutcome::ReturnNull = step_value(&mut state, first, ctx, engine, spec)? {
+        return Ok(crate::arena::singletons::singleton_null());
+    }
+    for arg in rest {
+        let av = engine.dispatch_node(arg, ctx, arena)?;
+        if let FoldStepOutcome::ReturnNull = step_value(&mut state, av, ctx, engine, spec)? {
+            return Ok(crate::arena::singletons::singleton_null());
+        }
+    }
+    Ok(state.finalize(arena))
+}

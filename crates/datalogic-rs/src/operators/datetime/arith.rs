@@ -45,6 +45,71 @@ fn extract_dt_dur(
     (dt, dur)
 }
 
+/// A datetime or a duration operand of `+` / `-`.
+#[derive(Clone, Copy)]
+pub(crate) enum Temporal {
+    DateTime(datavalue::DataDateTime),
+    Duration(datavalue::DataDuration),
+}
+
+impl Temporal {
+    /// The value as a datetime, else as a duration (a value that parses as
+    /// a datetime is not also probed as a duration).
+    #[inline]
+    pub(crate) fn of(av: &DataValue<'_>) -> Option<Self> {
+        match extract_dt_dur(av) {
+            (Some(dt), _) => Some(Temporal::DateTime(dt)),
+            (None, Some(dur)) => Some(Temporal::Duration(dur)),
+            (None, None) => None,
+        }
+    }
+
+    /// `self + other`: a datetime plus a duration, in either order, is a
+    /// datetime; two durations add. Two datetimes have no sum.
+    #[inline]
+    pub(crate) fn add(self, other: Self) -> Option<Self> {
+        match (self, other) {
+            (Temporal::DateTime(dt), Temporal::Duration(dur))
+            | (Temporal::Duration(dur), Temporal::DateTime(dt)) => {
+                Some(Temporal::DateTime(dt.add_duration(&dur)))
+            }
+            (Temporal::Duration(d1), Temporal::Duration(d2)) => {
+                Some(Temporal::Duration(d1.add(&d2)))
+            }
+            (Temporal::DateTime(_), Temporal::DateTime(_)) => None,
+        }
+    }
+
+    /// `self - other`: datetime − datetime is a duration, datetime −
+    /// duration a datetime, duration − duration a duration. A duration
+    /// minus a datetime has no value.
+    #[inline]
+    pub(crate) fn sub(self, other: Self) -> Option<Self> {
+        match (self, other) {
+            (Temporal::DateTime(d1), Temporal::DateTime(d2)) => {
+                Some(Temporal::Duration(d1.diff(&d2)))
+            }
+            (Temporal::DateTime(dt), Temporal::Duration(dur)) => {
+                Some(Temporal::DateTime(dt.sub_duration(&dur)))
+            }
+            (Temporal::Duration(d1), Temporal::Duration(d2)) => {
+                Some(Temporal::Duration(d1.sub(&d2)))
+            }
+            (Temporal::Duration(_), Temporal::DateTime(_)) => None,
+        }
+    }
+
+    /// The result as arithmetic returns it: the ISO string of a datetime,
+    /// the `1d:0h:0m:0s` string of a duration.
+    #[inline]
+    pub(crate) fn into_value<'a>(self, arena: &'a Bump) -> &'a DataValue<'a> {
+        match self {
+            Temporal::DateTime(dt) => write_into_arena(arena, dt),
+            Temporal::Duration(dur) => write_into_arena(arena, dur),
+        }
+    }
+}
+
 /// Native arena datetime/duration subtract.
 /// - DateTime − DateTime → Duration string.
 /// - DateTime − Duration → DateTime ISO string.
@@ -55,23 +120,13 @@ pub(crate) fn datetime_subtract<'a>(
     b_av: &'a DataValue<'a>,
     arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
-    let (a_dt, a_dur) = extract_dt_dur(a_av);
-    let (b_dt, b_dur) = extract_dt_dur(b_av);
-
-    if let (Some(d1), Some(d2)) = (&a_dt, &b_dt) {
-        return Some(write_into_arena(arena, d1.diff(d2)));
-    }
-    if let (Some(d), Some(dur)) = (&a_dt, &b_dur) {
-        return Some(write_into_arena(arena, d.sub_duration(dur)));
-    }
-    if let (Some(d1), Some(d2)) = (&a_dur, &b_dur) {
-        return Some(write_into_arena(arena, d1.sub(d2)));
-    }
-    None
+    let a = Temporal::of(a_av)?;
+    let b = Temporal::of(b_av)?;
+    Some(a.sub(b)?.into_value(arena))
 }
 
 /// Native arena datetime/duration add.
-/// - DateTime + Duration → DateTime ISO string.
+/// - DateTime + Duration, in either order → DateTime ISO string.
 /// - Duration + Duration → Duration string.
 #[inline]
 pub(crate) fn datetime_add<'a>(
@@ -79,16 +134,9 @@ pub(crate) fn datetime_add<'a>(
     b_av: &'a DataValue<'a>,
     arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
-    let (a_dt, a_dur) = extract_dt_dur(a_av);
-    let (_b_dt, b_dur) = extract_dt_dur(b_av);
-
-    if let (Some(dt), Some(dur)) = (&a_dt, &b_dur) {
-        return Some(write_into_arena(arena, dt.add_duration(dur)));
-    }
-    if let (Some(d1), Some(d2)) = (&a_dur, &b_dur) {
-        return Some(write_into_arena(arena, d1.add(d2)));
-    }
-    None
+    let a = Temporal::of(a_av)?;
+    let b = Temporal::of(b_av)?;
+    Some(a.add(b)?.into_value(arena))
 }
 
 /// Native arena duration/scalar multiply.
