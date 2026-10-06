@@ -30,10 +30,7 @@ const CHUNK_SIZE = 0x8000;
 function toBase64Url(bytes: Uint8Array): string {
   let binary = '';
   for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
-    binary += String.fromCharCode.apply(
-      null,
-      bytes.subarray(i, i + CHUNK_SIZE) as unknown as number[],
-    );
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK_SIZE));
   }
   return btoa(binary)
     .replace(/\+/g, '-')

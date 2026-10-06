@@ -16,12 +16,11 @@ import {
   type JsonLogicValue,
   type DataLogicEvaluationConfig,
 } from "./components/logic-editor";
-import { DebugPanel, EngineSettingsPanel } from "./components/debug-panel";
+import { DebugPanel, EngineSettingsPanel, toDebugError } from "./components/debug-panel";
 import type { DebugError } from "./components/debug-panel";
 import { MobileNav, type MobileTab } from "./components/mobile-nav/MobileNav";
 import {
   useWasmEvaluator,
-  DataLogicEvaluationError,
   summarizeEvaluationConfig,
   normalizeEvaluationConfig,
 } from "./components/logic-editor/hooks";
@@ -41,11 +40,8 @@ function App() {
   const [data, setData] = useState<unknown>({});
   const [dataError, setDataError] = useState<string | null>(null);
 
-  const [result, setResult] = useState<unknown>(undefined);
   // Operations the last evaluation charged; `null` before the first run
   // or on a WASM build without metering.
-  const [resultOps, setResultOps] = useState<number | null>(null);
-  const [resultError, setResultError] = useState<DebugError>(null);
 
   // Templating mode state: multi-key objects compile to output-shaping
   // templates with embedded JSONLogic. Matches the v5 core API
@@ -249,32 +245,22 @@ function App() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [engineSettingsOpen, isMobile]);
 
-  // Evaluate the expression when inputs change
-  /* eslint-disable react-hooks/set-state-in-effect -- Derived state computation from expression/data changes */
-  useEffect(() => {
+  // Evaluate the expression when inputs change (derived, not stored)
+  const { result, resultOps, resultError } = useMemo((): {
+    result: unknown;
+    resultOps: number | null;
+    resultError: DebugError;
+  } => {
     if (!wasmReady || !expression || logicError || dataError) {
-      setResult(undefined);
-      setResultError(null);
-      setResultOps(null);
-      return;
+      return { result: undefined, resultOps: null, resultError: null };
     }
-
     try {
       const { value, ops } = evaluateMetered(expression, data);
-      setResult(value);
-      setResultOps(ops);
-      setResultError(null);
+      return { result: value, resultOps: ops, resultError: null };
     } catch (err) {
-      setResult(undefined);
-      setResultOps(null);
-      if (err instanceof DataLogicEvaluationError) {
-        setResultError(err.structured);
-      } else {
-        setResultError(err instanceof Error ? err.message : typeof err === 'string' ? err : "Evaluation failed");
-      }
+      return { result: undefined, resultOps: null, resultError: toDebugError(err) };
     }
   }, [wasmReady, expression, data, logicError, dataError, evaluateMetered]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Handle divider dragging
   const handleMouseDown = useCallback((e: React.MouseEvent) => {

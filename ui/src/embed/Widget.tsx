@@ -1,7 +1,8 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { DataLogicEditor, type JsonLogicValue } from '../components/logic-editor';
-import { useWasmEvaluator, DataLogicEvaluationError } from '../components/logic-editor/hooks';
+import { useWasmEvaluator } from '../components/logic-editor/hooks';
 import { ErrorDisplay, type DebugError } from '../components/debug-panel/ErrorDisplay';
+import { toDebugError } from '../components/debug-panel/error-utils';
 import { JsonHighlight } from './JsonHighlight';
 import { JsonEditor } from './JsonEditor';
 import { detectTheme, type WidgetProps } from './utils';
@@ -28,8 +29,6 @@ export function Widget({
   const [data, setData] = useState<unknown>(initialData);
   const [dataError, setDataError] = useState<string | null>(null);
 
-  const [result, setResult] = useState<unknown>(undefined);
-  const [resultError, setResultError] = useState<DebugError>(null);
 
   const [templating, setTemplating] = useState<boolean>(initialTemplating);
 
@@ -82,29 +81,15 @@ export function Widget({
     setLogicError(null);
   }, []);
 
-  // Evaluate expression when inputs change
-  /* eslint-disable react-hooks/set-state-in-effect -- Derived state computation from expression/data changes */
-  useEffect(() => {
-    if (!wasmReady || logicError || dataError) {
-      setResult(undefined);
-      setResultError(null);
-      return;
-    }
-
+  // Evaluate expression when inputs change (derived, not stored)
+  const { result, resultError } = useMemo((): { result: unknown; resultError: DebugError } => {
+    if (!wasmReady || logicError || dataError) return { result: undefined, resultError: null };
     try {
-      const evalResult = evaluate(logic, data);
-      setResult(evalResult);
-      setResultError(null);
+      return { result: evaluate(logic, data), resultError: null };
     } catch (err) {
-      setResult(undefined);
-      if (err instanceof DataLogicEvaluationError) {
-        setResultError(err.structured);
-      } else {
-        setResultError(err instanceof Error ? err.message : typeof err === 'string' ? err : 'Evaluation failed');
-      }
+      return { result: undefined, resultError: toDebugError(err) };
     }
   }, [wasmReady, logic, data, logicError, dataError, evaluate]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   return (
     <div className="datalogic-widget" style={{ height }} data-theme={resolvedTheme}>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 import type {
   LogicNode,
   LogicEdge,
@@ -60,6 +60,79 @@ const ROOT_NODE_ID = 'n';
 const emptySteps: ExecutionStep[] = [];
 const emptyTraceNodeMap: Map<string, string> = new Map();
 
+function failedModel(error: string | null): UseLogicEditorReturn {
+  return {
+    nodes: [],
+    edges: [],
+    error,
+    usingTraceMode: false,
+    steps: emptySteps,
+    traceNodeMap: emptyTraceNodeMap,
+    traceError: undefined,
+    failedNodeIds: undefined,
+  };
+}
+
+/** Build the diagram (and, with a trace, the debugger's steps) for a rule. */
+function buildModel(
+  value: JsonLogicValue | null,
+  data: unknown,
+  evaluateWithTrace: UseLogicEditorOptions['evaluateWithTrace'],
+  templating: boolean,
+  direction: FlowDirection,
+): UseLogicEditorReturn {
+  try {
+    // Validate recursion depth
+    if (!checkDepth(value, MAX_RECURSION_DEPTH)) {
+      return failedModel(`Expression exceeds maximum nesting depth of ${MAX_RECURSION_DEPTH}`);
+    }
+
+    // Engine failure from the trace envelope (compile or runtime), if any
+    let failure: TraceFailure | undefined;
+
+    // Try trace-based conversion first if available
+    if (evaluateWithTrace && value) {
+      try {
+        const trace = evaluateWithTrace(value, data ?? {});
+        failure = getTraceFailure(trace);
+        if (!isCompileFailedTrace(trace)) {
+          const { nodes, edges, traceNodeMap } = traceToNodes(trace, { templating, originalValue: value });
+          return {
+            nodes: applyTreeLayout(nodes, edges, direction),
+            edges,
+            error: null,
+            usingTraceMode: true,
+            steps: trace.steps,
+            traceNodeMap,
+            traceError: failure,
+            failedNodeIds: failure ? resolveFailedNodeIds(trace, traceNodeMap) : undefined,
+          };
+        }
+        // Compile-stage failure: no tree to render from, fall through to the
+        // static converter and keep the failure visible.
+      } catch (traceErr) {
+        // Trace conversion failed, fall back to JS parsing
+        console.warn('Trace conversion failed, falling back to JS:', traceErr);
+      }
+    }
+
+    // Fallback to JS parsing (no execution steps)
+    const { nodes, edges } = convertJsonLogic(value, { templating }, ROOT_NODE_ID);
+    return {
+      nodes: applyTreeLayout(nodes, edges, direction),
+      edges,
+      error: null,
+      usingTraceMode: false,
+      steps: emptySteps,
+      traceNodeMap: emptyTraceNodeMap,
+      traceError: failure,
+      failedNodeIds: undefined,
+    };
+  } catch (err) {
+    return failedModel(err instanceof Error ? err.message : 'Unknown error during conversion');
+  }
+}
+
 export function useLogicEditor({
   value,
   evaluateWithTrace,
@@ -67,129 +140,21 @@ export function useLogicEditor({
   templating = false,
   direction = 'flow',
 }: UseLogicEditorOptions): UseLogicEditorReturn {
-  const [nodes, setNodes] = useState<LogicNode[]>([]);
-  const [edges, setEdges] = useState<LogicEdge[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [usingTraceMode, setUsingTraceMode] = useState(false);
-  const [steps, setSteps] = useState<ExecutionStep[]>(emptySteps);
-  const [traceNodeMap, setTraceNodeMap] = useState<Map<string, string>>(emptyTraceNodeMap);
-  const [traceError, setTraceError] = useState<TraceFailure | undefined>(undefined);
-  const [failedNodeIds, setFailedNodeIds] = useState<Set<string> | undefined>(undefined);
-  const lastExternalValueRef = useRef<string>('');
-  const lastDataRef = useRef<string>('');
-  const lastHadTraceRef = useRef<boolean>(false);
-  const lastTemplatingRef = useRef<boolean>(false);
-  const lastDirectionRef = useRef<FlowDirection>('flow');
-
-  // Convert JSONLogic to nodes when value changes from outside
-  /* eslint-disable react-hooks/set-state-in-effect -- Derived state computation from value/data props */
-  useEffect(() => {
-    const valueStr = JSON.stringify(value);
-    const dataStr = JSON.stringify(data);
-    const hasTrace = !!evaluateWithTrace;
-
-    // Re-process if value, data, trace availability, templating, or direction changed
-    if (
-      valueStr === lastExternalValueRef.current &&
-      dataStr === lastDataRef.current &&
-      hasTrace === lastHadTraceRef.current &&
-      templating === lastTemplatingRef.current &&
-      direction === lastDirectionRef.current
-    ) {
-      return;
-    }
-
-    const rememberInputs = () => {
-      lastExternalValueRef.current = valueStr;
-      lastDataRef.current = dataStr;
-      lastHadTraceRef.current = hasTrace;
-      lastTemplatingRef.current = templating;
-      lastDirectionRef.current = direction;
-    };
-
-    const clearTraceState = () => {
-      setSteps(emptySteps);
-      setTraceNodeMap(emptyTraceNodeMap);
-      setUsingTraceMode(false);
-    };
-
-    try {
-      // Validate recursion depth
-      if (!checkDepth(value, MAX_RECURSION_DEPTH)) {
-        setError(`Expression exceeds maximum nesting depth of ${MAX_RECURSION_DEPTH}`);
-        setNodes([]);
-        setEdges([]);
-        clearTraceState();
-        setTraceError(undefined);
-        setFailedNodeIds(undefined);
-        rememberInputs();
-        return;
-      }
-
-      // Engine failure from the trace envelope (compile or runtime), if any
-      let failure: TraceFailure | undefined;
-
-      // Try trace-based conversion first if available
-      if (evaluateWithTrace && value) {
-        try {
-          const trace = evaluateWithTrace(value, data ?? {});
-          failure = getTraceFailure(trace);
-          if (!isCompileFailedTrace(trace)) {
-            const { nodes: newNodes, edges: newEdges, traceNodeMap: newTraceNodeMap } = traceToNodes(trace, { templating, originalValue: value });
-            const layoutedNodes = applyTreeLayout(newNodes, newEdges, direction);
-            setNodes(layoutedNodes);
-            setEdges(newEdges);
-            setSteps(trace.steps);
-            setTraceNodeMap(newTraceNodeMap);
-            setUsingTraceMode(true);
-            setError(null);
-            setTraceError(failure);
-            setFailedNodeIds(failure ? resolveFailedNodeIds(trace, newTraceNodeMap) : undefined);
-            rememberInputs();
-            return;
-          }
-          // Compile-stage failure: no tree to render from, fall through to the
-          // static converter and keep the failure visible.
-        } catch (traceErr) {
-          // Trace conversion failed, fall back to JS parsing
-          console.warn('Trace conversion failed, falling back to JS:', traceErr);
-        }
-      }
-
-      // Fallback to JS parsing (no execution steps)
-      const { nodes: newNodes, edges: newEdges } = convertJsonLogic(value, { templating }, ROOT_NODE_ID);
-      const layoutedNodes = applyTreeLayout(newNodes, newEdges, direction);
-      setNodes(layoutedNodes);
-      setEdges(newEdges);
-      clearTraceState();
-      setError(null);
-      setTraceError(failure);
-      setFailedNodeIds(undefined);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error during conversion';
-      setError(errorMessage);
-      setNodes([]);
-      setEdges([]);
-      clearTraceState();
-      setTraceError(undefined);
-      setFailedNodeIds(undefined);
-    }
-    rememberInputs();
-  }, [value, data, evaluateWithTrace, templating, direction]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  // Memoize return value to maintain stable identity
+  // Derived during render. The rule and data are keyed by content, not
+  // identity: a host may pass an equal but new object on every render, and
+  // re-converting (and re-tracing) for that would be wasted work. The
+  // conversion reads the parsed copies, which is also all the engine sees.
+  const valueKey = JSON.stringify(value);
+  const dataKey = JSON.stringify(data);
   return useMemo(
-    () => ({
-      nodes,
-      edges,
-      error,
-      usingTraceMode,
-      steps,
-      traceNodeMap,
-      traceError,
-      failedNodeIds,
-    }),
-    [nodes, edges, error, usingTraceMode, steps, traceNodeMap, traceError, failedNodeIds]
+    () =>
+      buildModel(
+        valueKey === undefined ? null : (JSON.parse(valueKey) as JsonLogicValue | null),
+        dataKey === undefined ? undefined : JSON.parse(dataKey),
+        evaluateWithTrace,
+        templating,
+        direction,
+      ),
+    [valueKey, dataKey, evaluateWithTrace, templating, direction]
   );
 }

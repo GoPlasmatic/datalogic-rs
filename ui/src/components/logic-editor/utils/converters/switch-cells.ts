@@ -153,7 +153,7 @@ export function switchArgsFromCells(
 
   const args: JsonLogicValue[] = [discriminant];
   if (pairs.length > 0 || hadCases || defaultValue !== undefined) {
-    args.push(pairs as unknown as JsonLogicValue);
+    args.push(pairs);
   }
   if (defaultValue !== undefined) args.push(defaultValue);
   return args;

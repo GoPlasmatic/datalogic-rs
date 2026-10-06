@@ -71,7 +71,7 @@ export function parseStructuredError(err: unknown, fallbackMessage: string): Str
       const structured: StructuredError = { type: obj.type, message };
       for (const field of STRUCTURED_FIELDS) {
         if (obj[field] !== undefined) {
-          (structured as unknown as Record<string, unknown>)[field] = obj[field];
+          Object.assign(structured, { [field]: obj[field] });
         }
       }
       return structured;
@@ -363,7 +363,7 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
 
         if (!cancelled) {
           moduleRef.current = {
-            Engine: wasm.Engine as unknown as WasmModule['Engine'],
+            Engine: wasm.Engine,
           };
           setReady(true);
           setLoading(false);

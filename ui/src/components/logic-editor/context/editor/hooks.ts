@@ -8,10 +8,10 @@ import { useContext, createRef } from 'react';
 import { EditorContext } from './context';
 import type { EditorContextValue } from './types';
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const noop = (..._: unknown[]) => {};
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const noopFalse = (..._: unknown[]) => false;
+// A function with fewer parameters is assignable to any callback type with
+// more, so these fit every action without casts.
+const noop = () => {};
+const noopFalse = () => false;
 
 /**
  * Default read-only context value returned when no EditorProvider is present.
@@ -25,25 +25,25 @@ const readOnlyDefault: EditorContextValue = {
   selectedNode: null,
   selectedNodes: [],
   nodes: [],
-  selectNode: noop as unknown as (nodeId: string | null) => void,
-  setSelection: noop as unknown as (nodeIds: string[]) => void,
-  toggleNodeSelection: noop as unknown as (nodeId: string) => void,
-  addToSelection: noop as unknown as (nodeId: string) => void,
+  selectNode: noop,
+  setSelection: noop,
+  toggleNodeSelection: noop,
+  addToSelection: noop,
   clearSelection: noop,
   selectAllNodes: noop,
-  isNodeSelected: noopFalse as unknown as (nodeId: string) => boolean,
-  setEditMode: noop as unknown as (enabled: boolean) => void,
-  updatePanelValue: noop as unknown as (fieldId: string, value: unknown) => void,
-  resetPanelValues: noop as unknown as (values?: Record<string, unknown>) => void,
-  updateNode: noop as unknown as (nodeId: string, newData: unknown) => void,
-  deleteNode: noop as unknown as (nodeId: string) => void,
+  isNodeSelected: noopFalse,
+  setEditMode: noop,
+  updatePanelValue: noop,
+  resetPanelValues: noop,
+  updateNode: noop,
+  deleteNode: noop,
   applyPanelChanges: noop,
-  addArgumentToNode: noop as unknown as (nodeId: string, nodeType?: unknown, operatorName?: string) => void,
-  removeArgumentFromNode: noop as unknown as (nodeId: string, argIndex: number) => void,
-  getChildNodes: (() => []) as unknown as (parentId: string) => [],
-  createNode: noop as unknown as (type: unknown, operatorName?: string) => void,
+  addArgumentToNode: noop,
+  removeArgumentFromNode: noop,
+  getChildNodes: () => [],
+  createNode: noop,
   hasNodes: () => false,
-  insertNodeOnEdge: noop as unknown as (sourceId: string, targetId: string, operatorName: string) => void,
+  insertNodeOnEdge: noop,
   undo: noop,
   redo: noop,
   canUndo: false,
@@ -51,10 +51,10 @@ const readOnlyDefault: EditorContextValue = {
   copyNode: noop,
   pasteNode: noop,
   canPaste: false,
-  wrapNodeInOperator: noop as unknown as (nodeId: string, operator: string) => void,
-  duplicateNode: noop as unknown as (nodeId: string) => void,
-  selectChildren: noop as unknown as (nodeId: string) => void,
-  focusPropertyPanel: noop as unknown as (nodeId: string, fieldId?: string) => void,
+  wrapNodeInOperator: noop,
+  duplicateNode: noop,
+  selectChildren: noop,
+  focusPropertyPanel: noop,
   propertyPanelFocusRef: createRef(),
 };
 

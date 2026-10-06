@@ -1,7 +1,8 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { DataLogicEditor, type JsonLogicValue } from '../components/logic-editor';
-import { useWasmEvaluator, DataLogicEvaluationError } from '../components/logic-editor/hooks';
+import { useWasmEvaluator } from '../components/logic-editor/hooks';
 import { ErrorDisplay, type DebugError } from '../components/debug-panel/ErrorDisplay';
+import { toDebugError } from '../components/debug-panel/error-utils';
 import { EMBED_SAMPLE_EXPRESSIONS as SAMPLE_EXPRESSIONS } from '../constants/embed-sample-expressions';
 import { JsonHighlight } from './JsonHighlight';
 import { JsonEditor } from './JsonEditor';
@@ -19,8 +20,6 @@ export function Playground({ editable = false, templating: initialTemplating = f
   const [data, setData] = useState<unknown>({});
   const [dataError, setDataError] = useState<string | null>(null);
 
-  const [result, setResult] = useState<unknown>(undefined);
-  const [resultError, setResultError] = useState<DebugError>(null);
 
   const [templating, setTemplating] = useState<boolean>(initialTemplating);
   const [selectedExample, setSelectedExample] = useState<string>('');
@@ -98,29 +97,15 @@ export function Playground({ editable = false, templating: initialTemplating = f
     loadSample(firstName);
   }, [loadSample]);
 
-  // Evaluate expression when inputs change
-  /* eslint-disable react-hooks/set-state-in-effect -- Derived state computation from expression/data changes */
-  useEffect(() => {
-    if (!wasmReady || !expression || logicError || dataError) {
-      setResult(undefined);
-      setResultError(null);
-      return;
-    }
-
+  // Evaluate expression when inputs change (derived, not stored)
+  const { result, resultError } = useMemo((): { result: unknown; resultError: DebugError } => {
+    if (!wasmReady || !expression || logicError || dataError) return { result: undefined, resultError: null };
     try {
-      const evalResult = evaluate(expression, data);
-      setResult(evalResult);
-      setResultError(null);
+      return { result: evaluate(expression, data), resultError: null };
     } catch (err) {
-      setResult(undefined);
-      if (err instanceof DataLogicEvaluationError) {
-        setResultError(err.structured);
-      } else {
-        setResultError(err instanceof Error ? err.message : typeof err === 'string' ? err : 'Evaluation failed');
-      }
+      return { result: undefined, resultError: toDebugError(err) };
     }
   }, [wasmReady, expression, data, logicError, dataError, evaluate]);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   return (
     <div className="datalogic-playground" data-theme={theme}>
