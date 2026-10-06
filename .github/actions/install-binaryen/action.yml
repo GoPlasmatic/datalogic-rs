@@ -1,0 +1,44 @@
+name: Install binaryen (pinned)
+description: |
+  Installs a pinned binaryen release (for `wasm-opt`) on a Linux x86_64
+  runner, checksum-verified, and puts its bin/ on PATH.
+
+  `apt-get install binaryen` installed whatever version the runner image
+  carried that week, and bindings/wasm/build.sh runs that `wasm-opt -Oz`
+  over every shipped .wasm, so a runner-image update could change the
+  published bytes (and their size) with no commit. Bump `version` and
+  `sha256` together (the sha256 is published next to each release asset
+  as `<asset>.sha256`), and expect the WASM size gate to move with it.
+
+inputs:
+  version:
+    description: binaryen release number (the N in `version_N`)
+    required: false
+    default: '133'
+  sha256:
+    description: SHA-256 of binaryen-version_<N>-x86_64-linux.tar.gz
+    required: false
+    default: 2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489
+
+runs:
+  using: composite
+  steps:
+    - name: Download and verify binaryen
+      shell: bash
+      env:
+        BINARYEN_VERSION: ${{ inputs.version }}
+        BINARYEN_SHA256: ${{ inputs.sha256 }}
+      run: |
+        set -euo pipefail
+        asset="binaryen-version_${BINARYEN_VERSION}-x86_64-linux.tar.gz"
+        dir="$RUNNER_TEMP/binaryen"
+        mkdir -p "$dir"
+        curl -sSfL --retry 3 -o "$dir/$asset" \
+          "https://github.com/WebAssembly/binaryen/releases/download/version_${BINARYEN_VERSION}/${asset}"
+        echo "${BINARYEN_SHA256}  $dir/$asset" | sha256sum -c -
+        tar -xzf "$dir/$asset" -C "$dir"
+        echo "$dir/binaryen-version_${BINARYEN_VERSION}/bin" >> "$GITHUB_PATH"
+
+    - name: Show wasm-opt version
+      shell: bash
+      run: wasm-opt --version

@@ -1,0 +1,3 @@
+# gzip -9 -n size in bytes of bindings/wasm/pkg/web/datalogic_wasm_bg.wasm.
+# Written by scripts/check-wasm-size.sh --update; see that script.
+961285
