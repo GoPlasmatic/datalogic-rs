@@ -20,7 +20,8 @@ import { traceToNodes } from '../../utils/trace/trace-to-nodes';
 import { runTrace } from '../../utils/trace/__tests__/helpers';
 import { extractArguments } from '../../properties-panel/utils/argument-parser';
 import { rebuildVariableExpression } from '../../properties-panel/utils/expression-rebuilder';
-import { addArgument, removeArgument, canEditArguments } from '../argument-service';
+import { addArgument, removeArgument, canAddArgument, canEditArguments } from '../argument-service';
+import { getOperator } from '../../config/operators';
 import { wrapInOperator, duplicateNodeTree } from '../node-transform-service';
 import { updateInlineOperand } from '../inline-edit-service';
 import type { JsonLogicValue, LogicNode, OperatorNodeData, StructureNodeData } from '../../types';
@@ -246,6 +247,31 @@ describe('addArgument / removeArgument', () => {
     const cells = opData(root(added.nodes)).cells;
     expect(cells.map((c) => c.rowLabel)).toEqual(['Match', 'Case', 'Then', 'Case', 'Then', 'Default']);
     expect(cells.map((c) => c.index)).toEqual([0, 1, 2, 3, 4, 5]);
+  });
+
+  it('offers another case on a switch whose cells outnumber the arity max', () => {
+    // Match, Case, Then, Default: four cells for three arguments
+    for (const rule of [
+      { switch: [{ var: 'x' }, [[1, 'one']], 'other'] },
+      { match: [{ var: 'x' }, [[1, 'one'], [2, 'two']]] },
+    ] as JsonLogicValue[]) {
+      const nodes = build(rule);
+      const sw = opData(root(nodes));
+      expect(sw.cells.length).toBeGreaterThan(getOperator(sw.operator)!.arity.max!);
+      expect(canAddArgument(sw)).toBe(true);
+      const added = addArgument(nodes, root(nodes).id, 'literal')!;
+      expect(added).not.toBeNull();
+      checkInvariants(added.nodes);
+      expect(canAddArgument(opData(root(added.nodes)))).toBe(true);
+    }
+  });
+
+  it('still bounds plain operands by the arity max', () => {
+    expect(canAddArgument(opData(root(build({ var: 'x' }))))).toBe(true);
+    const full = build({ var: ['x', 0] });
+    expect(canAddArgument(opData(root(full)))).toBe(false);
+    expect(addArgument(full, root(full).id, 'literal')).toBeNull();
+    expect(canAddArgument(opData(root(build({ exists: 'a' }))))).toBe(false);
   });
 
   it('does not offer arguments on exists', () => {

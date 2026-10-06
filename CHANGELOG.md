@@ -246,14 +246,18 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   unwrapping) and fell back to loose and positional guesses, so a compiler
   change could silently attach steps to the wrong node. It now resolves each
   node's pointer against the rule it shows and pairs operands by identity;
-  `child-matching.ts` and its heuristics are gone, and a step the tree does
-  not list goes to the node whose pointer encloses it.
+  `child-matching.ts` and its heuristics are gone, and a step no node
+  claims goes to the nearest placed node whose pointer strictly encloses it.
+  A trace without pointers, or converted without the rule as written, pairs
+  operands with children by their expression text, then by position.
 - **Adding a case to a `switch` in the editor works again.** The editor
   compared the operator's argument limit (3) against the node's cells (a
   `switch` with one case has four), so "add case" did nothing once the
-  catalogue gave `switch` its real limit. Case, else-if and path-segment
-  editors now run before the limit check, since they grow one argument
-  rather than adding one.
+  catalogue gave `switch` its real limit, and the context menu and
+  properties panel hid it. Every add action now asks one check
+  (`canAddArgument`), which lets the case, else-if and path-segment editors
+  grow a node past the limit, since they grow one argument rather than
+  adding one.
 - The UI no longer carries a stale `@goplasmatic/datalogic-wasm` 5.4.0
   devDependency; every build already resolved the package to the WASM built
   from this tree. A build-time type check keeps the editor's hand-written

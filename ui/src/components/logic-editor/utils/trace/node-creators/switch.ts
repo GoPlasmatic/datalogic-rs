@@ -91,6 +91,15 @@ export function createSwitchNodeFromTrace(
     return matches;
   });
 
+  // An inline row renders no node of its own: its trace child (an empty-array
+  // default, say) folds onto the switch node, as an inline operand does in
+  // createVerticalCellNodeFromTrace
+  function foldInline(match: ChildMatch | null): void {
+    if (!match) return;
+    context.traceNodeMap.set(traceIdToNodeId(match.child.id), nodeId);
+    mapInlinedChildren(match.child.children ?? [], nodeId, context.traceNodeMap);
+  }
+
   // Helper to render a branch value from its trace child (or a fallback node)
   function processBranch(
     value: JsonLogicValue,
@@ -119,6 +128,7 @@ export function createSwitchNodeFromTrace(
     const discriminant = switchArgs[0];
 
     if (isSimpleOperand(discriminant)) {
+      foldInline(topMatches[0]);
       cells.push({
         type: 'inline',
         icon: 'diamond',
@@ -150,6 +160,7 @@ export function createSwitchNodeFromTrace(
 
     // Case value row
     if (isSimpleOperand(caseValue)) {
+      foldInline(leafMatches[i][0]);
       cells.push({
         type: 'inline',
         icon: 'tag',
@@ -174,6 +185,7 @@ export function createSwitchNodeFromTrace(
 
     // Result value row (Then)
     if (isSimpleOperand(resultValue)) {
+      foldInline(leafMatches[i][1]);
       cells.push({
         type: 'inline',
         icon: 'check',
@@ -202,6 +214,7 @@ export function createSwitchNodeFromTrace(
     const defaultValue = switchArgs[2];
 
     if (isSimpleOperand(defaultValue)) {
+      foldInline(topMatches[2]);
       cells.push({
         type: 'inline',
         icon: 'x',

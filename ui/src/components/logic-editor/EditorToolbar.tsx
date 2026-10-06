@@ -9,6 +9,7 @@ import { useEditorContext } from './context/editor';
 import { ContextMenu, type MenuItemConfig } from './context-menu/ContextMenu';
 import { buildOperatorSubmenu } from './utils/menu-builder';
 import { getOperator } from './config/operators';
+import { canAddArgument } from './services/argument-service';
 import type { OperatorNodeData } from './types';
 
 interface EditorToolbarProps {
@@ -31,12 +32,7 @@ interface EditorToolbarProps {
 function canReceiveArgument(data: OperatorNodeData): boolean {
   const opConfig = getOperator(data.operator);
   if (!opConfig || opConfig.ui?.addArgumentLabel) return false;
-  const { arity } = opConfig;
-  const variable =
-    arity.type === 'nary' || arity.type === 'variadic' || arity.type === 'chainable' ||
-    arity.type === 'special' || arity.type === 'range';
-  if (!variable) return false;
-  return data.cells.length < (arity.max ?? Infinity);
+  return canAddArgument(data);
 }
 
 /**

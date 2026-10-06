@@ -23,6 +23,7 @@ import {
   type ArgumentInfo,
 } from './utils/argument-parser';
 import { updateInlineOperand } from '../services/inline-edit-service';
+import { canAddArgument } from '../services/argument-service';
 import { ArgumentItem } from './ArgumentItem';
 
 interface ArgumentsSectionProps {
@@ -69,11 +70,10 @@ export const ArgumentsSection = memo(function ArgumentsSection({
   }, [node.data, childNodeMap]);
 
   // Check if we can add/remove arguments
-  const canAddArg = useMemo(() => {
-    if (!supportsVariableArgs(opConfig)) return false;
-    const max = opConfig?.arity.max;
-    return max === undefined || arguments_.length < max;
-  }, [opConfig, arguments_.length]);
+  const canAddArg = useMemo(
+    () => node.data.type === 'operator' && canAddArgument(node.data as OperatorNodeData),
+    [node.data]
+  );
 
   const canRemoveArg = useMemo(() => {
     if (!supportsVariableArgs(opConfig)) return false;

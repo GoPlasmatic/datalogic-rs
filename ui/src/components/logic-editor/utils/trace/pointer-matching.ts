@@ -28,6 +28,11 @@ export function resolvePointer(root: unknown, pointer: string): unknown {
  * node id, the JSON Pointer of the rule value it compiled (`pointers` in the
  * trace envelope); this resolves those pointers once against the rule the
  * editor shows, so a node's source is the very object the editor holds.
+ *
+ * Pointers are into the rule as written, so they resolve only against that
+ * rule. Without it (`rule` undefined) no node has a source and matching falls
+ * back to the expression text; the pointers still order nodes by containment
+ * (see `enclosingNode`).
  */
 export class TraceSources {
   private readonly sources = new Map<number, unknown>();
@@ -37,6 +42,7 @@ export class TraceSources {
     for (const [id, pointer] of Object.entries(pointers ?? {})) {
       const nodeId = Number(id);
       this.pointers.set(nodeId, pointer);
+      if (rule === undefined) continue;
       const source = resolvePointer(rule, pointer);
       if (source !== undefined) this.sources.set(nodeId, source);
     }
@@ -54,6 +60,15 @@ export class TraceSources {
  * from the same rule, so the pairing is by identity: no canonical forms,
  * aliases or positions involved. Literal operands have no trace node and stay
  * unmatched. Returns one entry per operand.
+ *
+ * A child with no source (the trace carries no pointers, or the rule as
+ * written is not known) pairs, in order, with an operand whose JSON equals the
+ * child's expression, which holds when the operands are the engine's own
+ * serialization. An operand written in another form (`?:` for `if`, or with
+ * such an alias anywhere inside) then pairs by position, but only when the
+ * operands and sourceless children left over are as many: the engine lists
+ * one child per non-literal operand, in order. Otherwise it stays unmatched
+ * and its steps fold into the parent node.
  */
 export function matchOperandsToChildren(
   operands: readonly unknown[],
@@ -61,7 +76,7 @@ export function matchOperandsToChildren(
   sources: TraceSources,
 ): (ChildMatch | null)[] {
   const used = new Set<number>();
-  return operands.map((operand) => {
+  const matches = operands.map((operand): ChildMatch | null => {
     if (operand === null || typeof operand !== 'object') return null;
     for (let i = 0; i < children.length; i++) {
       if (!used.has(i) && sources.sourceOf(children[i].id) === operand) {
@@ -71,6 +86,40 @@ export function matchOperandsToChildren(
     }
     return null;
   });
+  // Later passes, so a sourceless child never takes an operand that a
+  // sourced sibling names
+  const sourceless = (i: number) => !used.has(i) && sources.sourceOf(children[i].id) === undefined;
+  const open = () => operands.flatMap((operand, k) =>
+    matches[k] || operand === null || typeof operand !== 'object' ? [] : [k]);
+  for (const k of open()) {
+    const text = JSON.stringify(operands[k]);
+    const i = children.findIndex((child, j) => sourceless(j) && expressionText(child) === text);
+    if (i !== -1) {
+      used.add(i);
+      matches[k] = { child: children[i], index: i };
+    }
+  }
+  const left = open();
+  const spare = children.flatMap((_, i) => (sourceless(i) ? [i] : []));
+  if (left.length === spare.length) {
+    left.forEach((k, n) => {
+      used.add(spare[n]);
+      matches[k] = { child: children[spare[n]], index: spare[n] };
+    });
+  }
+  return matches;
+}
+
+/**
+ * A tree node's expression in `JSON.stringify` form. The engine spaces its
+ * JSON differently, so the text is compared only after a round trip.
+ */
+function expressionText(node: ExpressionNode): string | undefined {
+  try {
+    return JSON.stringify(JSON.parse(node.expression));
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -86,10 +135,12 @@ export function unmatchedChildren(
 }
 
 /**
- * The tree node a step belongs to when the expression tree does not list its
- * id (an operator whose arguments the tree folds into one leaf, such as
- * `missing` with computed paths): the listed node whose pointer is the
- * longest prefix of the step's. `undefined` when nothing contains it.
+ * The tree node a step belongs to when no visual node claims its id (an
+ * operator whose arguments the tree folds into one leaf, such as `missing`
+ * with computed paths): the listed node whose pointer is the longest proper
+ * prefix of the step's, ending at a token boundary. Only strict ancestors
+ * count, so the step's own id (or one compiled from the same value) is never
+ * the answer. `undefined` when nothing contains it.
  */
 export function enclosingNode(
   id: number,
@@ -101,9 +152,10 @@ export function enclosingNode(
   let best: number | undefined;
   let bestLength = -1;
   for (const candidate of listed) {
+    if (candidate === id) continue;
     const p = sources.pointers.get(candidate);
-    if (p === undefined) continue;
-    const contains = p === pointer || p === '' || pointer.startsWith(`${p}/`);
+    if (p === undefined || p === pointer) continue;
+    const contains = p === '' || pointer.startsWith(`${p}/`);
     if (contains && p.length > bestLength) {
       best = candidate;
       bestLength = p.length;

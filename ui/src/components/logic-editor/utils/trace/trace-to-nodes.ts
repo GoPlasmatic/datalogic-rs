@@ -42,9 +42,14 @@ export function traceToNodes(trace: TracedResult, options: TraceToNodesOptions =
   if (rootExpression === undefined) {
     return EMPTY_RESULT();
   }
-  // Trace node pointers are into the rule as written, so they resolve
-  // against the value the editor shows.
-  const sources = new TraceSources(rootExpression, trace.pointers);
+  // Trace node pointers are into the rule as written, so they resolve only
+  // against `originalValue`. The engine's serialization (the fallback root)
+  // rewrites aliases and lone arguments ({"?:": ...} becomes {"if": ...},
+  // {"!": [x]} becomes {"!": x}), so a pointer resolved against it names the
+  // wrong value or none. Without `originalValue` the tree is built from that
+  // serialization, and children pair with operands by their expression text
+  // (see matchOperandsToChildren).
+  const sources = new TraceSources(options.originalValue, trace.pointers);
 
   const nodes: LogicNode[] = [];
   const edges: LogicEdge[] = [];
@@ -71,18 +76,21 @@ export function traceToNodes(trace: TracedResult, options: TraceToNodesOptions =
 /**
  * Some compiled nodes keep their operator arguments out of the expression
  * tree (`missing` / `missing_some` with dynamic paths are leaves) yet still
- * record steps for them. Map every step / breadcrumb id the tree does not
- * list onto the visual node of the tree node whose rule location encloses
- * it, so the debugger never points at a node that does not exist.
+ * record steps for them. Map every step / breadcrumb id no visual node claims
+ * onto the visual node of the nearest placed tree node whose rule location
+ * encloses it, so the debugger never points at a node that does not exist.
+ * Only a trace without pointers (or a step outside every placed node) falls
+ * back to the root; steps of tree nodes are placed by id while building.
  */
 function resolveHiddenTraceIds(
   trace: TracedResult,
   traceNodeMap: Map<string, string>,
   sources: TraceSources,
 ): void {
+  // Tree nodes that ended up on a visual node; an unplaced one is no home
   const listed: number[] = [];
   const collect = (node: ExpressionNode) => {
-    listed.push(node.id);
+    if (traceNodeMap.has(traceIdToNodeId(node.id))) listed.push(node.id);
     for (const child of node.children ?? []) collect(child);
   };
   collect(trace.expression_tree);

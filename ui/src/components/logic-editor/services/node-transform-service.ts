@@ -34,7 +34,7 @@ import {
 } from '../utils/converters/switch-cells';
 import { hasVariableCells, rawOperandOf } from '../utils/converters/variable-cells';
 import { cloneJson, setAtPath, formatStructureWithPlaceholders } from '../utils/converters/structure-paths';
-import { canEditArguments } from './argument-service';
+import { canAddArgument } from './argument-service';
 
 /** The stored operands of a node's expression, normalized to an array. */
 function storedOperandsOf(data: OperatorNodeData): JsonLogicValue[] {
@@ -287,9 +287,7 @@ function duplicateUnderOperator(
   }
 
   // N-ary operator: append the copy as a new operand
-  if (!canEditArguments(opData.operator)) return null;
-  const max = getOperator(opData.operator)?.arity.max;
-  if (max !== undefined && opData.cells.length >= max) return null;
+  if (!canAddArgument(opData)) return null;
 
   const newArgIndex = opData.cells.length;
   clonedRoot.data = { ...clonedRoot.data, argIndex: newArgIndex };

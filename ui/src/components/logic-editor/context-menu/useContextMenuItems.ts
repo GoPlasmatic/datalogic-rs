@@ -20,7 +20,7 @@ import { useEditorContext } from '../context/editor';
 import { getOperator } from '../config/operators';
 import { isRootNode } from '../utils/node-deletion';
 import { buildOperatorSubmenu } from '../utils/menu-builder';
-import { canEditArguments } from '../services/argument-service';
+import { canAddArgument, canEditArguments } from '../services/argument-service';
 import { isIfOperator, isDecisionCells } from '../utils/converters/if-else-converter';
 import { buildIfRemoveItems, buildSwitchRemoveItems, getCellLabel } from './menu-helpers';
 import { isSwitchOperator, isSwitchCells } from '../utils/converters/switch-cells';
@@ -52,32 +52,31 @@ export function useContextMenuItems({ node, onEditProperties }: UseContextMenuIt
   // Determine if this node can have arguments added/removed
   const canModifyArgs = useMemo(() => {
     if (nodeData.type !== 'operator') {
-      return { canAdd: false, canRemove: false, childCount: 0, minArgs: 0, maxArgs: 0 };
+      return { canAdd: false, canRemove: false, childCount: 0, minArgs: 0 };
     }
 
     const opData = nodeData as OperatorNodeData;
     const opConfig = getOperator(opData.operator);
     if (!opConfig) {
-      return { canAdd: false, canRemove: false, childCount: 0, minArgs: 0, maxArgs: 0 };
+      return { canAdd: false, canRemove: false, childCount: 0, minArgs: 0 };
     }
 
     const { arity } = opConfig;
     const isVariableArity = canEditArguments(opData.operator);
 
     if (!isVariableArity) {
-      return { canAdd: false, canRemove: false, childCount: 0, minArgs: 0, maxArgs: 0 };
+      return { canAdd: false, canRemove: false, childCount: 0, minArgs: 0 };
     }
 
     const childCount = opData.cells.length;
     const minArgs = arity.min ?? 0;
-    const maxArgs = arity.max ?? Infinity;
 
     return {
-      canAdd: childCount < maxArgs,
+      // Not the arity max against the cells: a switch's cells outnumber its arguments
+      canAdd: canAddArgument(opData),
       canRemove: childCount > minArgs,
       childCount,
       minArgs,
-      maxArgs,
       addLabel: opConfig.ui?.addArgumentLabel,
     };
   }, [nodeData]);

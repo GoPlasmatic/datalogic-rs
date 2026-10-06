@@ -70,10 +70,43 @@ describe('matchOperandsToChildren', () => {
     const a = { var: 'a' };
     const rule = { '!': a };
     const sources = new TraceSources(rule, undefined);
-    const children = [node(4)];
+    // Text differs and the counts differ, so nothing pairs by position either
+    const children = [node(4), node(5)];
     const matches = matchOperandsToChildren([a], children, sources);
     expect(matches).toEqual([null]);
-    expect(unmatchedChildren(children, matches).map((c) => c.id)).toEqual([4]);
+    expect(unmatchedChildren(children, matches).map((c) => c.id)).toEqual([4, 5]);
+  });
+
+  it('pairs leftover sourceless children by position when the counts agree', () => {
+    const sources = new TraceSources(undefined, undefined);
+    const children = [
+      { id: 1, expression: '{"if": [{"var": "a"}, 1, 0]}', children: [] },
+      { id: 2, expression: '{"var": "b"}', children: [] },
+      { id: 3, expression: '[]', children: [] },
+    ];
+    const operands = [{ var: 'b' }, { '?:': [{ var: 'a' }, 1, 0] }, 5, []];
+    const matches = matchOperandsToChildren(operands, children, sources);
+    expect(matches.map((m) => m?.child.id ?? null)).toEqual([2, 1, null, 3]);
+  });
+
+  it('pairs a sourceless child by its expression text, in order', () => {
+    const sources = new TraceSources(undefined, undefined);
+    const text = (id: number, expression: string): ExpressionNode => ({ id, expression, children: [] });
+    const children = [text(1, '{"var": "b"}'), text(2, '{"var": "a"}'), text(3, '{"var": "a"}')];
+    const matches = matchOperandsToChildren([{ var: 'a' }, 7, { var: 'a' }, { var: 'b' }], children, sources);
+    expect(matches.map((m) => m?.child.id ?? null)).toEqual([2, null, 3, 1]);
+  });
+
+  it('never lets a sourceless child take an operand a sourced child names', () => {
+    const a = { var: 'a' };
+    const rule = { '+': [a, { var: 'a' }] };
+    const sources = new TraceSources(rule, { '2': '/+/0' });
+    const children = [
+      { id: 1, expression: '{"var": "a"}', children: [] },
+      { id: 2, expression: '{"var": "a"}', children: [] },
+    ];
+    const matches = matchOperandsToChildren(rule['+'], children, sources);
+    expect(matches.map((m) => m?.child.id)).toEqual([2, 1]);
   });
 });
 
@@ -87,6 +120,19 @@ describe('enclosingNode', () => {
     });
     expect(enclosingNode(1, [3, 2], sources)).toBe(2);
     expect(enclosingNode(2, [3], sources)).toBe(3);
+  });
+
+  it('only counts strict ancestors, never the step itself', () => {
+    const rule = { and: [true, { switch: [{ var: 'k' }, [], []] }] };
+    const sources = new TraceSources(rule, {
+      '1': '/and/1/switch/2',
+      '2': '/and/1/switch/2',
+      '3': '/and/1',
+      '4': '',
+    });
+    expect(enclosingNode(1, [4, 3, 1], sources)).toBe(3);
+    expect(enclosingNode(1, [4, 2], sources)).toBe(4);
+    expect(enclosingNode(4, [4], sources)).toBeUndefined();
   });
 
   it('does not treat a sibling with a shared prefix as enclosing', () => {

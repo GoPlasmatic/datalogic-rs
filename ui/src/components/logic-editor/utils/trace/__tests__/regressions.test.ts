@@ -169,3 +169,55 @@ describe('custom operators (Engine.evaluateWithTrace)', () => {
     expect(trace.result).toBe(4);
   });
 });
+
+describe('inline switch rows', () => {
+  it('maps the step of an inline empty-array default onto the switch node', () => {
+    const rule: JsonLogicValue = { and: [true, { switch: [{ var: 'k' }, [['b', 'x']], []] }] };
+    const a = analyze(rule, { k: 'z' });
+    expect(a.unmappedSteps).toEqual([]);
+    const switchNode = findOperatorNode(a.result.nodes, 'switch')!;
+    const defaultNode = a.trace.expression_tree.children[0].children.find((c) => c.expression === '[]')!;
+    expect(a.trace.steps.some((s) => s.node_id === defaultNode.id)).toBe(true);
+    expect(a.result.traceNodeMap.get(`trace-${defaultNode.id}`)).toBe(switchNode.id);
+  });
+});
+
+describe('traces without the rule as written or without pointers', () => {
+  /**
+   * Every step lands where the pointer-backed conversion (the rule as written
+   * plus pointers) puts it, on a node that exists.
+   */
+  const expectReferencePlacement = (trace: TracedResult, rule: JsonLogicValue, result: ReturnType<typeof traceToNodes>) => {
+    const reference = traceToNodes(trace, { originalValue: rule });
+    const ids = new Set(result.nodes.map((n) => n.id));
+    for (const step of trace.steps) {
+      const traceId = `trace-${step.node_id}`;
+      const placed = result.traceNodeMap.get(traceId);
+      expect(placed && ids.has(placed), `node for step ${step.node_id}`).toBe(true);
+      expect(placed, `step ${step.node_id}`).toBe(reference.traceNodeMap.get(traceId));
+    }
+  };
+
+  const rules: [string, JsonLogicValue, unknown][] = [
+    ['?: alias', { '?:': [{ var: 'a' }, { '+': [1, { var: 'b' }] }, 0] }, { a: 1, b: 2 }],
+    ['! with a one-element array', { '!': [{ var: 'x' }] }, {}],
+    ['both nested', { and: [{ '!': [{ var: 'x' }] }, { '?:': [{ var: 'a' }, { var: 'b' }, 0] }] }, { a: 1, b: 2 }],
+    ['alias deep inside', { and: [true, { or: [false, { '?:': [{ var: 'a' }, { var: 'b' }, 0] }] }] }, { a: 1, b: 2 }],
+    ['inline switch default', { and: [true, { switch: [{ var: 'k' }, [['b', { var: 'b' }]], []] }] }, { k: 'b', b: 2 }],
+  ];
+  for (const [name, rule, data] of rules) {
+    it(`places every step without originalValue (${name})`, () => {
+      const trace = runTrace(rule, data);
+      const result = traceToNodes(trace);
+      expect(result.rootId).toBe(`trace-${trace.expression_tree.id}`);
+      expectReferencePlacement(trace, rule, result);
+    });
+
+    it(`places every step without pointers (${name})`, () => {
+      const trace = runTrace(rule, data);
+      const bare: TracedResult = { ...trace, pointers: undefined };
+      expectReferencePlacement(trace, rule, traceToNodes(bare, { originalValue: rule }));
+      expectReferencePlacement(trace, rule, traceToNodes(bare));
+    });
+  }
+});

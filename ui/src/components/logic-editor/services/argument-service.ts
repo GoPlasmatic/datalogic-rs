@@ -69,6 +69,35 @@ export function canEditArguments(operator: string): boolean {
   );
 }
 
+/**
+ * True when the node grows through a structured editor (an else-if diamond, a
+ * case in the case list, a val path segment). Those grow a part of one
+ * argument rather than the argument count, so the operator's arity does not
+ * bound them.
+ */
+function hasStructuredAdd(data: OperatorNodeData): boolean {
+  return (
+    (isIfOperator(data.operator) && isDecisionCells(data.cells)) ||
+    (isSwitchOperator(data.operator) && isSwitchCells(data.cells)) ||
+    (data.operator === 'val' && hasVariableCells(data.cells))
+  );
+}
+
+/**
+ * True when `addArgument` can add to this node. Every add action (context
+ * menu, properties panel, toolbar insert, duplicate) asks this, so they agree.
+ * The arity limit is compared against the cells only for plain operands: a
+ * `switch` with one case already has four cells (Match, Case, Then, Default)
+ * for its three arguments.
+ */
+export function canAddArgument(data: OperatorNodeData): boolean {
+  const opConfig = getOperator(data.operator);
+  if (!opConfig || !canEditArguments(data.operator)) return false;
+  if (hasStructuredAdd(data)) return true;
+  const { max } = opConfig.arity;
+  return max === undefined || data.cells.length < max;
+}
+
 /** The stored operands of a node's expression, normalized to an array. */
 function storedOperandsOf(data: OperatorNodeData): JsonLogicValue[] {
   const raw = rawOperandOf(data.expression);
@@ -119,14 +148,7 @@ export function addArgument(
   const operatorData = parentData as OperatorNodeData;
   const opConfig = getOperator(operatorData.operator);
 
-  if (!opConfig || !canEditArguments(operatorData.operator)) return null;
-
-  // The structured editors below grow a part of one argument (an else-if
-  // branch, a case in the case list, a path segment), not the argument
-  // count, so the operator's arity does not bound them. They run before the
-  // arity check, which compares against cells: a `switch` with one case
-  // already has four cells (Match, Case, Then, Default) for its three
-  // arguments.
+  if (!opConfig || !canAddArgument(operatorData)) return null;
 
   // Special handling for if operator: chain a new else-if diamond
   if (isIfOperator(operatorData.operator) && isDecisionCells(operatorData.cells)) {
@@ -141,11 +163,6 @@ export function addArgument(
   // Special handling for val operator: add editable path component cell
   if (operatorData.operator === 'val' && hasVariableCells(operatorData.cells)) {
     return addValPathCell(nodes, parentNode, operatorData);
-  }
-
-  const { arity } = opConfig;
-  if (arity.max && operatorData.cells.length >= arity.max) {
-    return null;
   }
 
   const currentOperands = storedOperandsOf(operatorData);
