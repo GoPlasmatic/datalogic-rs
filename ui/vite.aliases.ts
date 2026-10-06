@@ -13,9 +13,11 @@ const root = import.meta.dirname;
  *
  * - `browser` (the app, library and embed builds) resolves the package
  *   through its `package.json`, which picks the `web` target.
- * - `node` (Vitest) points straight at the `nodejs` target, which loads the
- *   `.wasm` synchronously from disk. `/nodejs` must come first: an alias
- *   also matches longer specifiers that start with its key.
+ * - `node` (Vitest) uses the `nodejs` target, which loads the `.wasm`
+ *   synchronously from disk. The bare specifier goes through
+ *   `tests/wasm-node-shim.ts`, which adds the web target's async default
+ *   loader so `useWasmEvaluator` runs unchanged. `/nodejs` must come first:
+ *   an alias also matches longer specifiers that start with its key.
  *
  * The `paths` blocks in `tsconfig.app.json` and `tsconfig.lib.json` mirror
  * these for the type checker; keep them in step.
@@ -26,11 +28,10 @@ export function aliases(wasmTarget: 'browser' | 'node'): Record<string, string> 
     '@logic-editor': resolve(root, 'src/components/logic-editor'),
   };
   if (wasmTarget === 'node') {
-    const nodejs = resolve(root, 'vendor/datalogic/nodejs/datalogic_wasm.js');
     return {
       ...shared,
-      '@goplasmatic/datalogic-wasm/nodejs': nodejs,
-      '@goplasmatic/datalogic-wasm': nodejs,
+      '@goplasmatic/datalogic-wasm/nodejs': resolve(root, 'vendor/datalogic/nodejs/datalogic_wasm.js'),
+      '@goplasmatic/datalogic-wasm': resolve(root, 'tests/wasm-node-shim.ts'),
     };
   }
   return {
