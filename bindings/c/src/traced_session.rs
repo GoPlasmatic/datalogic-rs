@@ -15,7 +15,7 @@
 
 use std::sync::Arc;
 
-use datalogic_rs::Engine as RsEngine;
+use datalogic_rs::{CheckMode, Engine as RsEngine};
 
 use crate::engine::Engine;
 use crate::error::{Error, Status, fail};
@@ -91,6 +91,65 @@ pub unsafe extern "C" fn datalogic_traced_session_evaluate(
     out: *mut Buf,
     err: *mut *mut Error,
 ) -> Status {
+    unsafe {
+        traced_evaluate(
+            session,
+            rule_json,
+            rule_len,
+            data_json,
+            data_len,
+            Ok(CheckMode::Engine),
+            out,
+            err,
+        )
+    }
+}
+
+/// [`datalogic_traced_session_evaluate`] with the rule compiled in an
+/// explicit [`crate::DatalogicMode`] (`mode` 0, 1 or 2), as
+/// [`crate::datalogic_engine_compile_mode`] compiles it, so a rule a host
+/// compiles as a template is traced as one. Another `mode` fails with
+/// `DATALOGIC_STATUS_INVALID_ARG`.
+///
+/// # Safety
+///
+/// As [`datalogic_traced_session_evaluate`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn datalogic_traced_session_evaluate_mode(
+    session: *const TracedSession,
+    rule_json: *const u8,
+    rule_len: usize,
+    data_json: *const u8,
+    data_len: usize,
+    mode: u32,
+    out: *mut Buf,
+    err: *mut *mut Error,
+) -> Status {
+    unsafe {
+        traced_evaluate(
+            session,
+            rule_json,
+            rule_len,
+            data_json,
+            data_len,
+            crate::introspect::mode_from(mode),
+            out,
+            err,
+        )
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn traced_evaluate(
+    session: *const TracedSession,
+    rule_json: *const u8,
+    rule_len: usize,
+    data_json: *const u8,
+    data_len: usize,
+    mode: Result<CheckMode, Error>,
+    out: *mut Buf,
+    err: *mut *mut Error,
+) -> Status {
     guard_status(err, || {
         let Some(session) = (unsafe { session.as_ref() }) else {
             return unsafe { fail(err, Error::invalid_arg("traced session pointer is null")) };
@@ -98,6 +157,10 @@ pub unsafe extern "C" fn datalogic_traced_session_evaluate(
         if out.is_null() {
             return unsafe { fail(err, Error::invalid_arg("out pointer is null")) };
         }
+        let mode = match mode {
+            Ok(mode) => mode,
+            Err(e) => return unsafe { fail(err, e) },
+        };
         let rule_src = match unsafe { str_from_raw("rule_json", rule_json, rule_len) } {
             Ok(s) => s,
             Err(e) => return unsafe { fail(err, e) },
@@ -109,7 +172,7 @@ pub unsafe extern "C" fn datalogic_traced_session_evaluate(
         unsafe {
             put_buf(
                 out,
-                datalogic_bind::traced_json(&session.engine, rule_src, data),
+                datalogic_bind::traced_json_in(&session.engine, rule_src, data, mode),
             )
         }
     })

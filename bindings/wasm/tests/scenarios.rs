@@ -66,7 +66,11 @@ fn run(case: &Value) -> Value {
         "truthy" => Ok(json!(engine.truthy(&case["value"].to_string())?)),
         "facts" => Ok(parse(engine.compile(&rule)?.facts())),
         "trace" => {
-            let run = parse(engine.evaluate_with_trace(&rule, &data));
+            let run = parse(engine.evaluate_with_trace(
+                &rule,
+                &data,
+                case["mode"].as_str().map(str::to_string),
+            )?);
             let pointers: std::collections::BTreeSet<&str> = run["pointers"]
                 .as_object()
                 .into_iter()

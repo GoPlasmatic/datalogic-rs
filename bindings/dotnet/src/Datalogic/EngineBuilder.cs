@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -60,11 +61,36 @@ public sealed class EngineBuilder
     /// an operator call: with <c>'$'</c>, <c>{"$type": ...}</c> emits the key
     /// <c>type</c>. Only meaningful with templating.
     /// </summary>
-    public EngineBuilder WithTemplateKeyEscape(char escape)
+    public EngineBuilder WithTemplateKeyEscape(char escape) => SetTemplateKeyEscape(escape);
+
+    /// <summary>
+    /// <see cref="WithTemplateKeyEscape(char)"/> for any Unicode scalar value, including
+    /// one outside the Basic Multilingual Plane that a <c>char</c> cannot hold.
+    /// </summary>
+    public EngineBuilder WithTemplateKeyEscape(Rune escape) => SetTemplateKeyEscape((uint)escape.Value);
+
+    /// <summary>
+    /// <see cref="WithTemplateKeyEscape(Rune)"/> from a string holding exactly one
+    /// Unicode scalar value (one or two UTF-16 code units).
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="escape"/> is not exactly one
+    /// Unicode scalar value.</exception>
+    public EngineBuilder WithTemplateKeyEscape(string escape)
+    {
+        ArgumentNullException.ThrowIfNull(escape);
+        if (Rune.DecodeFromUtf16(escape, out var rune, out var used) != OperationStatus.Done
+            || used != escape.Length)
+        {
+            throw new ArgumentException("escape must be exactly one character", nameof(escape));
+        }
+        return WithTemplateKeyEscape(rune);
+    }
+
+    private EngineBuilder SetTemplateKeyEscape(uint codepoint)
     {
         EnsureFresh();
         var err = IntPtr.Zero;
-        var status = NativeMethods.datalogic_engine_builder_set_template_key_escape(_handle, escape, ref err);
+        var status = NativeMethods.datalogic_engine_builder_set_template_key_escape(_handle, codepoint, ref err);
         if (status != DatalogicStatus.Ok)
         {
             throw DatalogicException.FromNative(status, err, "set_template_key_escape failed");

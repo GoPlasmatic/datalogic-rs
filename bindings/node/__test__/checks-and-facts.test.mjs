@@ -80,7 +80,10 @@ test('truthy follows the engine rules', () => {
   assert.equal(engine.truthy({}), false);
   assert.equal(engine.truthy([]), false);
   assert.equal(engine.truthy({ a: 1 }), true);
-  assert.equal(engine.truthy('0'), true);
+  // A string is JSON text, as in WASM: `"0"` is the string, `[]` the array.
+  assert.equal(engine.truthy('"0"'), true);
+  assert.equal(engine.truthy('[]'), false);
+  assert.throws(() => engine.truthy('{'));
   const python = new Engine({ config: { truthy_evaluator: 'python' } });
   assert.equal(python.truthy(0), false);
 });

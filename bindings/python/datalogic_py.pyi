@@ -30,7 +30,8 @@ class DataLogicError(Exception):
     """Base exception raised by datalogic_py.
 
     Engine-reported failures carry structured attributes (set on the
-    raised instance, on this class and both subclasses):
+    raised instance, on this class and every subclass, ``CompileError``
+    included):
 
     - ``error_type``: stable engine error tag (e.g. ``"ParseError"``,
       ``"Thrown"``, ``"TypeError"``, ``"ArithmeticError"``,
@@ -143,7 +144,9 @@ class Engine:
         """Every built-in operator this engine evaluates."""
 
     def truthy(self, value: Any) -> bool:
-        """Whether ``value`` is truthy under the engine's configured rules."""
+        """Whether ``value`` is truthy under the engine's configured rules.
+
+        A ``str`` is JSON text: ``truthy("[]")`` is ``False``."""
 
     def eval(self, rule: Any, data: Any) -> Any:
         """One-shot: compile ``rule`` and evaluate against ``data``."""
@@ -163,7 +166,12 @@ class Engine:
         when the rule charges past the ceiling.
         """
 
-    def evaluate_with_trace(self, logic: str, data: str) -> str:
+    def evaluate_with_trace(
+        self,
+        logic: str,
+        data: str,
+        mode: Literal["engine", "strict", "template"] | None = None,
+    ) -> str:
         """Evaluate with step-by-step tracing (both args JSON strs).
 
         Returns a JSON envelope ``{"result", "expression_tree",

@@ -252,3 +252,11 @@ datalogic_status datalogic_traced_session_evaluate(const datalogic_traced_sessio
                                                    size_t data_len,
                                                    datalogic_buf *out,
                                                    datalogic_error **err);
+datalogic_status datalogic_traced_session_evaluate_mode(const datalogic_traced_session *session,
+                                                        const char *rule_json,
+                                                        size_t rule_len,
+                                                        const char *data_json,
+                                                        size_t data_len,
+                                                        uint32_t mode,
+                                                        datalogic_buf *out,
+                                                        datalogic_error **err);

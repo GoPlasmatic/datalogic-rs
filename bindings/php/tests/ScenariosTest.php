@@ -87,7 +87,7 @@ final class ScenariosTest extends TestCase
                 case 'facts':
                     return [json_decode($e->compile($rule)->facts(), true), null];
                 case 'trace':
-                    $run = $e->openTracedSession()->evaluate($rule, $data);
+                    $run = $e->openTracedSession()->evaluate($rule, $data, $mode);
                     $pointers = array_values(array_unique(array_values($run->pointers)));
                     sort($pointers, SORT_STRING);
                     return [['result' => $run->result, 'pointers' => $pointers], null];

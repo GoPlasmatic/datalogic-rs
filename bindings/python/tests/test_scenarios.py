@@ -35,12 +35,15 @@ def run(case):
         if call == "check":
             return [[d["code"], d["pointer"]] for d in engine.check(case["rule"], case.get("mode"))]
         if call == "truthy":
-            return engine.truthy(case["value"])
+            # A str is JSON text, so pass the case's value as JSON.
+            return engine.truthy(json.dumps(case["value"]))
         if call == "facts":
             return engine.compile(case["rule"]).facts()
         if call == "trace":
             run = json.loads(
-                engine.evaluate_with_trace(json.dumps(case["rule"]), json.dumps(case["data"]))
+                engine.evaluate_with_trace(
+                    json.dumps(case["rule"]), json.dumps(case["data"]), case.get("mode")
+                )
             )
             return {
                 "result": run["result"],

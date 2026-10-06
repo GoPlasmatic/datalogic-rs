@@ -89,6 +89,31 @@ final class IntrospectionTest extends TestCase
         self::assertSame('{"type":1,"k":2}', $e->apply('{"$type": {"uno": []}, "k": 2}', 'null'));
     }
 
+    public function testNegativeBudgetIsRefused(): void
+    {
+        $e = new Engine();
+        $rule = $e->compile('{"+": [1, 2]}');
+        $this->expectException(\InvalidArgumentException::class);
+        $e->openSession()->evaluateMetered($rule, 'null', -1);
+    }
+
+    public function testEscapeOutsideAscii(): void
+    {
+        // Two-, three- and four-byte UTF-8 escapes, decoded without mbstring.
+        foreach (['§', '€', '😀'] as $escape) {
+            $e = Engine::builder()->withTemplating(true)->withTemplateKeyEscape($escape)->build();
+            self::assertSame('{"type":1,"k":2}', $e->apply('{"' . $escape . 'type": 1, "k": 2}', 'null'));
+        }
+        foreach (['', 'ab', "\xC3"] as $bad) {
+            try {
+                Engine::builder()->withTemplateKeyEscape($bad);
+                self::fail('expected InvalidArgumentException for ' . bin2hex($bad));
+            } catch (\InvalidArgumentException) {
+                self::addToAssertionCount(1);
+            }
+        }
+    }
+
     public function testErrorsCarryNodeIds(): void
     {
         try {

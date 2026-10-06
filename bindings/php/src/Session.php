@@ -85,9 +85,15 @@ final class Session
      * throws an EvaluateException with errorType `BudgetExceeded`.
      *
      * @return array{value: string, ops: int}
+     * @throws \InvalidArgumentException when `$budget` is negative
      */
     public function evaluateMetered(Rule $rule, string $dataJson, int $budget = 0): array
     {
+        // The native parameter is unsigned: a negative budget would wrap to
+        // an unbounded one.
+        if ($budget < 0) {
+            throw new \InvalidArgumentException('budget must be >= 0');
+        }
         $ffi = Native::ffi();
         $outPtr = $ffi->new('const uint8_t*');
         $outLen = $ffi->new('size_t');

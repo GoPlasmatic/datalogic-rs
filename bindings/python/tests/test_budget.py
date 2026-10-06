@@ -105,3 +105,10 @@ def test_an_invalid_budget_in_the_config_is_a_configuration_error():
 def test_tensor_operators_are_priced_by_the_elements_they_move():
     _, ops = Engine().eval_metered({"zeros": [[16, 16], "f32"]}, {})
     assert ops >= 256
+
+
+def test_a_zero_budget_is_refused_as_the_javascript_bindings_refuse_it():
+    engine = Engine()
+    with pytest.raises(EvaluateError) as caught:
+        engine.eval_metered({"+": [1, 2]}, None, 0)
+    assert caught.value.error_type == "InvalidArgument"

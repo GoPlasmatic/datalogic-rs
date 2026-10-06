@@ -316,6 +316,17 @@ internal static partial class NativeMethods
         out DatalogicBuf @out,
         ref IntPtr err);
 
+    [LibraryImport(LibraryName, EntryPoint = "datalogic_traced_session_evaluate_mode")]
+    internal static unsafe partial DatalogicStatus datalogic_traced_session_evaluate_mode(
+        IntPtr session,
+        byte* rule_json,
+        nuint rule_len,
+        byte* data_json,
+        nuint data_len,
+        uint mode,
+        out DatalogicBuf @out,
+        ref IntPtr err);
+
     // =============== Error handles ===============
 
     [LibraryImport(LibraryName, EntryPoint = "datalogic_error_free")]

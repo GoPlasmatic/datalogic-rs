@@ -1051,6 +1051,27 @@ datalogic_status datalogic_traced_session_evaluate(const datalogic_traced_sessio
                                                    datalogic_buf *out,
                                                    datalogic_error **err);
 
+/**
+ * [`datalogic_traced_session_evaluate`] with the rule compiled in an
+ * explicit [`crate::DatalogicMode`] (`mode` 0, 1 or 2), as
+ * [`crate::datalogic_engine_compile_mode`] compiles it, so a rule a host
+ * compiles as a template is traced as one. Another `mode` fails with
+ * `DATALOGIC_STATUS_INVALID_ARG`.
+ *
+ * # Safety
+ *
+ * As [`datalogic_traced_session_evaluate`].
+ */
+
+datalogic_status datalogic_traced_session_evaluate_mode(const datalogic_traced_session *session,
+                                                        const uint8_t *rule_json,
+                                                        size_t rule_len,
+                                                        const uint8_t *data_json,
+                                                        size_t data_len,
+                                                        uint32_t mode,
+                                                        datalogic_buf *out,
+                                                        datalogic_error **err);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

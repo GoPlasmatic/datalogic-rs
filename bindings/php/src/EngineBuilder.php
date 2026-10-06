@@ -55,20 +55,41 @@ final class EngineBuilder
     public function withTemplateKeyEscape(string $escape): self
     {
         $this->ensureFresh();
-        if (mb_strlen($escape) !== 1) {
+        $codepoint = self::singleCodePoint($escape);
+        if ($codepoint === null) {
             throw new \InvalidArgumentException('escape must be exactly one character');
         }
         $ffi = Native::ffi();
         $err = Native::newErrorOut();
         $rc = $ffi->datalogic_engine_builder_set_template_key_escape(
             $this->handle,
-            mb_ord($escape),
+            $codepoint,
             FFI::addr($err),
         );
         if ($rc !== Native::STATUS_OK) {
             throw DatalogicException::fromNative($rc, $err, 'set_template_key_escape failed');
         }
         return $this;
+    }
+
+    /**
+     * The code point of `$s` when it is exactly one UTF-8 character, else
+     * null. Decoded by hand so the package needs no mbstring: PCRE's `u`
+     * mode validates the UTF-8 and matches one character.
+     */
+    private static function singleCodePoint(string $s): ?int
+    {
+        if (preg_match('/\A.\z/su', $s) !== 1) {
+            return null;
+        }
+        $b = array_values(unpack('C*', $s));
+        return match (count($b)) {
+            1 => $b[0],
+            2 => (($b[0] & 0x1F) << 6) | ($b[1] & 0x3F),
+            3 => (($b[0] & 0x0F) << 12) | (($b[1] & 0x3F) << 6) | ($b[2] & 0x3F),
+            default => (($b[0] & 0x07) << 18) | (($b[1] & 0x3F) << 12)
+                | (($b[2] & 0x3F) << 6) | ($b[3] & 0x3F),
+        };
     }
 
     /**

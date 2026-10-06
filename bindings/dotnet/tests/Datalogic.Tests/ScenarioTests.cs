@@ -34,7 +34,7 @@ public class ScenarioTests
         var o = c["engine"];
         var b = Engine.Builder();
         if (o?["templating"]?.GetValue<bool>() == true) b.WithTemplating(true);
-        if (o?["template_key_escape"] is JsonNode esc) b.WithTemplateKeyEscape(esc.GetValue<string>()[0]);
+        if (o?["template_key_escape"] is JsonNode esc) b.WithTemplateKeyEscape(esc.GetValue<string>());
         if (o?["config"] is JsonNode cfg) b.SetConfigJson(cfg.ToJsonString());
         if (o?["families"] is JsonArray fams)
         {
@@ -76,7 +76,7 @@ public class ScenarioTests
             case "trace":
             {
                 using var t = e.OpenTracedSession();
-                var run = t.Evaluate(rule, data);
+                var run = t.Evaluate(rule, data, Mode(c));
                 var pointers = new JsonArray();
                 foreach (var p in (run.Pointers ?? new JsonObject())
                              .Select(kv => (string)kv.Value!)

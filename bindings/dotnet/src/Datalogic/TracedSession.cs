@@ -65,8 +65,10 @@ public sealed class TracedSession : IDisposable
     /// (<see cref="TracedRun.Error"/>) rather than as a thrown exception
     /// — the trace data is always returned alongside, even on failure.
     /// Use <see cref="TracedRun.IsSuccess"/> to branch.
+    /// <paramref name="mode"/> compiles the rule as <see cref="Engine.CompileMode"/>
+    /// does, so a rule compiled as a template is traced as one.
     /// </remarks>
-    public TracedRun Evaluate(string ruleJson, string dataJson)
+    public TracedRun Evaluate(string ruleJson, string dataJson, CompileMode mode = CompileMode.Engine)
     {
         ArgumentNullException.ThrowIfNull(ruleJson);
         ArgumentNullException.ThrowIfNull(dataJson);
@@ -80,10 +82,11 @@ public sealed class TracedSession : IDisposable
             fixed (byte* rp = ruleU8.Span)
             fixed (byte* dp = dataU8.Span)
             {
-                status = NativeMethods.datalogic_traced_session_evaluate(
+                status = NativeMethods.datalogic_traced_session_evaluate_mode(
                     Handle,
                     rp, (nuint)ruleU8.Span.Length,
                     dp, (nuint)dataU8.Span.Length,
+                    (uint)mode,
                     out buf, ref err);
             }
             // Engine errors surface inside the returned JSON payload with

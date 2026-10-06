@@ -45,8 +45,18 @@ public final class TracedSession implements AutoCloseable {
      * alongside, even on failure.
      */
     public TracedRun evaluate(String ruleJson, String dataJson) {
+        return evaluate(ruleJson, dataJson, CompileMode.ENGINE);
+    }
+
+    /**
+     * {@link #evaluate(String, String)} with the rule compiled in
+     * {@code mode}, as {@link Engine#compileMode} compiles it, so a rule
+     * compiled as a template is traced as one.
+     */
+    public TracedRun evaluate(String ruleJson, String dataJson, CompileMode mode) {
         if (ruleJson == null) throw new NullPointerException("ruleJson");
         if (dataJson == null) throw new NullPointerException("dataJson");
+        if (mode == null) throw new NullPointerException("mode");
         String payload;
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment rule = DatalogicNative.utf8(arena, ruleJson);
@@ -55,8 +65,8 @@ public final class TracedSession implements AutoCloseable {
             MemorySegment errSlot = arena.allocate(ValueLayout.ADDRESS);
             int status;
             try {
-                status = (int) DatalogicNative.TRACED_SESSION_EVALUATE.invokeExact(
-                        handle(), rule, rule.byteSize(), data, data.byteSize(), buf, errSlot);
+                status = (int) DatalogicNative.TRACED_SESSION_EVALUATE_MODE.invokeExact(
+                        handle(), rule, rule.byteSize(), data, data.byteSize(), mode.code(), buf, errSlot);
             } catch (Throwable t) {
                 throw DatalogicException.propagate(t);
             }

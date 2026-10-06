@@ -235,10 +235,17 @@ idiomatic spelling (a Java or C# `Int` is 32-bit, so those bindings say
 | Rule facts | `Logic::facts` | `Rule.facts` | `Rule.facts` | `Rule.Facts` | `Rule.facts` | `Rule.Facts` | `Rule::facts` | `datalogic_rule_facts` |
 | Truthiness | `truthy_of` | `truthy` | `truthy` | `Truthy` | `truthy` | `Truthy` | `truthy` | `datalogic_engine_truthy` |
 | Typed results | n/a | `evaluate_bool` / `_int` / `_float` / `_truthy` | `evaluateBool` / `Int` / `Float` / `Truthy` | `EvaluateBool` / `Int64` / `Float64` / `Truthy` | `evaluateBool` / `Long` / `Double` / `Truthy` | `EvaluateBool` / `Int64` / `Double` / `Truthy` | `evaluateBool` / `Int` / `Float` / `Truthy` | `datalogic_session_evaluate_bool` / `_i64` / `_f64` / `_truthy` |
+| Trace in a mode | `TracedSession::with_mode` | `evaluate_with_trace(.., mode)` | `evaluateWithTrace(.., mode)` | `TracedSession.EvaluateMode` | `TracedSession.evaluate(.., mode)` | `TracedSession.Evaluate(.., mode)` | `TracedSession::evaluate(.., $mode)` | `datalogic_traced_session_evaluate_mode` |
 | Metered | `evaluate_metered` | `evaluate_metered` | `evaluateMetered` | `EvaluateMetered` | `evaluateMetered` | `EvaluateMetered` | `evaluateMetered` | `datalogic_session_evaluate_metered` |
 | Refuse a built-in name | `try_add_operator` | `strict_operator_names=True` | `strictOperatorNames` | `StrictOperatorNames` | `withStrictOperatorNames` | `WithStrictOperatorNames` | `withStrictOperatorNames` | `datalogic_engine_builder_set_strict_operator_names` |
 | Operator families | `with_families` | `families=[...]` | `families` | `Families` | `withFamilies` | `WithFamilies` | `withFamilies` | `datalogic_engine_builder_set_families` |
 | Error type | `Error::code` | `.error_type` | `.errorType` | `.Type` | `errorType()` | `.ErrorType` | `->errorType` | `datalogic_error_tag` |
+
+`truthy` reads a string as JSON text in every binding, as data is read:
+`truthy("[]")` asks about an empty array. A metered call's budget is at
+least 1 where the host can leave it out (Python `None`, JavaScript
+`undefined`); the C-ABI bindings, which cannot, spell the engine's own
+budget `0`. No binding reads `0` as a budget nothing fits in.
 
 Deprecated in 5.8 and removed in 6.0: the WASM `CompiledRule` class and
 the free `evaluate(logic, data, templating)` / `evaluateWithTrace(...,

@@ -699,7 +699,9 @@ fn test_engine_evaluate_with_trace_honors_config() {
     Reflect::set(&config, &"division_by_zero".into(), &"return_null".into()).unwrap();
     Reflect::set(&options, &"config".into(), &config).unwrap();
     let engine = Engine::new(options.into()).unwrap();
-    let out = engine.evaluate_with_trace(r#"{"/": [1.5, 0]}"#, "null");
+    let out = engine
+        .evaluate_with_trace(r#"{"/": [1.5, 0]}"#, "null", None)
+        .unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert!(parsed["result"].is_null());
     assert!(
@@ -713,7 +715,9 @@ fn test_engine_evaluate_with_trace_honors_config() {
 #[wasm_bindgen_test]
 fn test_engine_evaluate_with_trace_reports_errors_in_envelope() {
     let engine = Engine::new(JsValue::UNDEFINED).unwrap();
-    let out = engine.evaluate_with_trace(r#"{"throw": "boom"}"#, "null");
+    let out = engine
+        .evaluate_with_trace(r#"{"throw": "boom"}"#, "null", None)
+        .unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert!(parsed["result"].is_null());
     assert_eq!(parsed["structured_error"]["type"], "Thrown");

@@ -123,7 +123,7 @@ func runScenario(t *testing.T, s scenario) (any, error) {
 	case "trace":
 		ts := e.TracedSession()
 		defer ts.Close()
-		out, err := ts.Evaluate(string(s.Rule), string(s.Data))
+		out, err := ts.EvaluateMode(string(s.Rule), string(s.Data), scenarioMode(s.Mode))
 		if err != nil {
 			return nil, err
 		}

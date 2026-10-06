@@ -404,11 +404,19 @@ func (ts *TracedSession) cptr() *C.datalogic_traced_session {
 // dataJSON, and returns the trace envelope documented on TracedSession
 // as a JSON string.
 func (ts *TracedSession) Evaluate(ruleJSON, dataJSON string) (string, error) {
+	return ts.EvaluateMode(ruleJSON, dataJSON, ModeEngine)
+}
+
+// EvaluateMode is Evaluate with the rule compiled in mode, as
+// Engine.CompileMode compiles it, so a rule compiled as a template is
+// traced as one.
+func (ts *TracedSession) EvaluateMode(ruleJSON, dataJSON string, mode Mode) (string, error) {
 	rp, rl := strBytes(ruleJSON)
 	dp, dl := strBytes(dataJSON)
 	var out C.datalogic_buf
 	var cerr *C.datalogic_error
-	rc := C.datalogic_traced_session_evaluate(ts.cptr(), rp, rl, dp, dl, &out, &cerr)
+	rc := C.datalogic_traced_session_evaluate_mode(
+		ts.cptr(), rp, rl, dp, dl, C.uint32_t(mode), &out, &cerr)
 	runtime.KeepAlive(ts)
 	if rc != C.DATALOGIC_STATUS_OK {
 		return "", takeError(cerr)

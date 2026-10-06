@@ -41,18 +41,23 @@ final class TracedSession
      * returned {@see TracedRun} ({@see TracedRun::$error}) rather than
      * as a thrown exception — the trace data is always returned
      * alongside, even on failure.
+     *
+     * `$mode` compiles the rule as {@see Engine::compileMode} does
+     * (`Native::MODE_ENGINE`, `MODE_STRICT` or `MODE_TEMPLATE`), so a rule
+     * compiled as a template is traced as one.
      */
-    public function evaluate(string $ruleJson, string $dataJson): TracedRun
+    public function evaluate(string $ruleJson, string $dataJson, int $mode = Native::MODE_ENGINE): TracedRun
     {
         $ffi = Native::ffi();
         $buf = $ffi->new('datalogic_buf');
         $err = Native::newErrorOut();
-        $rc = $ffi->datalogic_traced_session_evaluate(
+        $rc = $ffi->datalogic_traced_session_evaluate_mode(
             $this->handle(),
             $ruleJson,
             strlen($ruleJson),
             $dataJson,
             strlen($dataJson),
+            $mode,
             FFI::addr($buf),
             FFI::addr($err),
         );

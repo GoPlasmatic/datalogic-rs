@@ -70,7 +70,9 @@ def test_truthy():
     assert engine.truthy({}) is False
     assert engine.truthy([]) is False
     assert engine.truthy({"a": 1}) is True
-    assert engine.truthy("0") is True
+    # A str is JSON text, as in the C-ABI bindings.
+    assert engine.truthy('"0"') is True
+    assert engine.truthy("[]") is False
     assert Engine(config={"truthy_evaluator": "python"}).truthy(0) is False
 
 
@@ -82,3 +84,17 @@ def test_strict_operator_names():
     engine = Engine(strict_operator_names=True, custom_operators={"count": op})
     assert engine.eval({"count": [1, 2]}, None) == 2
     Engine(custom_operators={"length": op})  # accepted without the option
+
+
+def test_compile_error_carries_the_base_attributes():
+    from datalogic_py import DataLogicError
+
+    try:
+        Engine().compile_checked({"bogus": 1})
+    except DataLogicError as err:
+        assert err.error_type == "CompileError"
+        assert err.operator is None
+        assert err.node_ids == []
+        assert err.path is None
+    else:
+        raise AssertionError("expected CompileError")

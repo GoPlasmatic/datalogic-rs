@@ -55,14 +55,21 @@ create_exception!(
     datalogic_py,
     CompileError,
     DataLogicError,
-    "Raised by Engine.compile_checked when the rule has errors. Carries .diagnostics: a list of {code, severity, message, pointer, operator} dicts."
+    "Raised by Engine.compile_checked when the rule has errors. Carries .diagnostics: a list of {code, severity, message, pointer, operator} dicts, and the base attributes (.error_type, .operator, .node_ids, .path) empty."
 );
 
 /// A rule `compile_checked` refused, as a [`CompileError`] carrying
 /// `.diagnostics`.
 pub fn compile_error_to_pyerr(py: Python<'_>, err: &datalogic_rs::CompileError) -> PyErr {
     let pyerr = CompileError::new_err(err.to_string());
-    let _ = pyerr.value(py).setattr("error_type", "CompileError");
+    let value = pyerr.value(py);
+    let _ = value.setattr("error_type", "CompileError");
+    // The attributes every other `DataLogicError` carries, so a handler
+    // catching the base class can read them whichever error it caught. A
+    // refused rule never ran, so there is no failing operator or node.
+    let _ = value.setattr("operator", py.None());
+    let _ = value.setattr("node_ids", Vec::<u32>::new());
+    let _ = value.setattr("path", py.None());
     if let Ok(obj) =
         crate::conv::value_to_pyobject(py, &datalogic_bind::diagnostics_value(&err.diagnostics))
     {

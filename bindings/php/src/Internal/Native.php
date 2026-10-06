@@ -71,7 +71,7 @@ final class Native
             return self::$ffi;
         }
         $ffi = self::fromPreloadedScope()
-            ?? FFI::cdef(self::declarations(), self::locateLibrary());
+            ?? self::bind(static fn (): FFI => FFI::cdef(self::declarations(), self::locateLibrary()));
         self::assertAbiVersion($ffi->datalogic_abi_version(), $ffi->datalogic_abi_minor());
         return self::$ffi = $ffi;
     }
@@ -110,6 +110,34 @@ final class Native
                 self::ABI_VERSION,
                 $got,
             ));
+        }
+    }
+
+    /**
+     * Run an FFI load. FFI resolves every declared function when it loads,
+     * so a library older than this package fails there, on the first
+     * function it lacks, before `assertAbiVersion` can read its version:
+     * that failure is reported as the stale library it is.
+     *
+     * @template T
+     * @param callable(): T $load
+     * @return T
+     */
+    private static function bind(callable $load): mixed
+    {
+        try {
+            return $load();
+        } catch (FFI\Exception $e) {
+            if (!str_contains($e->getMessage(), 'Failed resolving C function')) {
+                throw $e;
+            }
+            throw new \RuntimeException(sprintf(
+                'libdatalogic_c is older than this package, which needs C ABI v%d.%d (%s). ' .
+                'Rebuild/upgrade the native library (bindings/c) to match this package.',
+                self::ABI_VERSION,
+                self::ABI_MINOR,
+                $e->getMessage(),
+            ), 0, $e);
         }
     }
 
@@ -179,7 +207,7 @@ final class Native
             throw new \RuntimeException('cannot write temporary FFI header: ' . $tmp);
         }
         try {
-            $ffi = FFI::load($tmp);
+            $ffi = self::bind(static fn (): ?FFI => FFI::load($tmp));
         } finally {
             @unlink($tmp);
         }

@@ -94,7 +94,8 @@ public final class DatalogicNative {
     private static MethodHandle dh(String symbol, FunctionDescriptor descriptor) {
         MemorySegment address = LOOKUP.find(symbol).orElseThrow(() -> new UnsatisfiedLinkError(
                 "datalogic native library is missing symbol '" + symbol
-                        + "' — it predates C ABI v" + EXPECTED_ABI_VERSION
+                        + "' — it is older than this binding, which needs C ABI v" + EXPECTED_ABI_VERSION
+                        + "." + EXPECTED_ABI_MINOR
                         + "; rebuild bindings/c (`cargo build --release`) or upgrade the packaged library"));
         return LINKER.downcallHandle(address, descriptor);
     }
@@ -260,6 +261,11 @@ public final class DatalogicNative {
             FunctionDescriptor.of(ValueLayout.JAVA_INT,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T,
                     ValueLayout.ADDRESS, SIZE_T, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+    public static final MethodHandle TRACED_SESSION_EVALUATE_MODE = dh("datalogic_traced_session_evaluate_mode",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T,
+                    ValueLayout.ADDRESS, SIZE_T, ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS));
 
     // =============== error handles ===============
 
@@ -280,8 +286,9 @@ public final class DatalogicNative {
 
     // The ABI assert runs after the handles above exist (each dh() call
     // already proved its symbol resolves; this proves the *semantics*
-    // match too — v1 libraries never export datalogic_abi_version, so
-    // they fail at the dh() stage with the missing-symbol message).
+    // match too — v1 libraries never export datalogic_abi_version, nor
+    // v2.0 ones datalogic_abi_minor, so they fail at the dh() stage with
+    // the missing-symbol message).
     static {
         int abi = abiVersion();
         int minor;

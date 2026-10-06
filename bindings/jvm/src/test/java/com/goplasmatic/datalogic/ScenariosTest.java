@@ -70,7 +70,7 @@ class ScenariosTest {
                     }
                 case "trace":
                     try (TracedSession t = e.openTracedSession()) {
-                        TracedRun run = t.evaluate(rule, data);
+                        TracedRun run = t.evaluate(rule, data, mode(c));
                         TreeSet<String> seen = new TreeSet<>();
                         run.pointers().fields().forEachRemaining(f -> seen.add(f.getValue().asText()));
                         var out = JsonNodeFactory.instance.objectNode();

@@ -82,6 +82,23 @@ public class IntrospectionTests
     }
 
     [Fact]
+    public void Escape_outside_the_bmp()
+    {
+        foreach (var escape in new[] { "😀", "€" })
+        {
+            using var e = Engine.Builder().WithTemplating(true).WithTemplateKeyEscape(escape).Build();
+            Assert.Equal("""{"type":1,"k":2}""", e.Apply("{\"" + escape + "type\": 1, \"k\": 2}", "null"));
+        }
+        using var r = Engine.Builder().WithTemplating(true)
+            .WithTemplateKeyEscape(new System.Text.Rune(0x1F600)).Build();
+        Assert.Equal("""{"a":1}""", r.Apply("{\"\U0001F600a\": 1}", "null"));
+        foreach (var bad in new[] { "", "ab", "\uD83D" })
+        {
+            Assert.Throws<ArgumentException>(() => Engine.Builder().WithTemplateKeyEscape(bad));
+        }
+    }
+
+    [Fact]
     public void Errors_carry_node_ids()
     {
         using var e = new Engine();

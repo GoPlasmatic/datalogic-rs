@@ -221,12 +221,13 @@ fn run(case: &Value) -> Result<Value, String> {
             let session = unsafe { datalogic_engine_traced_session(engine) };
             let mut out = empty();
             let st = unsafe {
-                datalogic_traced_session_evaluate(
+                datalogic_traced_session_evaluate_mode(
                     session,
                     rule.as_ptr(),
                     rule.len(),
                     data.as_ptr(),
                     data.len(),
+                    mode(case),
                     &mut out,
                     &mut err,
                 )

@@ -145,6 +145,18 @@ fn budget_from_f64(budget: Option<f64>) -> Result<Option<u64>, &'static str> {
     }
 }
 
+/// The operation budget for one call from a host whose integers are exact
+/// (Python): `budget` as given, or the engine's own budget when the host
+/// passed none. Zero is refused with [`BUDGET_ERROR`], as the JavaScript
+/// bindings refuse it, rather than meaning a budget nothing fits in: the
+/// C-ABI bindings, which have no "none", spell the engine's budget `0`.
+pub fn resolve_budget_u64(engine: &Engine, budget: Option<u64>) -> Result<u64, &'static str> {
+    match budget {
+        Some(0) => Err(BUDGET_ERROR),
+        explicit => Ok(engine.resolve_ops_budget(explicit)),
+    }
+}
+
 /// The operation budget for one call from a JavaScript host: `budget`
 /// validated by [`budget_from_f64`], or the engine's own budget when the
 /// host passed none ([`Engine::resolve_ops_budget`]).

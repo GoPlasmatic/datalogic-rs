@@ -3,7 +3,7 @@ package com.goplasmatic.datalogic;
 
 import com.goplasmatic.datalogic.internal.DatalogicNative;
 
-/** How {@link Engine#compileMode} and {@link Engine#check} read a rule. */
+/** How {@link Engine#compileMode}, {@link Engine#check} and {@link TracedSession#evaluate(String, String, CompileMode)} read a rule. */
 public enum CompileMode {
     /** The engine's own mode, as {@link Engine#compile(String)} reads it. */
     ENGINE(DatalogicNative.MODE_ENGINE),

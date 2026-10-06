@@ -722,9 +722,24 @@ impl Engine {
     /// of the rule value it was compiled from,
     /// with runtime failures reported inside the envelope rather than
     /// thrown. Mirrors `Engine.evaluateWithTrace` in the Node binding.
+    /// `mode` is `"engine"` (default), `"strict"` or `"template"`, as for
+    /// `check`, so a rule compiled with `compileTemplate` is traced as one;
+    /// any other `mode` throws.
     #[wasm_bindgen(js_name = evaluateWithTrace)]
-    pub fn evaluate_with_trace(&self, logic: &str, data: &str) -> String {
-        datalogic_bind::traced_json(&self.inner, logic, data)
+    pub fn evaluate_with_trace(
+        &self,
+        logic: &str,
+        data: &str,
+        mode: Option<String>,
+    ) -> Result<String, JsValue> {
+        let mode = datalogic_bind::check_mode(mode.as_deref())
+            .map_err(|msg| input_err_to_js("parse-mode", msg))?;
+        Ok(datalogic_bind::traced_json_in(
+            &self.inner,
+            logic,
+            data,
+            mode,
+        ))
     }
 
     /// Names of the custom operators registered on this engine via

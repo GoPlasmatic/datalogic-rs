@@ -15,7 +15,7 @@ use serde_json::Value;
 
 use crate::conv::{datavalue_to_pyobject, dict_to_value, value_to_pyobject};
 use crate::data::{DataHandle, build_py_tree};
-use crate::error::engine_error_to_pyerr;
+use crate::error::{engine_error_to_pyerr, evaluate_error_with_type};
 use crate::session::Session;
 
 /// JSONLogic compile/evaluate engine.
@@ -213,8 +213,15 @@ impl Engine {
 
     /// Whether ``value`` is truthy under this engine's configured
     /// truthiness. Under the default rules an empty dict is falsy, like an
-    /// empty list.
+    /// empty list. A ``str`` is JSON text, as data is everywhere else here
+    /// (and in the C-ABI bindings): ``truthy("[]")`` is ``False``, and
+    /// ``truthy('"a"')`` asks about the string ``a``.
     fn truthy(&self, py: Python<'_>, value: &Bound<'_, PyAny>) -> PyResult<bool> {
+        if let Ok(s) = value.cast::<PyString>() {
+            let parsed = datalogic_rs::ParsedData::from_json(s.to_str()?)
+                .map_err(|e| engine_error_to_pyerr(py, &e, None))?;
+            return Ok(self.inner.truthy_of(&parsed));
+        }
         let value = dict_to_value(py, value)?;
         Ok(self.inner.truthy_of(&value))
     }
@@ -259,7 +266,9 @@ impl Engine {
     /// for a given rule, data and engine version; budget for the work you
     /// want to allow rather than for a number you measured.
     ///
-    /// :param budget: ceiling on the operations the rule may charge.
+    /// :param budget: ceiling on the operations the rule may charge, at
+    ///     least 1 (``0`` raises ``EvaluateError`` with ``error_type ==
+    ///     "InvalidArgument"``, as the JavaScript bindings refuse it).
     ///     ``None`` falls back to the engine's ``ops_budget`` config key,
     ///     and meters without bounding if that is unset.
     /// :raises DataLogicError: with ``error_type == "BudgetExceeded"``
@@ -287,13 +296,24 @@ impl Engine {
     /// debugger UI can consume it directly. Runtime failures do not raise:
     /// the envelope's ``error`` (message string) and ``structured_error``
     /// (structured form) fields carry them instead, alongside the steps
-    /// recorded up to the failure.
-    fn evaluate_with_trace(&self, py: Python<'_>, logic: &str, data: &str) -> PyResult<String> {
+    /// recorded up to the failure. ``mode`` is ``"engine"`` (default),
+    /// ``"strict"`` or ``"template"``, as for :meth:`check`, so a rule
+    /// compiled with :meth:`compile_template` is traced as one.
+    #[pyo3(signature = (logic, data, mode = None))]
+    fn evaluate_with_trace(
+        &self,
+        py: Python<'_>,
+        logic: &str,
+        data: &str,
+        mode: Option<&str>,
+    ) -> PyResult<String> {
+        let mode = datalogic_bind::check_mode(mode)
+            .map_err(|msg| engine_error_to_pyerr(py, &DlError::invalid_arguments(msg), None))?;
         let engine = self.inner.clone();
         let logic_owned = logic.to_string();
         let data_owned = data.to_string();
         Ok(py.detach(move || {
-            datalogic_bind::traced_json(&engine, logic_owned.as_str(), data_owned.as_str())
+            datalogic_bind::traced_json_in(&engine, logic_owned.as_str(), data_owned.as_str(), mode)
         }))
     }
 
@@ -639,7 +659,8 @@ pub(crate) fn evaluate_metered(
     data: &Bound<'_, PyAny>,
     budget: Option<u64>,
 ) -> PyResult<(String, u64)> {
-    let budget = engine.resolve_ops_budget(budget);
+    let budget = datalogic_bind::resolve_budget_u64(engine, budget)
+        .map_err(|msg| evaluate_error_with_type(py, msg.to_string(), "InvalidArgument"))?;
     let engine_ref: &RsEngine = engine;
     let logic_ref: &Logic = logic;
 

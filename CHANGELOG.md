@@ -197,15 +197,19 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   refuses a custom operator named like a built-in (`strictOperatorNames`
   and its per-language spellings). Errors also carry their node-id
   breadcrumb. Python gains `template_key_escape`, which the other bindings
-  already had.
+  already had. `truthy` reads a string as JSON text in every binding
+  (`truthy("[]")` is `false`), and no binding reads a metered budget of
+  `0` as a budget nothing fits in: it is the engine's own budget across
+  the C ABI and refused where the budget can be left out (Python,
+  JavaScript). .NET takes an escape outside the BMP (`Rune` or `string`).
 - **C ABI v2, minor 1.** New entry points: `datalogic_engine_compile_mode`,
   `datalogic_engine_compile_checked`, `datalogic_engine_check`,
   `datalogic_engine_operators`, `datalogic_engine_truthy`,
   `datalogic_rule_facts`, `datalogic_session_evaluate_metered`,
   `datalogic_engine_builder_set_template_key_escape`,
   `datalogic_engine_builder_set_strict_operator_names`,
-  `datalogic_error_diagnostics_json`, `datalogic_error_node_ids_json` and
-  `datalogic_abi_minor()`. Existing symbols are unchanged, so v2 wrappers
+  `datalogic_error_diagnostics_json`, `datalogic_error_node_ids_json`,
+  `datalogic_traced_session_evaluate_mode` and `datalogic_abi_minor()`. Existing symbols are unchanged, so v2 wrappers
   keep working; a wrapper that calls the new ones checks
   `datalogic_abi_minor() >= 1` at load. The mode enum is exported as
   `datalogic_mode`.
@@ -227,7 +231,10 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   JVM, .NET and PHP `TracedRun` models expose it (`pointers()`,
   `Pointers`, `$pointers`). It is absent when the rule does not compile.
   `schemas/trace.v1.json` lists it, and two scenarios check it in all eight
-  bindings.
+  bindings. Each binding's traced evaluation also takes a compile mode
+  (`"template"` / `"strict"`, or its `CompileMode`), as
+  `TracedSession::with_mode` does in Rust, so a rule compiled with
+  `compileTemplate` can be traced; a scenario checks it in all eight.
 - **A scenario suite every binding runs** (`bindings/scenarios/api.json`),
   and a test that keeps PHP's FFI header and the JVM and .NET native
   declarations in step with the generated `datalogic.h`.

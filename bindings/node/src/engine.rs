@@ -256,10 +256,17 @@ impl Engine {
 
     /// Whether `value` is truthy under this engine's configured
     /// truthiness. Under the default rules an empty object is falsy, like
-    /// an empty array.
+    /// an empty array. A string is JSON text, as data is everywhere else
+    /// here (and as WASM's `truthy` reads it): `truthy("[]")` is `false`,
+    /// and `truthy('"a"')` asks about the string `a`.
     #[napi]
-    pub fn truthy(&self, value: Value) -> bool {
-        self.inner.truthy_of(&value)
+    pub fn truthy(&self, env: Env, value: Value) -> Result<bool> {
+        match value {
+            Value::String(s) => datalogic_rs::ParsedData::from_json(&s)
+                .map(|parsed| self.inner.truthy_of(&parsed))
+                .map_err(|e| engine_error(&env, &e, None)),
+            other => Ok(self.inner.truthy_of(&other)),
+        }
     }
 
     /// One-shot evaluation. Compiles `rule` against `data` and returns
@@ -294,13 +301,24 @@ impl Engine {
     /// thrown: `result` is `null`, `error` carries the message, and
     /// `structured_error` the merged structured form. The rule is
     /// compiled with optimization disabled so every operator surfaces a
-    /// step; use this for debugging, not hot paths.
+    /// step; use this for debugging, not hot paths. `mode` is `"engine"`
+    /// (default), `"strict"` or `"template"`, as for `check`, so a rule
+    /// compiled with `compileTemplate` is traced as one.
     #[napi]
-    pub fn evaluate_with_trace(&self, logic: String, data: String) -> Result<String> {
-        Ok(datalogic_bind::traced_json(
+    pub fn evaluate_with_trace(
+        &self,
+        env: Env,
+        logic: String,
+        data: String,
+        mode: Option<String>,
+    ) -> Result<String> {
+        let mode = datalogic_bind::check_mode(mode.as_deref())
+            .map_err(|msg| engine_error(&env, &DlError::invalid_arguments(msg), None))?;
+        Ok(datalogic_bind::traced_json_in(
             &self.inner,
             logic.as_str(),
             data.as_str(),
+            mode,
         ))
     }
 

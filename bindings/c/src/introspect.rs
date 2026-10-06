@@ -24,7 +24,7 @@ pub enum DatalogicMode {
     Template = 2,
 }
 
-fn mode_from(raw: u32) -> Result<CheckMode, Error> {
+pub(crate) fn mode_from(raw: u32) -> Result<CheckMode, Error> {
     match raw {
         0 => Ok(CheckMode::Engine),
         1 => Ok(CheckMode::Strict),

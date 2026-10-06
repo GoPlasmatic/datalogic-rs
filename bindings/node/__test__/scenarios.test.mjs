@@ -27,13 +27,14 @@ function run(c) {
       case 'check':
         return engine.check(c.rule, c.mode).map((d) => [d.code, d.pointer]);
       case 'truthy':
-        return engine.truthy(c.value);
+        // A string is JSON text, so pass the case's value as JSON.
+        return engine.truthy(JSON.stringify(c.value));
       case 'facts':
         return engine.compile(c.rule).facts();
       case 'metered':
         return JSON.parse(engine.compile(c.rule).evaluateMetered(c.data, c.budget).result);
       case 'trace': {
-        const run = JSON.parse(engine.evaluateWithTrace(JSON.stringify(c.rule), JSON.stringify(c.data)));
+        const run = JSON.parse(engine.evaluateWithTrace(JSON.stringify(c.rule), JSON.stringify(c.data), c.mode));
         return { result: run.result, pointers: [...new Set(Object.values(run.pointers ?? {}))].sort() };
       }
       default: {
