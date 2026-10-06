@@ -45,33 +45,22 @@ jobs:
           # Bump UI's own version
           npm version "$VERSION" --no-git-tag-version --allow-same-version
 
-      # Resolve @goplasmatic/datalogic-wasm from the freshly-built local
-      # artifact rather than the registry. This job runs BEFORE
-      # publish-wasm, so $VERSION does not exist on npm yet — pinning the
-      # dep to it here is what broke the v5.3.0 release:
+      # Install exactly what package-lock.json records; a manifest out of
+      # step with it fails here instead of resolving afresh at release
+      # time.
       #
-      #   npm error code ETARGET
-      #   npm error notarget No matching version found for
-      #   @goplasmatic/datalogic-wasm@5.3.0
-      #
-      # A `file:` spec takes the registry off the critical path entirely,
-      # and points at the same tree the build actually consumes: every
-      # import of the package is aliased to `ui/vendor/datalogic` (see
-      # vite.config.ts, vite.lib.config.ts, vitest.config.ts and
-      # tsconfig.{app,lib}.json), which the `sync-wasm` prebuild hook
-      # copies out of `../bindings/wasm/pkg`. node_modules never feeds the
-      # build; the dep is declared for provenance, not resolution.
-      #
-      # The previous `npm link` step could not survive the install that
-      # followed it — `npm install` re-resolves from package.json and the
-      # lockfile, replacing the symlink.
-      - name: Point WASM dep at the local build artifact
-        run: |
-          cd ui
-          npm pkg set "devDependencies.@goplasmatic/datalogic-wasm=file:../bindings/wasm/pkg"
-
+      # @goplasmatic/datalogic-wasm is deliberately not installed. This job
+      # runs BEFORE publish-wasm, so $VERSION does not exist on npm yet
+      # (pinning the dep to it before installing is what broke the v5.3.0
+      # release with ETARGET), and nothing resolves it from node_modules
+      # anyway: every import of the package is aliased to
+      # `ui/vendor/datalogic` (vite.config.ts, vite.lib.config.ts,
+      # vitest.config.ts, tsconfig.{app,lib}.json), which the `sync-wasm`
+      # prebuild hook copies out of `../bindings/wasm/pkg`, the artifact
+      # downloaded above. The dep is declared after the build, for
+      # provenance only.
       - name: Install UI dependencies
-        run: cd ui && npm install
+        run: cd ui && npm ci
 
       - name: Build UI library
         run: cd ui && npm run build:lib

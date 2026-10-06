@@ -115,11 +115,25 @@ updates:
     open-pull-requests-limit: 2
     labels: [dependencies, go]
 
+  # ──────────── pip ────────────
+  # Pinned build/test tools for the Python CI jobs.
+  - package-ecosystem: pip
+    directory: /.github/requirements
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    labels: [dependencies, python]
+
   # ──────────── GitHub Actions ────────────
   # Pin action versions sharply; bump on Dependabot's cadence rather than
   # via floating `@v4` aliases that can change underfoot.
+  # The composite actions under .github/actions pin third-party actions
+  # too (rust-toolchain, rust-cache), and Dependabot reads only the
+  # directories it is given.
   - package-ecosystem: github-actions
-    directory: /
+    directories:
+      - /
+      - /.github/actions/*
     schedule:
       interval: weekly
     open-pull-requests-limit: 5

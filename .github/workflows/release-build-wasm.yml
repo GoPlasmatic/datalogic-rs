@@ -8,6 +8,13 @@ name: _release-build-wasm
 on:
   workflow_call:
 
+# The Rust release that builds the shipped artifacts, pinned so a tag
+# rebuilt later produces the same binaries and a new stable cannot change
+# a release unreviewed. Keep it the same in every release-build-*.yml, and
+# at or above `rust-version` in the root Cargo.toml.
+env:
+  RELEASE_RUST: '1.98.1'
+
 jobs:
   build:
     name: Build WASM
@@ -17,6 +24,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
+          toolchain: ${{ env.RELEASE_RUST }}
           targets: wasm32-unknown-unknown
 
       - name: Install wasm-pack
@@ -24,8 +32,10 @@ jobs:
         with:
           tool: wasm-pack@0.14.0
 
+      # Pinned and checksum-verified; the same version ci.yml's size gate
+      # measures with.
       - name: Install binaryen
-        run: sudo apt-get update && sudo apt-get install -y binaryen
+        uses: ./.github/actions/install-binaryen
 
       - name: Cache cargo
         uses: actions/cache@v5
@@ -36,8 +46,14 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             bindings/wasm/target/
-          key: ${{ runner.os }}-wasm-${{ hashFiles('bindings/wasm/Cargo.toml') }}
-          restore-keys: ${{ runner.os }}-wasm-
+          key: ${{ runner.os }}-wasm-${{ env.RELEASE_RUST }}-${{ hashFiles('bindings/wasm/Cargo.toml', 'bindings/wasm/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-wasm-${{ env.RELEASE_RUST }}-
+
+      # wasm-pack cannot be handed `--locked`; fail here instead if the
+      # committed lockfile no longer describes the manifest, so the build
+      # below resolves exactly the reviewed dependency set.
+      - name: Verify bindings/wasm/Cargo.lock is current
+        run: cargo metadata --locked --format-version 1 --manifest-path bindings/wasm/Cargo.toml > /dev/null
 
       - name: Build WASM
         run: cd bindings/wasm && ./build.sh

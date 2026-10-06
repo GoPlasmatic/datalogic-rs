@@ -13,6 +13,13 @@ name: _release-build-node
 on:
   workflow_call:
 
+# The Rust release that builds the shipped artifacts, pinned so a tag
+# rebuilt later produces the same binaries and a new stable cannot change
+# a release unreviewed. Keep it the same in every release-build-*.yml, and
+# at or above `rust-version` in the root Cargo.toml.
+env:
+  RELEASE_RUST: '1.98.1'
+
 jobs:
   prebuild:
     name: Build (${{ matrix.target.os }} / ${{ matrix.target.arch }} / ${{ matrix.target.libc }})
@@ -42,6 +49,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
+          toolchain: ${{ env.RELEASE_RUST }}
           targets: ${{ matrix.target.target }}
 
       # musl wheels need a musl-targeting linker on the runner. Apt's
@@ -62,12 +70,21 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             bindings/node/target/
-          key: ${{ runner.os }}-${{ matrix.target.target }}-node-${{ hashFiles('bindings/node/Cargo.toml', 'bindings/node/src/**', 'crates/datalogic-rs/Cargo.toml', 'crates/datalogic-rs/src/**') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.target.target }}-node-
+          key: ${{ runner.os }}-${{ matrix.target.target }}-node-${{ env.RELEASE_RUST }}-${{ hashFiles('bindings/node/Cargo.toml', 'bindings/node/Cargo.lock', 'bindings/node/src/**', 'crates/datalogic-rs/Cargo.toml', 'crates/datalogic-rs/src/**') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.target.target }}-node-${{ env.RELEASE_RUST }}-
 
+      # Strict: a package.json out of step with package-lock.json fails
+      # instead of resolving afresh at release time.
       - name: Install npm deps
         working-directory: bindings/node
-        run: npm ci || npm install
+        run: npm ci
+
+      # napi-cli drives cargo itself; fail here if the committed
+      # Cargo.lock no longer describes the manifest, so the build below
+      # uses exactly the reviewed dependency set.
+      - name: Verify bindings/node/Cargo.lock is current
+        shell: bash
+        run: cargo metadata --locked --format-version 1 --manifest-path bindings/node/Cargo.toml > /dev/null
 
       - name: Build .node prebuild
         working-directory: bindings/node
@@ -129,14 +146,16 @@ jobs:
       - name: Build .node prebuild + run node:test (Node 22 alpine container)
         run: |
           docker run --rm -v "$PWD":/build -w /build/bindings/node \
+            -e RELEASE_RUST \
             node:22-alpine \
             sh -c 'set -e
               apk add --no-cache build-base curl
-              curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+              curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain "$RELEASE_RUST"
               . "$HOME/.cargo/env"
               ln -sf "$(command -v gcc)" /usr/local/bin/aarch64-linux-musl-gcc
               export RUSTFLAGS="-C target-feature=-crt-static"
-              npm ci || npm install
+              npm ci
+              cargo metadata --locked --format-version 1 > /dev/null
               npx napi build --platform --release --target aarch64-unknown-linux-musl
               npm test'
 

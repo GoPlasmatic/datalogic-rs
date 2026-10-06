@@ -125,6 +125,18 @@ if [ "$FAIL" != 0 ]; then
 fi
 echo "All binding versions match core $CORE"
 
+# The committed Cargo.lock files record our own crates' versions too, and
+# CI and the release build with `--locked`, so refresh them. Any cargo
+# resolve rewrites those entries and leaves every registry dependency at
+# its locked version.
+echo
+echo "Refreshing Cargo.lock files:"
+for manifest in Cargo.toml bindings/c/Cargo.toml bindings/node/Cargo.toml \
+                bindings/python/Cargo.toml bindings/wasm/Cargo.toml; do
+  cargo metadata --format-version 1 --manifest-path "$manifest" > /dev/null
+  echo "  ${manifest%Cargo.toml}Cargo.lock"
+done
+
 # Not fatal here, but release.yml's validate job also requires a dated
 # '## [X.Y.Z] - YYYY-MM-DD' CHANGELOG section before tagging.
 if ! grep -Eq "^## \[${NEW}\] - [0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]]*$" CHANGELOG.md 2>/dev/null; then

@@ -1,0 +1,20 @@
+# Build and test tools for the bindings/python CI jobs (ci.yml python-test,
+# release-build-python.yml test), pinned with their dependencies so a
+# release of any of them cannot change a run of the same commit. maturin
+# matches the version release-build-python.yml pins for the wheels.
+#
+# Regenerate: in a fresh Python 3.13 venv,
+#   pip install maturin==<pin> pytest mypy && pip freeze
+# then bump here deliberately (Dependabot tracks this file).
+ast_serialize==0.12.1
+iniconfig==2.3.0
+librt==0.16.0
+maturin==1.15.0
+mypy==2.4.0
+mypy_extensions==1.1.0
+packaging==26.3
+pathspec==1.1.1
+pluggy==1.6.0
+Pygments==2.21.0
+pytest==9.1.1
+typing_extensions==4.16.0

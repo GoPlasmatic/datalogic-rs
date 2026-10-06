@@ -14,6 +14,13 @@ name: _release-build-c-cdylib
 on:
   workflow_call:
 
+# The Rust release that builds the shipped artifacts, pinned so a tag
+# rebuilt later produces the same binaries and a new stable cannot change
+# a release unreviewed. Keep it the same in every release-build-*.yml, and
+# at or above `rust-version` in the root Cargo.toml.
+env:
+  RELEASE_RUST: '1.98.1'
+
 jobs:
   cdylib:
     name: C cdylib (${{ matrix.target.os }}/${{ matrix.target.arch }})
@@ -36,6 +43,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
+          toolchain: ${{ env.RELEASE_RUST }}
           targets: ${{ matrix.target.cargo_target }}
 
       - name: Cache cargo
@@ -46,11 +54,11 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             bindings/c/target/
-          key: ${{ runner.os }}-${{ matrix.target.arch }}-c-cdylib-${{ hashFiles('bindings/c/Cargo.toml', 'bindings/c/src/**', 'crates/datalogic-rs/Cargo.toml', 'crates/datalogic-rs/src/**') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.target.arch }}-c-cdylib-
+          key: ${{ runner.os }}-${{ matrix.target.arch }}-c-cdylib-${{ env.RELEASE_RUST }}-${{ hashFiles('bindings/c/Cargo.toml', 'bindings/c/Cargo.lock', 'bindings/c/src/**', 'crates/datalogic-rs/Cargo.toml', 'crates/datalogic-rs/src/**') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.target.arch }}-c-cdylib-${{ env.RELEASE_RUST }}-
 
       - name: Build C ABI cdylib
-        run: cargo build --release --manifest-path bindings/c/Cargo.toml --target ${{ matrix.target.cargo_target }}
+        run: cargo build --release --locked --manifest-path bindings/c/Cargo.toml --target ${{ matrix.target.cargo_target }}
 
       - name: Stage cdylib into upload dir
         shell: bash
