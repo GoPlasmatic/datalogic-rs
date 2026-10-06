@@ -363,16 +363,21 @@ enum RuleSrc<'a> {
     Json(&'a Value),
 }
 
-fn with_rule<T>(
+/// Run `f` (a compile or a check) over `rule` with the GIL released: the
+/// rule is read into Rust first, and compiling a large rule must not stall
+/// every other Python thread. A custom operator the compile calls
+/// re-acquires the GIL itself.
+fn with_rule<T: Send>(
     py: Python<'_>,
     rule: &Bound<'_, PyAny>,
-    f: impl FnOnce(RuleSrc<'_>) -> T,
+    f: impl FnOnce(RuleSrc<'_>) -> T + Send,
 ) -> PyResult<T> {
     if let Ok(s) = rule.cast::<PyString>() {
-        return Ok(f(RuleSrc::Text(s.to_str()?)));
+        let text = s.to_str()?;
+        return Ok(py.detach(|| f(RuleSrc::Text(text))));
     }
     let value = dict_to_value(py, rule)?;
-    Ok(f(RuleSrc::Json(&value)))
+    Ok(py.detach(|| f(RuleSrc::Json(&value))))
 }
 
 #[pyclass(name = "Rule", module = "datalogic_py", frozen)]
@@ -532,16 +537,11 @@ pub(crate) fn compile_inner(
     engine: &Arc<RsEngine>,
     rule: &Bound<'_, PyAny>,
 ) -> PyResult<Arc<Logic>> {
-    if let Ok(s) = rule.cast::<PyString>() {
-        let s = s.to_str()?;
-        return engine
-            .compile_arc(s)
-            .map_err(|e| engine_error_to_pyerr(py, &e, None));
-    }
-    let value = dict_to_value(py, rule)?;
-    engine
-        .compile_arc(&value)
-        .map_err(|e| engine_error_to_pyerr(py, &e, None))
+    with_rule(py, rule, |r| match r {
+        RuleSrc::Text(s) => engine.compile_arc(s),
+        RuleSrc::Json(v) => engine.compile_arc(v),
+    })?
+    .map_err(|e| engine_error_to_pyerr(py, &e, None))
 }
 
 /// Input shapes for [`eval_borrowing`]. Both are `Send` references into

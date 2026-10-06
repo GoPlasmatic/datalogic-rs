@@ -140,7 +140,8 @@ for payload in batch:
 
 `Rule` is **thread-safe**: clone the reference into worker threads and
 evaluate concurrently. The Rust eval call releases the GIL, so a
-multi-threaded server gains real parallelism.
+multi-threaded server gains real parallelism. Compiling and `check`
+release it too, once the rule has been read into Rust.
 
 ### Session: hot loops
 
