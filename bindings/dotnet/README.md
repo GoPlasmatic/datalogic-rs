@@ -269,6 +269,11 @@ catch (EvaluateException e)
 come from the engine that opened it (a foreign rule throws
 `EvaluateException` with `Status == EvaluationStatus.InvalidArgument`).
 
+`Dispose` is safe to call more than once and from several threads at
+once: exactly one call frees the native handle. Disposing a handle while
+another thread is still using it is not supported; finish that work
+first.
+
 ## Tracing
 
 ```csharp

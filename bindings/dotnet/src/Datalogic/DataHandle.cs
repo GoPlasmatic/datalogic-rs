@@ -84,10 +84,12 @@ public sealed class DataHandle : IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
-        if (_handle != IntPtr.Zero)
+        // Take the handle atomically so that concurrent Dispose calls
+        // free it exactly once.
+        var handle = Interlocked.Exchange(ref _handle, IntPtr.Zero);
+        if (handle != IntPtr.Zero)
         {
-            NativeMethods.datalogic_data_free(_handle);
-            _handle = IntPtr.Zero;
+            NativeMethods.datalogic_data_free(handle);
         }
         GC.SuppressFinalize(this);
     }

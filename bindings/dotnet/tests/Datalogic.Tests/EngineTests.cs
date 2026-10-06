@@ -264,3 +264,35 @@ public class BuilderConfigTests
         Assert.Throws<EvaluateException>(() => engine.Apply("""{"+":[null,1]}""", "{}"));
     }
 }
+
+public class LifecycleTests
+{
+    // Exactly one of the concurrent Dispose calls frees each handle; a
+    // double free would crash the test host.
+    [Fact]
+    public void Dispose_is_safe_from_many_threads_at_once()
+    {
+        for (var round = 0; round < 20; round++)
+        {
+            var engine = new Engine();
+            var rule = engine.Compile("""{"var":"x"}""");
+            var data = DataHandle.Parse("""{"x":1}""");
+            var session = engine.OpenSession();
+            var traced = engine.OpenTracedSession();
+            using var start = new ManualResetEventSlim(false);
+            var threads = Enumerable.Range(0, 8).Select(_ => new Thread(() =>
+            {
+                start.Wait();
+                traced.Dispose();
+                session.Dispose();
+                data.Dispose();
+                rule.Dispose();
+                engine.Dispose();
+            })).ToList();
+            threads.ForEach(t => t.Start());
+            start.Set();
+            threads.ForEach(t => t.Join());
+            Assert.Throws<ObjectDisposedException>(() => rule.Evaluate("{}"));
+        }
+    }
+}

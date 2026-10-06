@@ -127,10 +127,12 @@ public sealed class TracedSession : IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
-        if (_handle != IntPtr.Zero)
+        // Take the handle atomically so that concurrent Dispose calls
+        // free it exactly once.
+        var handle = Interlocked.Exchange(ref _handle, IntPtr.Zero);
+        if (handle != IntPtr.Zero)
         {
-            NativeMethods.datalogic_traced_session_free(_handle);
-            _handle = IntPtr.Zero;
+            NativeMethods.datalogic_traced_session_free(handle);
         }
         GC.SuppressFinalize(this);
     }
