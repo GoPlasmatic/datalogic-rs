@@ -22,8 +22,10 @@ pub enum Status {
     /// Success.
     Ok = 0,
     /// A NULL handle, a NULL byte pointer with non-zero length, invalid
-    /// UTF-8 input, or a mismatched handle (e.g. a rule compiled by a
-    /// different engine than the session's).
+    /// UTF-8 input, a mismatched handle (e.g. a rule compiled by a
+    /// different engine than the session's), or a session already in use
+    /// (a custom-operator callback calling back into the session running
+    /// it).
     InvalidArg = 1,
     /// Rule / data / config JSON failed to parse.
     Parse = 2,

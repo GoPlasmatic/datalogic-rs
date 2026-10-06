@@ -40,6 +40,12 @@ header = """/* SPDX-License-Identifier: Apache-2.0
  *  - `datalogic_engine`, `datalogic_rule`, `datalogic_data`, and
  *    `datalogic_traced_session` are thread-safe; share freely.
  *  - `datalogic_session` is NOT thread-safe; open one per thread.
+ *  - A custom-operator callback must not re-enter the
+ *    `datalogic_session` running the evaluation that called it: that
+ *    session is in use until the callback returns, so its evaluate calls
+ *    fail with DATALOGIC_STATUS_INVALID_ARG and `reset` / `free` on it do
+ *    nothing. Open a second session, or use the session-less
+ *    `datalogic_rule_*` calls, for a nested evaluation.
  *  - `datalogic_error` handles are plain owned values; free from any
  *    thread.
  */"""

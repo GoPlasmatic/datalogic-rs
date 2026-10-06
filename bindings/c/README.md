@@ -77,6 +77,11 @@ See [`include/datalogic.h`](https://github.com/GoPlasmatic/datalogic-rs/blob/mai
   write their outcome via `datalogic_op_result_set_json` /
   `_set_error` (both copy immediately), and return `0` / non-zero. No
   allocator crosses the boundary in either direction.
+- **A callback must not re-enter the session running it.** That session
+  is in use until the callback returns: its evaluate calls fail with
+  `DATALOGIC_STATUS_INVALID_ARG`, and `reset` / `free` on it do nothing.
+  Open a second session, or use the session-less `datalogic_rule_*`
+  calls, for a nested evaluation.
 
 v2 replaced v1 (NUL-terminated strings, `datalogic_string_free`, the
 thread-local `datalogic_last_error_*` block) wholesale in 5.0.1; see

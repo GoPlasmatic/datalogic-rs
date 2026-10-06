@@ -23,6 +23,12 @@
  *  - `datalogic_engine`, `datalogic_rule`, `datalogic_data`, and
  *    `datalogic_traced_session` are thread-safe; share freely.
  *  - `datalogic_session` is NOT thread-safe; open one per thread.
+ *  - A custom-operator callback must not re-enter the
+ *    `datalogic_session` running the evaluation that called it: that
+ *    session is in use until the callback returns, so its evaluate calls
+ *    fail with DATALOGIC_STATUS_INVALID_ARG and `reset` / `free` on it do
+ *    nothing. Open a second session, or use the session-less
+ *    `datalogic_rule_*` calls, for a nested evaluation.
  *  - `datalogic_error` handles are plain owned values; free from any
  *    thread.
  */
@@ -73,8 +79,10 @@ typedef enum {
   DATALOGIC_STATUS_OK = 0,
   /**
    * A NULL handle, a NULL byte pointer with non-zero length, invalid
-   * UTF-8 input, or a mismatched handle (e.g. a rule compiled by a
-   * different engine than the session's).
+   * UTF-8 input, a mismatched handle (e.g. a rule compiled by a
+   * different engine than the session's), or a session already in use
+   * (a custom-operator callback calling back into the session running
+   * it).
    */
   DATALOGIC_STATUS_INVALID_ARG = 1,
   /**
@@ -415,6 +423,12 @@ datalogic_status datalogic_engine_builder_set_config_json(datalogic_engine_build
  * operator name during evaluation — see [`DatalogicOpFn`] for the
  * contract. **Built-ins win**: registering a name that collides with a
  * built-in JSONLogic operator silently never dispatches.
+ *
+ * A callback may evaluate through the same engine, but not through the
+ * `datalogic_session` running the evaluation that called it: that session
+ * is in use until the callback returns, so its `evaluate*` calls fail with
+ * `DATALOGIC_STATUS_INVALID_ARG`, and `reset` and `free` on it do nothing.
+ * Open a second session, or use the session-less `datalogic_rule_*` calls.
  *
  * # Safety
  *
@@ -799,6 +813,10 @@ datalogic_status datalogic_rule_evaluate_data(const datalogic_rule *rule,
 /**
  * Release a session handle. Safe to call with `NULL`.
  *
+ * Called from a custom-operator callback on the session that is running
+ * it, this does nothing: the session is still in use, and freeing it
+ * there would leave the running evaluation reading freed memory.
+ *
  * # Safety
  *
  * `session` must either be `NULL` or a pointer previously returned by
@@ -811,6 +829,9 @@ datalogic_status datalogic_rule_evaluate_data(const datalogic_rule *rule,
  * Optional — every evaluate call already resets at the start. Exposed
  * for consumers who want to release memory between long pauses.
  *
+ * Called from a custom-operator callback on the session that is running
+ * it, this does nothing: the running evaluation is still using the arena.
+ *
  * # Safety
  *
  * `session` must be a valid pointer or `NULL` (no-op).
@@ -819,7 +840,9 @@ datalogic_status datalogic_rule_evaluate_data(const datalogic_rule *rule,
 
 /**
  * Bytes currently held by the session's evaluation arena (sum across
- * all chunks; excludes the result buffer). Returns `0` for `NULL`.
+ * all chunks; excludes the result buffer). Returns `0` for `NULL`, and
+ * from a custom-operator callback on the session that is running it
+ * (the arena is in use).
  *
  * # Safety
  *

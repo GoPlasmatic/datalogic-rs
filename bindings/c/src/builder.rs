@@ -348,6 +348,12 @@ pub unsafe extern "C" fn datalogic_engine_builder_set_config_json(
 /// contract. **Built-ins win**: registering a name that collides with a
 /// built-in JSONLogic operator silently never dispatches.
 ///
+/// A callback may evaluate through the same engine, but not through the
+/// `datalogic_session` running the evaluation that called it: that session
+/// is in use until the callback returns, so its `evaluate*` calls fail with
+/// `DATALOGIC_STATUS_INVALID_ARG`, and `reset` and `free` on it do nothing.
+/// Open a second session, or use the session-less `datalogic_rule_*` calls.
+///
 /// # Safety
 ///
 /// `builder` must be a valid builder handle; `name` must reference

@@ -8,7 +8,17 @@
 //! that touches the same session** (any evaluate, `reset`, or `free`).
 //! Wrappers copy into a managed string immediately; that copy replaces
 //! the malloc + `free`-crossing round trip of the v1 contract.
+//!
+//! ## Re-entry
+//!
+//! A custom-operator callback runs inside the evaluation that called it.
+//! If it calls back into the session running that evaluation, the
+//! session's arena and buffer are still in use. Every entry point takes
+//! the session through [`Session::enter`], which refuses a session that is
+//! already in use (`DATALOGIC_STATUS_INVALID_ARG`) instead of handing out
+//! a second mutable borrow of it.
 
+use std::cell::{Cell, UnsafeCell};
 use std::sync::Arc;
 
 use datalogic_rs::Engine as RsEngine;
@@ -28,28 +38,80 @@ use crate::{Slice, guard_status, str_from_raw};
 /// even if the consumer frees the engine handle first.
 pub struct Session {
     engine: Arc<RsEngine>,
+    /// Set while an entry point is using `state`; see [`Session::enter`].
+    busy: Cell<bool>,
+    /// Reached only through a [`Busy`] guard, so at most one entry point
+    /// holds it mutably, even when a custom operator calls back in.
+    state: UnsafeCell<State>,
+}
+
+/// The parts of a [`Session`] an evaluation writes.
+struct State {
     arena: Bump,
     result_buf: Vec<u8>,
 }
+
+/// The refusal a session gives a call made while it is already in use.
+const REENTERED: &str = "session is already evaluating: a custom operator called back into the \
+                         session running it (open a second session for nested evaluations)";
 
 impl Session {
     pub(crate) fn new(engine: Arc<RsEngine>) -> Self {
         Self {
             engine,
-            arena: Bump::new(),
-            result_buf: Vec::new(),
+            busy: Cell::new(false),
+            state: UnsafeCell::new(State {
+                arena: Bump::new(),
+                result_buf: Vec::new(),
+            }),
         }
+    }
+
+    /// Take the session for one entry point, or refuse it when an entry
+    /// point further up the stack (one whose custom operator called back
+    /// in) holds it. The guard gives the session back when dropped,
+    /// unwinding included.
+    fn enter(&self) -> Result<Busy<'_>, Error> {
+        if self.busy.replace(true) {
+            return Err(Error::invalid_arg(REENTERED));
+        }
+        Ok(Busy { session: self })
+    }
+}
+
+/// One entry point's hold on a [`Session`], from [`Session::enter`].
+struct Busy<'s> {
+    session: &'s Session,
+}
+
+impl<'s> Busy<'s> {
+    fn engine(&self) -> &'s Arc<RsEngine> {
+        &self.session.engine
+    }
+
+    fn state(&mut self) -> &mut State {
+        // SAFETY: `busy` is set for as long as this guard lives, so no
+        // other guard (and so no other reference to `state`) exists, and
+        // the `&mut self` borrow keeps this one unique.
+        unsafe { &mut *self.session.state.get() }
+    }
+}
+
+impl Drop for Busy<'_> {
+    fn drop(&mut self) {
+        self.session.busy.set(false);
     }
 }
 
 /// Shared head of every session entry point: deref the handles, verify
-/// the rule belongs to the session's engine.
+/// the rule belongs to the session's engine, and take the session.
 unsafe fn check_pair<'s>(
     session: *mut Session,
     rule: *const Rule,
-) -> Result<(&'s mut Session, &'s Rule), Error> {
+) -> Result<(Busy<'s>, &'s Rule), Error> {
+    // A shared borrow: a re-entrant call must not create a second `&mut`.
     let session =
-        unsafe { session.as_mut() }.ok_or_else(|| Error::invalid_arg("session pointer is null"))?;
+        unsafe { session.as_ref() }.ok_or_else(|| Error::invalid_arg("session pointer is null"))?;
     let rule =
         unsafe { rule.as_ref() }.ok_or_else(|| Error::invalid_arg("rule pointer is null"))?;
     if !Arc::ptr_eq(&session.engine, &rule.engine) {
@@ -57,10 +119,14 @@ unsafe fn check_pair<'s>(
             "rule was compiled by a different engine than this session's",
         ));
     }
-    Ok((session, rule))
+    Ok((session.enter()?, rule))
 }
 
 /// Release a session handle. Safe to call with `NULL`.
+///
+/// Called from a custom-operator callback on the session that is running
+/// it, this does nothing: the session is still in use, and freeing it
+/// there would leave the running evaluation reading freed memory.
 ///
 /// # Safety
 ///
@@ -68,7 +134,10 @@ unsafe fn check_pair<'s>(
 /// [`crate::datalogic_engine_session`] that has not been freed.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn datalogic_session_free(session: *mut Session) {
-    if session.is_null() {
+    let Some(s) = (unsafe { session.as_ref() }) else {
+        return;
+    };
+    if s.busy.get() {
         return;
     }
     drop(unsafe { Box::from_raw(session) });
@@ -78,28 +147,36 @@ pub unsafe extern "C" fn datalogic_session_free(session: *mut Session) {
 /// Optional — every evaluate call already resets at the start. Exposed
 /// for consumers who want to release memory between long pauses.
 ///
+/// Called from a custom-operator callback on the session that is running
+/// it, this does nothing: the running evaluation is still using the arena.
+///
 /// # Safety
 ///
 /// `session` must be a valid pointer or `NULL` (no-op).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn datalogic_session_reset(session: *mut Session) {
-    if let Some(s) = unsafe { session.as_mut() } {
-        s.arena.reset();
-        s.result_buf.clear();
+    if let Some(s) = unsafe { session.as_ref() }
+        && let Ok(mut busy) = s.enter()
+    {
+        let state = busy.state();
+        state.arena.reset();
+        state.result_buf.clear();
     }
 }
 
 /// Bytes currently held by the session's evaluation arena (sum across
-/// all chunks; excludes the result buffer). Returns `0` for `NULL`.
+/// all chunks; excludes the result buffer). Returns `0` for `NULL`, and
+/// from a custom-operator callback on the session that is running it
+/// (the arena is in use).
 ///
 /// # Safety
 ///
 /// `session` must be a valid pointer or `NULL`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn datalogic_session_allocated_bytes(session: *const Session) -> usize {
-    match unsafe { session.as_ref() } {
-        Some(s) => s.arena.allocated_bytes(),
-        None => 0,
+    match unsafe { session.as_ref() }.map(Session::enter) {
+        Some(Ok(mut busy)) => busy.state().arena.allocated_bytes(),
+        _ => 0,
     }
 }
 
@@ -125,7 +202,7 @@ pub unsafe extern "C" fn datalogic_session_evaluate(
     err: *mut *mut Error,
 ) -> Status {
     guard_status(err, || {
-        let (session, rule) = match unsafe { check_pair(session, rule) } {
+        let (mut busy, rule) = match unsafe { check_pair(session, rule) } {
             Ok(pair) => pair,
             Err(e) => return unsafe { fail(err, e) },
         };
@@ -139,11 +216,8 @@ pub unsafe extern "C" fn datalogic_session_evaluate(
 
         // Reset BEFORE evaluating — the previous call's borrowed result
         // dies here, exactly as the contract states.
-        let Session {
-            engine,
-            arena,
-            result_buf,
-        } = session;
+        let engine = busy.engine();
+        let State { arena, result_buf } = busy.state();
         arena.reset();
         result_buf.clear();
         match engine.evaluate(&rule.logic, data, &*arena) {
@@ -182,7 +256,7 @@ pub unsafe extern "C" fn datalogic_session_evaluate_metered(
     err: *mut *mut Error,
 ) -> Status {
     guard_status(err, || {
-        let (session, rule) = match unsafe { check_pair(session, rule) } {
+        let (mut busy, rule) = match unsafe { check_pair(session, rule) } {
             Ok(pair) => pair,
             Err(e) => return unsafe { fail(err, e) },
         };
@@ -198,11 +272,8 @@ pub unsafe extern "C" fn datalogic_session_evaluate_metered(
             Ok(s) => s,
             Err(e) => return unsafe { fail(err, e) },
         };
-        let Session {
-            engine,
-            arena,
-            result_buf,
-        } = session;
+        let engine = busy.engine();
+        let State { arena, result_buf } = busy.state();
         arena.reset();
         result_buf.clear();
         let budget = engine.resolve_ops_budget((budget != 0).then_some(budget));
@@ -238,7 +309,7 @@ pub unsafe extern "C" fn datalogic_session_evaluate_data(
     err: *mut *mut Error,
 ) -> Status {
     guard_status(err, || {
-        let (session, rule) = match unsafe { check_pair(session, rule) } {
+        let (mut busy, rule) = match unsafe { check_pair(session, rule) } {
             Ok(pair) => pair,
             Err(e) => return unsafe { fail(err, e) },
         };
@@ -249,11 +320,8 @@ pub unsafe extern "C" fn datalogic_session_evaluate_data(
             return unsafe { fail(err, Error::invalid_arg("data pointer is null")) };
         };
 
-        let Session {
-            engine,
-            arena,
-            result_buf,
-        } = session;
+        let engine = busy.engine();
+        let State { arena, result_buf } = busy.state();
         arena.reset();
         result_buf.clear();
         match engine.evaluate(&rule.logic, &data.parsed, &*arena) {
@@ -391,7 +459,7 @@ unsafe fn typed_eval<T>(
     extract: impl FnOnce(&DataValue<'_>, &RsEngine) -> Result<T, Error>,
 ) -> Status {
     guard_status(err, || {
-        let (session, rule) = match unsafe { check_pair(session, rule) } {
+        let (mut busy, rule) = match unsafe { check_pair(session, rule) } {
             Ok(pair) => pair,
             Err(e) => return unsafe { fail(err, e) },
         };
@@ -402,7 +470,8 @@ unsafe fn typed_eval<T>(
             return unsafe { fail(err, Error::invalid_arg("data pointer is null")) };
         };
 
-        let Session { engine, arena, .. } = session;
+        let engine = busy.engine();
+        let arena = &mut busy.state().arena;
         arena.reset();
         match engine.evaluate(&rule.logic, &data.parsed, &*arena) {
             Ok(av) => match extract(av, engine) {
@@ -446,7 +515,7 @@ pub unsafe extern "C" fn datalogic_session_evaluate_batch(
     err: *mut *mut Error,
 ) -> Status {
     guard_status(err, || {
-        let (session, rule) = match unsafe { check_pair(session, rule) } {
+        let (mut busy, rule) = match unsafe { check_pair(session, rule) } {
             Ok(pair) => pair,
             Err(e) => return unsafe { fail(err, e) },
         };
@@ -464,11 +533,8 @@ pub unsafe extern "C" fn datalogic_session_evaluate_batch(
         let results = unsafe { std::slice::from_raw_parts_mut(out_results, n) };
         let statuses = unsafe { std::slice::from_raw_parts_mut(out_statuses, n) };
 
-        let Session {
-            engine,
-            arena,
-            result_buf,
-        } = session;
+        let engine = busy.engine();
+        let State { arena, result_buf } = busy.state();
         result_buf.clear();
 
         // First pass records (offset, len) spans — the buffer may
@@ -534,8 +600,12 @@ pub unsafe extern "C" fn datalogic_session_evaluate_many(
     err: *mut *mut Error,
 ) -> Status {
     guard_status(err, || {
-        let Some(session) = (unsafe { session.as_mut() }) else {
+        let Some(session) = (unsafe { session.as_ref() }) else {
             return unsafe { fail(err, Error::invalid_arg("session pointer is null")) };
+        };
+        let mut busy = match session.enter() {
+            Ok(busy) => busy,
+            Err(e) => return unsafe { fail(err, e) },
         };
         if n == 0 {
             return Status::Ok;
@@ -554,11 +624,8 @@ pub unsafe extern "C" fn datalogic_session_evaluate_many(
         let results = unsafe { std::slice::from_raw_parts_mut(out_results, n) };
         let statuses = unsafe { std::slice::from_raw_parts_mut(out_statuses, n) };
 
-        let Session {
-            engine,
-            arena,
-            result_buf,
-        } = session;
+        let engine = busy.engine();
+        let State { arena, result_buf } = busy.state();
         result_buf.clear();
 
         let mut spans: Vec<(usize, usize)> = Vec::with_capacity(n);

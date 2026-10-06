@@ -1063,3 +1063,162 @@ fn flagd_sem_ver_operator_is_available() {
     assert_eq!(got, "true");
     unsafe { datalogic_engine_free(engine) };
 }
+
+// =============== session re-entry from a callback ===============
+
+/// What `reenter_op` saw when it called back into the running session.
+struct ReentryProbe {
+    session: *mut Session,
+    inner_rule: *const Rule,
+    status: Option<Status>,
+    tag: String,
+    message: String,
+    bytes_during: usize,
+    sessionless: Option<String>,
+}
+
+/// Test callback: tries the session entry points on the session running
+/// it, records what came back, then answers `1`.
+unsafe extern "C" fn reenter_op(
+    _args_json: *const u8,
+    _args_len: usize,
+    user_data: *mut c_void,
+    out: *mut OpResult,
+) -> i32 {
+    let probe = unsafe { &mut *(user_data as *mut ReentryProbe) };
+    let data = "null";
+    let mut ptr: *const u8 = std::ptr::null();
+    let mut len = 0usize;
+    let mut err: *mut Error = std::ptr::null_mut();
+    let status = unsafe {
+        datalogic_session_evaluate(
+            probe.session,
+            probe.inner_rule,
+            data.as_ptr(),
+            data.len(),
+            &mut ptr,
+            &mut len,
+            &mut err,
+        )
+    };
+    probe.status = Some(status);
+    if !err.is_null() {
+        let (_, message, tag, _) = unsafe { take_err(err) };
+        probe.tag = tag;
+        probe.message = message;
+    }
+    // Neither may touch the arena the outer evaluation is using.
+    unsafe { datalogic_session_reset(probe.session) };
+    unsafe { datalogic_session_free(probe.session) };
+    probe.bytes_during = unsafe { datalogic_session_allocated_bytes(probe.session) };
+    // A session-less evaluation on the same thread is fine.
+    let mut buf = empty_buf();
+    let s = unsafe {
+        datalogic_rule_evaluate(
+            probe.inner_rule,
+            data.as_ptr(),
+            data.len(),
+            &mut buf,
+            std::ptr::null_mut(),
+        )
+    };
+    if s == Status::Ok {
+        probe.sessionless = Some(unsafe { take_buf(buf) });
+    }
+    let result = "1";
+    unsafe { datalogic_op_result_set_json(out, result.as_ptr(), result.len()) };
+    0
+}
+
+#[test]
+fn a_callback_cannot_reenter_its_own_session() {
+    let mut probe = Box::new(ReentryProbe {
+        session: std::ptr::null_mut(),
+        inner_rule: std::ptr::null(),
+        status: None,
+        tag: String::new(),
+        message: String::new(),
+        bytes_during: usize::MAX,
+        sessionless: None,
+    });
+    let engine = unsafe {
+        build_with_operator(
+            "reenter",
+            Some(reenter_op),
+            &mut *probe as *mut ReentryProbe as *mut c_void,
+        )
+    };
+    let outer = unsafe { compile(engine, r#"{"+": [{"reenter": []}, {"var": "x"}]}"#) };
+    let inner = unsafe { compile(engine, r#"{"+": [1, 2]}"#) };
+    let session = unsafe { datalogic_engine_session(engine) };
+    probe.session = session;
+    probe.inner_rule = inner;
+
+    let data = r#"{"x": 41}"#;
+    let mut ptr: *const u8 = std::ptr::null();
+    let mut len = 0usize;
+    let status = unsafe {
+        datalogic_session_evaluate(
+            session,
+            outer,
+            data.as_ptr(),
+            data.len(),
+            &mut ptr,
+            &mut len,
+            std::ptr::null_mut(),
+        )
+    };
+    assert_eq!(status, Status::Ok);
+    assert_eq!(unsafe { copy_out(ptr, len) }, "42");
+    assert_eq!(probe.status, Some(Status::InvalidArg));
+    assert_eq!(probe.tag, "InvalidArgument");
+    assert!(
+        probe.message.contains("already evaluating"),
+        "{}",
+        probe.message
+    );
+    assert_eq!(probe.bytes_during, 0);
+    assert_eq!(probe.sessionless.as_deref(), Some("3"));
+
+    // The refused free left the session alive, and it is free again.
+    probe.status = None;
+    let handle = unsafe { parse_data(data) };
+    let mut out = 0i64;
+    let status = unsafe {
+        datalogic_session_evaluate_i64(session, outer, handle, &mut out, std::ptr::null_mut())
+    };
+    assert_eq!(status, Status::Ok);
+    assert_eq!(out, 42);
+    assert_eq!(probe.status, Some(Status::InvalidArg));
+    assert!(unsafe { datalogic_session_allocated_bytes(session) } > 0);
+
+    // Batch items run under the same hold.
+    probe.status = None;
+    let datas = [handle as *const Data];
+    let mut results = [Slice {
+        ptr: std::ptr::null(),
+        len: 0,
+    }];
+    let mut statuses = [Status::Internal];
+    let status = unsafe {
+        datalogic_session_evaluate_batch(
+            session,
+            outer,
+            datas.as_ptr(),
+            1,
+            results.as_mut_ptr(),
+            statuses.as_mut_ptr(),
+            std::ptr::null_mut(),
+        )
+    };
+    assert_eq!(status, Status::Ok);
+    assert_eq!(statuses[0], Status::Ok);
+    assert_eq!(unsafe { copy_out(results[0].ptr, results[0].len) }, "42");
+    assert_eq!(probe.status, Some(Status::InvalidArg));
+
+    unsafe { datalogic_data_free(handle) };
+    unsafe { datalogic_session_free(session) };
+    unsafe { datalogic_rule_free(outer) };
+    unsafe { datalogic_rule_free(inner) };
+    unsafe { datalogic_engine_free(engine) };
+}
