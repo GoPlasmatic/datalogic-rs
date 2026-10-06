@@ -267,6 +267,20 @@ public class BuilderConfigTests
 
 public class LifecycleTests
 {
+    [Fact]
+    public void Session_reset_keeps_the_session_usable()
+    {
+        using var engine = new Engine();
+        using var rule = engine.Compile("""{"cat":[{"var":"a"},{"var":"b"}]}""");
+        using var session = engine.OpenSession();
+        Assert.Equal("\"xy\"", session.Evaluate(rule, """{"a":"x","b":"y"}"""));
+        session.Reset();
+        session.Reset();
+        Assert.Equal("\"zw\"", session.Evaluate(rule, """{"a":"z","b":"w"}"""));
+        session.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => session.Reset());
+    }
+
     // Exactly one of the concurrent Dispose calls frees each handle; a
     // double free would crash the test host.
     [Fact]
