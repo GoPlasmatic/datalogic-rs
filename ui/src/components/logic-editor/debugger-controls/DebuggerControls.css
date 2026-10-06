@@ -1,14 +1,5 @@
-/* Transport bar — floating over the board, or chrome-stripped inline in the toolbar.
+/* Transport bar, chrome-stripped inline in the toolbar.
    Mirrors the design-system .transport. */
-
-.dl-debugger-controls--floating {
-  position: absolute;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 100;
-  pointer-events: auto;
-}
 
 .dl-debugger-controls-inner {
   position: relative;

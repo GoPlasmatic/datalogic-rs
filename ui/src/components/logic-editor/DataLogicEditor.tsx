@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useCallback, useRef, useState } from 'react';
+import { useEffect, useMemo, useCallback, useRef, useState, type ReactNode } from 'react';
 import {
   ReactFlow,
   Background,
@@ -7,6 +7,9 @@ import {
   useEdgesState,
   ReactFlowProvider,
   MarkerType,
+  type OnEdgesChange,
+  type OnNodesChange,
+  type ReactFlowProps,
 } from '@xyflow/react';
 import { Workflow } from 'lucide-react';
 import './styles/reactflow-base.css';
@@ -19,8 +22,8 @@ import type {
 } from './types';
 import { nodeTypes } from './nodes';
 import { edgeTypes } from './edges';
-import { useLogicEditor, useWasmEvaluator, customOperatorNamesKey } from './hooks';
-import { normalizeEvaluationConfig, summarizeEvaluationConfig } from './hooks/useWasmEvaluator';
+import { useLogicEditor, useWasmEvaluator } from './hooks';
+import { engineSettingsKey, summarizeEvaluationConfig } from './hooks/useWasmEvaluator';
 import { useContextMenu } from './hooks/useContextMenu';
 import { getHiddenNodeIds } from './utils/visibility';
 import { buildEdgesFromNodes } from './utils/edge-builder';
@@ -28,7 +31,6 @@ import { nodesToJsonLogic } from './utils/nodes-to-jsonlogic';
 import { formatTraceFailure, traceFailureType, type TraceFailure } from './utils/trace';
 import { DebuggerProvider, ConnectedHandlesProvider, EditorProvider, DirectionContext, useDirection, type FlowDirection } from './context';
 import { useEditorContext } from './context/editor';
-import { DebuggerControls } from './debugger-controls';
 import { PropertiesPanel } from './properties-panel';
 import { NodeSelectionHandler } from './NodeSelectionHandler';
 import { KeyboardHandler } from './KeyboardHandler';
@@ -117,32 +119,51 @@ function EngineErrorBanner({ error }: { error: string }) {
   return <ErrorBanner kind="Engine" message={`The evaluation engine failed to load: ${error}`} />;
 }
 
-/**
- * Read-only inner component - minimal, no EditorContext dependency.
- * Used when editable=false to avoid EditorProvider's state sync effects.
- */
-function ReadOnlyEditorInner({
-  initialNodes,
-  initialEdges,
-  theme,
-  showDebugger,
-  exampleSuggestions,
-  onSelectExample,
-  configSummary,
-}: {
+interface CanvasProps {
   initialNodes: LogicNode[];
   initialEdges: LogicEdge[];
   theme: 'light' | 'dark';
-  showDebugger: boolean;
   exampleSuggestions?: string[];
   onSelectExample?: (name: string) => void;
   configSummary?: string | null;
-}) {
+}
+
+type EditableFlowHandlers = Pick<
+  ReactFlowProps<LogicNode, LogicEdge>,
+  'onNodeContextMenu' | 'onPaneContextMenu' | 'onNodeDoubleClick'
+>;
+
+interface FlowCanvasProps extends CanvasProps {
+  nodes: LogicNode[];
+  onNodesChange: OnNodesChange<LogicNode>;
+  onEdgesChange: OnEdgesChange<LogicEdge>;
+  editable: boolean;
+  flowHandlers?: EditableFlowHandlers;
+  /** Extra overlays rendered inside the ReactFlow canvas. */
+  children?: ReactNode;
+}
+
+/**
+ * The diagram, shared by the read-only and editable canvases: hides
+ * collapsed subtrees, derives the edges from the nodes and renders the
+ * ReactFlow board (or the empty state).
+ */
+function FlowCanvas({
+  nodes,
+  onNodesChange,
+  onEdgesChange,
+  editable,
+  flowHandlers,
+  children,
+  initialNodes,
+  theme,
+  exampleSuggestions,
+  onSelectExample,
+  configSummary,
+}: FlowCanvasProps) {
+  // Background dot colors based on theme
   const bgColor = theme === 'dark' ? '#404040' : '#cccccc';
   const direction = useDirection();
-
-  const [nodes, , onNodesChange] = useNodesState<LogicNode>(initialNodes);
-  const [, , onEdgesChange] = useEdgesState<LogicEdge>(initialEdges);
 
   // Compute hidden node IDs based on collapsed state
   const hiddenNodeIds = useMemo(() => getHiddenNodeIds(nodes), [nodes]);
@@ -155,83 +176,84 @@ function ReadOnlyEditorInner({
 
   const currentEdges = useMemo(() => buildEdgesFromNodes(nodes, direction), [nodes, direction]);
 
-  const visibleEdges = useMemo(
-    () =>
-      currentEdges.filter(
-        (edge) =>
-          nodeIds.has(edge.source) &&
-          nodeIds.has(edge.target) &&
-          !hiddenNodeIds.has(edge.source) &&
-          !hiddenNodeIds.has(edge.target)
-      ),
-    [currentEdges, nodeIds, hiddenNodeIds]
-  );
+  const visibleEdges = useMemo(() => {
+    const visible = currentEdges.filter(
+      (edge) =>
+        nodeIds.has(edge.source) &&
+        nodeIds.has(edge.target) &&
+        !hiddenNodeIds.has(edge.source) &&
+        !hiddenNodeIds.has(edge.target)
+    );
+    return editable ? visible.map((edge) => ({ ...edge, type: 'editable' })) : visible;
+  }, [currentEdges, nodeIds, hiddenNodeIds, editable]);
 
   return (
     <ConnectedHandlesProvider edges={visibleEdges}>
-        <ReactFlowProvider>
-          <ReactFlow
-            nodes={visibleNodes}
-            edges={visibleEdges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            fitView
-            fitViewOptions={{
-              padding: REACT_FLOW_OPTIONS.fitViewPadding,
-              maxZoom: REACT_FLOW_OPTIONS.maxZoom,
-            }}
-            minZoom={0.1}
-            maxZoom={2}
-            defaultEdgeOptions={{
-              type: 'default',
-              animated: false,
-              markerEnd: DEFAULT_EDGE_MARKER,
-            }}
-          >
-            <Background color={bgColor} gap={20} size={1} />
-            <Controls showInteractive={false} />
-            {showDebugger && <DebuggerControls />}
-            <AutoFitView nodeCount={initialNodes.length} />
-          </ReactFlow>
-        </ReactFlowProvider>
+      <ReactFlowProvider>
+        <ReactFlow
+          nodes={visibleNodes}
+          edges={visibleEdges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          fitView
+          fitViewOptions={{
+            padding: REACT_FLOW_OPTIONS.fitViewPadding,
+            maxZoom: REACT_FLOW_OPTIONS.maxZoom,
+          }}
+          minZoom={0.1}
+          maxZoom={2}
+          defaultEdgeOptions={{
+            type: 'default',
+            animated: false,
+            markerEnd: DEFAULT_EDGE_MARKER,
+          }}
+          {...flowHandlers}
+        >
+          <Background color={bgColor} gap={20} size={1} />
+          <Controls showInteractive={editable} />
+          <AutoFitView nodeCount={initialNodes.length} />
+          {children}
+        </ReactFlow>
+      </ReactFlowProvider>
 
-        {visibleNodes.length === 0 && (
-          <EmptyState
-            exampleSuggestions={exampleSuggestions}
-            onSelectExample={onSelectExample}
-            configSummary={configSummary}
-          />
-        )}
+      {visibleNodes.length === 0 && (
+        <EmptyState
+          exampleSuggestions={exampleSuggestions}
+          onSelectExample={onSelectExample}
+          configSummary={configSummary}
+        />
+      )}
     </ConnectedHandlesProvider>
   );
 }
 
 /**
- * Editable inner component - full EditorContext support with syncing.
- * Used when editable=true.
+ * Read-only canvas: no EditorContext dependency, so editable=false skips
+ * EditorProvider's state sync effects.
  */
-function EditableEditorInner({
-  initialNodes,
-  initialEdges,
-  theme,
-  showDebugger,
-  exampleSuggestions,
-  onSelectExample,
-  configSummary,
-}: {
-  initialNodes: LogicNode[];
-  initialEdges: LogicEdge[];
-  theme: 'light' | 'dark';
-  showDebugger: boolean;
-  exampleSuggestions?: string[];
-  onSelectExample?: (name: string) => void;
-  configSummary?: string | null;
-}) {
-  // Background dot colors based on theme
-  const bgColor = theme === 'dark' ? '#404040' : '#cccccc';
-  const direction = useDirection();
+function ReadOnlyCanvas(props: CanvasProps) {
+  const [nodes, , onNodesChange] = useNodesState<LogicNode>(props.initialNodes);
+  const [, , onEdgesChange] = useEdgesState<LogicEdge>(props.initialEdges);
+
+  return (
+    <FlowCanvas
+      {...props}
+      nodes={nodes}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      editable={false}
+    />
+  );
+}
+
+/**
+ * Editable canvas: keeps the ReactFlow nodes in step with EditorContext and
+ * adds selection, context menus and double-click editing.
+ */
+function EditableCanvas(props: CanvasProps) {
+  const { initialNodes, initialEdges } = props;
 
   // Context menu hook
   const {
@@ -276,90 +298,42 @@ function EditableEditorInner({
     }
   }, [editorNodes, setNodes]);
 
-  // Compute hidden node IDs based on collapsed state
-  const hiddenNodeIds = useMemo(() => getHiddenNodeIds(nodes), [nodes]);
-  const nodeIds = useMemo(() => new Set(nodes.map((n) => n.id)), [nodes]);
-
-  const visibleNodes = useMemo(
-    () => nodes.filter((node) => !hiddenNodeIds.has(node.id)),
-    [nodes, hiddenNodeIds]
-  );
-
-  const currentEdges = useMemo(() => buildEdgesFromNodes(nodes, direction), [nodes, direction]);
-
-  const visibleEdges = useMemo(
-    () =>
-      currentEdges
-        .filter(
-          (edge) =>
-            nodeIds.has(edge.source) &&
-            nodeIds.has(edge.target) &&
-            !hiddenNodeIds.has(edge.source) &&
-            !hiddenNodeIds.has(edge.target)
-        )
-        .map((edge) => ({ ...edge, type: 'editable' })),
-    [currentEdges, nodeIds, hiddenNodeIds]
+  const flowHandlers = useMemo<EditableFlowHandlers>(
+    () => ({
+      onNodeContextMenu: handleNodeContextMenu,
+      onPaneContextMenu: handlePaneContextMenu,
+      onNodeDoubleClick: handleNodeDoubleClick,
+    }),
+    [handleNodeContextMenu, handlePaneContextMenu, handleNodeDoubleClick]
   );
 
   return (
-    <ConnectedHandlesProvider edges={visibleEdges}>
-        <ReactFlowProvider>
-          <ReactFlow
-            nodes={visibleNodes}
-            edges={visibleEdges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            fitView
-            fitViewOptions={{
-              padding: REACT_FLOW_OPTIONS.fitViewPadding,
-              maxZoom: REACT_FLOW_OPTIONS.maxZoom,
-            }}
-            minZoom={0.1}
-            maxZoom={2}
-            defaultEdgeOptions={{
-              type: 'default',
-              animated: false,
-              markerEnd: DEFAULT_EDGE_MARKER,
-            }}
-            onNodeContextMenu={handleNodeContextMenu}
-            onPaneContextMenu={handlePaneContextMenu}
-            onNodeDoubleClick={handleNodeDoubleClick}
-          >
-            <Background color={bgColor} gap={20} size={1} />
-            <Controls showInteractive />
-            {showDebugger && <DebuggerControls />}
-            <NodeSelectionHandler />
-            <AutoFitView nodeCount={initialNodes.length} />
-
-            {contextMenu?.type === 'node' && contextMenuNode && (
-              <NodeContextMenu
-                x={contextMenu.x}
-                y={contextMenu.y}
-                node={contextMenuNode}
-                onClose={handleCloseContextMenu}
-                onEditProperties={handleEditProperties}
-              />
-            )}
-            {contextMenu?.type === 'canvas' && (
-              <CanvasContextMenu
-                x={contextMenu.x}
-                y={contextMenu.y}
-                onClose={handleCloseContextMenu}
-              />
-            )}
-          </ReactFlow>
-        </ReactFlowProvider>
-
-        {visibleNodes.length === 0 && (
-          <EmptyState
-            exampleSuggestions={exampleSuggestions}
-            onSelectExample={onSelectExample}
-            configSummary={configSummary}
-          />
-        )}
-    </ConnectedHandlesProvider>
+    <FlowCanvas
+      {...props}
+      nodes={nodes}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      editable
+      flowHandlers={flowHandlers}
+    >
+      <NodeSelectionHandler />
+      {contextMenu?.type === 'node' && contextMenuNode && (
+        <NodeContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          node={contextMenuNode}
+          onClose={handleCloseContextMenu}
+          onEditProperties={handleEditProperties}
+        />
+      )}
+      {contextMenu?.type === 'canvas' && (
+        <CanvasContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={handleCloseContextMenu}
+        />
+      )}
+    </FlowCanvas>
   );
 }
 
@@ -406,9 +380,6 @@ function DataLogicEditorBody({
 }: EditorBodyProps) {
   // Debounce timer ref for onChange
   const onChangeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Determine if we're in edit mode
-  const isEditMode = editable;
 
   // Evaluation is enabled whenever data is provided (unified mode - no mode switching needed)
   const evalEnabled = data !== undefined;
@@ -478,7 +449,7 @@ function DataLogicEditorBody({
 
   const toolbar = (
     <EditorToolbar
-      isEditMode={isEditMode}
+      isEditMode={editable}
       hasDebugger={hasDebugger}
       templating={templating}
       onTemplatingChange={onTemplatingChange}
@@ -488,110 +459,65 @@ function DataLogicEditorBody({
     />
   );
 
-  // --- Read-only mode: skip EditorProvider entirely ---
-  if (!isEditMode) {
-    const readOnlyInner = (
-      <DirectionContext.Provider value={direction}>
-        <ReadOnlyEditorInner
-          key={expressionKey}
-          initialNodes={editor.nodes}
-          initialEdges={editor.edges}
-          theme={resolvedTheme}
-          showDebugger={false}
-          exampleSuggestions={exampleSuggestions}
-          onSelectExample={onSelectExample}
-          configSummary={configSummary}
-        />
-      </DirectionContext.Provider>
-    );
+  const canvasProps: CanvasProps = {
+    initialNodes: editor.nodes,
+    initialEdges: editor.edges,
+    theme: resolvedTheme,
+    exampleSuggestions,
+    onSelectExample,
+    configSummary,
+  };
 
-    return (
-      <div className={editorClassName} data-theme={resolvedTheme} data-direction={direction}>
-        {hasDebugger ? (
-          <DebuggerProvider
-            steps={editor.steps}
-            traceNodeMap={editor.traceNodeMap}
-            nodes={editor.nodes}
-            failedNodeIds={editor.failedNodeIds}
-            traceError={editor.traceError}
-          >
-            {toolbar}
-            <div className="logic-editor-body">
-              <div className="logic-editor-main">
-                {readOnlyInner}
-              </div>
-            </div>
-          </DebuggerProvider>
-        ) : (
-          <>
-            {toolbar}
-            {evalEnabled && engineError && <EngineErrorBanner error={engineError} />}
-            {editor.traceError && <TraceErrorBanner failure={editor.traceError} />}
-            <div className="logic-editor-body">
-              <div className="logic-editor-main">
-                {readOnlyInner}
-              </div>
-            </div>
-          </>
-        )}
+  const body = (
+    <div className="logic-editor-body">
+      <div className="logic-editor-main">
+        <DirectionContext.Provider value={direction}>
+          {editable ? (
+            <EditableCanvas key={expressionKey} {...canvasProps} />
+          ) : (
+            <ReadOnlyCanvas key={expressionKey} {...canvasProps} />
+          )}
+        </DirectionContext.Provider>
       </div>
-    );
-  }
-
-  // --- Edit mode: full EditorProvider with all features ---
-  const editableInner = (
-    <DirectionContext.Provider value={direction}>
-      <EditableEditorInner
-        key={expressionKey}
-        initialNodes={editor.nodes}
-        initialEdges={editor.edges}
-        theme={resolvedTheme}
-        showDebugger={false}
-        exampleSuggestions={exampleSuggestions}
-        onSelectExample={onSelectExample}
-        configSummary={configSummary}
-      />
-    </DirectionContext.Provider>
+      {editable && <PropertiesPanel />}
+    </div>
   );
+
+  const shell = (
+    <div className={editorClassName} data-theme={resolvedTheme} data-direction={direction}>
+      {hasDebugger ? (
+        <DebuggerProvider
+          steps={editor.steps}
+          traceNodeMap={editor.traceNodeMap}
+          nodes={editor.nodes}
+          failedNodeIds={editor.failedNodeIds}
+          traceError={editor.traceError}
+        >
+          {toolbar}
+          {body}
+        </DebuggerProvider>
+      ) : (
+        <>
+          {toolbar}
+          {evalEnabled && engineError && <EngineErrorBanner error={engineError} />}
+          {editor.traceError && <TraceErrorBanner failure={editor.traceError} />}
+          {body}
+        </>
+      )}
+    </div>
+  );
+
+  // Read-only mode skips EditorProvider entirely.
+  if (!editable) return shell;
 
   return (
     <EditorProvider
       nodes={editor.nodes}
-      initialEditMode={isEditMode}
+      initialEditMode={editable}
       onNodesChange={handleNodesChange}
     >
       <KeyboardHandler />
-      <div className={editorClassName} data-theme={resolvedTheme} data-direction={direction}>
-        {hasDebugger ? (
-          <DebuggerProvider
-            steps={editor.steps}
-            traceNodeMap={editor.traceNodeMap}
-            nodes={editor.nodes}
-            failedNodeIds={editor.failedNodeIds}
-            traceError={editor.traceError}
-          >
-            {toolbar}
-            <div className="logic-editor-body">
-              <div className="logic-editor-main">
-                {editableInner}
-              </div>
-              <PropertiesPanel />
-            </div>
-          </DebuggerProvider>
-        ) : (
-          <>
-            {toolbar}
-            {evalEnabled && engineError && <EngineErrorBanner error={engineError} />}
-            {editor.traceError && <TraceErrorBanner failure={editor.traceError} />}
-            <div className="logic-editor-body">
-              <div className="logic-editor-main">
-                {editableInner}
-              </div>
-              <PropertiesPanel />
-            </div>
-          </>
-        )}
-      </div>
+      {shell}
     </EditorProvider>
   );
 }
@@ -625,16 +551,12 @@ export function DataLogicEditor({
     evaluateWithTrace,
   } = useWasmEvaluator({ templating, config, customOperators });
 
-  const configKey = useMemo(
-    () => JSON.stringify(normalizeEvaluationConfig(config) ?? null),
-    [config],
-  );
   const configSummary = useMemo(() => summarizeEvaluationConfig(config), [config]);
-  // Remount only when the vocabulary actually changes. Keying on the object
-  // identity instead would remount on every parent render for the idiomatic
-  // inline `customOperators={{ ... }}`, discarding selection, undo history
-  // and debugger position each time.
-  const engineKey = `${configKey}|${customOperatorNamesKey(customOperators)}`;
+  // Remount only when the settings or the vocabulary actually change. Keying
+  // on the object identity instead would remount on every parent render for
+  // the idiomatic inline `customOperators={{ ... }}`, discarding selection,
+  // undo history and debugger position each time.
+  const engineKey = engineSettingsKey(config, customOperators);
 
   return (
     <DataLogicEditorBody

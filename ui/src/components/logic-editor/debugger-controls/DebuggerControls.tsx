@@ -15,15 +15,8 @@ import { isEditableTarget } from './keyboard-guard';
 import { StepTimeline } from './StepTimeline';
 import './DebuggerControls.css';
 
+/** The debugger transport bar, rendered inline in the editor toolbar. */
 export function DebuggerControlsInline() {
-  return <DebuggerControlsBase variant="inline" />;
-}
-
-export function DebuggerControls() {
-  return <DebuggerControlsBase variant="floating" />;
-}
-
-function DebuggerControlsBase({ variant = 'floating' }: { variant?: 'inline' | 'floating' }) {
   const {
     state,
     play,
@@ -106,11 +99,11 @@ function DebuggerControlsBase({ variant = 'floating' }: { variant?: 'inline' | '
   }
 
   return (
-    <div className={`dl-debugger-controls--${variant}`} ref={rootRef}>
+    <div className="dl-debugger-controls--inline" ref={rootRef}>
       <div className={`dl-debugger-controls-inner ${isPlaying ? 'is-playing' : ''}`}>
         {/* Bug icon indicator */}
         <div className="dl-debugger-icon">
-          <Bug size={variant === 'inline' ? 15 : 18} />
+          <Bug size={15} />
         </div>
 
         {/* Navigation buttons */}

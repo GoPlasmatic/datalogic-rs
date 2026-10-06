@@ -818,15 +818,6 @@
   color: #e5e5e5;
 }
 
-/* Debugger controls container - only the floating overlay variant carries its
-   own panel chrome. The inline variant lives directly on the toolbar band, so
-   this must not leak a slate box behind it. */
-.datalogic-widget[data-theme="dark"] .dl-debugger-controls--floating .dl-debugger-controls-inner,
-.datalogic-playground[data-theme="dark"] .dl-debugger-controls--floating .dl-debugger-controls-inner {
-  background: rgba(31, 41, 55, 0.95);
-  border-color: #4b5563;
-}
-
 /* Step counter text */
 .datalogic-widget[data-theme="dark"] .dl-step-current,
 .datalogic-playground[data-theme="dark"] .dl-step-current {

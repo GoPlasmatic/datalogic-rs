@@ -15,8 +15,8 @@ interface StepTimelineProps {
 /**
  * Step list for the trace: one row per execution step (index, node label and
  * expression, iteration, result or error). Click a row to jump to that step.
- * Mounted into the editor body so it overlays the canvas in both the floating
- * and the inline (toolbar) transport variants.
+ * Mounted into the editor body so it overlays the canvas, although the
+ * transport that opens it lives in the toolbar.
  */
 export function StepTimeline({ anchor, onClose }: StepTimelineProps) {
   const { state, traceNodeMap, nodeSummaries, goToStep, traceError } = useDebuggerContext();
@@ -24,8 +24,8 @@ export function StepTimeline({ anchor, onClose }: StepTimelineProps) {
   const [errorsOnly, setErrorsOnly] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // The inline transport lives in the toolbar (a sibling of the body), the
-  // floating one inside the canvas: resolve the body from either position.
+  // The transport lives in the toolbar, a sibling of the body: resolve the
+  // body through the editor root.
   const host = useMemo(() => {
     if (!anchor) return null;
     const root = anchor.closest<HTMLElement>('.logic-editor');

@@ -217,6 +217,24 @@ export function normalizeEvaluationConfig(
   return Object.keys(out).length > 0 ? (out as DataLogicEvaluationConfig) : undefined;
 }
 
+/**
+ * The engine settings a host controls apart from templating, as one string:
+ * the normalized config and the custom operator NAMES. Two option sets with
+ * the same key build equivalent engines (implementations are late-bound).
+ * The editor keys its body on this; `useWasmEvaluator` adds templating.
+ */
+export function engineSettingsKey(
+  config: DataLogicEvaluationConfig | null | undefined,
+  customOperators: Record<string, DataLogicCustomOperator> | undefined,
+): string {
+  return `${evaluationConfigKey(config)}|${customOperatorNamesKey(customOperators)}`;
+}
+
+/** Stable key for an evaluation config: its normalized JSON (`{}` and none match). */
+export function evaluationConfigKey(config: DataLogicEvaluationConfig | null | undefined): string {
+  return JSON.stringify(normalizeEvaluationConfig(config) ?? null);
+}
+
 /** `true` when the config carries nothing beyond the engine defaults. */
 export function isDefaultEvaluationConfig(
   config: DataLogicEvaluationConfig | null | undefined,
@@ -318,11 +336,9 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
   // set of custom operator NAMES matters: the implementations are late-bound,
   // so changing one does not need a rebuild, but registering or dropping a
   // name does.
-  const configKey = useMemo(
-    () => JSON.stringify(normalizeEvaluationConfig(config) ?? null),
-    [config],
-  );
+  const configKey = useMemo(() => evaluationConfigKey(config), [config]);
   const operatorNamesKey = customOperatorNamesKey(customOperators);
+  // Same composition as engineSettingsKey(), with templating in front.
   const engineKey = `${templating ? 1 : 0}|${configKey}|${operatorNamesKey}`;
   // The config as the engine sees it, derived from its key so it changes
   // only when the key does: a host passing an inline `config={{ ... }}`
