@@ -60,7 +60,8 @@ java --enable-native-access=ALL-UNNAMED ...
 
 (That flag covers classpath applications, which is how this JAR is
 consumed; if you place it on the module path instead, grant native
-access to its module name.)
+access to its automatic module name:
+`--enable-native-access=com.goplasmatic.datalogic`.)
 
 The binding resolves the native library in this order:
 

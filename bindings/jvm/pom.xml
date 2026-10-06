@@ -71,6 +71,22 @@
                 <version>3.16.0</version>
             </plugin>
             <plugin>
+                <!-- A stable JPMS name for the jar, so module-path users
+                     can write `requires com.goplasmatic.datalogic;` and
+                     grant native access to com.goplasmatic.datalogic
+                     instead of ALL-UNNAMED. -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.5.0</version>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <Automatic-Module-Name>com.goplasmatic.datalogic</Automatic-Module-Name>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+            <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.6.0</version>

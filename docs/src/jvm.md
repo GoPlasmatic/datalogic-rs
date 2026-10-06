@@ -28,7 +28,7 @@ On JDK 24+ the JVM prints a restricted-method warning the first time a library u
 java --enable-native-access=ALL-UNNAMED ...
 ```
 
-(That flag covers classpath applications; if you place the JAR on the module path instead, grant native access to its module name.)
+(That flag covers classpath applications; if you place the JAR on the module path instead, grant native access to its automatic module name: `--enable-native-access=com.goplasmatic.datalogic`.)
 
 *The Maven `groupId` is `io.github.goplasmatic`, but the Java package path is `com.goplasmatic.datalogic`.*
 
