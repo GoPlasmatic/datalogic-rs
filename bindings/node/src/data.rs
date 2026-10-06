@@ -27,10 +27,11 @@ use crate::error::{engine_error, guard};
 ///
 /// Construct once, then evaluate any number of rules against it —
 /// `Rule.evaluateData`, `Session.evaluateData`, the typed
-/// `Session.evaluateBool` / `evaluateNumber` / `evaluateTruthy`, and the
-/// batch entry points all take handles. A handle is independent of any
-/// engine (one handle can feed rules compiled by different engines) and
-/// is never consumed or mutated by evaluation.
+/// `Session.evaluateBool` / `evaluateInt` / `evaluateFloat` /
+/// `evaluateTruthy`, and the batch entry points all take handles. A
+/// handle is independent of any engine (one handle can feed rules
+/// compiled by different engines) and is never consumed or mutated by
+/// evaluation.
 ///
 /// Handles are per-JS-thread: the underlying parsed tree is `Send` but
 /// not `Sync`, which matches JS single-threaded semantics — a handle

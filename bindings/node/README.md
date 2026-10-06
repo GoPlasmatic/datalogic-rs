@@ -139,11 +139,12 @@ the JSON result round trip too:
 
 ```js
 sess.evaluateBool(rule, handle);   // strict JSON boolean
-sess.evaluateNumber(rule, handle); // any JSON number (JS has one number type)
+sess.evaluateInt(rule, handle);    // a whole number a JS number holds exactly
+sess.evaluateFloat(rule, handle);  // any JSON number
 sess.evaluateTruthy(rule, handle); // JSONLogic truthiness, never mismatches
 ```
 
-`evaluateBool` and `evaluateNumber` throw an `EvaluateError` with
+`evaluateBool`, `evaluateInt` and `evaluateFloat` throw an `EvaluateError` with
 `errorType: 'TypeMismatch'` when the rule evaluates fine but the result
 is not of the requested type (the message names the actual type).
 `evaluateTruthy` coerces any result through the engine's configured
@@ -252,7 +253,8 @@ report it.
 | `Session.evaluateData(rule, handle)` | Handle in, JS value out, arena reuse |
 | `Session.evaluateDataStr(rule, handle)` | Handle in, JSON string out; fastest path |
 | `Session.evaluateBool(rule, handle)` | Strict boolean result (`TypeMismatch` otherwise) |
-| `Session.evaluateNumber(rule, handle)` | Any JSON number result (`TypeMismatch` otherwise) |
+| `Session.evaluateInt(rule, handle)` | Whole-number result a JS number holds exactly, `\|n\| <= 2^53 - 1` (`TypeMismatch` otherwise) |
+| `Session.evaluateFloat(rule, handle)` | Any JSON number result (`TypeMismatch` otherwise); `evaluateNumber` is its older name |
 | `Session.evaluateTruthy(rule, handle)` | Engine-truthiness boolean; never mismatches |
 | `Session.evaluateBatch(rule, handles)` | One rule × many handles, allSettled-style items |
 | `Session.evaluateMany(rules, handle)` | Many rules × one handle, allSettled-style items |
@@ -307,6 +309,7 @@ All keys are optional:
 | `arithmetic_nan_handling` | `'throw_error'`, `'ignore_value'`, `'coerce_to_zero'`, `'return_null'` |
 | `division_by_zero` | `'return_saturated'`, `'throw_error'`, `'return_null'`, `'return_infinity'` |
 | `loose_equality_errors` | boolean |
+| `missing_var` | `'null'` (default: a missing variable reads as `null`), `'error'` (raises `VariableNotFound`) |
 | `truthy_evaluator` | `'javascript'`, `'python'`, `'strict_boolean'` |
 | `numeric_coercion` | object of booleans: `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
 | `max_recursion_depth` | integer >= 1 |
@@ -376,9 +379,11 @@ operator (`+`, `if`, `var`, ...) has no effect. An engine carrying custom
 operators is **not** safe to share across worker threads (the JS callback
 is pinned to its originating thread); create one per worker. If a custom
 operator is ever invoked from a different thread than the one that
-registered it, evaluation fails with an `EvaluateError` naming the
-operator rather than risking undefined behavior. A plain engine or a
-compiled `Rule` with no custom operators is thread-safe.
+registered it (as `rule.evaluateStrAsync` does, on the libuv pool),
+evaluation fails with an `EvaluateError` naming the operator rather than
+risking undefined behavior. No napi class instance (`Engine`, `Rule`,
+`Session`, `DataHandle`) can be posted to a worker thread, so every
+worker builds its own either way.
 
 ## Operator names
 

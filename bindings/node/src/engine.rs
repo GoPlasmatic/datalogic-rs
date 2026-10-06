@@ -36,9 +36,9 @@ pub struct EngineOptions {
     /// uses for rules). Both funnel into the core crate's shared
     /// `EvaluationConfig::from_json_str` wire parser, so every binding
     /// accepts the same keys: `preset`, `arithmetic_nan_handling`,
-    /// `division_by_zero`, `loose_equality_errors`, `truthy_evaluator`,
-    /// `numeric_coercion`, `max_recursion_depth`, `ops_budget`. Unknown
-    /// keys or values throw at construction with
+    /// `division_by_zero`, `loose_equality_errors`, `missing_var`,
+    /// `truthy_evaluator`, `numeric_coercion`, `max_recursion_depth`,
+    /// `ops_budget`. Unknown keys or values throw at construction with
     /// `errorType: "ConfigurationError"`.
     pub config: Option<Value>,
     /// Single-character prefix that marks a template key as a literal
@@ -91,7 +91,9 @@ pub struct MeteredResult {
 ///
 /// Construct once at startup and share across calls — `Engine` is
 /// internally `Arc<datalogic_rs::Engine>` and JS reference semantics mean
-/// every reference points at the same underlying engine.
+/// every reference points at the same underlying engine. Like every napi
+/// class instance it cannot be posted or transferred to a worker thread:
+/// each worker loads the module and builds its own.
 ///
 /// # Custom operators
 ///
@@ -110,12 +112,11 @@ pub struct MeteredResult {
 /// ```
 ///
 /// Callbacks run synchronously on the same thread the engine was
-/// constructed on. **An engine carrying custom operators must not be
-/// shared across worker threads** — the JS function reference is bound
-/// to the originating V8 isolate. If a custom operator is ever invoked
-/// from a different thread, evaluation fails with a normal engine error
-/// naming the operator instead of touching the foreign isolate. Engines
-/// without custom operators are free to cross threads as before.
+/// constructed on: the JS function reference is bound to the originating
+/// V8 isolate. If a custom operator is ever invoked from a different
+/// thread (`Rule.evaluateStrAsync` runs on the libuv pool), evaluation
+/// fails with a normal engine error naming the operator instead of
+/// touching the foreign isolate.
 #[napi]
 pub struct Engine {
     pub(crate) inner: Arc<RsEngine>,
@@ -426,8 +427,10 @@ fn with_rule<T>(rule: Value, f: impl FnOnce(RuleSrc<'_>) -> T) -> T {
 /// A compiled JSONLogic rule.
 ///
 /// Hold one and call `evaluate()` against many data inputs without
-/// re-parsing. `Rule` is thread-safe — share the same instance across
-/// workers to evaluate in parallel.
+/// re-parsing. `Rule` has no thread affinity on the Rust side, but napi
+/// class instances cannot be posted or transferred to worker threads:
+/// each worker compiles its own. To evaluate off the JS thread, use
+/// `evaluateStrAsync`, which runs on the libuv pool.
 #[napi]
 pub struct Rule {
     pub(crate) engine: Arc<RsEngine>,
