@@ -94,5 +94,24 @@
         "rule": { "floor": 0.9999 },
         "data": null,
         "result": 0
-    }
-] 
+    },
+  "# Results outside the i64 range stay floats",
+  {
+    "description": "floor(1e20) is 1e20, not i64::MAX",
+    "rule": {"floor": {"var": "x"}},
+    "data": {"x": 1e+20},
+    "result": 1e+20
+  },
+  {
+    "description": "floor(-1e19) is -1e19, not i64::MIN",
+    "rule": {"floor": [{"var": "x"}, 1.5]},
+    "data": {"x": -1e+19},
+    "result": [-1e+19, 1]
+  },
+  {
+    "description": "floor(\"NaN\") is invalid",
+    "rule": {"floor": {"var": "s"}},
+    "data": {"s": "NaN"},
+    "error": {"type": "Invalid Arguments"}
+  }
+]

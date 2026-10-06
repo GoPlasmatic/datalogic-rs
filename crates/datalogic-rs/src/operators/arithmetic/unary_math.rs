@@ -24,13 +24,6 @@ impl UnaryMathOp {
             UnaryMathOp::Floor => x.floor(),
         }
     }
-
-    /// True when the result should be quantized to i64 (ceil / floor) rather
-    /// than kept as f64 (abs).
-    #[inline]
-    fn returns_int(self) -> bool {
-        matches!(self, UnaryMathOp::Ceil | UnaryMathOp::Floor)
-    }
 }
 
 /// `abs` / `ceil` / `floor` over one or more numbers (the row reads them
@@ -47,13 +40,11 @@ pub(crate) fn unary_math<'a>(
     rest: RestArgs<'a, StrictNum>,
     op: UnaryMathOp,
 ) -> Result<&'a DataValue<'a>> {
-    let to_number = |x: f64| -> NumberValue {
-        if op.returns_int() {
-            NumberValue::from_i64(x as i64)
-        } else {
-            NumberValue::from_f64(x)
-        }
-    };
+    // `from_f64` makes a whole result an integer when it fits in one (every
+    // `ceil` / `floor` result within the i64 range), and keeps anything
+    // else a float. An `as i64` cast here once saturated: `ceil(1e20)`
+    // came back as `i64::MAX`.
+    let to_number = NumberValue::from_f64;
 
     if rest.is_empty() {
         return Ok(cx.alloc(DataValue::Number(to_number(op.apply(first)))));

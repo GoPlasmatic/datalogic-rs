@@ -101,5 +101,30 @@
     "rule": {"ceil": {"var": "s"}},
     "data": {"s": "inf"},
     "error": {"type": "Invalid Arguments"}
+  },
+  "# Results outside the i64 range stay floats",
+  {
+    "description": "ceil(1e20) is 1e20, not i64::MAX",
+    "rule": {"ceil": {"var": "x"}},
+    "data": {"x": 1e+20},
+    "result": 1e+20
+  },
+  {
+    "description": "ceil(-1e20) is -1e20, not i64::MIN",
+    "rule": {"ceil": {"var": "x"}},
+    "data": {"x": -1e+20},
+    "result": -1e+20
+  },
+  {
+    "description": "ceil of a large numeric string",
+    "rule": {"ceil": {"var": "x"}},
+    "data": {"x": "1e30"},
+    "result": 1e+30
+  },
+  {
+    "description": "ceil within range is still an integer",
+    "rule": {"ceil": {"var": "x"}},
+    "data": {"x": 2.5},
+    "result": 3
   }
 ]
