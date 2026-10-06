@@ -51,5 +51,21 @@
   {"description": "a named family is there", "call": "evaluate", "engine": {"families": ["ExtString"]}, "rule": {"length": "abc"}, "data": null, "result": 3},
   {"description": "the core is always there", "call": "evaluate", "engine": {"families": []}, "rule": {"+": [1, 2]}, "data": null, "result": 3},
   {"description": "check reports a left-out name", "call": "check", "engine": {"families": []}, "rule": {"if": [true, {"upper": "a"}]}, "diagnostics": [["UnknownOperator", "/if/1"]]},
-  {"description": "an unknown family name is refused", "call": "evaluate", "engine": {"families": ["Strings"]}, "rule": 1, "data": null, "error": "ConfigurationError"}
+  {"description": "an unknown family name is refused", "call": "evaluate", "engine": {"families": ["Strings"]}, "rule": 1, "data": null, "error": "ConfigurationError"},
+  "# Engine config: each binding hands `engine.config` to the shared parser.",
+  {"description": "an engine-wide budget bounds evaluate", "call": "evaluate", "engine": {"config": {"ops_budget": 2}}, "rule": {"map": [{"var": "xs"}, {"+": [{"var": ""}, 1]}]}, "data": {"xs": [1, 2, 3]}, "error": "BudgetExceeded"},
+  {"description": "an explicit budget overrides the engine's", "call": "metered", "engine": {"config": {"ops_budget": 2}}, "rule": {"map": [{"var": "xs"}, {"+": [{"var": ""}, 1]}]}, "data": {"xs": [1, 2, 3]}, "budget": 1000, "result": [2, 3, 4]},
+  {"description": "division by zero as configured", "call": "evaluate", "engine": {"config": {"division_by_zero": "return_null"}}, "rule": {"/": [1.5, {"var": "z"}]}, "data": {"z": 0}, "result": null},
+  {"description": "a folded division follows the engine's config too", "call": "evaluate", "engine": {"config": {"division_by_zero": "return_null"}}, "rule": {"/": [1.5, 0]}, "data": null, "result": null},
+  "# Errors keep their type across the boundary, however deep they start.",
+  {"description": "a thrown object", "call": "evaluate", "rule": {"throw": {"var": "e"}}, "data": {"e": {"code": 7}}, "error": "Thrown"},
+  {"description": "try recovers a thrown error", "call": "evaluate", "rule": {"try": [{"throw": "x"}, 5]}, "data": null, "result": 5},
+  {"description": "an error inside a branch", "call": "evaluate", "rule": {"if": [{"var": "go"}, {"+": [{"var": "a"}, 1]}, 0]}, "data": {"go": true, "a": "x"}, "error": "Thrown"},
+  {"description": "an error under a budget keeps its type", "call": "metered", "rule": {"+": [{"var": "a"}, 1]}, "data": {"a": "x"}, "budget": 1000, "error": "Thrown"},
+  "# Data crosses intact: unicode keys and strings, floats.",
+  {"description": "unicode keys and strings", "call": "evaluate", "rule": {"cat": [{"var": "ключ"}, "-", {"var": "日本"}]}, "data": {"ключ": "значение", "日本": "🎉"}, "result": "значение-🎉"},
+  {"description": "a float result", "call": "evaluate", "rule": {"*": [{"var": "x"}, 0.5]}, "data": {"x": 3}, "result": 1.5},
+  {"description": "an object result", "call": "evaluate", "rule": {"var": "o"}, "data": {"o": {"z": [1, {"y": null}], "a": true}}, "result": {"z": [1, {"y": null}], "a": true}},
+  "# The template-key escape applies to a per-compile template too.",
+  {"description": "an escaped key in compile_template", "call": "compile_template", "engine": {"template_key_escape": "$"}, "rule": {"$if": {"var": "a"}, "n": 1}, "data": {"a": 2}, "result": {"if": 2, "n": 1}}
 ]
