@@ -373,27 +373,16 @@ pub(super) fn detect_fold_shape(body: &CompiledNode) -> Option<FoldShape<'_>> {
         return None;
     }
 
-    // Identify which arg is current and which is accumulator.
-    let (current_arg, acc_is_lhs) = match (&body_args[0], &body_args[1]) {
-        (
-            CompiledNode::Var {
-                reduce_hint: hint0, ..
-            },
-            CompiledNode::Var {
-                reduce_hint: hint1, ..
-            },
-        ) => match (hint0, hint1) {
-            (
-                ReduceHint::Current | ReduceHint::CurrentPath,
-                ReduceHint::Accumulator | ReduceHint::AccumulatorPath,
-            ) => (&body_args[0], false),
-            (
-                ReduceHint::Accumulator | ReduceHint::AccumulatorPath,
-                ReduceHint::Current | ReduceHint::CurrentPath,
-            ) => (&body_args[1], true),
-            _ => return None,
-        },
-        _ => return None,
+    // Identify which arg is current and which is accumulator. The
+    // accumulator must be read whole: the fold uses it as the running
+    // number, so `accumulator.x` (null on a number, under the general
+    // path) is left to the general path.
+    let (current_arg, acc_is_lhs) = if is_bare_accumulator(&body_args[1]) {
+        (&body_args[0], false)
+    } else if is_bare_accumulator(&body_args[0]) {
+        (&body_args[1], true)
+    } else {
+        return None;
     };
 
     let current_segments = if let CompiledNode::Var {
@@ -416,6 +405,23 @@ pub(super) fn detect_fold_shape(body: &CompiledNode) -> Option<FoldShape<'_>> {
         acc_is_lhs,
         current_segments,
     })
+}
+
+/// Whether `node` reads the whole accumulator: `{"var": "accumulator"}`,
+/// or the same path spelled as a one-segment `val`.
+fn is_bare_accumulator(node: &CompiledNode) -> bool {
+    match node {
+        CompiledNode::Var {
+            reduce_hint: ReduceHint::Accumulator,
+            ..
+        } => true,
+        CompiledNode::Var {
+            reduce_hint: ReduceHint::AccumulatorPath,
+            segments,
+            ..
+        } => segments.len() == 1,
+        _ => false,
+    }
 }
 
 /// Arena variant of the reduce arithmetic fast path: detects a `FoldShape`

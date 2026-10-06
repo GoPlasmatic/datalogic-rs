@@ -515,5 +515,42 @@
     },
     "data": { "items": [4611686018427387904, 4611686018427387904, 1] },
     "result": 1.8446744073709552e19
+  },
+  "# The fold fast path reads the accumulator whole",
+  {
+    "description": "A path under the accumulator is read from the accumulator, not folded as it",
+    "rule": {
+      "reduce": [
+        { "var": "items" },
+        { "+": [{ "var": "current" }, { "var": "accumulator.x" }] },
+        0
+      ]
+    },
+    "data": { "items": [1, 2, 3] },
+    "result": 3
+  },
+  {
+    "description": "A path under the accumulator, accumulator on the left",
+    "rule": {
+      "reduce": [
+        { "var": "items" },
+        { "-": [{ "var": "accumulator.x" }, { "var": "current" }] },
+        10
+      ]
+    },
+    "data": { "items": [1, 2, 3] },
+    "result": -3
+  },
+  {
+    "description": "Fused reduce over map with a path under the accumulator",
+    "rule": {
+      "reduce": [
+        { "map": [{ "var": "items" }, { "var": "v" }] },
+        { "+": [{ "var": "accumulator.x" }, { "var": "current" }] },
+        0
+      ]
+    },
+    "data": { "items": [{ "v": 1 }, { "v": 2 }, { "v": 5 }] },
+    "result": 5
   }
 ]
