@@ -10,7 +10,7 @@
     "properties": {
       "code": {
         "type": "string",
-        "enum": ["Unparsable", "UnknownOperator", "NotAnOperator", "ArgumentForm", "ArgumentCount", "InvalidTimezone", "SimilarToOperator", "Compile"]
+        "enum": ["Unparsable", "UnknownOperator", "NotAnOperator", "ArgumentForm", "ArgumentCount", "InvalidTimezone", "SimilarToOperator", "Compile", "OperatorCheck"]
       },
       "severity": {"type": "string", "enum": ["error", "warning"]},
       "message": {"type": "string"},

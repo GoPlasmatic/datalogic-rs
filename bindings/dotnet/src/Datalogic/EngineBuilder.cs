@@ -139,6 +139,41 @@ public sealed class EngineBuilder
     }
 
     /// <summary>
+    /// Keep the engine to the JSONLogic core and the operator families named
+    /// here (<c>"ExtString"</c>, <c>"DateTime"</c>, ...: the <c>family</c> of
+    /// each row of <see cref="Engine.Operators"/>). By default the engine has
+    /// every family. A family left out is not there for the engine: its names
+    /// compile as unknown operators, and a custom operator may take them.
+    /// Call it before <see cref="AddOperator"/> when strict operator names
+    /// are on.
+    /// </summary>
+    /// <exception cref="DatalogicException">
+    /// Error type <c>ConfigurationError</c> for an unknown family name.
+    /// </exception>
+    public EngineBuilder WithFamilies(params string[] families)
+    {
+        ArgumentNullException.ThrowIfNull(families);
+        EnsureFresh();
+        var json = System.Text.Json.JsonSerializer.Serialize(families);
+        unsafe
+        {
+            using var jsonU8 = Utf8Input.From(json, stackalloc byte[Utf8Input.StackBufferSize]);
+            var err = IntPtr.Zero;
+            DatalogicStatus status;
+            fixed (byte* jp = jsonU8.Span)
+            {
+                status = NativeMethods.datalogic_engine_builder_set_families(
+                    _handle, jp, (nuint)jsonU8.Span.Length, ref err);
+            }
+            if (status != DatalogicStatus.Ok)
+            {
+                throw DatalogicException.FromNative(status, err, "set_families failed");
+            }
+        }
+        return this;
+    }
+
+    /// <summary>
     /// Register a custom JSONLogic operator under <paramref name="name"/>.
     /// The callback may be invoked from any thread that evaluates rules
     /// on the built engine, so it must be thread-safe.

@@ -67,6 +67,11 @@ pub unsafe extern "C" fn datalogic_traced_session_free(session: *mut TracedSessi
 /// store the result + trace as an owned JSON buffer in `*out` (release
 /// via [`crate::datalogic_buf_free`]).
 ///
+/// The envelope is `{result, expression_tree, steps, error?,
+/// structured_error?, pointers?}`; `pointers` maps each node id (a decimal
+/// string key) to the RFC 6901 JSON Pointer into the rule of the value that
+/// node was compiled from, and is absent when the rule did not compile.
+///
 /// Engine errors (parse / eval) surface **inside** the returned JSON's
 /// `error` / `structured_error` fields with a `DATALOGIC_STATUS_OK`
 /// return — a non-OK status is reserved for invalid arguments.
@@ -101,8 +106,8 @@ pub unsafe extern "C" fn datalogic_traced_session_evaluate(
             Ok(s) => s,
             Err(e) => return unsafe { fail(err, e) },
         };
-        let run = session.engine.trace().eval_str(rule_src, data);
-        unsafe { *out = Buf::from_vec(datalogic_bind::traced_run_json(&run).into_bytes()) };
+        let json = datalogic_bind::traced_json(&session.engine, rule_src, data);
+        unsafe { *out = Buf::from_vec(json.into_bytes()) };
         Status::Ok
     })
 }

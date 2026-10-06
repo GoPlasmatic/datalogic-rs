@@ -119,6 +119,7 @@ class Engine:
         config: Mapping[str, Any] | str | None = None,
         strict_operator_names: bool = False,
         template_key_escape: str | None = None,
+        families: Sequence[str] | None = None,
     ) -> Engine: ...
     def compile(self, rule: Any) -> Rule:
         """Compile a JSONLogic rule (dict/list/scalar, or a JSON str)."""

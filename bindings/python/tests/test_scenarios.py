@@ -23,20 +23,29 @@ def engine_for(case):
         templating=opts.get("templating", False),
         template_key_escape=opts.get("template_key_escape"),
         config=opts.get("config"),
+        families=opts.get("families"),
     )
 
 
 def run(case):
     """The call's value, or ("error", type) when it raised."""
-    engine = engine_for(case)
     call = case["call"]
     try:
+        engine = engine_for(case)
         if call == "check":
             return [[d["code"], d["pointer"]] for d in engine.check(case["rule"], case.get("mode"))]
         if call == "truthy":
             return engine.truthy(case["value"])
         if call == "facts":
             return engine.compile(case["rule"]).facts()
+        if call == "trace":
+            run = json.loads(
+                engine.evaluate_with_trace(json.dumps(case["rule"]), json.dumps(case["data"]))
+            )
+            return {
+                "result": run["result"],
+                "pointers": sorted(set(run.get("pointers", {}).values())),
+            }
         compile_ = {
             "evaluate": engine.compile,
             "compile_template": engine.compile_template,
@@ -60,6 +69,8 @@ def test_scenario(case):
         assert got == ("error", case["error"])
     elif "diagnostics" in case:
         assert got == case["diagnostics"]
+    elif "trace" in case:
+        assert got == case["trace"]
     elif "facts" in case:
         assert {k: got[k] for k in case["facts"]} == case["facts"]
     else:

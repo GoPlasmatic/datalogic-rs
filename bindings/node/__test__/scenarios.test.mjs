@@ -16,12 +16,13 @@ function engineFor(c) {
     templating: o.templating ?? false,
     templateKeyEscape: o.template_key_escape ?? undefined,
     config: o.config ?? undefined,
+    families: o.families ?? undefined,
   });
 }
 
 function run(c) {
-  const engine = engineFor(c);
   try {
+    const engine = engineFor(c);
     switch (c.call) {
       case 'check':
         return engine.check(c.rule, c.mode).map((d) => [d.code, d.pointer]);
@@ -31,6 +32,10 @@ function run(c) {
         return engine.compile(c.rule).facts();
       case 'metered':
         return JSON.parse(engine.compile(c.rule).evaluateMetered(c.data, c.budget).result);
+      case 'trace': {
+        const run = JSON.parse(engine.evaluateWithTrace(JSON.stringify(c.rule), JSON.stringify(c.data)));
+        return { result: run.result, pointers: [...new Set(Object.values(run.pointers ?? {}))].sort() };
+      }
       default: {
         const compile = {
           evaluate: 'compile',
@@ -53,6 +58,8 @@ for (const c of scenarios) {
       assert.deepEqual(got, ['error', c.error]);
     } else if ('diagnostics' in c) {
       assert.deepEqual(got, c.diagnostics);
+    } else if ('trace' in c) {
+      assert.deepEqual(got, c.trace);
     } else if ('facts' in c) {
       for (const [k, v] of Object.entries(c.facts)) assert.deepEqual(got[k], v, k);
     } else {

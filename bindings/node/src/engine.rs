@@ -59,6 +59,13 @@ pub struct EngineOptions {
     /// `errorType: "ConfigurationError"` instead of being registered and
     /// never running. Defaults to `false`.
     pub strict_operator_names: Option<bool>,
+    /// The operator families the engine has besides the JSONLogic core
+    /// (`["ExtString", "DateTime"]`: the `family` of each `operators()`
+    /// row). Unset, the engine has every family. A family left out is not
+    /// there for the engine: its names compile as unknown operators, and a
+    /// custom operator may take them. An unknown family name throws at
+    /// construction with `errorType: "ConfigurationError"`.
+    pub families: Option<Vec<String>>,
 }
 
 /// An evaluation's result paired with what it cost, returned by the
@@ -121,20 +128,28 @@ impl Engine {
         options: Option<EngineOptions>,
         custom_operators: Option<HashMap<String, FunctionRef<String, String>>>,
     ) -> Result<Self> {
-        let (templating, config, key_escape, strict_names) = match options {
+        let (templating, config, key_escape, strict_names, families) = match options {
             Some(o) => (
                 o.templating.unwrap_or(false),
                 o.config,
                 o.template_key_escape,
                 o.strict_operator_names.unwrap_or(false),
+                o.families,
             ),
-            None => (false, None, None, false),
+            None => (false, None, None, false, None),
         };
         let mut builder = if templating {
             RsEngine::builder().with_templating(true)
         } else {
             RsEngine::builder()
         };
+        // Before the operators, so strict names are judged against the
+        // families the engine has.
+        if let Some(names) = families {
+            let families = datalogic_bind::families(names.iter().map(String::as_str))
+                .map_err(|msg| engine_error(&env, &DlError::configuration_error(msg), None))?;
+            builder = builder.with_families(families);
+        }
         // Reject a mis-typed escape at construction rather than silently
         // ignoring it: an option that looks accepted but does nothing is
         // worse than a loud failure.
@@ -304,8 +319,11 @@ impl Engine {
     /// step; use this for debugging, not hot paths.
     #[napi]
     pub fn evaluate_with_trace(&self, logic: String, data: String) -> Result<String> {
-        let run = self.inner.trace().eval_str(logic.as_str(), data.as_str());
-        Ok(datalogic_bind::traced_run_json(&run))
+        Ok(datalogic_bind::traced_json(
+            &self.inner,
+            logic.as_str(),
+            data.as_str(),
+        ))
     }
 
     /// One-shot metered evaluation: compile `rule`, evaluate it against
@@ -669,9 +687,8 @@ pub(crate) fn evaluate_value(
 /// truncated — a budget of `0.5` means the caller has confused this with
 /// a duration or a fraction.
 fn resolve_budget(env: &Env, engine: &Arc<RsEngine>, budget: Option<f64>) -> Result<u64> {
-    let explicit = datalogic_bind::budget_from_f64(budget)
-        .map_err(|msg| engine_error(env, &datalogic_rs::Error::invalid_arguments(msg), None))?;
-    Ok(engine.resolve_ops_budget(explicit))
+    datalogic_bind::resolve_budget(engine, budget)
+        .map_err(|msg| engine_error(env, &datalogic_rs::Error::invalid_arguments(msg), None))
 }
 
 pub(crate) fn evaluate_metered(

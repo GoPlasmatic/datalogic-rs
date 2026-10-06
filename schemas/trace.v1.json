@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/GoPlasmatic/datalogic-rs/schemas/trace.v1.json",
   "title": "datalogic traced run, v1",
-  "description": "The envelope every binding's evaluateWithTrace returns (datalogic_bind::traced_run_json). `result` is null when the run failed; `error` and `structured_error` are present only then.",
+  "description": "The envelope every binding's evaluateWithTrace returns (datalogic_bind::traced_json). `result` is null when the run failed; `error` and `structured_error` are present only then. `pointers` maps each node id (as a decimal string) to the RFC 6901 JSON Pointer of the rule value it was compiled from; it is absent when the rule did not compile.",
   "type": "object",
   "required": ["result", "expression_tree", "steps"],
   "properties": {
@@ -10,7 +10,8 @@
     "expression_tree": {"$ref": "#/$defs/node"},
     "steps": {"type": "array", "items": {"$ref": "#/$defs/step"}},
     "error": {"type": "string"},
-    "structured_error": {"$ref": "error.v1.json"}
+    "structured_error": {"$ref": "error.v1.json"},
+    "pointers": {"type": "object", "additionalProperties": {"type": "string"}}
   },
   "$defs": {
     "node": {

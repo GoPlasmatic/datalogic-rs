@@ -160,6 +160,9 @@ public final class DatalogicNative {
     public static final MethodHandle BUILDER_SET_CONFIG_JSON = dh("datalogic_engine_builder_set_config_json",
             FunctionDescriptor.of(ValueLayout.JAVA_INT,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T, ValueLayout.ADDRESS));
+    public static final MethodHandle BUILDER_SET_FAMILIES = dh("datalogic_engine_builder_set_families",
+            FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                    ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T, ValueLayout.ADDRESS));
     public static final MethodHandle BUILDER_ADD_OPERATOR = dh("datalogic_engine_builder_add_operator",
             FunctionDescriptor.of(ValueLayout.JAVA_INT,
                     ValueLayout.ADDRESS, ValueLayout.ADDRESS, SIZE_T,

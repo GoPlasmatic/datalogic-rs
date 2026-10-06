@@ -1,12 +1,13 @@
 //! The JSON the bindings emit must match `schemas/*.v1.json`.
 //!
 //! A small validator for the subset of JSON Schema those files use
-//! (`type`, `required`, `properties`, `items`, `enum`, `$ref`). It is
-//! stricter than the standard in one way: an object may not carry a
-//! property its schema does not list, so a new field fails here until the
-//! schema file says so.
+//! (`type`, `required`, `properties`, `additionalProperties`, `items`,
+//! `enum`, `$ref`). It is stricter than the standard in one way: an object
+//! may not carry a property its schema does not list (unless the schema
+//! gives `additionalProperties` a schema), so a new field fails here until
+//! the schema file says so.
 
-use datalogic_bind::{diagnostics_json, facts_json, operators_json, traced_run_json};
+use datalogic_bind::{diagnostics_json, facts_json, operators_json, traced_json, traced_run_json};
 use datalogic_rs::{CheckMode, Engine};
 use serde_json::Value;
 
@@ -56,10 +57,11 @@ fn validate(v: &Value, s: &Value, root: &Value, at: &str, out: &mut Vec<String>)
     {
         out.push(format!("{at}: {v} is not one of {allowed:?}"));
     }
-    if let (Some(obj), Some(props)) = (
-        v.as_object(),
-        s.get("properties").and_then(Value::as_object),
-    ) {
+    let props = s.get("properties").and_then(Value::as_object);
+    let additional = s.get("additionalProperties").filter(|a| a.is_object());
+    if let Some(obj) = v.as_object()
+        && (props.is_some() || additional.is_some())
+    {
         for req in s
             .get("required")
             .and_then(Value::as_array)
@@ -71,7 +73,7 @@ fn validate(v: &Value, s: &Value, root: &Value, at: &str, out: &mut Vec<String>)
             }
         }
         for (k, child) in obj {
-            match props.get(k) {
+            match props.and_then(|p| p.get(k)).or(additional) {
                 Some(ps) => validate(child, ps, root, &format!("{at}/{k}"), out),
                 None => out.push(format!("{at}: unexpected property {k}")),
             }
@@ -150,6 +152,20 @@ fn traced_runs_match_their_schema() {
     ] {
         let run = engine.trace().eval_str(rule, data);
         assert_valid("trace.v1.json", &traced_run_json(&run));
+        assert_valid("trace.v1.json", &traced_json(&engine, rule, data));
+    }
+}
+
+#[test]
+fn pointer_keys_are_node_ids() {
+    let engine = Engine::new();
+    let v: Value =
+        serde_json::from_str(&traced_json(&engine, r#"{"+": [1, {"var": "x"}]}"#, "{}")).unwrap();
+    let pointers = v["pointers"].as_object().unwrap();
+    assert!(!pointers.is_empty());
+    for (id, pointer) in pointers {
+        assert!(id.parse::<u32>().is_ok(), "{id}");
+        assert!(pointer.is_string());
     }
 }
 

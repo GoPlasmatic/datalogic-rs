@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"reflect"
+	"sort"
 	"testing"
 )
 
@@ -23,6 +24,7 @@ type scenario struct {
 	Error       *string         `json:"error"`
 	Diagnostics json.RawMessage `json:"diagnostics"`
 	Facts       map[string]any  `json:"facts"`
+	Trace       json.RawMessage `json:"trace"`
 }
 
 func loadScenarios(t *testing.T) []scenario {
@@ -44,8 +46,15 @@ func loadScenarios(t *testing.T) []scenario {
 	return out
 }
 
-func scenarioEngine(t *testing.T, s scenario) *Engine {
+func scenarioEngine(t *testing.T, s scenario) (*Engine, error) {
 	b := NewEngineBuilder()
+	if fams, ok := s.Engine["families"].([]any); ok {
+		names := make([]string, len(fams))
+		for i, f := range fams {
+			names[i] = f.(string)
+		}
+		b.Families(names...)
+	}
 	if v, _ := s.Engine["templating"].(bool); v {
 		b.Templating(true)
 	}
@@ -58,11 +67,7 @@ func scenarioEngine(t *testing.T, s scenario) *Engine {
 			t.Fatal(err)
 		}
 	}
-	e, err := b.Build()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return e
+	return b.Build()
 }
 
 func scenarioMode(m string) Mode {
@@ -85,7 +90,10 @@ func decode(s string) any {
 
 // runScenario returns the call's value, or the error type as an *Error.
 func runScenario(t *testing.T, s scenario) (any, error) {
-	e := scenarioEngine(t, s)
+	e, err := scenarioEngine(t, s)
+	if err != nil {
+		return nil, err
+	}
 	defer e.Close()
 	switch s.Call {
 	case "check":
@@ -112,6 +120,30 @@ func runScenario(t *testing.T, s scenario) (any, error) {
 			return nil, err
 		}
 		return decode(out), nil
+	case "trace":
+		ts := e.TracedSession()
+		defer ts.Close()
+		out, err := ts.Evaluate(string(s.Rule), string(s.Data))
+		if err != nil {
+			return nil, err
+		}
+		var run struct {
+			Result   any               `json:"result"`
+			Pointers map[string]string `json:"pointers"`
+		}
+		if err := json.Unmarshal([]byte(out), &run); err != nil {
+			return nil, err
+		}
+		seen := map[string]bool{}
+		pointers := []any{}
+		for _, p := range run.Pointers {
+			if !seen[p] {
+				seen[p] = true
+				pointers = append(pointers, p)
+			}
+		}
+		sort.Slice(pointers, func(i, j int) bool { return pointers[i].(string) < pointers[j].(string) })
+		return map[string]any{"result": run.Result, "pointers": pointers}, nil
 	case "metered":
 		r, err := e.Compile(string(s.Rule))
 		if err != nil {
@@ -166,6 +198,10 @@ func TestScenarios(t *testing.T) {
 			case s.Diagnostics != nil:
 				if !reflect.DeepEqual(got, decode(string(s.Diagnostics))) {
 					t.Fatalf("diagnostics %v", got)
+				}
+			case s.Trace != nil:
+				if !reflect.DeepEqual(got, decode(string(s.Trace))) {
+					t.Fatalf("trace %v", got)
 				}
 			case s.Facts != nil:
 				m := got.(map[string]any)

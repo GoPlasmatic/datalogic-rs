@@ -53,6 +53,7 @@ static datalogic_op_fn datalogic_go_get_trampoline(void) {
 import "C"
 
 import (
+	"encoding/json"
 	"errors"
 	"runtime"
 	"runtime/cgo"
@@ -112,6 +113,36 @@ func (b *EngineBuilder) Templating(on bool) *EngineBuilder {
 func (b *EngineBuilder) TemplateKeyEscape(r rune) *EngineBuilder {
 	var cerr *C.datalogic_error
 	rc := C.datalogic_engine_builder_set_template_key_escape(b.ptr, C.uint32_t(r), &cerr)
+	if rc != C.DATALOGIC_STATUS_OK {
+		err := takeError(cerr)
+		if b.err == nil {
+			b.err = err
+		}
+	}
+	return b
+}
+
+// Families keeps the engine to the JSONLogic core and the operator
+// families named here ("ExtString", "DateTime", ...: the "family" of each
+// row of Engine.Operators). By default the engine has every family. A
+// family left out is not there for the engine: its names compile as
+// unknown operators, and a custom operator may take them. Call it before
+// AddOperator when StrictOperatorNames is on. An unknown family name fails
+// Build with Type "ConfigurationError".
+func (b *EngineBuilder) Families(names ...string) *EngineBuilder {
+	if names == nil {
+		names = []string{}
+	}
+	js, err := json.Marshal(names)
+	if err != nil {
+		if b.err == nil {
+			b.err = err
+		}
+		return b
+	}
+	cp, cl := strBytes(string(js))
+	var cerr *C.datalogic_error
+	rc := C.datalogic_engine_builder_set_families(b.ptr, cp, cl, &cerr)
 	if rc != C.DATALOGIC_STATUS_OK {
 		err := takeError(cerr)
 		if b.err == nil {

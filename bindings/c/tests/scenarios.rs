@@ -17,10 +17,20 @@ impl Drop for Owned {
     }
 }
 
-fn engine_for(case: &Value) -> Owned {
+fn engine_for(case: &Value) -> Result<Owned, String> {
     let opts = &case["engine"];
     let b = datalogic_engine_builder_new();
     unsafe {
+        if !opts["families"].is_null() {
+            let names = opts["families"].to_string();
+            let mut err: *mut Error = std::ptr::null_mut();
+            if datalogic_engine_builder_set_families(b, names.as_ptr(), names.len(), &mut err)
+                != Status::Ok
+            {
+                datalogic_engine_builder_free(b);
+                return Err(tag(err));
+            }
+        }
         if opts["templating"].as_bool() == Some(true) {
             datalogic_engine_builder_set_templating(b, 1);
         }
@@ -45,7 +55,7 @@ fn engine_for(case: &Value) -> Owned {
         }
         let engine = datalogic_engine_builder_build(b);
         datalogic_engine_builder_free(b);
-        Owned { engine }
+        Ok(Owned { engine })
     }
 }
 
@@ -126,7 +136,7 @@ fn compile(engine: *const Engine, call: &str, rule: &str) -> Result<*mut Rule, S
 }
 
 fn run(case: &Value) -> Result<Value, String> {
-    let owned = engine_for(case);
+    let owned = engine_for(case)?;
     let engine = owned.engine;
     let rule = case["rule"].to_string();
     let data = case["data"].to_string();
@@ -207,6 +217,33 @@ fn run(case: &Value) -> Result<Value, String> {
             }
             out
         }
+        "trace" => {
+            let session = unsafe { datalogic_engine_traced_session(engine) };
+            let mut out = empty();
+            let st = unsafe {
+                datalogic_traced_session_evaluate(
+                    session,
+                    rule.as_ptr(),
+                    rule.len(),
+                    data.as_ptr(),
+                    data.len(),
+                    &mut out,
+                    &mut err,
+                )
+            };
+            unsafe { datalogic_traced_session_free(session) };
+            if st != Status::Ok {
+                return Err(tag(err));
+            }
+            let run = take(out);
+            let pointers: std::collections::BTreeSet<&str> = run["pointers"]
+                .as_object()
+                .into_iter()
+                .flatten()
+                .filter_map(|(_, p)| p.as_str())
+                .collect();
+            Ok(json!({"result": run["result"], "pointers": pointers}))
+        }
         call => {
             let r = compile(engine, call, &rule)?;
             let mut out = empty();
@@ -235,6 +272,8 @@ fn scenarios_pass() {
             let got = got.unwrap_or_else(|e| panic!("{what}: {e}"));
             if let Some(diags) = case.get("diagnostics") {
                 assert_eq!(&got, diags, "{what}");
+            } else if let Some(trace) = case.get("trace") {
+                assert_eq!(&got, trace, "{what}");
             } else if let Some(facts) = case.get("facts") {
                 for (k, v) in facts.as_object().unwrap() {
                     assert_eq!(&got[k], v, "{what}: {k}");

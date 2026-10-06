@@ -9,16 +9,18 @@
 //!
 //! | Format | Function |
 //! |---|---|
-//! | Traced run: `{result, expression_tree, steps, error?, structured_error?}` | [`traced_run_json`] |
+//! | Traced run: `{result, expression_tree, steps, error?, structured_error?, pointers?}` | [`traced_json`], [`traced_run_json`] |
 //! | Operator catalogue: the schema of `docs/src/operators/operators.json` | [`operators_json`] |
 //! | Rule facts: `{reads, computed_reads, reads_complete, reads_data, operators, custom_operators, deterministic}` | [`facts_json`] |
 //! | Diagnostics: `[{code, severity, message, pointer, operator}]` | [`diagnostics_json`] |
 //! | Custom operator call: arguments as one JSON array, result as JSON | [`args_json`], [`parse_result`] |
 
 use datalogic_rs::bumpalo::Bump;
+use std::collections::BTreeMap;
+
 use datalogic_rs::{
-    CheckMode, DataValue, Diagnostic, Engine, Error, ExecutionStep, ExpressionNode, Facts,
-    OperatorInfo, ScopedArg, TracedRun,
+    CheckMode, DataValue, Diagnostic, Engine, Error, ExecutionStep, ExpressionNode, Facts, Family,
+    Logic, OperatorInfo, ScopedArg, TracedRun,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -46,6 +48,30 @@ pub fn type_of(v: &DataValue<'_>) -> &'static str {
 /// `structured_error` (the serialised [`Error`]) when it failed. `result`
 /// is the parsed JSON value, or `null` on failure.
 pub fn traced_run_json(run: &TracedRun<String>) -> String {
+    traced_wire(run, None)
+}
+
+/// Trace `rule` over `data` as the debugger UI reads it: the
+/// [`traced_run_json`] envelope plus `pointers`, the JSON Pointer into
+/// `rule` of every node id the run can name (`{"3": "/if/1", ...}`), so a
+/// host places each step in the rule it shows. A rule that does not compile
+/// gives the same failed envelope as [`traced_run_json`], without
+/// `pointers`.
+pub fn traced_json(engine: &Engine, rule: &str, data: &str) -> String {
+    let tracer = engine.trace();
+    let Ok(logic) = tracer.compile(rule) else {
+        return traced_run_json(&tracer.eval_str(rule, data));
+    };
+    let run = tracer.eval(&logic, data);
+    let run = TracedRun {
+        result: run.result.map(|v| v.to_json_string()),
+        steps: run.steps,
+        expression_tree: run.expression_tree,
+    };
+    traced_wire(&run, Some(&logic))
+}
+
+fn traced_wire(run: &TracedRun<String>, logic: Option<&Logic>) -> String {
     #[derive(Serialize)]
     struct Wire<'a> {
         result: Value,
@@ -55,6 +81,8 @@ pub fn traced_run_json(run: &TracedRun<String>) -> String {
         error: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         structured_error: Option<&'a Error>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pointers: Option<BTreeMap<u32, &'a str>>,
     }
 
     let (result, error, structured_error) = match &run.result {
@@ -73,6 +101,7 @@ pub fn traced_run_json(run: &TracedRun<String>) -> String {
         steps: &run.steps,
         error,
         structured_error,
+        pointers: logic.map(|logic| logic.pointers().collect()),
     })
     .unwrap_or_default()
 }
@@ -94,6 +123,13 @@ pub fn budget_from_f64(budget: Option<f64>) -> Result<Option<u64>, &'static str>
         }
         Some(_) => Err(BUDGET_ERROR),
     }
+}
+
+/// The operation budget for one call from a JavaScript host: `budget`
+/// validated by [`budget_from_f64`], or the engine's own budget when the
+/// host passed none ([`Engine::resolve_ops_budget`]).
+pub fn resolve_budget(engine: &Engine, budget: Option<f64>) -> Result<u64, &'static str> {
+    Ok(engine.resolve_ops_budget(budget_from_f64(budget)?))
 }
 
 /// A custom operator's arguments as one JSON array, the form every host
@@ -204,6 +240,34 @@ pub fn diagnostics_json(diagnostics: &[Diagnostic]) -> String {
     serde_json::to_string(diagnostics).unwrap_or_else(|_| "[]".to_string())
 }
 
+/// The [`Family`] a host names, by its catalogue name (`"ExtString"`,
+/// `"DateTime"`, ...: the `family` of each [`operators_json`] row).
+pub fn family(name: &str) -> Result<Family, String> {
+    Family::ALL
+        .iter()
+        .copied()
+        .find(|f| f.name() == name)
+        .ok_or_else(|| {
+            let known: Vec<&str> = Family::ALL.iter().map(|f| f.name()).collect();
+            format!(
+                "unknown operator family {name:?} (expected one of: {})",
+                known.join(", ")
+            )
+        })
+}
+
+/// [`family`] for each name in `names`.
+pub fn families<'a>(names: impl IntoIterator<Item = &'a str>) -> Result<Vec<Family>, String> {
+    names.into_iter().map(family).collect()
+}
+
+/// [`families`] from a JSON array of names, the form the C ABI takes.
+pub fn families_from_json(json: &str) -> Result<Vec<Family>, String> {
+    let names: Vec<String> = serde_json::from_str(json)
+        .map_err(|_| "families must be a JSON array of family names".to_string())?;
+    families(names.iter().map(String::as_str))
+}
+
 /// The [`CheckMode`] a host names: `"engine"` (or none), `"strict"`,
 /// `"template"`.
 pub fn check_mode(name: Option<&str>) -> Result<CheckMode, String> {
@@ -279,6 +343,40 @@ mod tests {
     }
 
     #[test]
+    fn resolved_budgets() {
+        let engine = Engine::new();
+        assert_eq!(
+            resolve_budget(&engine, None),
+            Ok(engine.resolve_ops_budget(None))
+        );
+        assert_eq!(resolve_budget(&engine, Some(7.0)), Ok(7));
+        assert_eq!(resolve_budget(&engine, Some(0.5)), Err(BUDGET_ERROR));
+    }
+
+    #[test]
+    fn family_names() {
+        assert_eq!(family("ExtString"), Ok(Family::ExtString));
+        assert_eq!(family("Core"), Ok(Family::Core));
+        let err = family("Strings").unwrap_err();
+        assert!(
+            err.contains("\"Strings\"") && err.contains("ExtString"),
+            "{err}"
+        );
+        assert_eq!(
+            families_from_json(r#"["DateTime", "ExtArray"]"#),
+            Ok(vec![Family::DateTime, Family::ExtArray])
+        );
+        assert_eq!(families_from_json("[]"), Ok(vec![]));
+        assert!(families_from_json(r#"["Nope"]"#).is_err());
+        assert!(families_from_json(r#"{"a": 1}"#).is_err());
+        // Every catalogue family name parses.
+        let engine = Engine::new();
+        for op in engine.operators() {
+            assert!(family(op.family).is_ok(), "{}", op.family);
+        }
+    }
+
+    #[test]
     fn modes() {
         assert_eq!(check_mode(None), Ok(CheckMode::Engine));
         assert_eq!(check_mode(Some("template")), Ok(CheckMode::Template));
@@ -302,6 +400,44 @@ mod tests {
             err.to_string()
                 .contains("custom operator 'op' returned invalid JSON")
         );
+    }
+
+    #[test]
+    fn traced_json_places_every_node() {
+        let engine = Engine::new();
+        let rule = r#"{"if": [{"var": "a"}, {"+": [1, 2]}, "no"]}"#;
+        let v: Value = serde_json::from_str(&traced_json(&engine, rule, r#"{"a": true}"#)).unwrap();
+        assert_eq!(v["result"], 3);
+        let pointers = v["pointers"].as_object().unwrap();
+        let root = v["expression_tree"]["id"].to_string();
+        assert_eq!(pointers[&root], "");
+        let rule: Value = serde_json::from_str(rule).unwrap();
+        for step in v["steps"].as_array().unwrap() {
+            let p = pointers[&step["node_id"].to_string()].as_str().unwrap();
+            assert!(rule.pointer(p).is_some(), "{p}");
+        }
+        // The same envelope as `traced_run_json` apart from `pointers`.
+        let plain: Value = serde_json::from_str(&traced_run_json(
+            &engine.trace().eval_str(&rule, r#"{"a": true}"#),
+        ))
+        .unwrap();
+        let mut without = v.clone();
+        without.as_object_mut().unwrap().remove("pointers");
+        assert_eq!(without, plain);
+    }
+
+    #[test]
+    fn traced_json_reports_a_compile_failure() {
+        let engine = Engine::new();
+        let v: Value =
+            serde_json::from_str(&traced_json(&engine, r#"{"a": 1, "b": 2}"#, "null")).unwrap();
+        assert!(v.get("pointers").is_none());
+        assert!(v.get("error").is_some());
+        let plain: Value = serde_json::from_str(&traced_run_json(
+            &engine.trace().eval_str(r#"{"a": 1, "b": 2}"#, "null"),
+        ))
+        .unwrap();
+        assert_eq!(v, plain);
     }
 
     #[test]

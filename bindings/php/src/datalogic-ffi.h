@@ -84,6 +84,10 @@ void datalogic_op_result_set_error(datalogic_op_result *out, const char *msg, si
 datalogic_engine_builder *datalogic_engine_builder_new(void);
 void datalogic_engine_builder_free(datalogic_engine_builder *builder);
 void datalogic_engine_builder_set_templating(datalogic_engine_builder *builder, int32_t enabled);
+datalogic_status datalogic_engine_builder_set_families(datalogic_engine_builder *builder,
+                                                       const char *families_json,
+                                                       size_t families_len,
+                                                       datalogic_error **err);
 datalogic_status datalogic_engine_builder_set_config_json(datalogic_engine_builder *builder,
                                                           const char *config_json,
                                                           size_t config_len,

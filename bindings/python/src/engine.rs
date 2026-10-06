@@ -72,8 +72,15 @@ impl Engine {
     ///     ``"?:"``) raises :class:`EvaluateError` (``error_type ==
     ///     "ConfigurationError"``) instead of being registered and never
     ///     running.
+    /// :param families: the operator families the engine has besides the
+    ///     JSONLogic core (``["ExtString", "DateTime"]``: the ``family`` of
+    ///     each :meth:`operators` row). ``None`` means every family. A
+    ///     family left out is not there for the engine: its names compile
+    ///     as unknown operators, and a custom operator may take them. An
+    ///     unknown family name raises :class:`EvaluateError`
+    ///     (``error_type == "ConfigurationError"``).
     #[new]
-    #[pyo3(signature = (*, templating = false, custom_operators = None, config = None, strict_operator_names = false, template_key_escape = None))]
+    #[pyo3(signature = (*, templating = false, custom_operators = None, config = None, strict_operator_names = false, template_key_escape = None, families = None))]
     fn new(
         py: Python<'_>,
         templating: bool,
@@ -81,12 +88,22 @@ impl Engine {
         config: Option<&Bound<'_, PyAny>>,
         strict_operator_names: bool,
         template_key_escape: Option<&str>,
+        families: Option<Vec<String>>,
     ) -> PyResult<Self> {
         let mut builder = if templating {
             RsEngine::builder().with_templating(true)
         } else {
             RsEngine::builder()
         };
+        // Before the operators, so strict names are judged against the
+        // families the engine has.
+        if let Some(names) = families {
+            let families =
+                datalogic_bind::families(names.iter().map(String::as_str)).map_err(|msg| {
+                    engine_error_to_pyerr(py, &DlError::configuration_error(msg), None)
+                })?;
+            builder = builder.with_families(families);
+        }
         if let Some(prefix) = template_key_escape {
             let mut chars = prefix.chars();
             match (chars.next(), chars.next()) {
@@ -292,10 +309,7 @@ impl Engine {
         let logic_owned = logic.to_string();
         let data_owned = data.to_string();
         Ok(py.detach(move || {
-            let run = engine
-                .trace()
-                .eval_str(logic_owned.as_str(), data_owned.as_str());
-            datalogic_bind::traced_run_json(&run)
+            datalogic_bind::traced_json(&engine, logic_owned.as_str(), data_owned.as_str())
         }))
     }
 

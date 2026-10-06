@@ -9,7 +9,7 @@ namespace Goplasmatic.Datalogic;
 
 /// <summary>
 /// Result of a traced evaluation. Mirrors the cross-binding wire JSON
-/// shape: <c>{result, expression_tree, steps, error?, structured_error?}</c>.
+/// shape: <c>{result, expression_tree, steps, error?, structured_error?, pointers?}</c>.
 /// </summary>
 public sealed class TracedRun
 {
@@ -23,6 +23,12 @@ public sealed class TracedRun
     public string? Error { get; init; }
     /// <summary>Structured error object, or <c>null</c> on success.</summary>
     public JsonNode? StructuredError { get; init; }
+    /// <summary>
+    /// For every node id the run can name (as a property name), the RFC 6901
+    /// JSON Pointer into the rule of the value that node was compiled from;
+    /// <c>null</c> when the rule did not compile.
+    /// </summary>
+    public JsonObject? Pointers { get; init; }
 
     /// <summary>Whether the run succeeded.</summary>
     public bool IsSuccess => Error is null;
@@ -104,6 +110,7 @@ public sealed class TracedSession : IDisposable
             Steps = doc["steps"] is JsonArray arr ? (JsonArray)arr.DeepClone() : new JsonArray(),
             Error = doc["error"]?.GetValue<string>(),
             StructuredError = doc["structured_error"]?.DeepClone(),
+            Pointers = doc["pointers"] is JsonObject pointers ? (JsonObject)pointers.DeepClone() : null,
         };
     }
 

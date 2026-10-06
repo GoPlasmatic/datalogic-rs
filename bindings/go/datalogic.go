@@ -348,8 +348,12 @@ func (s *Session) AllocatedBytes() uint64 {
 //	  "expression_tree": <compiled expression node>,
 //	  "steps": [<execution step>, ...],
 //	  "error": "<message>",              // only present on engine errors
-//	  "structured_error": {<Error>}      // only present on engine errors
+//	  "structured_error": {<Error>},     // only present on engine errors
+//	  "pointers": {"<node id>": "<JSON Pointer>", ...} // absent if the rule did not compile
 //	}
+//
+// "pointers" gives, for every node id the run can name, the RFC 6901
+// JSON Pointer into the rule of the value that node was compiled from.
 //
 // The envelope matches the WASM binding's wire format, so trace
 // consumers (debuggers, visualizers) see one shape across every

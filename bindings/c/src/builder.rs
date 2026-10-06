@@ -216,6 +216,54 @@ pub unsafe extern "C" fn datalogic_engine_builder_set_strict_operator_names(
     }
 }
 
+/// Keep the engine to the JSONLogic core and the operator families named in
+/// `(families_json, families_len)`, a JSON array of family names
+/// (`["ExtString", "DateTime"]`, as the operator catalogue's `family`
+/// field spells them). By default the engine has every family this build
+/// compiled in. A family left out is not there for the engine: its names
+/// compile as unknown operators (or template output fields), and a custom
+/// operator may take them. Set it before adding operators when strict
+/// operator names are on. An unknown family name fails with tag
+/// `"ConfigurationError"` and leaves the builder unchanged.
+///
+/// # Safety
+///
+/// `builder` must be a valid builder handle; `families_json` must
+/// reference `families_len` readable bytes; `err` follows the crate-wide
+/// error out-param contract.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn datalogic_engine_builder_set_families(
+    builder: *mut EngineBuilder,
+    families_json: *const u8,
+    families_len: usize,
+    err: *mut *mut Error,
+) -> Status {
+    guard_status(err, || {
+        let Some(handle) = (unsafe { builder.as_mut() }) else {
+            return unsafe { fail(err, Error::invalid_arg("engine builder pointer is null")) };
+        };
+        let json = match unsafe { str_from_raw("families_json", families_json, families_len) } {
+            Ok(s) => s,
+            Err(e) => return unsafe { fail(err, e) },
+        };
+        let families = match datalogic_bind::families_from_json(json) {
+            Ok(f) => f,
+            Err(msg) => {
+                return unsafe {
+                    fail(
+                        err,
+                        Error::from_engine(&datalogic_rs::Error::configuration_error(msg), None),
+                    )
+                };
+            }
+        };
+        if let Some(b) = handle.inner.take() {
+            handle.inner = Some(b.with_families(families));
+        }
+        Status::Ok
+    })
+}
+
 /// Set the engine's evaluation configuration from a JSON object.
 ///
 /// Parsed by the core crate's shared config parser

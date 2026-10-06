@@ -36,6 +36,10 @@ public class ScenarioTests
         if (o?["templating"]?.GetValue<bool>() == true) b.WithTemplating(true);
         if (o?["template_key_escape"] is JsonNode esc) b.WithTemplateKeyEscape(esc.GetValue<string>()[0]);
         if (o?["config"] is JsonNode cfg) b.SetConfigJson(cfg.ToJsonString());
+        if (o?["families"] is JsonArray fams)
+        {
+            b.WithFamilies(fams.Select(f => (string)f!).ToArray());
+        }
         return b.Build();
     }
 
@@ -68,6 +72,20 @@ public class ScenarioTests
             {
                 using var r = e.Compile(rule);
                 return JsonNode.Parse(r.Facts());
+            }
+            case "trace":
+            {
+                using var t = e.OpenTracedSession();
+                var run = t.Evaluate(rule, data);
+                var pointers = new JsonArray();
+                foreach (var p in (run.Pointers ?? new JsonObject())
+                             .Select(kv => (string)kv.Value!)
+                             .Distinct()
+                             .OrderBy(p => p, StringComparer.Ordinal))
+                {
+                    pointers.Add(p);
+                }
+                return new JsonObject { ["result"] = run.Result?.DeepClone(), ["pointers"] = pointers };
             }
             case "metered":
             {
@@ -104,6 +122,10 @@ public class ScenarioTests
         if (c["diagnostics"] is JsonNode diags)
         {
             Assert.True(JsonNode.DeepEquals(diags, got), $"{name}: {got?.ToJsonString()}");
+        }
+        else if (c["trace"] is JsonNode trace)
+        {
+            Assert.True(JsonNode.DeepEquals(trace, got), $"{name}: {got?.ToJsonString()}");
         }
         else if (c["facts"] is JsonObject facts)
         {

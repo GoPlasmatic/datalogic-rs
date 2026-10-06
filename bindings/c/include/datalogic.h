@@ -350,6 +350,29 @@ void datalogic_engine_builder_set_strict_operator_names(datalogic_engine_builder
                                                         int32_t enabled);
 
 /**
+ * Keep the engine to the JSONLogic core and the operator families named in
+ * `(families_json, families_len)`, a JSON array of family names
+ * (`["ExtString", "DateTime"]`, as the operator catalogue's `family`
+ * field spells them). By default the engine has every family this build
+ * compiled in. A family left out is not there for the engine: its names
+ * compile as unknown operators (or template output fields), and a custom
+ * operator may take them. Set it before adding operators when strict
+ * operator names are on. An unknown family name fails with tag
+ * `"ConfigurationError"` and leaves the builder unchanged.
+ *
+ * # Safety
+ *
+ * `builder` must be a valid builder handle; `families_json` must
+ * reference `families_len` readable bytes; `err` follows the crate-wide
+ * error out-param contract.
+ */
+
+datalogic_status datalogic_engine_builder_set_families(datalogic_engine_builder *builder,
+                                                       const uint8_t *families_json,
+                                                       size_t families_len,
+                                                       datalogic_error **err);
+
+/**
  * Set the engine's evaluation configuration from a JSON object.
  *
  * Parsed by the core crate's shared config parser
@@ -998,6 +1021,11 @@ datalogic_status datalogic_session_evaluate_many(datalogic_session *session,
  * optimizer disabled, evaluate against `(data_json, data_len)`, and
  * store the result + trace as an owned JSON buffer in `*out` (release
  * via [`crate::datalogic_buf_free`]).
+ *
+ * The envelope is `{result, expression_tree, steps, error?,
+ * structured_error?, pointers?}`; `pointers` maps each node id (a decimal
+ * string key) to the RFC 6901 JSON Pointer into the rule of the value that
+ * node was compiled from, and is absent when the rule did not compile.
  *
  * Engine errors (parse / eval) surface **inside** the returned JSON's
  * `error` / `structured_error` fields with a `DATALOGIC_STATUS_OK`

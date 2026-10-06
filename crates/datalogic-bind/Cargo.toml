@@ -11,9 +11,9 @@ description = "Shared wire formats and plumbing for the datalogic-rs language bi
 publish = false
 
 [dependencies]
-datalogic-rs = { path = "../datalogic-rs", version = "5.8", features = ["serde_json", "trace"] }
+datalogic-rs = { path = "../datalogic-rs", version = "5.8", features = ["serde_json", "trace", "budget"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 
 [dev-dependencies]
-datalogic-rs = { path = "../datalogic-rs", version = "5.8", features = ["serde_json", "trace", "all-operators", "templating"] }
+datalogic-rs = { path = "../datalogic-rs", version = "5.8", features = ["serde_json", "trace", "budget", "all-operators", "templating"] }

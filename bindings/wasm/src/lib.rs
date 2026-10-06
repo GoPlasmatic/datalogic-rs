@@ -176,9 +176,8 @@ fn type_mismatch_err_to_js(message: &str) -> JsValue {
 /// truncated — a budget of `0.5` means the caller has confused this with
 /// a duration or a fraction.
 fn resolve_budget(engine: &RsEngine, budget: Option<f64>) -> Result<u64, JsValue> {
-    let explicit = datalogic_bind::budget_from_f64(budget)
-        .map_err(|msg| input_err_to_js("parse-budget", msg))?;
-    Ok(engine.resolve_ops_budget(explicit))
+    datalogic_bind::resolve_budget(engine, budget)
+        .map_err(|msg| input_err_to_js("parse-budget", msg))
 }
 
 /// Parse a JSON data string into `arena`, mapping a failure to the JS
@@ -333,8 +332,7 @@ pub fn evaluate(logic: &str, data: &str, templating: bool) -> Result<String, JsV
 #[wasm_bindgen(js_name = evaluateWithTrace)]
 pub fn evaluate_with_trace(logic: &str, data: &str, templating: bool) -> Result<String, JsValue> {
     let engine = make_engine(templating, None, None);
-    let run = engine.trace().eval_str(logic, data);
-    Ok(datalogic_bind::traced_run_json(&run))
+    Ok(datalogic_bind::traced_json(&engine, logic, data))
 }
 
 /// A compiled JSONLogic rule that can be evaluated multiple times.
@@ -501,9 +499,21 @@ impl CustomOperator for JsOperator {
 ///   templating?: boolean,
 ///   templateKeyEscape?: string,
 ///   customOperators?: Record<string, (argsJson: string) => string>,
-///   config?: string | object
+///   config?: string | object,
+///   strictOperatorNames?: boolean,
+///   families?: string[]
 /// }
 /// ```
+///
+/// `strictOperatorNames` refuses a custom operator named like a built-in
+/// (`ConfigurationError`) instead of registering one that would never run.
+///
+/// `families` keeps the engine to the JSONLogic core and the operator
+/// families named (`["ExtString", "DateTime"]`: the `family` of each
+/// `operators()` row); unset, the engine has every family. A family left out
+/// is not there for the engine: its names compile as unknown operators, and
+/// a custom operator may take them. An unknown family name rejects with
+/// `ConfigurationError`.
 ///
 /// `templateKeyEscape` is a single-character prefix, unset by default. In
 /// templating mode a single-key object is always an operator invocation, so
@@ -550,6 +560,11 @@ impl Engine {
         }
         if let Some(config) = options.config {
             builder = builder.with_config(config);
+        }
+        // Before the operators, so strict names are judged against the
+        // families the engine has.
+        if let Some(families) = options.families {
+            builder = builder.with_families(families);
         }
         for (name, callback) in options.custom_ops {
             let op = JsOperator {
@@ -707,13 +722,14 @@ impl Engine {
     /// Evaluate `logic` against `data` with an execution trace, honoring
     /// this engine's templating flag, [`EvaluationConfig`], and custom
     /// operators. Same envelope as the top-level [`evaluate_with_trace`]:
-    /// `{ result, steps, expression_tree, error?, structured_error? }`,
+    /// `{ result, steps, expression_tree, error?, structured_error?,
+    /// pointers? }`, where `pointers` maps each node id to the JSON Pointer
+    /// of the rule value it was compiled from,
     /// with runtime failures reported inside the envelope rather than
     /// thrown. Mirrors `Engine.evaluateWithTrace` in the Node binding.
     #[wasm_bindgen(js_name = evaluateWithTrace)]
     pub fn evaluate_with_trace(&self, logic: &str, data: &str) -> String {
-        let run = self.inner.trace().eval_str(logic, data);
-        datalogic_bind::traced_run_json(&run)
+        datalogic_bind::traced_json(&self.inner, logic, data)
     }
 
     /// Names of the custom operators registered on this engine via
@@ -1292,6 +1308,7 @@ fn parse_engine_options(options: &JsValue) -> Result<EngineOptions, JsValue> {
             custom_ops: Vec::new(),
             config: None,
             strict_names: false,
+            families: None,
         });
     }
     let obj: &Object = options
@@ -1333,12 +1350,32 @@ fn parse_engine_options(options: &JsValue) -> Result<EngineOptions, JsValue> {
         Err(_) => false,
     };
 
+    let families = match Reflect::get(obj, &JsValue::from_str("families")) {
+        Ok(v) if v.is_undefined() || v.is_null() => None,
+        Ok(v) => {
+            let names: Option<Vec<String>> = v
+                .dyn_ref::<Array>()
+                .and_then(|a| a.iter().map(|n| n.as_string()).collect());
+            let names = names.ok_or_else(|| {
+                input_err_to_js(
+                    "parse-options",
+                    "options.families must be an array of family names",
+                )
+            })?;
+            let families = datalogic_bind::families(names.iter().map(String::as_str))
+                .map_err(|msg| engine_err_to_js(&datalogic_rs::Error::configuration_error(msg)))?;
+            Some(families)
+        }
+        Err(_) => None,
+    };
+
     Ok(EngineOptions {
         templating,
         key_escape,
         custom_ops,
         config,
         strict_names,
+        families,
     })
 }
 
@@ -1351,6 +1388,8 @@ struct EngineOptions {
     /// `strictOperatorNames`: refuse a custom operator named like a
     /// built-in.
     strict_names: bool,
+    /// `families`: the operator families the engine has besides the core.
+    families: Option<Vec<datalogic_rs::Family>>,
 }
 
 fn parse_custom_operators(v: &JsValue) -> Result<Vec<(String, Function)>, JsValue> {

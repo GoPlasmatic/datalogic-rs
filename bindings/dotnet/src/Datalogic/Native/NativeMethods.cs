@@ -144,6 +144,13 @@ internal static partial class NativeMethods
     [LibraryImport(LibraryName, EntryPoint = "datalogic_engine_builder_set_templating")]
     internal static partial void datalogic_engine_builder_set_templating(IntPtr builder, int enabled);
 
+    [LibraryImport(LibraryName, EntryPoint = "datalogic_engine_builder_set_families")]
+    internal static unsafe partial DatalogicStatus datalogic_engine_builder_set_families(
+        IntPtr builder,
+        byte* families_json,
+        nuint families_len,
+        ref IntPtr err);
+
     [LibraryImport(LibraryName, EntryPoint = "datalogic_engine_builder_set_config_json")]
     internal static unsafe partial DatalogicStatus datalogic_engine_builder_set_config_json(
         IntPtr builder,

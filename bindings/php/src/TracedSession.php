@@ -70,6 +70,7 @@ final class TracedSession
             steps:           is_array($decoded['steps'] ?? null) ? $decoded['steps'] : [],
             error:           is_string($decoded['error'] ?? null) ? $decoded['error'] : null,
             structuredError: $decoded['structured_error'] ?? null,
+            pointers:        is_array($decoded['pointers'] ?? null) ? $decoded['pointers'] : [],
         );
     }
 

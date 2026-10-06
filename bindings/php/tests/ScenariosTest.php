@@ -50,6 +50,9 @@ final class ScenariosTest extends TestCase
         if (isset($opts['config'])) {
             $b->setConfigJson(json_encode($opts['config']));
         }
+        if (array_key_exists('families', $opts)) {
+            $b->withFamilies(...$opts['families']);
+        }
         return $b->build();
     }
 
@@ -64,7 +67,6 @@ final class ScenariosTest extends TestCase
      */
     private static function runCase(array $case, object $raw): array
     {
-        $e = self::engineFor($case);
         $rule = self::enc($raw->rule ?? null);
         $data = self::enc($raw->data ?? null);
         $mode = match ($case['mode'] ?? 'engine') {
@@ -73,6 +75,7 @@ final class ScenariosTest extends TestCase
             default => Native::MODE_ENGINE,
         };
         try {
+            $e = self::engineFor($case);
             switch ($case['call']) {
                 case 'check':
                     return [array_map(
@@ -83,6 +86,11 @@ final class ScenariosTest extends TestCase
                     return [$e->truthy(self::enc($raw->value)), null];
                 case 'facts':
                     return [json_decode($e->compile($rule)->facts(), true), null];
+                case 'trace':
+                    $run = $e->openTracedSession()->evaluate($rule, $data);
+                    $pointers = array_values(array_unique(array_values($run->pointers)));
+                    sort($pointers, SORT_STRING);
+                    return [['result' => $run->result, 'pointers' => $pointers], null];
                 case 'metered':
                     $m = $e->openSession()->evaluateMetered($e->compile($rule), $data, $case['budget']);
                     return [json_decode($m['value'], true), null];
@@ -112,6 +120,8 @@ final class ScenariosTest extends TestCase
         self::assertNull($error, 'unexpected error');
         if (array_key_exists('diagnostics', $case)) {
             self::assertSame($case['diagnostics'], $got);
+        } elseif (array_key_exists('trace', $case)) {
+            self::assertEquals($case['trace'], $got);
         } elseif (array_key_exists('facts', $case)) {
             foreach ($case['facts'] as $k => $v) {
                 self::assertSame($v, $got[$k], $k);

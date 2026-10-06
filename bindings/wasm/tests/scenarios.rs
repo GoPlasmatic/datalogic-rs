@@ -11,7 +11,7 @@ use wasm_bindgen_test::*;
 
 const SCENARIOS: &str = include_str!("../../scenarios/api.json");
 
-fn engine_for(case: &Value) -> Engine {
+fn engine_for(case: &Value) -> Result<Engine, JsValue> {
     let opts = Object::new();
     let e = &case["engine"];
     if let Some(t) = e["templating"].as_bool() {
@@ -28,7 +28,14 @@ fn engine_for(case: &Value) -> Engine {
         )
         .unwrap();
     }
-    Engine::new(opts.into()).unwrap()
+    if let Some(names) = e["families"].as_array() {
+        let families = js_sys::Array::new();
+        for name in names {
+            families.push(&JsValue::from_str(name.as_str().unwrap()));
+        }
+        Reflect::set(&opts, &"families".into(), &families).unwrap();
+    }
+    Engine::new(opts.into())
 }
 
 fn error_type(err: JsValue) -> Value {
@@ -37,7 +44,10 @@ fn error_type(err: JsValue) -> Value {
 }
 
 fn run(case: &Value) -> Value {
-    let engine = engine_for(case);
+    let engine = match engine_for(case) {
+        Ok(engine) => engine,
+        Err(err) => return error_type(err),
+    };
     let rule = case["rule"].to_string();
     let data = case["data"].to_string();
     let parse = |s: String| serde_json::from_str::<Value>(&s).unwrap();
@@ -55,6 +65,16 @@ fn run(case: &Value) -> Value {
         }
         "truthy" => Ok(json!(engine.truthy(&case["value"].to_string())?)),
         "facts" => Ok(parse(engine.compile(&rule)?.facts())),
+        "trace" => {
+            let run = parse(engine.evaluate_with_trace(&rule, &data));
+            let pointers: std::collections::BTreeSet<&str> = run["pointers"]
+                .as_object()
+                .into_iter()
+                .flatten()
+                .filter_map(|(_, p)| p.as_str())
+                .collect();
+            Ok(json!({"result": run["result"], "pointers": pointers}))
+        }
         "metered" => {
             let budget = case["budget"].as_f64();
             let out = parse(engine.compile(&rule)?.evaluate_metered(&data, budget)?);
@@ -85,6 +105,8 @@ fn scenarios_pass() {
             assert_eq!(got, json!(["error", err]), "{what}");
         } else if let Some(diags) = case.get("diagnostics") {
             assert_eq!(&got, diags, "{what}");
+        } else if let Some(trace) = case.get("trace") {
+            assert_eq!(&got, trace, "{what}");
         } else if let Some(facts) = case.get("facts") {
             for (k, v) in facts.as_object().unwrap() {
                 assert_eq!(&got[k], v, "{what}: {k}");

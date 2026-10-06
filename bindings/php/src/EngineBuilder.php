@@ -129,6 +129,34 @@ final class EngineBuilder
     }
 
     /**
+     * Keep the engine to the JSONLogic core and the operator families named
+     * here (`"ExtString"`, `"DateTime"`, ...: the `family` of each row of
+     * `Engine::operators()`). By default the engine has every family. A
+     * family left out is not there for the engine: its names compile as
+     * unknown operators, and a custom operator may take them. Call it before
+     * `addOperator()` when strict operator names are on.
+     *
+     * @throws DatalogicException with error type `"ConfigurationError"` for
+     *         an unknown family name
+     */
+    public function withFamilies(string ...$families): self
+    {
+        $this->ensureFresh();
+        $json = json_encode(array_values($families), JSON_THROW_ON_ERROR);
+        $err = Native::newErrorOut();
+        $rc = Native::ffi()->datalogic_engine_builder_set_families(
+            $this->handle,
+            $json,
+            strlen($json),
+            FFI::addr($err),
+        );
+        if ($rc !== Native::STATUS_OK) {
+            throw DatalogicException::fromNative($rc, $err, 'set_families failed');
+        }
+        return $this;
+    }
+
+    /**
      * Register a custom JSONLogic operator.
      *
      * The callback receives the operator's pre-evaluated arguments as a

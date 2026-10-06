@@ -1,5 +1,5 @@
 [
-  "# Every binding runs this file through its own API (see bindings/BINDINGS.md, 'Scenarios'). Each case is one call: `call` names it, `engine` holds the constructor options, and exactly one of `result`, `error` (the error type), `diagnostics` ([code, pointer] pairs) or `facts` (a subset of the facts object) is the expectation.",
+  "# Every binding runs this file through its own API (see bindings/BINDINGS.md, 'Scenarios'). Each case is one call: `call` names it, `engine` holds the constructor options, and exactly one of `result`, `error` (the error type), `diagnostics` ([code, pointer] pairs) or `facts` (a subset of the facts object) or `trace` (the traced run's result and the sorted set of its node pointers) is the expectation.",
 
   "## evaluate: compile in the engine's mode, evaluate, compare the JSON result",
   {"description": "plain rule", "call": "evaluate", "rule": {"+": [{"var": "a"}, 2]}, "data": {"a": 1}, "result": 3},
@@ -41,5 +41,14 @@
 
   "## metered: an operation budget",
   {"description": "within budget", "call": "metered", "rule": {"map": [{"var": "xs"}, {"+": [{"var": ""}, 1]}]}, "data": {"xs": [1, 2, 3]}, "budget": 1000, "result": [2, 3, 4]},
-  {"description": "over budget", "call": "metered", "rule": {"map": [{"var": "xs"}, {"+": [{"var": ""}, 1]}]}, "data": {"xs": [1, 2, 3]}, "budget": 2, "error": "BudgetExceeded"}
+  {"description": "over budget", "call": "metered", "rule": {"map": [{"var": "xs"}, {"+": [{"var": ""}, 1]}]}, "data": {"xs": [1, 2, 3]}, "budget": 2, "error": "BudgetExceeded"},
+  "# Traced runs: every node id the run can name maps to the JSON Pointer of the rule value it was compiled from.",
+  {"description": "pointers place every node", "call": "trace", "rule": {"if": [{"var": "a"}, {"+": [1, 2]}, 0]}, "data": {"a": true}, "trace": {"result": 3, "pointers": ["", "/if/0", "/if/0/var", "/if/1", "/if/1/+/0", "/if/1/+/1", "/if/2"]}},
+  {"description": "an alias and a lone argument keep the rule's shape", "call": "trace", "rule": {"?:": [{"!": {"var": "x"}}, "no", "yes"]}, "data": {"x": 0}, "trace": {"result": "no", "pointers": ["", "/?:/0", "/?:/0/!", "/?:/0/!/var", "/?:/1", "/?:/2"]}},
+  "# Operator families: `engine.families` keeps the engine to the core plus the families named (catalogue names). A name of a family left out is an unknown operator.",
+  {"description": "a family left out is an unknown operator", "call": "evaluate", "engine": {"families": []}, "rule": {"length": "abc"}, "data": null, "error": "InvalidOperator"},
+  {"description": "a named family is there", "call": "evaluate", "engine": {"families": ["ExtString"]}, "rule": {"length": "abc"}, "data": null, "result": 3},
+  {"description": "the core is always there", "call": "evaluate", "engine": {"families": []}, "rule": {"+": [1, 2]}, "data": null, "result": 3},
+  {"description": "check reports a left-out name", "call": "check", "engine": {"families": []}, "rule": {"if": [true, {"upper": "a"}]}, "diagnostics": [["UnknownOperator", "/if/1"]]},
+  {"description": "an unknown family name is refused", "call": "evaluate", "engine": {"families": ["Strings"]}, "rule": 1, "data": null, "error": "ConfigurationError"}
 ]

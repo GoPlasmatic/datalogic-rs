@@ -74,7 +74,8 @@ public final class TracedSession implements AutoCloseable {
                     node.get("expression_tree"),
                     node.get("steps"),
                     node.has("error") ? node.get("error").asText(null) : null,
-                    node.get("structured_error")
+                    node.get("structured_error"),
+                    node.get("pointers")
             );
         } catch (IOException e) {
             throw new EvaluateException(

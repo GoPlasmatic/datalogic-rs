@@ -237,6 +237,7 @@ idiomatic spelling (a Java or C# `Int` is 32-bit, so those bindings say
 | Typed results | n/a | `evaluate_bool` / `_int` / `_float` / `_truthy` | `evaluateBool` / `Int` / `Float` / `Truthy` | `EvaluateBool` / `Int64` / `Float64` / `Truthy` | `evaluateBool` / `Long` / `Double` / `Truthy` | `EvaluateBool` / `Int64` / `Double` / `Truthy` | `evaluateBool` / `Int` / `Float` / `Truthy` | `datalogic_session_evaluate_bool` / `_i64` / `_f64` / `_truthy` |
 | Metered | `evaluate_metered` | `evaluate_metered` | `evaluateMetered` | `EvaluateMetered` | `evaluateMetered` | `EvaluateMetered` | `evaluateMetered` | `datalogic_session_evaluate_metered` |
 | Refuse a built-in name | `try_add_operator` | `strict_operator_names=True` | `strictOperatorNames` | `StrictOperatorNames` | `withStrictOperatorNames` | `WithStrictOperatorNames` | `withStrictOperatorNames` | `datalogic_engine_builder_set_strict_operator_names` |
+| Operator families | `with_families` | `families=[...]` | `families` | `Families` | `withFamilies` | `WithFamilies` | `withFamilies` | `datalogic_engine_builder_set_families` |
 | Error type | `Error::code` | `.error_type` | `.errorType` | `.Type` | `errorType()` | `.ErrorType` | `->errorType` | `datalogic_error_tag` |
 
 Deprecated in 5.8 and removed in 6.0: the WASM `CompiledRule` class and

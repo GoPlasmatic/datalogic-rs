@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.TreeSet;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
@@ -28,6 +29,11 @@ class ScenariosTest {
     private static Engine engineFor(JsonNode c) {
         JsonNode o = c.path("engine");
         EngineBuilder b = Engine.builder();
+        if (o.has("families")) {
+            List<String> names = new ArrayList<>();
+            o.get("families").forEach(n -> names.add(n.asText()));
+            b.withFamilies(names.toArray(new String[0]));
+        }
         if (o.path("templating").asBoolean(false)) b.withTemplating(true);
         if (o.hasNonNull("template_key_escape")) {
             b.withTemplateKeyEscape(o.get("template_key_escape").asText().codePointAt(0));
@@ -61,6 +67,17 @@ class ScenariosTest {
                 case "facts":
                     try (Rule r = e.compile(rule)) {
                         return new Outcome(MAPPER.readTree(r.facts()), null);
+                    }
+                case "trace":
+                    try (TracedSession t = e.openTracedSession()) {
+                        TracedRun run = t.evaluate(rule, data);
+                        TreeSet<String> seen = new TreeSet<>();
+                        run.pointers().fields().forEachRemaining(f -> seen.add(f.getValue().asText()));
+                        var out = JsonNodeFactory.instance.objectNode();
+                        out.set("result", run.result());
+                        ArrayNode pointers = out.putArray("pointers");
+                        seen.forEach(pointers::add);
+                        return new Outcome(out, null);
                     }
                 case "metered":
                     try (Rule r = e.compile(rule); Session s = e.openSession()) {
@@ -98,6 +115,8 @@ class ScenariosTest {
                 assertNull(got.errorType(), "unexpected error");
                 if (c.has("diagnostics")) {
                     assertEquals(c.get("diagnostics"), got.value());
+                } else if (c.has("trace")) {
+                    assertEquals(c.get("trace"), got.value());
                 } else if (c.has("facts")) {
                     c.get("facts").fields().forEachRemaining(f -> assertEquals(f.getValue(), got.value().get(f.getKey()), f.getKey()));
                 } else {

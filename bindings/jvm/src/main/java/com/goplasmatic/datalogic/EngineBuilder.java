@@ -144,6 +144,47 @@ public final class EngineBuilder {
     }
 
     /**
+     * Keep the engine to the JSONLogic core and the operator families
+     * named here ({@code "ExtString"}, {@code "DateTime"}, ...: the
+     * {@code family} of each row of {@link Engine#operators()}). By
+     * default the engine has every family. A family left out is not there
+     * for the engine: its names compile as unknown operators, and a custom
+     * operator may take them. Call it before {@link #addOperator} when
+     * strict operator names are on.
+     *
+     * @throws EvaluateException with error type {@code "ConfigurationError"}
+     *         for an unknown family name
+     */
+    public EngineBuilder withFamilies(String... families) {
+        if (families == null) throw new NullPointerException("families");
+        ensureFresh();
+        for (int i = 0; i < families.length; i++) {
+            if (families[i] == null) throw new NullPointerException("families[" + i + "]");
+        }
+        String json;
+        try {
+            json = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(families);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalArgumentException("families", e);
+        }
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment names = DatalogicNative.utf8(arena, json);
+            MemorySegment errSlot = arena.allocate(ValueLayout.ADDRESS);
+            int status;
+            try {
+                status = (int) DatalogicNative.BUILDER_SET_FAMILIES.invokeExact(
+                        handle, names, names.byteSize(), errSlot);
+            } catch (Throwable t) {
+                throw DatalogicException.propagate(t);
+            }
+            if (status != DatalogicNative.STATUS_OK) {
+                throw DatalogicException.fromNative(status, errSlot, "set_families failed");
+            }
+        }
+        return this;
+    }
+
+    /**
      * Register a custom JSONLogic operator under {@code name}. The
      * {@link CustomOperator} contract takes a JSON-array string of
      * pre-evaluated arguments and returns a JSON-value string.
