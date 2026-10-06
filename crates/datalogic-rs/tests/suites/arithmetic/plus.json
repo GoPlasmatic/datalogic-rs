@@ -364,5 +364,24 @@
     },
     "data": null,
     "result": 164649094278213889
+  },
+  "# Variadic and binary + coerce alike (integers above 2^53)",
+  {
+    "description": "Variadic + keeps a numeric string above 2^53 exact",
+    "rule": {"+": ["9007199254740993", 0, 0]},
+    "data": null,
+    "result": 9007199254740993
+  },
+  {
+    "description": "Variadic + over data keeps a numeric string above 2^53 exact",
+    "rule": {"+": [{"var": "a"}, {"var": "b"}, 0]},
+    "data": {"a": "9007199254740993", "b": 2},
+    "result": 9007199254740995
+  },
+  {
+    "description": "Binary + agrees",
+    "rule": {"+": [{"var": "a"}, 2]},
+    "data": {"a": "9007199254740993"},
+    "result": 9007199254740995
   }
 ]

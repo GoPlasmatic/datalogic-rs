@@ -108,6 +108,7 @@ pub(super) fn coerce_pair_f64(
 /// Spec for an integer-fast-path / float-fallback variadic fold:
 /// inits, the integer combine (with overflow signaling via `None`), and
 /// the float combine.
+#[derive(Clone, Copy)]
 pub(super) struct VariadicFoldSpec {
     pub(super) int_init: i64,
     pub(super) float_init: f64,
@@ -228,14 +229,14 @@ pub(super) fn is_literal_array(node: &crate::CompiledNode) -> bool {
 }
 
 /// Variadic fold over arena-evaluated args with integer-fast-path and
-/// overflow promotion to `f64`. Used by `+` and `*` for the 2+ arg form.
+/// overflow promotion to `f64`. Used by `+` and `*` for the 3+ arg form.
 /// Non-numeric args trigger NaN handling per engine config.
 ///
-/// Coercion strategy: strict `as_i64()` for the int path; native `as_f64()`
-/// then config-aware coercion for the float path. This is intentionally
-/// stricter than `subtract_variadic` / `one_arg_array_fold` — variadic
-/// `+`/`*` are dominated by native-int-only sequences and the strict path
-/// avoids paying coercion cost on every arg.
+/// Coercion strategy: the same as the two-argument form and
+/// `subtract_variadic` — native `as_i64()`, then the config-aware integer
+/// coercion (so a numeric string stays exact on the int track), then the
+/// config-aware `f64` coercion. Native integers, the dominant case, stop
+/// at the first test.
 #[inline]
 pub(super) fn variadic_fold<'a>(
     args: &'a [crate::CompiledNode],
@@ -247,22 +248,36 @@ pub(super) fn variadic_fold<'a>(
     let mut state = FoldState::new(spec.int_init, spec.float_init);
     for arg in args {
         let av = engine.dispatch_node(arg, ctx, arena)?;
-        let int_opt = av.as_i64();
-        let float_opt = if int_opt.is_some() {
-            None
-        } else {
-            av.as_f64().or_else(|| coerce_to_number_cfg(av, engine))
-        };
-        if let FoldStepOutcome::ReturnNull = state.step(
-            int_opt,
-            float_opt,
-            spec.i_combine,
-            spec.f_combine,
-            ctx,
-            engine,
-        )? {
+        if let FoldStepOutcome::ReturnNull = step_value(&mut state, av, ctx, engine, spec)? {
             return Ok(crate::arena::singletons::singleton_null());
         }
     }
     Ok(state.finalize(arena))
+}
+
+/// One operand of [`variadic_fold`], coerced as it coerces.
+#[inline(always)]
+fn step_value(
+    state: &mut FoldState,
+    av: &DataValue<'_>,
+    ctx: &mut ContextStack<'_>,
+    engine: &Engine,
+    spec: VariadicFoldSpec,
+) -> Result<FoldStepOutcome> {
+    let int_opt = av
+        .as_i64()
+        .or_else(|| try_coerce_to_integer_cfg(av, engine));
+    let float_opt = if int_opt.is_some() {
+        None
+    } else {
+        coerce_to_number_cfg(av, engine)
+    };
+    state.step(
+        int_opt,
+        float_opt,
+        spec.i_combine,
+        spec.f_combine,
+        ctx,
+        engine,
+    )
 }

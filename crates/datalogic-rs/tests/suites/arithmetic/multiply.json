@@ -168,5 +168,18 @@
         "rule": { "*": [[1], 1] },
         "error": { "type": "NaN" },
         "data": null
-    }
+    },
+  "# Variadic and binary * coerce alike (integers above 2^53)",
+  {
+    "description": "Variadic * keeps a numeric string above 2^53 exact",
+    "rule": {"*": [{"var": "a"}, 1, 1]},
+    "data": {"a": "9007199254740993"},
+    "result": 9007199254740993
+  },
+  {
+    "description": "Binary * agrees",
+    "rule": {"*": [{"var": "a"}, 1]},
+    "data": {"a": "9007199254740993"},
+    "result": 9007199254740993
+  }
 ]
