@@ -551,6 +551,26 @@ func TestNilHandlesReturnInvalidArgument(t *testing.T) {
 	expectInvalid("Session.EvaluateTruthy(nil data)", err)
 }
 
+// A malformed batch item falls back to Type "InternalError" with the raw
+// JSON as the message, as the JVM, .NET and PHP decoders do.
+func TestDecodeItemErrorFallbacks(t *testing.T) {
+	cases := []struct {
+		body, wantType, wantMsg, wantOp string
+	}{
+		{`{"tag":"Thrown","message":"boom","operator":"throw"}`, "Thrown", "boom", "throw"},
+		{`{"message":"no tag"}`, "InternalError", "no tag", ""},
+		{`{"tag":"Thrown"}`, "Thrown", `{"tag":"Thrown"}`, ""},
+		{`not json`, "InternalError", `not json`, ""},
+	}
+	for _, c := range cases {
+		e := decodeItemError(c.body)
+		if e.Type != c.wantType || e.Message != c.wantMsg || e.Operator != c.wantOp {
+			t.Errorf("decodeItemError(%q) = {%q %q %q}, want {%q %q %q}",
+				c.body, e.Type, e.Message, e.Operator, c.wantType, c.wantMsg, c.wantOp)
+		}
+	}
+}
+
 // Close is safe from many goroutines at once: exactly one call frees
 // each handle, the rest see it already closed.
 func TestConcurrentCloseFreesOnce(t *testing.T) {

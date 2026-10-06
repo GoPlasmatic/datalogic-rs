@@ -308,15 +308,28 @@ func collectBatch(results []C.datalogic_slice, statuses []C.datalogic_status) []
 // decodeItemError parses the per-item error JSON the batch entry points
 // write into the result slot ({"tag": ..., "message": ...,
 // "operator"?: ...}) into the binding's *Error type.
+//
+// The C side always writes that shape. Should a field be missing anyway,
+// the fallbacks match the JVM, .NET and PHP decoders: Type
+// "InternalError", and the raw item JSON as the Message.
 func decodeItemError(body string) *Error {
 	var item struct {
-		Tag      string `json:"tag"`
-		Message  string `json:"message"`
-		Operator string `json:"operator"`
+		Tag      *string `json:"tag"`
+		Message  *string `json:"message"`
+		Operator *string `json:"operator"`
 	}
-	if err := json.Unmarshal([]byte(body), &item); err != nil || (item.Tag == "" && item.Message == "") {
-		// Defensive — the C side always writes the object shape above.
-		return &Error{Message: body}
+	e := &Error{Message: body, Type: "InternalError"}
+	if err := json.Unmarshal([]byte(body), &item); err != nil {
+		return e
 	}
-	return &Error{Message: item.Message, Type: item.Tag, Operator: item.Operator}
+	if item.Tag != nil {
+		e.Type = *item.Tag
+	}
+	if item.Message != nil {
+		e.Message = *item.Message
+	}
+	if item.Operator != nil {
+		e.Operator = *item.Operator
+	}
+	return e
 }
