@@ -45,14 +45,14 @@ See [`include/datalogic.h`](https://github.com/GoPlasmatic/datalogic-rs/blob/mai
 
 | Group | Functions |
 |---|---|
-| Meta | `datalogic_abi_version` (must equal `DATALOGIC_ABI_VERSION` = 2), `datalogic_version`, `datalogic_buf_free` |
-| Engine | `datalogic_engine_new` / `_free` / `_compile` / `_apply` / `_session` / `_traced_session` |
-| Builder | `datalogic_engine_builder_new` / `_free` / `_set_templating` / `_set_config_json` / `_add_operator` / `_build`; callbacks write results via `datalogic_op_result_set_json` / `_set_error` |
+| Meta | `datalogic_abi_version` (must equal `DATALOGIC_ABI_VERSION` = 2), `datalogic_abi_minor`, `datalogic_version`, `datalogic_buf_free` |
+| Engine | `datalogic_engine_new` / `_free` / `_compile` / `_compile_mode` / `_compile_checked` / `_check` / `_operators` / `_truthy` / `_apply` / `_session` / `_traced_session` |
+| Builder | `datalogic_engine_builder_new` / `_free` / `_set_templating` / `_set_config_json` / `_set_families` / `_set_template_key_escape` / `_set_strict_operator_names` / `_add_operator` / `_build`; callbacks write results via `datalogic_op_result_set_json` / `_set_error` |
 | Data | `datalogic_data_parse` / `_free` / `_allocated_bytes`; parse once, evaluate many |
-| Rule | `datalogic_rule_free` / `_evaluate` / `_evaluate_data` |
-| Session | `datalogic_session_free` / `_reset` / `_allocated_bytes` / `_evaluate` / `_evaluate_data` / `_evaluate_bool` / `_evaluate_i64` / `_evaluate_f64` / `_evaluate_truthy` / `_evaluate_batch` / `_evaluate_many` |
-| Traced | `datalogic_traced_session_free` / `_evaluate` |
-| Errors | `datalogic_error_free` / `_status` / `_message` / `_tag` / `_operator` / `_path_json` |
+| Rule | `datalogic_rule_free` / `_evaluate` / `_evaluate_data` / `_facts` |
+| Session | `datalogic_session_free` / `_reset` / `_allocated_bytes` / `_evaluate` / `_evaluate_metered` / `_evaluate_data` / `_evaluate_bool` / `_evaluate_i64` / `_evaluate_f64` / `_evaluate_truthy` / `_evaluate_batch` / `_evaluate_many` |
+| Traced | `datalogic_traced_session_free` / `_evaluate` / `_evaluate_mode` |
+| Errors | `datalogic_error_free` / `_status` / `_message` / `_tag` / `_operator` / `_path_json` / `_node_ids_json` / `_diagnostics_json` |
 
 ### Contract (v2)
 

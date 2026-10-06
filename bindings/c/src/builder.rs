@@ -317,12 +317,12 @@ pub unsafe extern "C" fn datalogic_engine_builder_set_families(
 /// Parsed by the core crate's shared config parser
 /// ([`EvaluationConfig::from_json_str`]) — the same wire format every
 /// binding uses (`preset`, `arithmetic_nan_handling`,
-/// `division_by_zero`, `loose_equality_errors`, `truthy_evaluator`,
-/// `numeric_coercion`, `max_recursion_depth`, `ops_budget`). Unknown
-/// keys and enum strings are rejected (tag `"ConfigurationError"`) so
-/// typos fail loudly. Each call replaces the builder's entire evaluation
-/// config; templating and registered operators are unaffected. A failed
-/// call leaves the builder usable. On a builder
+/// `division_by_zero`, `loose_equality_errors`, `missing_var`,
+/// `truthy_evaluator`, `numeric_coercion`, `max_recursion_depth`,
+/// `ops_budget`). Unknown keys and enum strings are rejected (tag
+/// `"ConfigurationError"`) so typos fail loudly. Each call replaces the
+/// builder's entire evaluation config; templating and registered operators
+/// are unaffected. A failed call leaves the builder usable. On a builder
 /// [`datalogic_engine_builder_build`] has already drained, fails with
 /// `DATALOGIC_STATUS_INVALID_ARG`.
 ///
