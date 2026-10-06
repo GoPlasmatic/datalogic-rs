@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import wasm from 'vite-plugin-wasm';
-import { aliases } from './vite.aliases';
+import { aliases } from './vite.aliases.ts';
 
 // Playground app (`npm run dev`, `npm run build`).
 export default defineConfig({

@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import wasm from 'vite-plugin-wasm';
 import { resolve } from 'node:path';
-import { aliases } from './vite.aliases';
+import { aliases } from './vite.aliases.ts';
 
 /**
  * Embed build configuration.

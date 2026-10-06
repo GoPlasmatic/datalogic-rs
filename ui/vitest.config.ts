@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import { aliases } from './vite.aliases';
+import { aliases } from './vite.aliases.ts';
 
 // Unit tests run under Node. The WASM engine is reachable through the
 // vendored nodejs target (see `npm run sync-wasm`), aliased so tests can
