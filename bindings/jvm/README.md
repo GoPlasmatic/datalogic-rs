@@ -67,8 +67,14 @@ The binding resolves the native library in this order:
 1. `-Ddatalogic.library.path=<dir>`: a directory containing
    `libdatalogic_c.dylib` / `libdatalogic_c.so` / `datalogic_c.dll`
    (useful for in-tree builds and overrides),
-2. the JAR's bundled `<os-arch>/` classpath resource (extracted to a
-   temp file), which is the default path for the published artifact,
+2. the JAR's bundled `<os-arch>/` classpath resource, which is the
+   default path for the published artifact. It is extracted once per
+   build into a per-user cache directory named by the library's SHA-256
+   (`$XDG_CACHE_HOME/datalogic/native/`, by default under `~/.cache`, on Linux;
+   `~/Library/Caches/datalogic/native/` on macOS;
+   `%LOCALAPPDATA%\datalogic\native\` on Windows) and reused on later
+   starts; when that directory is not writable, a fresh temp directory
+   is used instead,
 3. `System.loadLibrary("datalogic_c")`: `java.library.path` and the
    OS loader paths.
 
