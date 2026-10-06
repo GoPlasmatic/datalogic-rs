@@ -12,6 +12,7 @@ use super::helpers::{
     FieldCursor, FusedMapBody, IterArgKind, IterSrc, ResolvedInput, arith_number,
     resolve_iter_input, with_arith,
 };
+use super::nesting::AccumulatorDepth;
 
 /// `reduce` — folds an array into a single value via an accumulator. Input
 /// resolves via `resolve_iter_input` (so `reduce(filter(...), +, 0)`
@@ -85,13 +86,16 @@ fn reduce_general<'a>(
     let len = src.len();
     let total = len as u32;
     let mut acc_av: &'a DataValue<'a> = initial;
+    let mut depth = AccumulatorDepth::new(body);
     let mut guard = IterGuard::new(ctx);
     for i in 0..len {
         let item = src.get(i);
         guard.step_reduce(item, acc_av);
         acc_av = engine.run_iter_body(body, guard.stack(), arena, i as u32, total)?;
+        depth.step(acc_av)?;
     }
     drop(guard);
+    depth.finish(acc_av)?;
     Ok(acc_av)
 }
 
@@ -112,12 +116,15 @@ fn reduce_arena_bridge<'a>(
         DataValue::Object(pairs) => {
             let total = pairs.len() as u32;
             let mut acc_av: &'a DataValue<'a> = initial;
+            let mut depth = AccumulatorDepth::new(body);
             let mut guard = IterGuard::new(ctx);
             for (i, (_k, v)) in pairs.iter().enumerate() {
                 guard.step_reduce(v, acc_av);
                 acc_av = engine.run_iter_body(body, guard.stack(), arena, i as u32, total)?;
+                depth.step(acc_av)?;
             }
             drop(guard);
+            depth.finish(acc_av)?;
             Ok(acc_av)
         }
         // Anything else (scalars, strings) — return initial. Null and Array

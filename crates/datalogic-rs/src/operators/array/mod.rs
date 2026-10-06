@@ -25,6 +25,7 @@ mod helpers;
 mod filter;
 mod map;
 mod merge;
+mod nesting;
 mod quantifiers;
 mod reduce;
 
