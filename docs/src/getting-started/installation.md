@@ -123,8 +123,10 @@ cd bindings/wasm
 
 ## Minimum Rust Version
 
-datalogic-rs v5 uses **Rust edition 2024**, so it requires Rust **1.85**
-or later. The crate sets `#![forbid(unsafe_code)]`.
+datalogic-rs requires Rust **1.98** or later (the `rust-version` in its
+`Cargo.toml`). The floor comes from the `datavalue-rs` 0.3 dependency,
+which declares 1.98; the crate's own code uses edition 2024 and needs
+less. The crate sets `#![forbid(unsafe_code)]`.
 
 ## Verifying Installation
 

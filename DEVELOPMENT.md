@@ -8,7 +8,7 @@ picture (what depends on what, why the layout is shaped this way), see
 
 | Tool        | Version | Why                                                            |
 |-------------|---------|----------------------------------------------------------------|
-| Rust        | 1.85+   | The core crate uses `edition = "2024"`                         |
+| Rust        | 1.98+   | `rust-version` in `crates/datalogic-rs/Cargo.toml` (inherited from `datavalue-rs` 0.3) |
 | `wasm-pack` | latest  | Builds `bindings/wasm` (only for WASM/UI changes)              |
 | Node.js     | 20+     | Builds and runs `ui`, `bindings/wasm`, and `bindings/node`     |
 | Python      | 3.10+   | Builds `bindings/python` via `maturin`                         |

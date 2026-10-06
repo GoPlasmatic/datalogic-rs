@@ -15,7 +15,7 @@ debugger.
 
 ## Prerequisites
 
-- **Rust** 1.85 or newer (`rustup update stable`); the core crate uses `edition = "2024"`
+- **Rust** 1.98 or newer (`rustup update stable`); the floor is the core crate's `rust-version`, inherited from its `datavalue-rs` dependency
 - **wasm-pack**: only if you are rebuilding WASM
   (`curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh`)
 - **Node.js** 20+: only if you are working on `ui/`, `bindings/node/` or `bindings/wasm/`
