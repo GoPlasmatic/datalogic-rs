@@ -297,6 +297,24 @@ fn numel_of(shape: &[usize]) -> Result<usize> {
         .ok_or_else(|| wrap(TensorError::ShapeOverflow))
 }
 
+/// Most elements a tensor built from a rule's own dimensions may hold:
+/// 2 GiB of `f64`. The constructors that size a new buffer from a shape the
+/// rule gives (`zeros`, `full`, `scatter`, `rle_expand`, `one_hot`, `pad`)
+/// refuse anything larger before allocating. Without it a 40-byte rule such
+/// as `{"zeros": [[1000000, 1000000], "f64"]}` asked for 8 TB and hung or
+/// aborted the process on any engine without an operation budget.
+const MAX_BUILT_ELEMENTS: usize = 1 << 28;
+
+/// [`numel_of`] for a tensor about to be allocated from a rule's shape:
+/// also refuses more than [`MAX_BUILT_ELEMENTS`].
+fn numel_to_build(shape: &[usize]) -> Result<usize> {
+    let numel = numel_of(shape)?;
+    if numel > MAX_BUILT_ELEMENTS {
+        return Err(bad("tensor would hold more than 268435456 elements"));
+    }
+    Ok(numel)
+}
+
 /// Row-major strides in *elements*, outermost first. `strides[i]` is how
 /// far one step along axis `i` moves.
 fn strides_of<'a>(shape: &[usize], arena: &'a Bump) -> &'a [usize] {

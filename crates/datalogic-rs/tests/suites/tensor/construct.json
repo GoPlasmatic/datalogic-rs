@@ -719,5 +719,80 @@
       0,
       3
     ]
+  },
+  "# Building past 2^28 elements is refused before anything is allocated",
+  {
+    "description": "zeros refuses a shape of a trillion elements",
+    "rule": {
+      "zeros": [
+        [
+          1000000,
+          1000000
+        ],
+        "f64"
+      ]
+    },
+    "data": null,
+    "error": {
+      "type": "tensor would hold more than 268435456 elements"
+    }
+  },
+  {
+    "description": "full refuses a shape past the element cap",
+    "rule": {
+      "full": [
+        [
+          65536,
+          4097
+        ],
+        "u8",
+        1
+      ]
+    },
+    "data": null,
+    "error": {
+      "type": "tensor would hold more than 268435456 elements"
+    }
+  },
+  {
+    "description": "one_hot refuses a depth that takes it past the cap",
+    "rule": {
+      "one_hot": [
+        [
+          0
+        ],
+        268435457,
+        "u8"
+      ]
+    },
+    "data": null,
+    "error": {
+      "type": "tensor would hold more than 268435456 elements"
+    }
+  },
+  {
+    "description": "pad refuses padding that takes it past the cap",
+    "rule": {
+      "pad": [
+        {
+          "zeros": [
+            [
+              1
+            ],
+            "u8"
+          ]
+        },
+        [
+          268435456
+        ],
+        [
+          1
+        ]
+      ]
+    },
+    "data": null,
+    "error": {
+      "type": "tensor would hold more than 268435456 elements"
+    }
   }
 ]

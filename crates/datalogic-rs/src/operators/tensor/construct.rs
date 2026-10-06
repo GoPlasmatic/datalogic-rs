@@ -11,7 +11,7 @@
 
 use super::{
     Scalar, as_dtype, as_i64, as_usize, bad, by_dtype, charge, cost, element_error, finish,
-    finish_bytes, finish_slice, numel_of, strides_of, wrap,
+    finish_bytes, finish_slice, numel_of, numel_to_build, strides_of, wrap,
 };
 use crate::arena::{DataValue, bvec};
 use crate::operators::eager::Cx;
@@ -102,7 +102,7 @@ pub(crate) fn zeros<'a>(
 
     // max(dims read, elements produced): a zero-element shape still has
     // its dimensions validated.
-    charge(cx, cost(shape.len(), numel_of(shape)?))?;
+    charge(cx, cost(shape.len(), numel_to_build(shape)?))?;
     let buf = DataTensor::zeroed_bytes_in(dtype, shape, arena).map_err(wrap)?;
     finish_bytes(dtype, shape, buf, arena)
 }
@@ -116,7 +116,7 @@ pub(crate) fn full<'a>(
 ) -> Result<&'a DataValue<'a>> {
     let arena = cx.arena;
 
-    charge(cx, cost(shape.len(), numel_of(shape)?))?;
+    charge(cx, cost(shape.len(), numel_to_build(shape)?))?;
     by_dtype!(dtype, full_impl, shape, value, arena)
 }
 
@@ -152,7 +152,7 @@ pub(crate) fn scatter<'a>(
     let DataValue::Array(points) = points else {
         return Err(bad("scatter: points must be an array of coordinate arrays"));
     };
-    charge(cx, cost(points.len(), numel_of(shape)?))?;
+    charge(cx, cost(points.len(), numel_to_build(shape)?))?;
     by_dtype!(dtype, scatter_impl, points, shape, value, arena)
 }
 
@@ -236,7 +236,7 @@ pub(crate) fn rle_expand<'a>(
     if !runs.len().is_multiple_of(2) {
         return Err(bad("rle_expand: runs must have an even length"));
     }
-    charge(cx, cost(runs.len(), numel_of(shape)?))?;
+    charge(cx, cost(runs.len(), numel_to_build(shape)?))?;
     by_dtype!(dtype, rle_impl, runs, shape, arena)
 }
 
@@ -285,7 +285,7 @@ pub(crate) fn one_hot<'a>(
     };
     let shape = arena.alloc_slice_copy(&[indices.len(), depth]);
     // max(indices read, elements produced): depth 0 still walks the indices.
-    charge(cx, cost(indices.len(), numel_of(shape)?))?;
+    charge(cx, cost(indices.len(), numel_to_build(shape)?))?;
     by_dtype!(dtype, one_hot_impl, indices, shape, arena)
 }
 

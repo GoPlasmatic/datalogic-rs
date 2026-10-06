@@ -11,7 +11,7 @@
 
 use super::{
     Scalar, advance, as_tensor, bad, by_dtype, charge, cost, element_error, finish_bytes, numel_of,
-    resolve_axis, resolve_index, shape_without_axis, split_axis, strides_of, wrap,
+    numel_to_build, resolve_axis, resolve_index, shape_without_axis, split_axis, strides_of, wrap,
 };
 use crate::Result;
 use crate::arena::{DataValue, bvec};
@@ -283,7 +283,7 @@ pub(crate) fn pad<'a>(
         );
     }
     let shape = shape.into_bump_slice();
-    charge(cx, cost(t.numel(), numel_of(shape)?))?;
+    charge(cx, cost(t.numel(), numel_to_build(shape)?))?;
 
     let dtype = t.dtype();
     let cell = dtype.size_of();
