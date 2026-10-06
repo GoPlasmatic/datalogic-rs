@@ -386,6 +386,8 @@ operator is normally unreachable as an output field. Opt into an escape
 prefix to recover it:
 
 ```rust
+use datalogic_rs::Engine;
+
 let engine = Engine::builder()
     .with_templating(true)
     .with_template_key_escape('$')

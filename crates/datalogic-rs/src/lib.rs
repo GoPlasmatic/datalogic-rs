@@ -95,6 +95,19 @@
 //! repeated parsing overhead, and lets read-through operations like `var`
 //! return zero-copy borrows into the caller's input data.
 
+// Compile and run the crate README's Rust blocks as doctests, so the
+// README crates.io renders cannot drift from the API. Gated on the
+// features its examples use; `cargo test --all-features` runs them.
+#[cfg(all(
+    doctest,
+    feature = "serde_json",
+    feature = "templating",
+    feature = "trace",
+    feature = "all-operators"
+))]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
+
 mod arena;
 mod arena_ext;
 mod builder;
