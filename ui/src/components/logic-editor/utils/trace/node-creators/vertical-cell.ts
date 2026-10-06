@@ -68,7 +68,7 @@ export function createVerticalCellNodeFromTrace(
   const forceChildren = opCategory === 'logical';
   const inlineVarIdx = forceChildren ? new Set<number>() : inlineVarIndices(operandArray);
 
-  // Resolve every operand to its trace child up front (exact, loose, positional)
+  // Resolve every operand to its trace child up front, by the engine's pointers
   const matches = matchOperandsToChildren(operandArray, children, context.sources);
 
   operandArray.forEach((operand, idx) => {

@@ -9,8 +9,9 @@
 pub mod macro_suites;
 
 use std::fs;
+use std::hint::black_box;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -347,6 +348,47 @@ pub struct MatrixRow {
     pub suite: String,
     pub test_count: usize,
     pub cells: Vec<MatrixCell>,
+}
+
+/// Warmup iterations (native runtime tier: 2,000 per the methodology).
+pub const WARMUP: u64 = 2_000;
+/// Target wall time for one timed sample.
+pub const TARGET_SAMPLE_NS: f64 = 250e6;
+/// Timed samples per (mode, workload); the median is reported.
+pub const SAMPLES: usize = 5;
+/// The pilot doubles its batch until one batch takes at least this long,
+/// so the per-op estimate isn't dominated by timer quantization.
+pub const PILOT_MIN_NS: u128 = 10_000_000;
+
+/// Warmup + pilot + median-of-[`SAMPLES`] timed samples over `batch`,
+/// where `batch(n)` runs `n` iterations and returns a sink value that the
+/// caller's loop accumulated (consumed here through `black_box` so the
+/// whole batch can't be elided). Returns median ns/op.
+pub fn measure<F: FnMut(u64) -> u64>(mut batch: F) -> f64 {
+    black_box(batch(WARMUP));
+
+    // Pilot: double the batch size until a batch takes >= PILOT_MIN_NS.
+    let mut n: u64 = 32;
+    let per_op = loop {
+        let t = Instant::now();
+        black_box(batch(n));
+        let elapsed = t.elapsed().as_nanos();
+        if elapsed >= PILOT_MIN_NS {
+            break elapsed as f64 / n as f64;
+        }
+        n = n.saturating_mul(2);
+    };
+
+    let iters = ((TARGET_SAMPLE_NS / per_op).round() as u64).max(1);
+    let mut samples: Vec<f64> = (0..SAMPLES)
+        .map(|_| {
+            let t = Instant::now();
+            black_box(batch(iters));
+            t.elapsed().as_nanos() as f64 / iters as f64
+        })
+        .collect();
+    samples.sort_by(f64::total_cmp);
+    samples[SAMPLES / 2]
 }
 
 /// Geometric mean over the finite, positive values in `xs`. Empty or

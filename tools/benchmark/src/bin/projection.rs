@@ -13,11 +13,11 @@
 //! ```
 
 use std::hint::black_box;
-use std::time::Instant;
 
 use bumpalo::Bump;
+use datalogic_bench::measure;
 use datalogic_rs::datavalue::OwnedDataValue;
-use datalogic_rs::{Engine, Logic};
+use datalogic_rs::{Engine, EvalInput, Logic};
 use serde_json::{Value, json};
 
 /// A context of about `bytes` of JSON: many small records, plus the
@@ -48,45 +48,22 @@ const RULES: &[(&str, &str)] = &[
     ),
 ];
 
-/// Median ns per call of `f` over 5 samples, after a warmup.
-fn time(mut f: impl FnMut()) -> f64 {
-    for _ in 0..200 {
-        f();
-    }
-    let mut n = 1u64;
-    loop {
-        let t = Instant::now();
+/// Median ns per call of `eval` on a freshly reset arena, timed by the
+/// shared harness ([`measure`]).
+fn time(arena: &mut Bump, mut eval: impl FnMut(&Bump) -> u64) -> f64 {
+    measure(|n| {
+        let mut sink = 0u64;
         for _ in 0..n {
-            f();
+            arena.reset();
+            sink = sink.wrapping_add(eval(arena));
         }
-        if t.elapsed().as_millis() >= 20 {
-            break;
-        }
-        n *= 2;
-    }
-    let mut samples: Vec<f64> = (0..5)
-        .map(|_| {
-            let t = Instant::now();
-            for _ in 0..n {
-                f();
-            }
-            t.elapsed().as_nanos() as f64 / n as f64
-        })
-        .collect();
-    samples.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    samples[2]
+        sink
+    })
 }
 
-fn eval_owned(engine: &Engine, logic: &Logic, data: &OwnedDataValue, arena: &mut Bump) {
-    arena.reset();
-    let v = engine.evaluate(logic, data, arena).unwrap();
-    black_box(v);
-}
-
-fn eval_serde(engine: &Engine, logic: &Logic, data: &Value, arena: &mut Bump) {
-    arena.reset();
-    let v = engine.evaluate(logic, data, arena).unwrap();
-    black_box(v);
+/// Evaluate `logic` on `engine` over `data`, as a sink value for [`time`].
+fn eval<'a>(engine: &Engine, logic: &'a Logic, data: impl EvalInput<'a>, arena: &'a Bump) -> u64 {
+    black_box(engine.evaluate(logic, data, arena).unwrap()) as *const _ as u64
 }
 
 fn human(ns: f64) -> String {
@@ -122,8 +99,8 @@ fn main() {
                 .unwrap()
                 .to_string();
             assert_eq!(a, b, "{name}");
-            let p = time(|| eval_owned(&compiling, &logic, &owned_ctx, &mut arena));
-            let w = time(|| eval_owned(&other, &logic, &owned_ctx, &mut arena));
+            let p = time(&mut arena, |a| eval(&compiling, &logic, &owned_ctx, a));
+            let w = time(&mut arena, |a| eval(&other, &logic, &owned_ctx, a));
             println!(
                 "{label:<10} {name:<14} {:<7} {:>12} {:>12} {:>8.1}x",
                 "owned",
@@ -131,8 +108,8 @@ fn main() {
                 human(w),
                 w / p
             );
-            let p = time(|| eval_serde(&compiling, &logic, &serde_ctx, &mut arena));
-            let w = time(|| eval_serde(&other, &logic, &serde_ctx, &mut arena));
+            let p = time(&mut arena, |a| eval(&compiling, &logic, &serde_ctx, a));
+            let w = time(&mut arena, |a| eval(&other, &logic, &serde_ctx, a));
             println!(
                 "{label:<10} {name:<14} {:<7} {:>12} {:>12} {:>8.1}x",
                 "serde",

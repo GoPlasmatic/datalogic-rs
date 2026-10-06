@@ -22,15 +22,6 @@ export type {
   ChildMatch,
 } from './types';
 
-// Trace node placement by the engine's JSON Pointers
-export {
-  TraceSources,
-  resolvePointer,
-  matchOperandsToChildren,
-  unmatchedChildren,
-  enclosingNode,
-} from './pointer-matching';
-
 // Node type determination
 export { determineNodeType } from './node-type';
 
