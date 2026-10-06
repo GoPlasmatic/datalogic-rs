@@ -473,9 +473,17 @@ Runnable example: [`examples/thread_safety.rs`](https://github.com/GoPlasmatic/d
 | `tensor`          | The `Tensor` value plus 20 marshalling-only operators over it (JSON to a model's inputs and back). No new dependency |
 | `tensor-half`     | Lifts the `f16` / `bf16` restriction on the element-wise tensor operators; pulls in `half` through datavalue |
 | `budget`          | Per-evaluation operation counter with a hard abort: `EvaluationConfig::ops_budget`, `Engine::evaluate_metered`, `EvalContext::charge`, `ErrorKind::BudgetExceeded` |
+| `all-operators`   | Every operator family at once: `datetime`, `error-handling`, the five `ext-*` families, `flagd` and `tensor`. A family added in a later release joins it, so depending on it keeps the full operator set. Not included: `serde_json`, `templating`, `trace`, `budget`, `tensor-half`, `wasm-clock` |
 
 The default build is `serde_json`-free; opt in via
-`features = ["serde_json"]` when you need the value boundary.
+`features = ["serde_json"]` when you need the value boundary. For every
+operator plus the value boundary and templating, the set the official
+bindings use (less `trace` and `budget`):
+
+```toml
+[dependencies]
+datalogic-rs = { version = "5", features = ["all-operators", "serde_json", "templating"] }
+```
 
 ### `flagd`: OpenFeature flagd-compatible operators
 

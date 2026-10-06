@@ -80,6 +80,10 @@ v5 splits the surface into a small core plus opt-in features:
 | `ext-math` | off | Extended math operators. |
 | `flagd` | off | [OpenFeature flagd-compatible](https://flagd.dev/reference/custom-operations/) `fractional` (murmurhash3 percentage bucketing) and `sem_ver` (semantic-version comparison) operators. |
 | `wasm-clock` | off | JS-host clock for the `now` operator on `wasm32-unknown-unknown` (browsers, Node, Deno, Workers); combine with `datetime`. Opt-in on purpose: it forwards to `chrono/wasmbind`, whose JS imports fail to instantiate in non-JS wasm runtimes such as wasmtime, wazero, and Chicory, so leave it off there (on WASI the OS clock works without it). |
+| `tensor` | off | The `Tensor` value (dtype, shape and a row-major byte buffer) and 20 marshalling-only operators over it, for turning JSON into a model's inputs and its outputs back into JSON. No new dependency. |
+| `tensor-half` | off | Lifts the `f16` / `bf16` restriction on the element-wise tensor operators. Implies `tensor`; pulls in `half`. |
+| `budget` | off | A per-evaluation operation counter with a hard abort (`EvaluationConfig::ops_budget`, `Engine::evaluate_metered`, `Session::eval_metered`, `ErrorKind::BudgetExceeded`). |
+| `all-operators` | off | Every operator family at once: `datetime`, `error-handling`, the five `ext-*` families, `flagd` and `tensor`. A family added in a later release joins it. It does not include `serde_json`, `templating`, `trace`, `budget`, `tensor-half` or `wasm-clock`. |
 
 Example: opt into `serde_json::Value` interop plus templating:
 
@@ -87,6 +91,14 @@ Example: opt into `serde_json::Value` interop plus templating:
 [dependencies]
 datalogic-rs = { version = "5", features = ["serde_json", "templating"] }
 serde_json = "1.0"
+```
+
+Example: every operator, plus the value boundary and templating (the
+official bindings use this set, plus `trace` and `budget`):
+
+```toml
+[dependencies]
+datalogic-rs = { version = "5", features = ["all-operators", "serde_json", "templating"] }
 ```
 
 ## Version Selection
