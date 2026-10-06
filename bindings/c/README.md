@@ -82,6 +82,10 @@ See [`include/datalogic.h`](https://github.com/GoPlasmatic/datalogic-rs/blob/mai
   `DATALOGIC_STATUS_INVALID_ARG`, and `reset` / `free` on it do nothing.
   Open a second session, or use the session-less `datalogic_rule_*`
   calls, for a nested evaluation.
+- **Builder setters after `_build`** fail with
+  `DATALOGIC_STATUS_INVALID_ARG` where they return a status;
+  `_set_templating` and `_set_strict_operator_names` return nothing and
+  do nothing on a built builder.
 
 v2 replaced v1 (NUL-terminated strings, `datalogic_string_free`, the
 thread-local `datalogic_last_error_*` block) wholesale in 5.0.1; see

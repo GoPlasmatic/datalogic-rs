@@ -80,9 +80,9 @@ typedef enum {
   /**
    * A NULL handle, a NULL byte pointer with non-zero length, invalid
    * UTF-8 input, a mismatched handle (e.g. a rule compiled by a
-   * different engine than the session's), or a session already in use
-   * (a custom-operator callback calling back into the session running
-   * it).
+   * different engine than the session's), a session already in use (a
+   * custom-operator callback calling back into the session running it),
+   * or a builder setter called after the builder was built.
    */
   DATALOGIC_STATUS_INVALID_ARG = 1,
   /**
@@ -331,7 +331,9 @@ extern "C" {
 /**
  * Set the template-key escape: the character (`codepoint`, a Unicode
  * scalar value) that marks a template key as a literal output field. Only
- * meaningful with templating on.
+ * meaningful with templating on. On a builder
+ * [`datalogic_engine_builder_build`] has already drained, fails with
+ * `DATALOGIC_STATUS_INVALID_ARG`.
  *
  * # Safety
  *
@@ -371,7 +373,9 @@ void datalogic_engine_builder_set_strict_operator_names(datalogic_engine_builder
  * operator may take them. With strict operator names on, families that
  * bring back a built-in named like an operator already registered fail
  * with tag `"ConfigurationError"`, as an unknown family name does; either
- * leaves the builder unchanged.
+ * leaves the builder unchanged. On a builder
+ * [`datalogic_engine_builder_build`] has already drained, fails with
+ * `DATALOGIC_STATUS_INVALID_ARG`.
  *
  * # Safety
  *
@@ -396,7 +400,9 @@ datalogic_status datalogic_engine_builder_set_families(datalogic_engine_builder 
  * keys and enum strings are rejected (tag `"ConfigurationError"`) so
  * typos fail loudly. Each call replaces the builder's entire evaluation
  * config; templating and registered operators are unaffected. A failed
- * call leaves the builder usable.
+ * call leaves the builder usable. On a builder
+ * [`datalogic_engine_builder_build`] has already drained, fails with
+ * `DATALOGIC_STATUS_INVALID_ARG`.
  *
  * `ops_budget` is how a caller through this ABI bounds the work a rule
  * may do: an integer ceiling on the operations one evaluation may
@@ -422,7 +428,9 @@ datalogic_status datalogic_engine_builder_set_config_json(datalogic_engine_build
  * Register a custom operator. The callback runs on every match of the
  * operator name during evaluation — see [`DatalogicOpFn`] for the
  * contract. **Built-ins win**: registering a name that collides with a
- * built-in JSONLogic operator silently never dispatches.
+ * built-in JSONLogic operator silently never dispatches. On a builder
+ * [`datalogic_engine_builder_build`] has already drained, fails with
+ * `DATALOGIC_STATUS_INVALID_ARG`.
  *
  * A callback may evaluate through the same engine, but not through the
  * `datalogic_session` running the evaluation that called it: that session

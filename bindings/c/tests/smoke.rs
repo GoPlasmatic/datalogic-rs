@@ -1222,3 +1222,65 @@ fn a_callback_cannot_reenter_its_own_session() {
     unsafe { datalogic_rule_free(inner) };
     unsafe { datalogic_engine_free(engine) };
 }
+
+// =============== setters on a built builder ===============
+
+#[test]
+fn setters_on_a_built_builder_fail() {
+    let b = datalogic_engine_builder_new();
+    let engine = unsafe { datalogic_engine_builder_build(b) };
+    assert!(!engine.is_null());
+
+    let expect_refused = |status: Status, err: *mut Error| {
+        assert_eq!(status, Status::InvalidArg);
+        let (estatus, message, tag, _) = unsafe { take_err(err) };
+        assert_eq!(estatus, Status::InvalidArg);
+        assert_eq!(tag, "InvalidArgument");
+        assert!(message.contains("already built"), "{message}");
+    };
+
+    let config = r#"{"preset": "strict"}"#;
+    let mut err: *mut Error = std::ptr::null_mut();
+    let status = unsafe {
+        datalogic_engine_builder_set_config_json(b, config.as_ptr(), config.len(), &mut err)
+    };
+    expect_refused(status, err);
+
+    let families = r#"["ExtString"]"#;
+    let mut err: *mut Error = std::ptr::null_mut();
+    let status = unsafe {
+        datalogic_engine_builder_set_families(b, families.as_ptr(), families.len(), &mut err)
+    };
+    expect_refused(status, err);
+
+    let mut err: *mut Error = std::ptr::null_mut();
+    let status =
+        unsafe { datalogic_engine_builder_set_template_key_escape(b, '$' as u32, &mut err) };
+    expect_refused(status, err);
+
+    let name = "double";
+    let mut err: *mut Error = std::ptr::null_mut();
+    let status = unsafe {
+        datalogic_engine_builder_add_operator(
+            b,
+            name.as_ptr(),
+            name.len(),
+            Some(double_op),
+            std::ptr::null_mut(),
+            &mut err,
+        )
+    };
+    expect_refused(status, err);
+
+    // Bad input is still reported as such on a built builder.
+    let mut err: *mut Error = std::ptr::null_mut();
+    let bad = "{";
+    let status =
+        unsafe { datalogic_engine_builder_set_config_json(b, bad.as_ptr(), bad.len(), &mut err) };
+    assert_eq!(status, Status::Eval);
+    let (_, _, tag, _) = unsafe { take_err(err) };
+    assert_eq!(tag, "ConfigurationError");
+
+    unsafe { datalogic_engine_free(engine) };
+    unsafe { datalogic_engine_builder_free(b) };
+}

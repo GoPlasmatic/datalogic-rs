@@ -118,7 +118,19 @@ pub struct EngineBuilder {
     strict_names: bool,
 }
 
+/// The refusal a setter gives a builder [`datalogic_engine_builder_build`]
+/// has already drained.
+const ALREADY_BUILT: &str = "engine builder was already built";
+
 impl EngineBuilder {
+    /// Take the inner builder for a setter, or refuse a builder that
+    /// [`datalogic_engine_builder_build`] has already drained.
+    fn take(&mut self) -> Result<datalogic_rs::EngineBuilder, Error> {
+        self.inner
+            .take()
+            .ok_or_else(|| Error::invalid_arg(ALREADY_BUILT))
+    }
+
     /// With strict names on, refuse settings under which an operator
     /// already registered would no longer run: the families or template
     /// key escape a setter is about to give `next`.
@@ -180,7 +192,9 @@ pub unsafe extern "C" fn datalogic_engine_builder_set_templating(
 
 /// Set the template-key escape: the character (`codepoint`, a Unicode
 /// scalar value) that marks a template key as a literal output field. Only
-/// meaningful with templating on.
+/// meaningful with templating on. On a builder
+/// [`datalogic_engine_builder_build`] has already drained, fails with
+/// `DATALOGIC_STATUS_INVALID_ARG`.
 ///
 /// # Safety
 ///
@@ -204,14 +218,16 @@ pub unsafe extern "C" fn datalogic_engine_builder_set_template_key_escape(
                 )
             };
         };
-        if let Some(b) = handle.inner.take() {
-            let next = b.clone().with_template_key_escape(c);
-            if let Err(e) = handle.recheck(&next) {
-                handle.inner = Some(b);
-                return unsafe { fail(err, e) };
-            }
-            handle.inner = Some(next);
+        let b = match handle.take() {
+            Ok(b) => b,
+            Err(e) => return unsafe { fail(err, e) },
+        };
+        let next = b.clone().with_template_key_escape(c);
+        if let Err(e) = handle.recheck(&next) {
+            handle.inner = Some(b);
+            return unsafe { fail(err, e) };
         }
+        handle.inner = Some(next);
         Status::Ok
     })
 }
@@ -247,7 +263,9 @@ pub unsafe extern "C" fn datalogic_engine_builder_set_strict_operator_names(
 /// operator may take them. With strict operator names on, families that
 /// bring back a built-in named like an operator already registered fail
 /// with tag `"ConfigurationError"`, as an unknown family name does; either
-/// leaves the builder unchanged.
+/// leaves the builder unchanged. On a builder
+/// [`datalogic_engine_builder_build`] has already drained, fails with
+/// `DATALOGIC_STATUS_INVALID_ARG`.
 ///
 /// # Safety
 ///
@@ -280,14 +298,16 @@ pub unsafe extern "C" fn datalogic_engine_builder_set_families(
                 };
             }
         };
-        if let Some(b) = handle.inner.take() {
-            let next = b.clone().with_families(families);
-            if let Err(e) = handle.recheck(&next) {
-                handle.inner = Some(b);
-                return unsafe { fail(err, e) };
-            }
-            handle.inner = Some(next);
+        let b = match handle.take() {
+            Ok(b) => b,
+            Err(e) => return unsafe { fail(err, e) },
+        };
+        let next = b.clone().with_families(families);
+        if let Err(e) = handle.recheck(&next) {
+            handle.inner = Some(b);
+            return unsafe { fail(err, e) };
         }
+        handle.inner = Some(next);
         Status::Ok
     })
 }
@@ -302,7 +322,9 @@ pub unsafe extern "C" fn datalogic_engine_builder_set_families(
 /// keys and enum strings are rejected (tag `"ConfigurationError"`) so
 /// typos fail loudly. Each call replaces the builder's entire evaluation
 /// config; templating and registered operators are unaffected. A failed
-/// call leaves the builder usable.
+/// call leaves the builder usable. On a builder
+/// [`datalogic_engine_builder_build`] has already drained, fails with
+/// `DATALOGIC_STATUS_INVALID_ARG`.
 ///
 /// `ops_budget` is how a caller through this ABI bounds the work a rule
 /// may do: an integer ceiling on the operations one evaluation may
@@ -336,9 +358,11 @@ pub unsafe extern "C" fn datalogic_engine_builder_set_config_json(
             Ok(c) => c,
             Err(e) => return unsafe { fail(err, Error::from_engine(&e, None)) },
         };
-        if let Some(b) = handle.inner.take() {
-            handle.inner = Some(b.with_config(config));
-        }
+        let b = match handle.take() {
+            Ok(b) => b,
+            Err(e) => return unsafe { fail(err, e) },
+        };
+        handle.inner = Some(b.with_config(config));
         Status::Ok
     })
 }
@@ -346,7 +370,9 @@ pub unsafe extern "C" fn datalogic_engine_builder_set_config_json(
 /// Register a custom operator. The callback runs on every match of the
 /// operator name during evaluation — see [`DatalogicOpFn`] for the
 /// contract. **Built-ins win**: registering a name that collides with a
-/// built-in JSONLogic operator silently never dispatches.
+/// built-in JSONLogic operator silently never dispatches. On a builder
+/// [`datalogic_engine_builder_build`] has already drained, fails with
+/// `DATALOGIC_STATUS_INVALID_ARG`.
 ///
 /// A callback may evaluate through the same engine, but not through the
 /// `datalogic_session` running the evaluation that called it: that session
@@ -382,23 +408,25 @@ pub unsafe extern "C" fn datalogic_engine_builder_add_operator(
             Err(e) => return unsafe { fail(err, e) },
         };
         let name_owned = name_str.to_string();
-        if let Some(b) = handle.inner.take() {
-            let op = CCustomOperator {
-                name: name_owned.clone(),
-                callback,
-                user_data: AtomicPtr::new(user_data),
-            };
-            if handle.strict_names {
-                if let Err(e) = b.check_operator_name(&name_owned) {
-                    handle.inner = Some(b);
-                    return unsafe { fail(err, Error::from_engine(&e, None)) };
-                }
-                // Checked above, so this registers; through `try_add_operator`
-                // so later setters check the name again.
-                handle.inner = b.try_add_operator(name_owned, op).ok();
-            } else {
-                handle.inner = Some(b.add_operator(name_owned, op));
+        let b = match handle.take() {
+            Ok(b) => b,
+            Err(e) => return unsafe { fail(err, e) },
+        };
+        let op = CCustomOperator {
+            name: name_owned.clone(),
+            callback,
+            user_data: AtomicPtr::new(user_data),
+        };
+        if handle.strict_names {
+            if let Err(e) = b.check_operator_name(&name_owned) {
+                handle.inner = Some(b);
+                return unsafe { fail(err, Error::from_engine(&e, None)) };
             }
+            // Checked above, so this registers; through `try_add_operator`
+            // so later setters check the name again.
+            handle.inner = b.try_add_operator(name_owned, op).ok();
+        } else {
+            handle.inner = Some(b.add_operator(name_owned, op));
         }
         Status::Ok
     })
