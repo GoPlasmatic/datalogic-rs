@@ -14,6 +14,13 @@ gated behind `feature = "serde_json"` (they use `serde_json::json!`);
 the JSONLogic suite runner additionally needs `feature = "templating"`.
 Use `--all-features` to run everything.
 
+Each gated file declares its features twice: a `#![cfg(...)]` header and
+a matching `[[test]] required-features` entry in `../Cargo.toml`. Without
+the features, cargo skips the target rather than reporting an empty
+binary as "0 passed", and `--test <name>` fails with the features to
+pass. Adding a gated test file means adding its entry;
+`scripts/check-test-features.sh` (run in CI) fails until the two agree.
+
 ```bash
 # Everything (recommended)
 cargo test -p datalogic-rs --all-features
@@ -66,14 +73,45 @@ Test case fields:
 | `templating`         | no       | When `true`, evaluate in templating mode (unknown keys preserved).   |
 | `template_key_escape`| no       | One character. Evaluate with that template-key escape prefix (see `with_template_key_escape`). Combines with `templating`. |
 | `requires`           | no       | Array of cargo feature names the case needs beyond its operators, e.g. `["datetime"]` for a rule whose *data* only carries meaning under a feature. Skipped when absent. |
+| `decimal`            | no       | Carried over from the upstream JSONLogic suite, which marks cases whose result depends on decimal parsing. The Rust runner ignores it. |
 
-The runner builds one engine per distinct `(templating, template_key_escape)`
-pair on first use, so a suite can mix flavours freely, including setting
+The runner builds one engine per distinct
+`(templating, template_key_escape, constant folding)` key on first use,
+so a suite can mix flavours freely, including setting
 `template_key_escape` with `templating` absent, to pin that the escape is
-inert outside templating mode.
+inert outside templating mode. The folding part of the key is not a case
+field: the evaluation modes below choose it.
+
+### Evaluation modes
+
+Every case runs through every evaluation mode, and all of them must
+produce the same outcome before the `result` / `error` expectation is
+checked against the first. A disagreement fails the case as a "path
+split", whatever it expected: the same rule must mean one thing on every
+path.
+
+| Mode             | Path                                                                        |
+|------------------|-----------------------------------------------------------------------------|
+| `default`        | `Engine::compile`, then a session, with the data as a `serde_json::Value`.  |
+| `no-fold`        | The same on an engine built with `with_constant_folding(false)`.            |
+| `traced`         | `Engine::trace()`, which compiles from source with the optimizer off. Needs `trace`. |
+| `owned-data`     | The default compile, with the data as an `&OwnedDataValue`.                 |
+| `json-text`      | The default compile, with the data as JSON text.                            |
+| `one-shot-owned` | `Engine::eval_into` with an `&OwnedDataValue` (the `OwnedInput` path).      |
+| `traced-owned`   | `Engine::trace()` with an `&OwnedDataValue`. Needs `trace`.                 |
+
+Seven modes under `--all-features`; a build without `trace` runs the
+five others. Errors compare by the JSON shape `error` expectations use,
+so a rule that fails at compile time on one path and at evaluation on
+another still agrees.
 
 `suites/index.json` lists every file the harness should run, in run order
-(the bindings' conformance runners and the benchmark read it too).
+(the bindings' conformance runners and the benchmark read it too). The
+Rust readers of the suites (this runner, `oracle_test.rs` and the
+benchmark in `tools/benchmark`) share one loader, `common/suite.rs`: it
+reads the index, splits a suite into its entries and validates a case's
+flavour fields, and panics with the file's path on a suite it cannot
+read or parse.
 `suite_index_lists_every_suite` fails when a file on disk is missing from
 the index (or the index names a file that is gone); rerun it with
 `UPDATE_SUITE_INDEX=1` to append new files and drop deleted ones, keeping
