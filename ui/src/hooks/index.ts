@@ -1,3 +1,4 @@
 export { useTheme } from './useTheme';
-export { useSystemTheme } from './useSystemTheme';
-export { useIsMobile } from './useIsMobile';
+// Shared with the editor: the one implementation lives in logic-editor/hooks.
+export { useSystemTheme } from '../components/logic-editor/hooks/useSystemTheme';
+export { useIsMobile } from '../components/logic-editor/hooks/useIsMobile';
