@@ -150,6 +150,10 @@ pub(crate) enum FastPredicate {
     AnyOf(Box<[FastPredicate]>),
     /// `{"!": pred}` — truthiness negation of a detected sub-predicate.
     Not(Box<FastPredicate>),
+    /// `{"!!": pred}` — the truthiness of a detected sub-predicate. It
+    /// evaluates as `pred` does; it is kept as its own node so the metered
+    /// count includes the `!!` node the general path dispatches.
+    Bool(Box<FastPredicate>),
 }
 
 /// Recursion guard for compound-predicate detection. Real filter/quantifier
@@ -188,14 +192,15 @@ impl FastPredicate {
                     Logic::Or => FastPredicate::AnyOf(preds),
                 })
             }
-            // `!` — truthiness negation. `!!` folds away entirely: the
-            // consumer only reads the tree through truthiness.
+            // `!` — truthiness negation. `!!` evaluates as its operand (the
+            // consumer only reads the tree through truthiness) but stays a
+            // node, for the metered count.
             (_, Some(Algebra::Truth(Truth::Not))) if args.len() == 1 => Some(FastPredicate::Not(
                 Box::new(Self::detect_operand(&args[0], depth + 1)?),
             )),
-            (_, Some(Algebra::Truth(Truth::Bool))) if args.len() == 1 => {
-                Self::detect_operand(&args[0], depth + 1)
-            }
+            (_, Some(Algebra::Truth(Truth::Bool))) if args.len() == 1 => Some(FastPredicate::Bool(
+                Box::new(Self::detect_operand(&args[0], depth + 1)?),
+            )),
             // `in` with an all-string literal array: `in` compares elements
             // with strict equality, so a non-string needle is always false —
             // total semantics, no coercion involved.
@@ -253,10 +258,17 @@ impl FastPredicate {
                 let var_path: Box<[crate::node::PathSegment]> = segments.into();
 
                 match opcode.algebra() {
+                    // Not against an array or object literal: `===` charges
+                    // a structural walk of two containers, which this leaf
+                    // does not price.
                     Some(Algebra::Eq(EqOp {
                         strict: true,
                         negate,
-                    })) => {
+                    })) if !matches!(
+                        literal,
+                        datavalue::OwnedDataValue::Array(_) | datavalue::OwnedDataValue::Object(_)
+                    ) =>
+                    {
                         return Some(FastPredicate::StrictEq {
                             var_path,
                             literal: literal.clone(),
@@ -328,7 +340,22 @@ impl FastPredicate {
         }
     }
 
-    /// Evaluate this predicate against a single item. `None` means
+    /// Operations the general path charges for one evaluation of a scalar
+    /// leaf: the comparison node and its `var` (the literal operand is
+    /// free), plus the haystack length `in` charges. Combinators are priced
+    /// per evaluation in [`Self::evaluate_opt`], since they short-circuit.
+    #[inline(always)]
+    fn leaf_cost(&self) -> u64 {
+        match self {
+            FastPredicate::Truthy { .. } => 1,
+            FastPredicate::InStrLits { items, .. } => 2 + items.len() as u64,
+            _ => 2,
+        }
+    }
+
+    /// Evaluate this predicate against a single item, adding to `cost` the
+    /// operations the general path would have charged for it (the nodes it
+    /// dispatches, short-circuiting included). `None` means
     /// "indeterminate" — the item's value shape needs coercion semantics
     /// only the general dispatch path implements, so the caller must
     /// abandon the fast path for the whole collection (fast evaluation is
@@ -342,7 +369,45 @@ impl FastPredicate {
         &self,
         item: &'b DataValue<'b>,
         engine: &crate::Engine,
+        cost: &mut u64,
     ) -> Option<bool> {
+        match self {
+            FastPredicate::AllOf(preds) => {
+                *cost += 1;
+                for p in preds.iter() {
+                    if !p.evaluate_opt(item, engine, cost)? {
+                        return Some(false);
+                    }
+                }
+                Some(true)
+            }
+            FastPredicate::AnyOf(preds) => {
+                *cost += 1;
+                for p in preds.iter() {
+                    if p.evaluate_opt(item, engine, cost)? {
+                        return Some(true);
+                    }
+                }
+                Some(false)
+            }
+            FastPredicate::Not(inner) => {
+                *cost += 1;
+                inner.evaluate_opt(item, engine, cost).map(|b| !b)
+            }
+            FastPredicate::Bool(inner) => {
+                *cost += 1;
+                inner.evaluate_opt(item, engine, cost)
+            }
+            leaf => {
+                *cost += leaf.leaf_cost();
+                leaf.evaluate_leaf(item, engine)
+            }
+        }
+    }
+
+    /// [`Self::evaluate_opt`] for a scalar leaf, uncounted.
+    #[inline]
+    fn evaluate_leaf<'b>(&self, item: &'b DataValue<'b>, engine: &crate::Engine) -> Option<bool> {
         match self {
             FastPredicate::StrictEq {
                 var_path,
@@ -409,23 +474,12 @@ impl FastPredicate {
                     _ => Some(false),
                 }
             }
-            FastPredicate::AllOf(preds) => {
-                for p in preds.iter() {
-                    if !p.evaluate_opt(item, engine)? {
-                        return Some(false);
-                    }
-                }
-                Some(true)
-            }
-            FastPredicate::AnyOf(preds) => {
-                for p in preds.iter() {
-                    if p.evaluate_opt(item, engine)? {
-                        return Some(true);
-                    }
-                }
-                Some(false)
-            }
-            FastPredicate::Not(inner) => inner.evaluate_opt(item, engine).map(|b| !b),
+            // Combinators evaluate in `evaluate_opt`; never reached, and
+            // "indeterminate" would hand the item to the exact general path.
+            FastPredicate::AllOf(_)
+            | FastPredicate::AnyOf(_)
+            | FastPredicate::Not(_)
+            | FastPredicate::Bool(_) => None,
         }
     }
 }
@@ -433,9 +487,12 @@ impl FastPredicate {
 impl FastPredicate {
     /// Evaluate the predicate against every item of `src`, in order, handing
     /// each verdict to `on_item`, which returns [`ControlFlow::Break`] to
-    /// stop early. `None` when an item is indeterminate (see
-    /// [`Self::evaluate_opt`]): the caller re-runs the collection on the
-    /// general path, which is exact because fast evaluation is pure.
+    /// stop early. Returns the operations the general path would have
+    /// charged for the predicate over the items examined, for the caller to
+    /// charge: the count is the same whichever path runs. `None` when an
+    /// item is indeterminate (see [`Self::evaluate_opt`]): the caller
+    /// re-runs the collection on the general path, which is exact because
+    /// fast evaluation is pure, and charges nothing here.
     ///
     /// The predicate kind is matched once, outside the loop: each scalar
     /// leaf runs its own loop with its test inlined, and a numeric
@@ -446,11 +503,11 @@ impl FastPredicate {
     /// code. Combinator trees (`and` / `or` / `!`) still walk
     /// `evaluate_opt` per item.
     #[inline]
-    pub(super) fn scan<'b, F>(&self, src: &IterSrc<'b>, engine: &Engine, on_item: F) -> Option<()>
+    pub(super) fn scan<'b, F>(&self, src: &IterSrc<'b>, engine: &Engine, on_item: F) -> Option<u64>
     where
         F: FnMut(&'b DataValue<'b>, bool) -> ControlFlow<()>,
     {
-        match self {
+        let examined = match self {
             FastPredicate::NumericCmp {
                 var_path,
                 literal_f,
@@ -507,45 +564,50 @@ impl FastPredicate {
             FastPredicate::Truthy { .. }
             | FastPredicate::AllOf(_)
             | FastPredicate::AnyOf(_)
-            | FastPredicate::Not(_) => {
+            | FastPredicate::Not(_)
+            | FastPredicate::Bool(_) => {
                 let mut on_item = on_item;
+                let mut cost = 0u64;
                 for item in src.0 {
-                    if on_item(item, self.evaluate_opt(item, engine)?).is_break() {
+                    if on_item(item, self.evaluate_opt(item, engine, &mut cost)?).is_break() {
                         break;
                     }
                 }
-                Some(())
+                return Some(cost);
             }
-        }
+        }?;
+        Some(examined as u64 * self.leaf_cost())
     }
 }
 
 /// One scalar leaf's loop: resolve each item's value (the item itself for
 /// an empty path), test it, hand the verdict on. Monomorphised per leaf
-/// test, so the test is inlined into its own loop.
+/// test, so the test is inlined into its own loop. Returns how many items
+/// were examined (all of them, unless `on_item` broke off).
 #[inline(always)]
 fn scan_leaf<'b>(
     src: &IterSrc<'b>,
     var_path: &[crate::node::PathSegment],
     mut on_item: impl FnMut(&'b DataValue<'b>, bool) -> ControlFlow<()>,
     test: impl Fn(Option<&'b DataValue<'b>>) -> Option<bool>,
-) -> Option<()> {
+) -> Option<usize> {
     // Two loops, so the whole-item case (`{"var": ""}`) never walks a path.
+    // The count comes from the loop index only on a break.
     if var_path.is_empty() {
-        for item in src.0 {
+        for (i, item) in src.0.iter().enumerate() {
             if on_item(item, test(Some(item))?).is_break() {
-                break;
+                return Some(i + 1);
             }
         }
     } else {
-        for item in src.0 {
+        for (i, item) in src.0.iter().enumerate() {
             let value = crate::arena::value::traverse_segments(item, var_path);
             if on_item(item, test(value)?).is_break() {
-                break;
+                return Some(i + 1);
             }
         }
     }
-    Some(())
+    Some(src.len())
 }
 
 /// A native number as `f64`; anything else is indeterminate (the general

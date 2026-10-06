@@ -36,8 +36,10 @@ pub(crate) fn evaluate_filter<'a>(
         }
 
         if let Some(fast_pred) = FastPredicate::from_node(predicate)
-            && let Some(result) = filter_with_fast_predicate(&src, fast_pred, engine, arena)
+            && let Some((result, cost)) = filter_with_fast_predicate(&src, fast_pred, engine, arena)
         {
+            // What the general path would have charged for the predicate.
+            ctx.charge(cost)?;
             return Ok(result);
         }
     }
@@ -65,6 +67,12 @@ fn filter_strict_eq_field_fast_path<'a>(
     let invariant_val = engine.dispatch_node(invariant_node, ctx, arena)?;
     let is_eq = !negate;
     let len = src.len();
+    // Charged as the general path charges the predicate, before the loop
+    // (this path never gives up): per item the `===` node, the field `var`
+    // and, unless it is a literal, the invariant operand, which was just
+    // charged once. `compare_equals` charges any structural walk itself.
+    let invariant_cost = u64::from(!matches!(invariant_node, CompiledNode::Value { .. }));
+    ctx.charge((2 + invariant_cost) * len as u64 - invariant_cost)?;
     // Local hinted cursor — homogeneous rows resolve the field in one key
     // compare after the first item (same mechanism as the map fast paths).
     let mut field = FieldCursor::new(segments);
@@ -121,28 +129,33 @@ pub(super) fn strict_eq_field_shape(
 }
 
 /// Filter using a `FastPredicate` — predicate evaluates in-place against each
-/// item with zero context push and zero per-item allocation. Returns `None`
-/// when any item evaluates indeterminate (see
-/// [`FastPredicate::evaluate_opt`]); the caller re-runs the whole collection
-/// through the general path, which is exact because fast evaluation is pure.
+/// item with zero context push and zero per-item allocation. Returns the
+/// result and the operations to charge for the predicate (see
+/// [`FastPredicate::scan`]), or `None` when any item evaluates
+/// indeterminate (see [`FastPredicate::evaluate_opt`]); the caller re-runs
+/// the whole collection through the general path, which is exact because
+/// fast evaluation is pure.
 #[inline]
 fn filter_with_fast_predicate<'a>(
     src: &IterSrc<'a>,
     fast_pred: &FastPredicate,
     engine: &Engine,
     arena: &'a Bump,
-) -> Option<&'a DataValue<'a>> {
+) -> Option<(&'a DataValue<'a>, u64)> {
     let mut results = bvec::<DataValue<'a>>(arena, src.len());
-    fast_pred.scan(src, engine, |item, keep| {
+    let cost = fast_pred.scan(src, engine, |item, keep| {
         if keep {
             results.push(*item);
         }
         ControlFlow::Continue(())
     })?;
     if results.is_empty() {
-        return Some(crate::arena::singletons::singleton_empty_array());
+        return Some((crate::arena::singletons::singleton_empty_array(), cost));
     }
-    Some(arena.alloc(DataValue::Array(results.into_bump_slice())))
+    Some((
+        arena.alloc(DataValue::Array(results.into_bump_slice())),
+        cost,
+    ))
 }
 
 /// General filter path — dispatches the predicate per item via the arena

@@ -75,7 +75,10 @@ pub(crate) fn quantifier<'a>(
                 ControlFlow::Continue(())
             }
         });
-        if completed.is_some() {
+        if let Some(cost) = completed {
+            // What the general path would have charged for the predicate
+            // over the items it examined.
+            ctx.charge(cost)?;
             return Ok(singleton_bool(op.finalize(found_short)));
         }
     }

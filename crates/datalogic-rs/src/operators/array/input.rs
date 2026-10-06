@@ -168,6 +168,16 @@ pub(crate) fn resolve_iter_input<'a>(
     charged(value_as_iter(av), ctx)
 }
 
+/// [`resolve_iter_input`] for a source value already in hand: classify it
+/// and charge its items exactly as resolving it would have.
+#[inline]
+pub(super) fn resolve_value<'a>(
+    av: &'a DataValue<'a>,
+    ctx: &mut ContextStack<'a>,
+) -> Result<ResolvedInput<'a>> {
+    charged(value_as_iter(av), ctx)
+}
+
 /// Charge one operation per item the caller is about to examine.
 ///
 /// Every iterator operator funnels through [`resolve_iter_input`], so this

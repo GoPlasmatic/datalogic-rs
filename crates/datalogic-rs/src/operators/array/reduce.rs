@@ -9,7 +9,7 @@ use bumpalo::Bump;
 use datavalue::NumberValue;
 
 use super::fused::{FieldCursor, FusedMapBody, arith_number, with_arith};
-use super::input::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
+use super::input::{Items, IterArgKind, IterSrc, ResolvedInput, resolve_iter_input, resolve_value};
 use super::nesting::AccumulatorDepth;
 
 /// `reduce` — folds an array into a single value via an accumulator. Input
@@ -33,19 +33,24 @@ pub(crate) fn evaluate_reduce<'a>(
 
     // FUSION: reduce over a map with a fusible body folds directly over the
     // map's input — no intermediate array materializes. Runs after `initial`
-    // evaluates (order preserved) and before `args[0]` resolves; on Bail the
-    // general flow below re-resolves `args[0]`, re-evaluating the pure map
-    // input (the established fast-path precedent — fires only on
-    // non-numeric data). The inline candidate pre-check keeps non-pipeline
-    // reduces at two discriminant compares.
-    if super::fast_paths::allowed(ctx, engine) && is_map_candidate(&args[0]) {
-        match try_fused_reduce_map(args, initial, ctx, engine, arena)? {
-            FusedOutcome::Done(value) => return Ok(value),
-            FusedOutcome::Bail => {}
+    // evaluates (order preserved) and before `args[0]` resolves. Once the
+    // fusion has resolved the map's input it never hands back a bare Bail:
+    // data the fused loop cannot fold is mapped by the general `map` over
+    // that same input (`Mapped`), so nothing is evaluated or charged
+    // twice. The inline candidate pre-check keeps non-pipeline reduces at
+    // two discriminant compares.
+    let resolved = 'source: {
+        if super::fast_paths::allowed(ctx, engine) && is_map_candidate(&args[0]) {
+            match try_fused_reduce_map(args, initial, ctx, engine, arena)? {
+                FusedOutcome::Done(value) => return Ok(value),
+                FusedOutcome::Mapped(mapped) => break 'source resolve_value(mapped, ctx)?,
+                FusedOutcome::Bail => {}
+            }
         }
-    }
+        resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)?
+    };
 
-    let src = match resolve_iter_input(&args[0], iter_arg_kind, ctx, engine, arena)? {
+    let src = match resolved {
         ResolvedInput::Iterable(s) => s,
         ResolvedInput::Empty => return Ok(initial),
         ResolvedInput::Bridge(av) => {
@@ -64,6 +69,9 @@ pub(crate) fn evaluate_reduce<'a>(
     if super::fast_paths::allowed(ctx, engine)
         && let Some(result) = try_reduce_fast_path(&src, initial, body, arena)
     {
+        // The fold body's three nodes per item, as the general path
+        // charges them.
+        ctx.charge(FOLD_BODY_COST * src.len() as u64)?;
         return Ok(result);
     }
 
@@ -131,11 +139,20 @@ fn reduce_arena_bridge<'a>(
     }
 }
 
+/// Operations the general path charges per item for a fold body the fast
+/// paths recognise: the arithmetic node and its two `var`s.
+const FOLD_BODY_COST: u64 = 3;
+
 /// Outcome of the reduce(map(...)) fusion attempt.
 enum FusedOutcome<'a> {
     /// The fused loop completed; this is the reduce result.
     Done(&'a DataValue<'a>),
-    /// Shape or data didn't fit — fall through to the general flow.
+    /// The map's input was resolved but the data did not fit the fused
+    /// loop, so the general `map` ran over it: this is the map's result,
+    /// for the reduce to continue from.
+    Mapped(&'a DataValue<'a>),
+    /// The shape didn't fit; nothing was evaluated. Fall through to the
+    /// general flow.
     Bail,
 }
 
@@ -161,8 +178,12 @@ fn is_map_candidate(node: &CompiledNode) -> bool {
 /// array. Detection is purely structural (the shared [`FusedMapBody`] plus
 /// the fold shape); the loops compose only existing primitives (`as_i64`,
 /// `as_f64`, checked ops, `NumberValue::from_f64`) so results are
-/// bit-identical to the unfused pipeline, and anything non-numeric bails
-/// to the untouched general flow.
+/// bit-identical to the unfused pipeline. Anything non-numeric goes to the
+/// general `map` over the already-resolved input (see [`FusedOutcome`]).
+///
+/// The metered count is the unfused pipeline's: the map node, its input,
+/// and per item the map body, the mapped item the reduce examines and the
+/// fold body.
 #[inline(never)]
 fn try_fused_reduce_map<'a>(
     args: &'a [CompiledNode],
@@ -172,11 +193,12 @@ fn try_fused_reduce_map<'a>(
     arena: &'a Bump,
 ) -> Result<FusedOutcome<'a>> {
     // See through a CSE wrapper: a memoized pipeline computes its memo miss
-    // right here, and the wrapped inner map then never materializes (its
-    // own slot simply stays lazy for any standalone occurrence).
-    let map_node = match &args[0] {
-        CompiledNode::Cse(data) => &data.inner,
-        node => node,
+    // right here. A fused fold never builds the mapped array, so it leaves
+    // the slot empty for any standalone occurrence; the general `map`
+    // below fills it, as dispatching the wrapper would.
+    let (map_node, memo_slot) = match &args[0] {
+        CompiledNode::Cse(data) => (&data.inner, Some(data.slot)),
+        node => (node, None),
     };
     let CompiledNode::BuiltinOperator {
         opcode: OpCode::Map,
@@ -201,16 +223,106 @@ fn try_fused_reduce_map<'a>(
     let Some(map_body) = FusedMapBody::detect(&map_args[1]) else {
         return Ok(FusedOutcome::Bail);
     };
-
-    let src = match resolve_iter_input(&map_args[0], *map_iter_kind, ctx, engine, arena)? {
-        ResolvedInput::Iterable(s) => s,
-        ResolvedInput::Empty => return Ok(FusedOutcome::Done(initial)),
-        ResolvedInput::Bridge(_) => return Ok(FusedOutcome::Bail),
+    // What the fused loop cannot fold whatever the data: a non-numeric
+    // initial value or map literal. Known before anything is evaluated.
+    let Some(acc) = initial.as_number().copied() else {
+        return Ok(FusedOutcome::Bail);
     };
-    if src.is_empty() {
-        return Ok(FusedOutcome::Done(initial));
+    let lit = match &map_body {
+        FusedMapBody::ArithVarLit { lit, .. } => match lit.as_number() {
+            Some(n) => *n,
+            None => return Ok(FusedOutcome::Bail),
+        },
+        _ => NumberValue::from_i64(0),
+    };
+    // A memoised map already computed costs the general flow one read.
+    if let Some(slot) = memo_slot
+        && ctx.cse_slot(slot).is_some()
+    {
+        return Ok(FusedOutcome::Bail);
     }
-    Ok(run_fused_fold(&src, initial, &fold, &map_body, arena))
+
+    let fused = FusedMap {
+        map_args,
+        map_iter_kind: *map_iter_kind,
+        memo_slot,
+        fold,
+        map_body,
+        acc,
+        lit,
+    };
+    let outcome = fused.run(initial, ctx, engine, arena);
+    // Everything from here stands in for dispatching the map node, which
+    // adds the node to an error's breadcrumb.
+    if outcome.is_err() {
+        ctx.push_error_step(args[0].id());
+    }
+    outcome
+}
+
+/// A reduce-over-map the fusion accepted, with what the shape checks found.
+struct FusedMap<'n> {
+    map_args: &'n [CompiledNode],
+    map_iter_kind: IterArgKind,
+    memo_slot: Option<u16>,
+    fold: FoldShape<'n>,
+    map_body: FusedMapBody<'n>,
+    /// The numeric initial value.
+    acc: NumberValue,
+    /// An `ArithVarLit` map body's literal, as a number.
+    lit: NumberValue,
+}
+
+impl<'n> FusedMap<'n> {
+    /// Resolve the map's input once, and either fold it or map it with the
+    /// general `map` for the reduce to continue from.
+    fn run<'a>(
+        &self,
+        initial: &'a DataValue<'a>,
+        ctx: &mut ContextStack<'a>,
+        engine: &Engine,
+        arena: &'a Bump,
+    ) -> Result<FusedOutcome<'a>>
+    where
+        'n: 'a,
+    {
+        // The map node's own operation, as dispatching it would charge.
+        ctx.charge(1)?;
+        let items =
+            match resolve_iter_input(&self.map_args[0], self.map_iter_kind, ctx, engine, arena)? {
+                ResolvedInput::Iterable(src) if !src.is_empty() => {
+                    if let Some(value) =
+                        run_fused_fold(&src, self.acc, self.lit, &self.fold, &self.map_body)
+                    {
+                        // Per item: the map body, the mapped item the reduce
+                        // examines, and the fold body.
+                        let per_item = self.map_body.body_cost() + 1 + FOLD_BODY_COST;
+                        ctx.charge(per_item * src.len() as u64)?;
+                        return Ok(FusedOutcome::Done(alloc_number(arena, value)));
+                    }
+                    Items::Array(src)
+                }
+                // `map` answers an empty source with `[]`, which the reduce
+                // folds to its initial value.
+                ResolvedInput::Iterable(_) | ResolvedInput::Empty => {
+                    self.remember(crate::arena::singletons::singleton_empty_array(), ctx);
+                    return Ok(FusedOutcome::Done(initial));
+                }
+                ResolvedInput::Bridge(DataValue::Object(pairs)) => Items::Object(pairs),
+                ResolvedInput::Bridge(value) => Items::Scalar(value),
+            };
+        let mapped = super::map::evaluate_map(items, self.map_args, ctx, engine, arena)?;
+        self.remember(mapped, ctx);
+        Ok(FusedOutcome::Mapped(mapped))
+    }
+
+    /// Fill the CSE slot of a memoised map with its result, as dispatching
+    /// the wrapper would have.
+    fn remember<'a>(&self, mapped: &'a DataValue<'a>, ctx: &mut ContextStack<'a>) {
+        if let Some(slot) = self.memo_slot {
+            ctx.fill_cse_slot(slot, mapped);
+        }
+    }
 }
 
 /// The fused loop. Both the per-item map and the fold run through the
@@ -231,53 +343,34 @@ fn try_fused_reduce_map<'a>(
 /// `[-9591485970090907; 6]` with `{"-": [current, accumulator]}` from
 /// `0.25` gave 0 fused and 1 unfused (issue #61).
 ///
-/// Anything non-numeric still bails to the general flow, which owns
-/// coercion.
-fn run_fused_fold<'a>(
-    src: &IterSrc<'a>,
-    initial: &'a DataValue<'a>,
+/// Anything non-numeric returns `None`, for the general `map` and the
+/// reduce's own paths, which own coercion.
+fn run_fused_fold(
+    src: &IterSrc<'_>,
+    mut acc: NumberValue,
+    lit: NumberValue,
     fold: &FoldShape<'_>,
     map_body: &FusedMapBody<'_>,
-    arena: &'a Bump,
-) -> FusedOutcome<'a> {
+) -> Option<NumberValue> {
     let op = fold.op;
     let acc_is_lhs = fold.acc_is_lhs;
-
-    // Pre-coerce an ArithVarLit literal once. Non-numeric literal: the map
-    // fast path would decline too — bail to the general flow's coercion.
-    let lit = match map_body {
-        FusedMapBody::ArithVarLit { lit, .. } => match lit.as_number() {
-            Some(n) => *n,
-            None => return FusedOutcome::Bail,
-        },
-        _ => NumberValue::from_i64(0),
-    };
-
     let mut cursors = FusedCursors::new(map_body);
-
-    let Some(mut acc) = initial.as_number().copied() else {
-        return FusedOutcome::Bail;
-    };
     // The fold's operation and accumulator side are fixed outside the loop
     // (one loop per combination); the map body still dispatches per item.
     with_arith!(op, |f| {
         if acc_is_lhs {
             for item in src.0 {
-                let Some(mapped) = mapped_number(map_body, &mut cursors, item, lit) else {
-                    return FusedOutcome::Bail;
-                };
+                let mapped = mapped_number(map_body, &mut cursors, item, lit)?;
                 acc = f(acc, mapped);
             }
         } else {
             for item in src.0 {
-                let Some(mapped) = mapped_number(map_body, &mut cursors, item, lit) else {
-                    return FusedOutcome::Bail;
-                };
+                let mapped = mapped_number(map_body, &mut cursors, item, lit)?;
                 acc = f(mapped, acc);
             }
         }
     });
-    FusedOutcome::Done(alloc_number(arena, acc))
+    Some(acc)
 }
 
 /// Allocate a fold result, short-circuiting to the preallocated small-int

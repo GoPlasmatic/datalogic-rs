@@ -155,6 +155,18 @@ pub(super) enum FusedMapBody<'n> {
 }
 
 impl FusedMapBody<'_> {
+    /// Operations the general path charges per item for this body: the
+    /// `var` for an extract; the arithmetic node and its `var` operands
+    /// otherwise (a literal operand is free).
+    #[inline]
+    pub(super) fn body_cost(&self) -> u64 {
+        match self {
+            FusedMapBody::Extract { .. } => 1,
+            FusedMapBody::ArithVarLit { .. } => 2,
+            FusedMapBody::ArithVarVar { .. } => 3,
+        }
+    }
+
     /// Structural classification only — numeric checks (e.g. the literal
     /// being coercible) stay in the executing loops, which fall back to
     /// the general path when they fail.

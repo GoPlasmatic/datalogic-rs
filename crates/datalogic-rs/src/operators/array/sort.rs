@@ -66,9 +66,12 @@ pub(crate) fn evaluate_sort<'a>(
     // keys come from `traverse_segments` directly. Not when traced, so the
     // trace records each item's key, as for every other iterator.
     if super::fast_paths::allowed(ctx, engine)
-        && let Some(result) = sort_fast_path_var_extractor(&src, extractor, ascending, arena)
+        && let Some(segments) = sort_key_field(extractor)
     {
-        return Ok(result);
+        // The key expression's one operation per item, as the general path
+        // charges it.
+        ctx.charge(len as u64)?;
+        return Ok(sort_by_field(&src, segments, ascending, arena));
     }
 
     // General extractor — push each item, evaluate, collect keys, sort indices.
@@ -146,16 +149,15 @@ pub(super) fn sort_key_field(extractor: &CompiledNode) -> Option<&[crate::node::
     plain_var_segments(extractor).filter(|segments| !segments.is_empty())
 }
 
-/// Extractor fast path: `{var: "field..."}` over non-empty segments at scope 0.
+/// Extractor fast path: `{var: "field..."}` over non-empty segments at
+/// scope 0 (see [`sort_key_field`]).
 #[inline]
-fn sort_fast_path_var_extractor<'a>(
+fn sort_by_field<'a>(
     src: &IterSrc<'a>,
-    extractor: &'a CompiledNode,
+    segments: &[crate::node::PathSegment],
     ascending: bool,
     arena: &'a Bump,
-) -> Option<&'a DataValue<'a>> {
-    let segments = sort_key_field(extractor)?;
-
+) -> &'a DataValue<'a> {
     let len = src.len();
     // A missing field reads as `null`, as the key expression would on the
     // general path, so it ties with a present `null` and keeps its place.
@@ -172,7 +174,7 @@ fn sort_fast_path_var_extractor<'a>(
         if ascending { cmp } else { cmp.reverse() }
     });
     let slice = arena.alloc_slice_fill_iter(keyed.iter().map(|&(i, _)| *src.get(i)));
-    Some(arena.alloc(DataValue::Array(slice)))
+    arena.alloc(DataValue::Array(slice))
 }
 
 #[inline]

@@ -39,6 +39,8 @@ pub(crate) fn evaluate_map<'a>(
         && let Some(shape) = FusedMapBody::detect(body)
         && let Some(result) = map_fused(&src, &shape, arena)
     {
+        // What the general path would have charged for the body.
+        ctx.charge(shape.body_cost() * src.len() as u64)?;
         return Ok(result);
     }
 
