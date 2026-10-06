@@ -21,7 +21,7 @@ use datalogic_rs::ParsedData;
 use napi::Env;
 use napi::bindgen_prelude::*;
 
-use crate::error::engine_error;
+use crate::error::{engine_error, guard};
 
 /// An immutable, pre-parsed JSON document.
 ///
@@ -50,12 +50,12 @@ pub struct DataHandle {
 impl DataHandle {
     /// Parse `json` into a reusable handle. Throws `ParseError` on
     /// malformed JSON.
-    #[napi(constructor)]
+    #[napi(catch_unwind, constructor)]
     pub fn new(env: Env, json: String) -> Result<Self> {
-        match ParsedData::from_json(&json) {
+        guard(&env, || match ParsedData::from_json(&json) {
             Ok(parsed) => Ok(Self { parsed }),
             Err(e) => Err(engine_error(&env, &e, None)),
-        }
+        })
     }
 
     /// Build a handle from a JS value (object, array, string, number,
@@ -65,16 +65,18 @@ impl DataHandle {
     /// ```js
     /// const handle = DataHandle.fromValue({ user: { age: 34 } });
     /// ```
-    #[napi(factory)]
-    pub fn from_value(data: serde_json::Value) -> Self {
-        Self {
-            parsed: ParsedData::from_value(&data),
-        }
+    #[napi(catch_unwind, factory)]
+    pub fn from_value(env: Env, data: serde_json::Value) -> Result<Self> {
+        guard(&env, || {
+            Ok(Self {
+                parsed: ParsedData::from_value(&data),
+            })
+        })
     }
 
     /// Bytes held by the handle's backing arena (input copy + parsed
     /// tree). Useful for sizing and diagnostics.
-    #[napi(getter)]
+    #[napi(catch_unwind, getter)]
     pub fn allocated_bytes(&self) -> u32 {
         self.parsed.allocated_bytes() as u32
     }

@@ -219,6 +219,13 @@ try {
 }
 ```
 
+A panic inside the native engine never takes the process down. It is
+caught at the binding boundary and thrown (or, for `evaluateStrAsync`,
+rejected) as an `Error` with `name` and `errorType` set to
+`"InternalError"` and the panic message as `message`. The engine, rule
+and session stay usable. An `InternalError` always means a bug; please
+report it.
+
 ## API surface
 
 | Symbol | Description |

@@ -15,7 +15,9 @@ use napi::{Env, Task};
 use serde_json::Value;
 
 use crate::data::DataHandle;
-use crate::error::{engine_error, engine_error_value};
+use crate::error::{
+    INTERNAL_ERROR, engine_error, engine_error_value, guard, internal_error_value, panic_message,
+};
 use crate::session::Session;
 
 /// Constructor options. Wrapped in an `Object` rather than passed
@@ -122,132 +124,144 @@ pub struct Engine {
 #[napi]
 impl Engine {
     /// Create a new engine.
-    #[napi(constructor)]
+    #[napi(catch_unwind, constructor)]
     pub fn new(
         env: Env,
         options: Option<EngineOptions>,
         custom_operators: Option<HashMap<String, FunctionRef<String, String>>>,
     ) -> Result<Self> {
-        let (templating, config, key_escape, strict_names, families) = match options {
-            Some(o) => (
-                o.templating.unwrap_or(false),
-                o.config,
-                o.template_key_escape,
-                o.strict_operator_names.unwrap_or(false),
-                o.families,
-            ),
-            None => (false, None, None, false, None),
-        };
-        let mut builder = if templating {
-            RsEngine::builder().with_templating(true)
-        } else {
-            RsEngine::builder()
-        };
-        // Before the operators, so strict names are judged against the
-        // families the engine has.
-        if let Some(names) = families {
-            let families = datalogic_bind::families(names.iter().map(String::as_str))
-                .map_err(|msg| engine_error(&env, &DlError::configuration_error(msg), None))?;
-            builder = builder.with_families(families);
-        }
-        // Reject a mis-typed escape at construction rather than silently
-        // ignoring it: an option that looks accepted but does nothing is
-        // worse than a loud failure.
-        if let Some(prefix) = key_escape {
-            let c = datalogic_bind::single_char(&prefix).ok_or_else(|| {
-                engine_error(
-                    &env,
-                    &DlError::invalid_arguments("templateKeyEscape must be exactly one character"),
-                    None,
-                )
-            })?;
-            builder = builder.with_template_key_escape(c);
-        }
-        // JS `null` arrives as `Value::Null` rather than `None` through
-        // the serde bridge; treat both as "not provided", matching the
-        // other optional fields.
-        if let Some(cfg) = config.filter(|c| !c.is_null()) {
-            builder = builder.with_config(parse_config(&env, cfg)?);
-        }
-        if let Some(map) = custom_operators {
-            let env_raw = env.raw();
-            let thread_id = std::thread::current().id();
-            for (name, callback) in map {
-                let op = NodeOperator {
-                    name: name.clone(),
-                    callback,
-                    env_raw,
-                    thread_id,
-                };
-                builder = if strict_names {
-                    builder
-                        .try_add_operator(name, op)
-                        .map_err(|e| engine_error(&env, &e, None))?
-                } else {
-                    builder.add_operator(name, op)
-                };
+        guard(&env, || {
+            let (templating, config, key_escape, strict_names, families) = match options {
+                Some(o) => (
+                    o.templating.unwrap_or(false),
+                    o.config,
+                    o.template_key_escape,
+                    o.strict_operator_names.unwrap_or(false),
+                    o.families,
+                ),
+                None => (false, None, None, false, None),
+            };
+            let mut builder = if templating {
+                RsEngine::builder().with_templating(true)
+            } else {
+                RsEngine::builder()
+            };
+            // Before the operators, so strict names are judged against the
+            // families the engine has.
+            if let Some(names) = families {
+                let families = datalogic_bind::families(names.iter().map(String::as_str))
+                    .map_err(|msg| engine_error(&env, &DlError::configuration_error(msg), None))?;
+                builder = builder.with_families(families);
             }
-        }
-        Ok(Self {
-            inner: Arc::new(builder.build()),
+            // Reject a mis-typed escape at construction rather than silently
+            // ignoring it: an option that looks accepted but does nothing is
+            // worse than a loud failure.
+            if let Some(prefix) = key_escape {
+                let c = datalogic_bind::single_char(&prefix).ok_or_else(|| {
+                    engine_error(
+                        &env,
+                        &DlError::invalid_arguments(
+                            "templateKeyEscape must be exactly one character",
+                        ),
+                        None,
+                    )
+                })?;
+                builder = builder.with_template_key_escape(c);
+            }
+            // JS `null` arrives as `Value::Null` rather than `None` through
+            // the serde bridge; treat both as "not provided", matching the
+            // other optional fields.
+            if let Some(cfg) = config.filter(|c| !c.is_null()) {
+                builder = builder.with_config(parse_config(&env, cfg)?);
+            }
+            if let Some(map) = custom_operators {
+                let env_raw = env.raw();
+                let thread_id = std::thread::current().id();
+                for (name, callback) in map {
+                    let op = NodeOperator {
+                        name: name.clone(),
+                        callback,
+                        env_raw,
+                        thread_id,
+                    };
+                    builder = if strict_names {
+                        builder
+                            .try_add_operator(name, op)
+                            .map_err(|e| engine_error(&env, &e, None))?
+                    } else {
+                        builder.add_operator(name, op)
+                    };
+                }
+            }
+            Ok(Self {
+                inner: Arc::new(builder.build()),
+            })
         })
     }
 
     /// Compile a JSONLogic rule into a reusable `Rule`. Accepts either a
     /// JS object literal or a JSON-encoded string.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn compile(&self, env: Env, rule: Value) -> Result<Rule> {
-        let logic = compile_inner(&env, &self.inner, rule)?;
-        Ok(self.rule(logic))
+        guard(&env, || {
+            let logic = compile_inner(&env, &self.inner, rule)?;
+            Ok(self.rule(logic))
+        })
     }
 
     /// Compile `rule` in templating mode, whatever this engine was built
     /// with: a multi-key object is an output template and an unknown key an
     /// output field.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn compile_template(&self, env: Env, rule: Value) -> Result<Rule> {
-        self.compile_in(&env, rule, CheckMode::Template)
+        guard(&env, || self.compile_in(&env, rule, CheckMode::Template))
     }
 
     /// Compile `rule` outside templating mode, whatever this engine was
     /// built with: a multi-key object or an unknown operator is an error.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn compile_strict(&self, env: Env, rule: Value) -> Result<Rule> {
-        self.compile_in(&env, rule, CheckMode::Strict)
+        guard(&env, || self.compile_in(&env, rule, CheckMode::Strict))
     }
 
     /// Compile `rule`, refusing it if `check` finds any error. Throws
     /// `errorType: "CompileError"` with a `diagnostics` array.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn compile_checked(&self, env: Env, rule: Value) -> Result<Rule> {
-        let logic = with_rule(rule, |r| match r {
-            RuleSrc::Text(s) => self.inner.compile_checked(s),
-            RuleSrc::Json(v) => self.inner.compile_checked(v),
+        guard(&env, || {
+            let logic = with_rule(rule, |r| match r {
+                RuleSrc::Text(s) => self.inner.compile_checked(s),
+                RuleSrc::Json(v) => self.inner.compile_checked(v),
+            })
+            .map_err(|e| crate::error::compile_error(&env, &e))?;
+            Ok(self.rule(Arc::new(logic)))
         })
-        .map_err(|e| crate::error::compile_error(&env, &e))?;
-        Ok(self.rule(Arc::new(logic)))
     }
 
     /// Every problem this engine can see in `rule` before it runs, as an
     /// array of `{code, severity, message, pointer, operator}`. `mode` is
     /// `"engine"` (default), `"strict"` or `"template"`.
     #[napi(
+        catch_unwind,
         ts_return_type = "Array<{ code: string; severity: 'error' | 'warning'; message: string; pointer: string; operator: string | null }>"
     )]
     pub fn check(&self, env: Env, rule: Value, mode: Option<String>) -> Result<Value> {
-        let mode = datalogic_bind::check_mode(mode.as_deref())
-            .map_err(|msg| engine_error(&env, &DlError::invalid_arguments(msg), None))?;
-        let diagnostics = with_rule(rule, |r| match r {
-            RuleSrc::Text(s) => self.inner.check(s, mode),
-            RuleSrc::Json(v) => self.inner.check(v, mode),
-        });
-        Ok(datalogic_bind::diagnostics_value(&diagnostics))
+        guard(&env, || {
+            let mode = datalogic_bind::check_mode(mode.as_deref())
+                .map_err(|msg| engine_error(&env, &DlError::invalid_arguments(msg), None))?;
+            let diagnostics = with_rule(rule, |r| match r {
+                RuleSrc::Text(s) => self.inner.check(s, mode),
+                RuleSrc::Json(v) => self.inner.check(v, mode),
+            });
+            Ok(datalogic_bind::diagnostics_value(&diagnostics))
+        })
     }
 
     /// Every built-in operator this engine evaluates: name, aliases,
     /// family, gating feature, argument counts, whether it reads the data,
     /// its effect, its cost class and which argument runs per element.
     #[napi(
+        catch_unwind,
         ts_return_type = "Array<{ name: string; aliases: string[]; family: string; feature: string | null; min_args: number; max_args: number | null; reads_context: boolean; effect: string; cost: string; scoped_arg: number | 'last' | null }>"
     )]
     pub fn operators(&self) -> Value {
@@ -259,14 +273,14 @@ impl Engine {
     /// an empty array. A string is JSON text, as data is everywhere else
     /// here (and as WASM's `truthy` reads it): `truthy("[]")` is `false`,
     /// and `truthy('"a"')` asks about the string `a`.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn truthy(&self, env: Env, value: Value) -> Result<bool> {
-        match value {
+        guard(&env, || match value {
             Value::String(s) => datalogic_rs::ParsedData::from_json(&s)
                 .map(|parsed| self.inner.truthy_of(&parsed))
                 .map_err(|e| engine_error(&env, &e, None)),
             other => Ok(self.inner.truthy_of(&other)),
-        }
+        })
     }
 
     /// One-shot evaluation. Compiles `rule` against `data` and returns
@@ -274,19 +288,23 @@ impl Engine {
     ///
     /// For repeated evaluations of the same rule, prefer
     /// `compile()` + `Rule.evaluate()` — it skips re-parsing.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn eval(&self, env: Env, rule: Value, data: Value) -> Result<Value> {
-        let logic = compile_inner(&env, &self.inner, rule)?;
-        evaluate_value(&env, &self.inner, &logic, data)
+        guard(&env, || {
+            let logic = compile_inner(&env, &self.inner, rule)?;
+            evaluate_value(&env, &self.inner, &logic, data)
+        })
     }
 
     /// One-shot evaluation returning the result as a JSON string. Skips
     /// the JS-value materialisation — useful when the caller will hand
     /// the result straight to another JSON consumer.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn eval_str(&self, env: Env, rule: Value, data: Value) -> Result<String> {
-        let logic = compile_inner(&env, &self.inner, rule)?;
-        evaluate_str(&env, &self.inner, &logic, data)
+        guard(&env, || {
+            let logic = compile_inner(&env, &self.inner, rule)?;
+            evaluate_str(&env, &self.inner, &logic, data)
+        })
     }
 
     /// One-shot evaluation with a step-by-step execution trace.
@@ -304,7 +322,7 @@ impl Engine {
     /// step; use this for debugging, not hot paths. `mode` is `"engine"`
     /// (default), `"strict"` or `"template"`, as for `check`, so a rule
     /// compiled with `compileTemplate` is traced as one.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn evaluate_with_trace(
         &self,
         env: Env,
@@ -312,14 +330,16 @@ impl Engine {
         data: String,
         mode: Option<String>,
     ) -> Result<String> {
-        let mode = datalogic_bind::check_mode(mode.as_deref())
-            .map_err(|msg| engine_error(&env, &DlError::invalid_arguments(msg), None))?;
-        Ok(datalogic_bind::traced_json_in(
-            &self.inner,
-            logic.as_str(),
-            data.as_str(),
-            mode,
-        ))
+        guard(&env, || {
+            let mode = datalogic_bind::check_mode(mode.as_deref())
+                .map_err(|msg| engine_error(&env, &DlError::invalid_arguments(msg), None))?;
+            Ok(datalogic_bind::traced_json_in(
+                &self.inner,
+                logic.as_str(),
+                data.as_str(),
+                mode,
+            ))
+        })
     }
 
     /// One-shot metered evaluation: compile `rule`, evaluate it against
@@ -339,7 +359,7 @@ impl Engine {
     /// Throws `errorType: "BudgetExceeded"` (carrying `budget` and
     /// `spent`) when the rule charges past the ceiling. The evaluation is
     /// refused before the work, and a `try` in the rule cannot recover.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn eval_metered(
         &self,
         env: Env,
@@ -347,8 +367,10 @@ impl Engine {
         data: Value,
         budget: Option<f64>,
     ) -> Result<MeteredResult> {
-        let logic = compile_inner(&env, &self.inner, rule)?;
-        evaluate_metered(&env, &self.inner, &logic, data, budget)
+        guard(&env, || {
+            let logic = compile_inner(&env, &self.inner, rule)?;
+            evaluate_metered(&env, &self.inner, &logic, data, budget)
+        })
     }
 
     /// Open a hot-loop `Session` bound to this engine. The session
@@ -357,7 +379,7 @@ impl Engine {
     ///
     /// Sessions are not safe to share between worker threads — open one
     /// per worker.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn session(&self) -> Session {
         Session::new(self.inner.clone())
     }
@@ -365,7 +387,7 @@ impl Engine {
     /// Names of the custom operators registered on this engine (second
     /// constructor argument), in registration order. Built-ins are listed
     /// by the module-level `builtinOperatorNames()`.
-    #[napi(js_name = "customOperatorNames")]
+    #[napi(catch_unwind, js_name = "customOperatorNames")]
     pub fn custom_operator_names(&self) -> Vec<String> {
         self.inner
             .custom_operator_names()
@@ -431,6 +453,7 @@ impl Rule {
     /// custom_operators, deterministic}`. `reads` lists each root path as
     /// its segments.
     #[napi(
+        catch_unwind,
         ts_return_type = "{ reads: string[][]; computed_reads: boolean; reads_complete: boolean; reads_data: boolean; operators: string[]; custom_operators: string[]; deterministic: boolean }"
     )]
     pub fn facts(&self) -> Value {
@@ -438,16 +461,18 @@ impl Rule {
     }
 
     /// Evaluate against `data` and return the result as a JS value.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn evaluate(&self, env: Env, data: Value) -> Result<Value> {
-        evaluate_value(&env, &self.engine, &self.logic, data)
+        guard(&env, || {
+            evaluate_value(&env, &self.engine, &self.logic, data)
+        })
     }
 
     /// Evaluate against `data` and return the result as a JSON string.
     /// Skips the JS-value materialisation entirely.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn evaluate_str(&self, env: Env, data: Value) -> Result<String> {
-        evaluate_str(&env, &self.engine, &self.logic, data)
+        guard(&env, || evaluate_str(&env, &self.engine, &self.logic, data))
     }
 
     /// Evaluate against `data` under an operation budget, returning the
@@ -456,40 +481,46 @@ impl Rule {
     /// Same metering as `Engine.evalMetered`, on an already-compiled
     /// rule. Omit `budget` to fall back to the engine's
     /// `config.ops_budget`.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn evaluate_metered(
         &self,
         env: Env,
         data: Value,
         budget: Option<f64>,
     ) -> Result<MeteredResult> {
-        evaluate_metered(&env, &self.engine, &self.logic, data, budget)
+        guard(&env, || {
+            evaluate_metered(&env, &self.engine, &self.logic, data, budget)
+        })
     }
 
     /// Evaluate against a pre-parsed `DataHandle` and return the result
     /// as a JS value. Skips the per-call JSON parse of the data — parse
     /// once with `new DataHandle(json)`, evaluate many times.
-    #[napi(ts_return_type = "unknown")]
+    #[napi(catch_unwind, ts_return_type = "unknown")]
     pub fn evaluate_data(&self, env: Env, handle: &DataHandle) -> Result<Value> {
-        let arena = Bump::new();
-        let av = self
-            .engine
-            .evaluate(&self.logic, &handle.parsed, &arena)
-            .map_err(|e| engine_error(&env, &e, Some(&self.logic)))?;
-        serde_json::to_value(av)
-            .map_err(|e| engine_error(&env, &DlError::wrap(e), Some(&self.logic)))
+        guard(&env, || {
+            let arena = Bump::new();
+            let av = self
+                .engine
+                .evaluate(&self.logic, &handle.parsed, &arena)
+                .map_err(|e| engine_error(&env, &e, Some(&self.logic)))?;
+            serde_json::to_value(av)
+                .map_err(|e| engine_error(&env, &DlError::wrap(e), Some(&self.logic)))
+        })
     }
 
     /// Evaluate against a pre-parsed `DataHandle` and return the result
     /// as a JSON string — no input parse, no JS-value materialisation.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn evaluate_data_str(&self, env: Env, handle: &DataHandle) -> Result<String> {
-        let arena = Bump::new();
-        let av = self
-            .engine
-            .evaluate(&self.logic, &handle.parsed, &arena)
-            .map_err(|e| engine_error(&env, &e, Some(&self.logic)))?;
-        Ok(av.to_string())
+        guard(&env, || {
+            let arena = Bump::new();
+            let av = self
+                .engine
+                .evaluate(&self.logic, &handle.parsed, &arena)
+                .map_err(|e| engine_error(&env, &e, Some(&self.logic)))?;
+            Ok(av.to_string())
+        })
     }
 
     /// Evaluate `dataJson` (a JSON string) on the libuv thread pool and
@@ -507,7 +538,7 @@ impl Rule {
     /// Rules from engines with custom operators reject if evaluation
     /// reaches a JS-backed operator (the callback is pinned to the JS
     /// thread).
-    #[napi(ts_return_type = "Promise<string>")]
+    #[napi(catch_unwind, ts_return_type = "Promise<string>")]
     pub fn evaluate_str_async(&self, data_json: String) -> AsyncTask<EvaluateStrTask> {
         AsyncTask::new(EvaluateStrTask {
             engine: self.engine.clone(),
@@ -522,13 +553,25 @@ impl Rule {
 /// runs on the libuv pool with a task-local arena; `Engine` and `Logic`
 /// are both `Send + Sync` behind `Arc`s, and the data crosses as an
 /// owned `String`.
+///
+/// `compute` runs under `catch_unwind`: napi-rs calls it from a bare
+/// `extern "C"` libuv callback with no unwind guard of its own, so a
+/// panic escaping it would abort the whole Node process.
 pub struct EvaluateStrTask {
     engine: Arc<RsEngine>,
     logic: Arc<Logic>,
     data: String,
     /// Failure smuggled from the pool thread to `reject`, which runs on
     /// the JS thread and can build the decorated JS Error there.
-    failure: Option<DlError>,
+    failure: Option<TaskFailure>,
+}
+
+/// Why `EvaluateStrTask::compute` failed.
+enum TaskFailure {
+    /// The engine returned an error.
+    Engine(DlError),
+    /// The engine panicked; carries the panic message.
+    Panic(String),
 }
 
 impl Task for EvaluateStrTask {
@@ -536,17 +579,27 @@ impl Task for EvaluateStrTask {
     type JsValue = String;
 
     fn compute(&mut self) -> Result<Self::Output> {
-        let arena = Bump::new();
-        match self
-            .engine
-            .evaluate(&self.logic, self.data.as_str(), &arena)
-        {
-            Ok(av) => Ok(av.to_string()),
-            Err(e) => {
-                // Fallback reason if `reject` cannot build the decorated
-                // object: message prefixed with the stable error tag.
+        // `AssertUnwindSafe`: on a panic the arena and its borrows are
+        // dropped with the closure, and nothing else is mutated.
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let arena = Bump::new();
+            self.engine
+                .evaluate(&self.logic, self.data.as_str(), &arena)
+                .map(|av| av.to_string())
+        }));
+        // Fallback reasons, used if `reject` cannot build the decorated
+        // object: the message prefixed with the stable error tag.
+        match outcome {
+            Ok(Ok(json)) => Ok(json),
+            Ok(Err(e)) => {
                 let reason = format!("{}: {}", e.tag(), e);
-                self.failure = Some(e);
+                self.failure = Some(TaskFailure::Engine(e));
+                Err(Error::new(Status::GenericFailure, reason))
+            }
+            Err(payload) => {
+                let message = panic_message(payload.as_ref());
+                let reason = format!("{INTERNAL_ERROR}: {message}");
+                self.failure = Some(TaskFailure::Panic(message));
                 Err(Error::new(Status::GenericFailure, reason))
             }
         }
@@ -557,12 +610,12 @@ impl Task for EvaluateStrTask {
     }
 
     fn reject(&mut self, env: Env, err: Error) -> Result<Self::JsValue> {
-        if let Some(dl) = self.failure.take()
-            && let Some(decorated) = engine_error_value(&env, &dl, Some(&self.logic))
-        {
-            return Err(decorated);
-        }
-        Err(err)
+        let decorated = match self.failure.take() {
+            Some(TaskFailure::Engine(dl)) => engine_error_value(&env, &dl, Some(&self.logic)),
+            Some(TaskFailure::Panic(message)) => internal_error_value(&env, &message),
+            None => None,
+        };
+        Err(decorated.unwrap_or(err))
     }
 }
 

@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 
 use crate::data::DataHandle;
 use crate::engine::Rule;
-use crate::error::{engine_error, type_mismatch_error};
+use crate::error::{engine_error, guard, type_mismatch_error};
 
 /// One item's outcome rendered in the `Promise.allSettled` shape the
 /// batch entry points return: `{status: "fulfilled", value}` or
@@ -59,46 +59,50 @@ impl Session {
 #[napi]
 impl Session {
     /// Evaluate `rule` against `data` and return the result as a JS value.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn evaluate(&mut self, env: Env, rule: &Rule, data: Value) -> Result<Value> {
-        // Reset BEFORE each call so the previous iteration's allocations
-        // don't accumulate. The previous call's result was materialised
-        // as an owned `serde_json::Value` (or `String`) before returning,
-        // so resetting here is safe.
-        self.arena.reset();
+        guard(&env, || {
+            // Reset BEFORE each call so the previous iteration's allocations
+            // don't accumulate. The previous call's result was materialised
+            // as an owned `serde_json::Value` (or `String`) before returning,
+            // so resetting here is safe.
+            self.arena.reset();
 
-        let av = match &data {
-            Value::String(s) => self
-                .engine
-                .evaluate(rule.logic(), s.as_str(), &self.arena)
-                .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?,
-            other => self
-                .engine
-                .evaluate(rule.logic(), other, &self.arena)
-                .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?,
-        };
-        serde_json::to_value(av)
-            .map_err(|e| engine_error(&env, &datalogic_rs::Error::wrap(e), Some(rule.logic())))
+            let av = match &data {
+                Value::String(s) => self
+                    .engine
+                    .evaluate(rule.logic(), s.as_str(), &self.arena)
+                    .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?,
+                other => self
+                    .engine
+                    .evaluate(rule.logic(), other, &self.arena)
+                    .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?,
+            };
+            serde_json::to_value(av)
+                .map_err(|e| engine_error(&env, &datalogic_rs::Error::wrap(e), Some(rule.logic())))
+        })
     }
 
     /// Evaluate `rule` against `data` and return the result as a JSON
     /// string. Skips the JS-value materialisation entirely — the fastest
     /// path through the binding.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn evaluate_str(&mut self, env: Env, rule: &Rule, data: Value) -> Result<String> {
-        self.arena.reset();
+        guard(&env, || {
+            self.arena.reset();
 
-        let av = match &data {
-            Value::String(s) => self
-                .engine
-                .evaluate(rule.logic(), s.as_str(), &self.arena)
-                .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?,
-            other => self
-                .engine
-                .evaluate(rule.logic(), other, &self.arena)
-                .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?,
-        };
-        Ok(av.to_string())
+            let av = match &data {
+                Value::String(s) => self
+                    .engine
+                    .evaluate(rule.logic(), s.as_str(), &self.arena)
+                    .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?,
+                other => self
+                    .engine
+                    .evaluate(rule.logic(), other, &self.arena)
+                    .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?,
+            };
+            Ok(av.to_string())
+        })
     }
 
     /// Evaluate `rule` against a pre-parsed `DataHandle` and return the
@@ -108,33 +112,37 @@ impl Session {
     /// The rule's compiled logic is evaluated by **this session's
     /// engine** (its configuration and custom operators apply) — same
     /// contract as `evaluate`.
-    #[napi(ts_return_type = "unknown")]
+    #[napi(catch_unwind, ts_return_type = "unknown")]
     pub fn evaluate_data(&mut self, env: Env, rule: &Rule, handle: &DataHandle) -> Result<Value> {
-        self.arena.reset();
-        let av = self
-            .engine
-            .evaluate(rule.logic(), &handle.parsed, &self.arena)
-            .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?;
-        serde_json::to_value(av)
-            .map_err(|e| engine_error(&env, &datalogic_rs::Error::wrap(e), Some(rule.logic())))
+        guard(&env, || {
+            self.arena.reset();
+            let av = self
+                .engine
+                .evaluate(rule.logic(), &handle.parsed, &self.arena)
+                .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?;
+            serde_json::to_value(av)
+                .map_err(|e| engine_error(&env, &datalogic_rs::Error::wrap(e), Some(rule.logic())))
+        })
     }
 
     /// Evaluate `rule` against a pre-parsed `DataHandle` and return the
     /// result as a JSON string — the fastest session path: no input
     /// parse, no JS-value materialisation.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn evaluate_data_str(
         &mut self,
         env: Env,
         rule: &Rule,
         handle: &DataHandle,
     ) -> Result<String> {
-        self.arena.reset();
-        let av = self
-            .engine
-            .evaluate(rule.logic(), &handle.parsed, &self.arena)
-            .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?;
-        Ok(av.to_string())
+        guard(&env, || {
+            self.arena.reset();
+            let av = self
+                .engine
+                .evaluate(rule.logic(), &handle.parsed, &self.arena)
+                .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?;
+            Ok(av.to_string())
+        })
     }
 
     // =============== typed scalar results ===============
@@ -148,21 +156,23 @@ impl Session {
     /// Any other result type throws an `EvaluateError` with
     /// `errorType: "TypeMismatch"`; for JSONLogic truthiness coercion
     /// use `evaluateTruthy`.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn evaluate_bool(&mut self, env: Env, rule: &Rule, handle: &DataHandle) -> Result<bool> {
-        self.arena.reset();
-        let av = self
-            .engine
-            .evaluate(rule.logic(), &handle.parsed, &self.arena)
-            .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?;
-        av.as_bool().ok_or_else(|| {
-            type_mismatch_error(
-                &env,
-                &format!(
-                    "result is not a boolean (got {})",
-                    datalogic_bind::type_of(av)
-                ),
-            )
+        guard(&env, || {
+            self.arena.reset();
+            let av = self
+                .engine
+                .evaluate(rule.logic(), &handle.parsed, &self.arena)
+                .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?;
+            av.as_bool().ok_or_else(|| {
+                type_mismatch_error(
+                    &env,
+                    &format!(
+                        "result is not a boolean (got {})",
+                        datalogic_bind::type_of(av)
+                    ),
+                )
+            })
         })
     }
 
@@ -172,51 +182,55 @@ impl Session {
     ///
     /// @deprecated Use `evaluateFloat`, the name every binding shares.
     /// Removed in 6.0.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn evaluate_number(&mut self, env: Env, rule: &Rule, handle: &DataHandle) -> Result<f64> {
-        self.evaluate_float(env, rule, handle)
+        guard(&env, || self.evaluate_float(env, rule, handle))
     }
 
     /// Evaluate `rule` and return the result as an integer: a whole JSON
     /// number that a JS number holds exactly (|n| <= 2^53 - 1). Anything
     /// else throws an `EvaluateError` with `errorType: "TypeMismatch"`.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn evaluate_int(&mut self, env: Env, rule: &Rule, handle: &DataHandle) -> Result<f64> {
-        self.arena.reset();
-        let av = self
-            .engine
-            .evaluate(rule.logic(), &handle.parsed, &self.arena)
-            .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?;
-        match av.as_i64() {
-            Some(i) if i.unsigned_abs() < (1u64 << 53) => Ok(i as f64),
-            _ => Err(type_mismatch_error(
-                &env,
-                &format!(
-                    "result is not a safe integer (got {})",
-                    datalogic_bind::type_of(av)
-                ),
-            )),
-        }
+        guard(&env, || {
+            self.arena.reset();
+            let av = self
+                .engine
+                .evaluate(rule.logic(), &handle.parsed, &self.arena)
+                .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?;
+            match av.as_i64() {
+                Some(i) if i.unsigned_abs() < (1u64 << 53) => Ok(i as f64),
+                _ => Err(type_mismatch_error(
+                    &env,
+                    &format!(
+                        "result is not a safe integer (got {})",
+                        datalogic_bind::type_of(av)
+                    ),
+                )),
+            }
+        })
     }
 
     /// Evaluate `rule` and return the result as a number. Accepts any
     /// JSON number; any other result type throws an `EvaluateError` with
     /// `errorType: "TypeMismatch"`.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn evaluate_float(&mut self, env: Env, rule: &Rule, handle: &DataHandle) -> Result<f64> {
-        self.arena.reset();
-        let av = self
-            .engine
-            .evaluate(rule.logic(), &handle.parsed, &self.arena)
-            .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?;
-        av.as_f64().ok_or_else(|| {
-            type_mismatch_error(
-                &env,
-                &format!(
-                    "result is not a number (got {})",
-                    datalogic_bind::type_of(av)
-                ),
-            )
+        guard(&env, || {
+            self.arena.reset();
+            let av = self
+                .engine
+                .evaluate(rule.logic(), &handle.parsed, &self.arena)
+                .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?;
+            av.as_f64().ok_or_else(|| {
+                type_mismatch_error(
+                    &env,
+                    &format!(
+                        "result is not a number (got {})",
+                        datalogic_bind::type_of(av)
+                    ),
+                )
+            })
         })
     }
 
@@ -224,14 +238,16 @@ impl Session {
     /// engine's configured truthiness rules (the same coercion `if`,
     /// `and`, and `or` apply). Never type-mismatches — any result
     /// truthy-converts.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn evaluate_truthy(&mut self, env: Env, rule: &Rule, handle: &DataHandle) -> Result<bool> {
-        self.arena.reset();
-        let av = self
-            .engine
-            .evaluate(rule.logic(), &handle.parsed, &self.arena)
-            .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?;
-        Ok(self.engine.truthy(av))
+        guard(&env, || {
+            self.arena.reset();
+            let av = self
+                .engine
+                .evaluate(rule.logic(), &handle.parsed, &self.arena)
+                .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?;
+            Ok(self.engine.truthy(av))
+        })
     }
 
     // =============== batch evaluation ===============
@@ -251,6 +267,7 @@ impl Session {
     /// arena is reset between items; each item's result is materialised
     /// before the next item runs.
     #[napi(
+        catch_unwind,
         ts_return_type = "Array<{ status: 'fulfilled', value: string } | { status: 'rejected', reason: { tag: string, message: string, operator?: string } }>"
     )]
     pub fn evaluate_batch(
@@ -283,6 +300,7 @@ impl Session {
     /// Every rule's compiled logic is evaluated by **this session's
     /// engine**, exactly like the single-rule methods.
     #[napi(
+        catch_unwind,
         ts_return_type = "Array<{ status: 'fulfilled', value: string } | { status: 'rejected', reason: { tag: string, message: string, operator?: string } }>"
     )]
     pub fn evaluate_many(
@@ -307,14 +325,14 @@ impl Session {
 
     /// Reset the underlying arena. Calling this is optional — `evaluate*`
     /// resets at the start of each call.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn reset(&mut self) {
         self.arena.reset();
     }
 
     /// Bytes currently allocated to the session's arena (sum of all
     /// chunks). Useful for sizing or diagnostics.
-    #[napi]
+    #[napi(catch_unwind)]
     pub fn allocated_bytes(&self) -> u32 {
         self.arena.allocated_bytes() as u32
     }

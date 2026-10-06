@@ -569,6 +569,13 @@ The two broad categories:
 A missing variable is not an error under any configuration:
 `{"var": "missing"}` evaluates to `null`.
 
+**Panics are not errors.** The release build compiles with
+`panic = "abort"`, so a bug that makes the engine panic cannot be turned
+into one of the errors above. It surfaces as a
+`WebAssembly.RuntimeError: unreachable` (the panic message goes to
+`console.error`), and that WASM instance is unusable afterwards: reload
+the module before evaluating again. Please report any such panic as a bug.
+
 ### Migrating from 5.0.0
 
 Code that parsed the rejection value keeps working with one property

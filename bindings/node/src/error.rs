@@ -7,7 +7,7 @@
 //!
 //! ```text
 //! Error
-//!   .name        "ParseError" | "EvaluateError"
+//!   .name        "ParseError" | "EvaluateError" | "InternalError"
 //!   .message     human-readable message from datalogic_rs::Error
 //!   .errorType   stable tag from datalogic_rs::Error::tag()
 //!   .operator    outermost failing operator (or null)
@@ -18,6 +18,14 @@
 //!   .budget      `BudgetExceeded` only: the operation ceiling crossed
 //!   .spent       `BudgetExceeded` only: operations the rule asked for
 //! ```
+//!
+//! `InternalError` is not a `datalogic_rs::Error`: it is a Rust panic
+//! caught at the binding boundary (see [`guard`]) and turned into a
+//! thrown JS error instead of aborting the process. It carries
+//! `errorType: "InternalError"`, the panic message as `.message` when
+//! the payload is a string, `operator: null`, `nodeIds: []` and
+//! `path: null`. It always means a bug in the engine or the binding;
+//! please report it.
 //!
 //! `budget` / `spent` are the one kind-specific pair carried here,
 //! because they are the only variant extras a caller has to *act* on:
@@ -40,6 +48,9 @@
 //! Building the JS Error object directly lets us attach `errorType`,
 //! `operator`, `nodeIds`, and `path` before throwing, then signal the
 //! pending exception back to the napi runtime via `Status::PendingException`.
+
+use std::any::Any;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use datalogic_rs::{Error as RsError, Logic};
 use napi::bindgen_prelude::*;
@@ -111,6 +122,69 @@ pub fn type_mismatch_error(env: &Env, message: &str) -> napi::Error {
         budget: None,
     };
     throw_attrs(env, &attrs).unwrap_or_else(|| napi::Error::from_reason(message.to_string()))
+}
+
+/// Stable `.name` / `.errorType` of a caught panic.
+pub const INTERNAL_ERROR: &str = "InternalError";
+
+/// Run `f`, turning a Rust panic into a thrown `InternalError` instead
+/// of letting it unwind into napi (where it would abort the process).
+///
+/// Every exported method that calls into the core engine runs its body
+/// through this. It complements `#[napi(catch_unwind)]`, which every
+/// export also carries: that attribute is the backstop for panics in
+/// napi's generated argument / return-value conversion, but it throws a
+/// plain `Error`; this guard gives a panic in the body the same
+/// structured shape as every other error the binding throws.
+///
+/// `AssertUnwindSafe` is sound here: a panic abandons the call, so no
+/// half-updated value is observed afterwards. The only state that
+/// outlives a call is a `Session` arena, and every `Session` method
+/// resets it before use.
+pub fn guard<T>(env: &Env, f: impl FnOnce() -> Result<T>) -> Result<T> {
+    catch_unwind(AssertUnwindSafe(f)).unwrap_or_else(|payload| {
+        let message = panic_message(payload.as_ref());
+        Err(internal_error(env, &message))
+    })
+}
+
+/// Best-effort text of a panic payload: the message for the usual
+/// `&str` / `String` payloads, a fixed description otherwise.
+pub fn panic_message(payload: &(dyn Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "the engine panicked (non-string panic payload)".to_string()
+    }
+}
+
+/// Throw an `InternalError` (a caught panic) carrying `message`.
+pub fn internal_error(env: &Env, message: &str) -> napi::Error {
+    let attrs = internal_attrs(message);
+    throw_attrs(env, &attrs)
+        .unwrap_or_else(|| napi::Error::from_reason(format!("{INTERNAL_ERROR}: {message}")))
+}
+
+/// Build (without throwing) the `InternalError` object
+/// [`internal_error`] would throw, for rejecting a promise from
+/// `Task::reject`. `None` when object construction fails.
+pub fn internal_error_value(env: &Env, message: &str) -> Option<napi::Error> {
+    let obj = build_attrs_object(env, &internal_attrs(message))?;
+    Some(napi::Error::from(obj.to_unknown()))
+}
+
+fn internal_attrs(message: &str) -> ErrorAttrs<'_> {
+    ErrorAttrs {
+        name: INTERNAL_ERROR,
+        message,
+        error_type: INTERNAL_ERROR,
+        operator: None,
+        node_ids: &[],
+        path: None,
+        budget: None,
+    }
 }
 
 fn engine_attrs<'a>(

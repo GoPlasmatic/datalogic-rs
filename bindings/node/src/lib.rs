@@ -19,6 +19,8 @@ use napi::Env;
 use napi::bindgen_prelude::*;
 use serde_json::Value;
 
+use crate::error::guard;
+
 pub use crate::data::DataHandle;
 pub use crate::engine::{Engine, Rule};
 pub use crate::session::Session;
@@ -29,12 +31,14 @@ pub use crate::session::Session;
 /// crate; the binding enables every operator feature, so this is the full
 /// set. Custom operators registered on an `Engine` are listed by
 /// `Engine.customOperatorNames()`.
-#[napi(js_name = "builtinOperatorNames")]
-pub fn builtin_operator_names() -> Vec<String> {
-    datalogic_rs::Engine::new()
-        .builtin_operator_names()
-        .map(str::to_owned)
-        .collect()
+#[napi(catch_unwind, js_name = "builtinOperatorNames")]
+pub fn builtin_operator_names(env: Env) -> Result<Vec<String>> {
+    guard(&env, || {
+        Ok(datalogic_rs::Engine::new()
+            .builtin_operator_names()
+            .map(str::to_owned)
+            .collect())
+    })
 }
 
 /// Top-level convenience: compile `rule` and evaluate against `data` in
@@ -43,9 +47,11 @@ pub fn builtin_operator_names() -> Vec<String> {
 /// Use this for ad-hoc one-shots. For repeated evaluations of the same
 /// rule, hold an `Engine` and a `Rule` instance — that path skips the
 /// per-call compile.
-#[napi]
+#[napi(catch_unwind)]
 pub fn apply(env: Env, rule: Value, data: Value) -> Result<Value> {
-    let engine = std::sync::Arc::new(datalogic_rs::Engine::new());
-    let logic = engine::compile_inner(&env, &engine, rule)?;
-    engine::evaluate_value(&env, &engine, &logic, data)
+    guard(&env, || {
+        let engine = std::sync::Arc::new(datalogic_rs::Engine::new());
+        let logic = engine::compile_inner(&env, &engine, rule)?;
+        engine::evaluate_value(&env, &engine, &logic, data)
+    })
 }
