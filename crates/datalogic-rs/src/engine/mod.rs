@@ -200,30 +200,15 @@ pub struct Engine {
     pub(super) id: u64,
     /// Custom `CustomOperator` implementations registered with the engine.
     pub(super) custom_operators: CustomOperators,
-    /// Whether templating mode is enabled — multi-key objects compile
-    /// to output-shaping templates and unknown operator keys pass through.
-    /// Always `false` without the `templating` feature.
-    templating: bool,
-    /// Escape prefix that marks a template object key as a literal output
-    /// field rather than an operator invocation. `None` (the default)
-    /// leaves key resolution exactly as it was. See
-    /// [`crate::EngineBuilder::with_template_key_escape`].
-    template_key_escape: Option<char>,
-    /// Whether `Engine::compile` runs the constant-folding pass.
-    /// Defaults to `true`; toggled via
-    /// [`crate::EngineBuilder::with_constant_folding`]. The trace surface
-    /// always disables folding regardless of this flag (handled in
+    /// Everything the builder set: config, templating mode and escape,
+    /// folding, families. The trace surface always disables folding
+    /// regardless of `settings.constant_folding` (handled in
     /// `TracedSession`).
-    constant_folding: bool,
-    /// Configuration for evaluation behavior
-    config: EvaluationConfig,
-    /// [`EvaluationConfig::fold_fingerprint`] of `config`, computed once:
+    settings: crate::builder::EngineSettings,
+    /// [`EvaluationConfig::fold_fingerprint`] of the config, computed once:
     /// a rule folded under another fingerprint is compiled again before
     /// it runs here (see `Logic::for_engine`).
     fold_fingerprint: u64,
-    /// The built-in families this engine has, as [`crate::Family`] bits;
-    /// see [`crate::EngineBuilder::with_families`].
-    families: u32,
 }
 
 /// The built-in operator `name` names among the families in `families`.
@@ -372,11 +357,21 @@ impl std::fmt::Debug for Engine {
         // registration data, and `Engine::custom_operator_names()` exposes
         // them already for callers who want them. The trait objects
         // themselves can't render a meaningful Debug.
+        // Families print by name: the ones this engine has, among those
+        // compiled into the build.
+        let families: Vec<&str> = crate::Family::ALL
+            .iter()
+            .filter(|f| f.is_compiled() && self.settings.families & f.bit() != 0)
+            .map(|f| f.name())
+            .collect();
+        let settings = &self.settings;
         let mut s = f.debug_struct("Engine");
         s.field("custom_operators", &self.custom_operators.len());
-        s.field("templating", &self.templating);
-        s.field("template_key_escape", &self.template_key_escape);
-        s.field("config", &self.config);
+        s.field("templating", &settings.templating);
+        s.field("template_key_escape", &settings.template_key_escape);
+        s.field("constant_folding", &settings.constant_folding);
+        s.field("families", &families);
+        s.field("config", &settings.config);
         s.finish_non_exhaustive()
     }
 }
@@ -417,12 +412,8 @@ impl Engine {
     /// ```
     pub fn to_builder(&self) -> crate::EngineBuilder {
         crate::EngineBuilder::from_engine_parts(
-            self.config.clone(),
-            self.templating,
-            self.template_key_escape,
-            self.constant_folding,
+            self.settings.clone(),
             self.custom_operators.shared(),
-            self.families,
         )
     }
 
@@ -457,22 +448,15 @@ impl Engine {
     /// `#[doc(hidden)]` needed since it's not externally reachable.
     #[inline]
     pub(crate) fn from_builder_parts(
-        config: EvaluationConfig,
-        templating: bool,
-        template_key_escape: Option<char>,
-        constant_folding: bool,
+        mut settings: crate::builder::EngineSettings,
         operators: HashMap<String, std::sync::Arc<dyn crate::CustomOperator>>,
-        families: u32,
     ) -> Self {
+        settings.templating &= cfg!(feature = "templating");
         Self {
             id: NEXT_ENGINE_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             custom_operators: CustomOperators::new(operators),
-            templating: templating && cfg!(feature = "templating"),
-            template_key_escape,
-            constant_folding,
-            fold_fingerprint: config.fold_fingerprint(),
-            config,
-            families,
+            fold_fingerprint: settings.config.fold_fingerprint(),
+            settings,
         }
     }
 
@@ -493,19 +477,12 @@ impl Engine {
     /// let engine = Engine::new();
     /// ```
     pub fn new() -> Self {
-        Self::from_builder_parts(
-            EvaluationConfig::default(),
-            false,
-            None,
-            true,
-            HashMap::new(),
-            crate::builder::ALL_FAMILIES,
-        )
+        Self::from_builder_parts(crate::builder::EngineSettings::default(), HashMap::new())
     }
 
     /// Gets a reference to the current evaluation configuration.
     pub fn config(&self) -> &EvaluationConfig {
-        &self.config
+        &self.settings.config
     }
 
     /// Internal: whether the constant-folding pass runs during
@@ -513,7 +490,7 @@ impl Engine {
     /// [`crate::EngineBuilder::with_constant_folding`].
     #[inline]
     pub(crate) fn constant_folding_enabled(&self) -> bool {
-        self.constant_folding
+        self.settings.constant_folding
     }
 
     /// Internal: whether templating mode is on. Always `false` when the
@@ -521,13 +498,13 @@ impl Engine {
     /// clears the flag off-feature.
     #[inline]
     pub(crate) fn is_templating_enabled(&self) -> bool {
-        self.templating
+        self.settings.templating
     }
 
     /// Internal: the template-key escape prefix, or `None` when unset.
     #[inline]
     pub(crate) fn template_key_escape(&self) -> Option<char> {
-        self.template_key_escape
+        self.settings.template_key_escape
     }
 
     /// Checks if a custom operator with the given name is registered.
@@ -569,7 +546,7 @@ impl Engine {
     /// right while a miss is `null` ([`crate::MissingVar::Null`]).
     #[inline(always)]
     pub(crate) fn reads_fields_inline(&self) -> bool {
-        self.config.missing_var == crate::MissingVar::Null
+        self.settings.config.missing_var == crate::MissingVar::Null
     }
 
     /// Where a call to custom operator `name` compiled on this engine finds
@@ -618,7 +595,7 @@ impl Engine {
     /// assert!(!names.contains(&"lenght"));
     /// ```
     pub fn builtin_operator_names(&self) -> impl Iterator<Item = &'static str> + use<> {
-        crate::operators::table::builtin_operator_names_in(self.families)
+        crate::operators::table::builtin_operator_names_in(self.settings.families)
     }
 
     /// Every built-in operator compiled into this build, described by its
@@ -647,14 +624,14 @@ impl Engine {
     /// assert!(val.reads_context);
     /// ```
     pub fn operators(&self) -> impl Iterator<Item = crate::OperatorInfo> + use<> {
-        crate::operators::info::operators_in(self.families)
+        crate::operators::info::operators_in(self.settings.families)
     }
 
     /// The built-in operator `name` names on this engine: a name of a
     /// family it has ([`crate::EngineBuilder::with_families`]).
     #[inline]
     pub(crate) fn builtin(&self, name: &str) -> Option<crate::OpCode> {
-        builtin_in(self.families, name)
+        builtin_in(self.settings.families, name)
     }
 
     // ============================================================
@@ -966,7 +943,7 @@ impl Engine {
         #[cfg_attr(not(feature = "budget"), allow(unused_mut))]
         let mut ctx = crate::arena::ContextStack::new(data_ref, compiled.needs_ancestor_frames);
         #[cfg(feature = "budget")]
-        if let Some(budget) = self.config.ops_budget {
+        if let Some(budget) = self.settings.config.ops_budget {
             ctx.set_budget(budget);
         }
         ctx
@@ -986,7 +963,9 @@ impl Engine {
     #[cfg_attr(docsrs, doc(cfg(feature = "budget")))]
     #[inline]
     pub fn resolve_ops_budget(&self, explicit: Option<u64>) -> u64 {
-        explicit.or(self.config.ops_budget).unwrap_or(u64::MAX)
+        explicit
+            .or(self.settings.config.ops_budget)
+            .unwrap_or(u64::MAX)
     }
 
     /// Evaluate under an explicit operation budget, reporting what the
@@ -1317,10 +1296,10 @@ impl Engine {
     #[inline(never)]
     fn enter_dispatch_boundary_checked(&self) -> Result<DepthGuard> {
         let prev_depth = DISPATCH_DEPTH.with(Cell::get);
-        if prev_depth >= self.config.max_recursion_depth {
+        if prev_depth >= self.settings.config.max_recursion_depth {
             return Err(crate::Error::configuration_error(format!(
                 "max recursion depth exceeded ({})",
-                self.config.max_recursion_depth
+                self.settings.config.max_recursion_depth
             )));
         }
         DISPATCH_DEPTH.with(|d| d.set(prev_depth + 1));

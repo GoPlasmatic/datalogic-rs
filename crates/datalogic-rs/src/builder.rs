@@ -49,20 +49,55 @@ use crate::engine::Engine;
 #[derive(Clone)]
 #[must_use = "the builder is consumed by `.build()`"]
 pub struct EngineBuilder {
-    config: EvaluationConfig,
-    templating: bool,
-    template_key_escape: Option<char>,
-    constant_folding: bool,
+    settings: EngineSettings,
     operators: HashMap<String, Arc<dyn CustomOperator>>,
-    /// The built-in families the engine has, as [`crate::Family`] bits.
-    families: u32,
-    /// The names registered through [`Self::try_add_operator`], which
-    /// [`Self::try_build`] checks again against the final settings.
-    checked_names: Vec<String>,
 }
 
 /// Every family bit: the default family set.
 pub(crate) const ALL_FAMILIES: u32 = u32::MAX;
+
+/// The settings an [`EngineBuilder`] collects and an [`Engine`] keeps.
+///
+/// One struct, handed over whole in both directions
+/// ([`EngineBuilder::build`], [`Engine::to_builder`]), so a setting is
+/// declared and defaulted in one place and cannot be dropped or swapped
+/// on the way through.
+#[derive(Clone, Debug)]
+pub(crate) struct EngineSettings {
+    pub(crate) config: EvaluationConfig,
+    /// Whether templating mode is enabled — multi-key objects compile
+    /// to output-shaping templates and unknown operator keys pass through.
+    /// Always `false` on an engine built without the `templating` feature.
+    pub(crate) templating: bool,
+    /// Escape prefix that marks a template object key as a literal output
+    /// field rather than an operator invocation. See
+    /// [`EngineBuilder::with_template_key_escape`].
+    pub(crate) template_key_escape: Option<char>,
+    /// Whether `Engine::compile` runs the constant-folding pass. See
+    /// [`EngineBuilder::with_constant_folding`].
+    pub(crate) constant_folding: bool,
+    /// The built-in families the engine has, as [`crate::Family`] bits;
+    /// see [`EngineBuilder::with_families`].
+    pub(crate) families: u32,
+    /// The names registered through [`EngineBuilder::try_add_operator`],
+    /// which [`EngineBuilder::try_build`] checks again against the final
+    /// settings. Kept on the engine so [`Engine::to_builder`] carries the
+    /// check over.
+    pub(crate) checked_names: Vec<String>,
+}
+
+impl Default for EngineSettings {
+    fn default() -> Self {
+        Self {
+            config: EvaluationConfig::default(),
+            templating: false,
+            template_key_escape: None,
+            constant_folding: true,
+            families: ALL_FAMILIES,
+            checked_names: Vec::new(),
+        }
+    }
+}
 
 impl Default for EngineBuilder {
     fn default() -> Self {
@@ -75,13 +110,8 @@ impl EngineBuilder {
     #[inline]
     pub fn new() -> Self {
         Self {
-            config: EvaluationConfig::default(),
-            templating: false,
-            template_key_escape: None,
-            constant_folding: true,
+            settings: EngineSettings::default(),
             operators: HashMap::new(),
-            families: ALL_FAMILIES,
-            checked_names: Vec::new(),
         }
     }
 
@@ -89,7 +119,7 @@ impl EngineBuilder {
     #[inline]
     #[must_use = "builder methods return a new builder; chain into `.build()`"]
     pub fn with_config(mut self, config: EvaluationConfig) -> Self {
-        self.config = config;
+        self.settings.config = config;
         self
     }
 
@@ -99,7 +129,7 @@ impl EngineBuilder {
     #[inline]
     #[must_use = "builder methods return a new builder; chain into `.build()`"]
     pub fn with_templating(mut self, on: bool) -> Self {
-        self.templating = on;
+        self.settings.templating = on;
         self
     }
 
@@ -147,7 +177,7 @@ impl EngineBuilder {
     #[inline]
     #[must_use = "builder methods return a new builder; chain into `.build()`"]
     pub fn with_template_key_escape(mut self, prefix: char) -> Self {
-        self.template_key_escape = Some(prefix);
+        self.settings.template_key_escape = Some(prefix);
         self
     }
 
@@ -173,7 +203,7 @@ impl EngineBuilder {
     #[inline]
     #[must_use = "builder methods return a new builder; chain into `.build()`"]
     pub fn with_constant_folding(mut self, on: bool) -> Self {
-        self.constant_folding = on;
+        self.settings.constant_folding = on;
         self
     }
 
@@ -253,7 +283,7 @@ impl EngineBuilder {
         let name = name.into();
         self.check_operator_name(&name)?;
         let mut builder = self.add_operator(name.clone(), operator);
-        builder.checked_names.push(name);
+        builder.settings.checked_names.push(name);
         Ok(builder)
     }
 
@@ -278,13 +308,13 @@ impl EngineBuilder {
     /// assert!(core.check_operator_name("upper").is_ok());
     /// ```
     pub fn check_operator_name(&self, name: &str) -> crate::Result<()> {
-        if let Some(builtin) = crate::engine::builtin_in(self.families, name) {
+        if let Some(builtin) = crate::engine::builtin_in(self.settings.families, name) {
             return Err(crate::Error::configuration_error(format!(
                 "custom operator `{name}` would never run: the built-in operator `{}` answers to that name",
                 builtin.as_str()
             )));
         }
-        if let Some(escape) = self.template_key_escape
+        if let Some(escape) = self.settings.template_key_escape
             && name.starts_with(escape)
         {
             return Err(crate::Error::configuration_error(format!(
@@ -303,7 +333,8 @@ impl EngineBuilder {
     ///
     /// The first name's `ConfigurationError`, in registration order.
     pub fn check_operator_names(&self) -> crate::Result<()> {
-        self.checked_names
+        self.settings
+            .checked_names
             .iter()
             .try_for_each(|name| self.check_operator_name(name))
     }
@@ -334,7 +365,7 @@ impl EngineBuilder {
     /// ```
     #[must_use = "builder methods return a new builder; chain into `.build()`"]
     pub fn with_families(mut self, families: impl IntoIterator<Item = crate::Family>) -> Self {
-        self.families = families
+        self.settings.families = families
             .into_iter()
             .fold(crate::Family::Core.bit(), |set, f| set | f.bit());
         self
@@ -343,21 +374,12 @@ impl EngineBuilder {
     /// A builder holding `engine`'s operators and settings: the
     /// [`Engine::to_builder`] seam.
     pub(crate) fn from_engine_parts(
-        config: EvaluationConfig,
-        templating: bool,
-        template_key_escape: Option<char>,
-        constant_folding: bool,
+        settings: EngineSettings,
         operators: HashMap<String, Arc<dyn CustomOperator>>,
-        families: u32,
     ) -> Self {
         Self {
-            config,
-            templating,
-            template_key_escape,
-            constant_folding,
+            settings,
             operators,
-            families,
-            checked_names: Vec::new(),
         }
     }
 
@@ -400,13 +422,6 @@ impl EngineBuilder {
 
     /// Finalise the builder into an immutable [`Engine`] engine.
     pub fn build(self) -> Engine {
-        Engine::from_builder_parts(
-            self.config,
-            self.templating,
-            self.template_key_escape,
-            self.constant_folding,
-            self.operators,
-            self.families,
-        )
+        Engine::from_builder_parts(self.settings, self.operators)
     }
 }
