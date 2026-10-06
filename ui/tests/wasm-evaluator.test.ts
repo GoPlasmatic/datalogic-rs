@@ -113,13 +113,13 @@ describe('createWasmEngine', () => {
     const trace = JSON.parse(engine.evaluateWithTrace('{"/":[10.5,0]}', '{}'));
     expect(trace.result).toBeNull();
     expect(trace.error).toBeUndefined();
-    engine.free?.();
+    engine.free();
 
     const strict = createWasmEngine(module, { config: { preset: 'strict' } });
     expect(() => strict.evalStr('{"/":[10.5,0]}', '{}')).toThrow();
     const strictTrace = JSON.parse(strict.evaluateWithTrace('{"/":[10.5,0]}', '{}'));
     expect(strictTrace.structured_error).toMatchObject({ type: 'Thrown', operator: '/' });
-    strict.free?.();
+    strict.free();
   });
 
   it('registers custom operators and applies templating', () => {
@@ -127,11 +127,11 @@ describe('createWasmEngine', () => {
       templating: true,
       customOperators: { double: (args) => (args[0] as number) * 2 },
     });
-    expect(engine.customOperatorNames?.()).toEqual(['double']);
+    expect(engine.customOperatorNames()).toEqual(['double']);
     expect(JSON.parse(engine.evalStr('{"a":{"double":[{"var":"n"}]},"b":1}', '{"n":4}'))).toEqual({ a: 8, b: 1 });
     const trace = JSON.parse(engine.evaluateWithTrace('{"double":[3]}', '{}'));
     expect(trace.result).toBe(6);
-    engine.free?.();
+    engine.free();
   });
 
   it('surfaces an invalid config as a DataLogicEvaluationError of type ConfigurationError', () => {
@@ -159,51 +159,51 @@ describe('operation budget', () => {
 
   it('reports the operations an evaluation charged', () => {
     const engine = createWasmEngine(module, {});
-    const { result, ops } = JSON.parse(engine.evalMetered!(MAP, small));
+    const { result, ops } = JSON.parse(engine.evalMetered(MAP, small));
     expect(result).toEqual([2, 4, 6]);
     // One per dispatched node plus one per item; the exact figure is the
     // engine's to define, so pin the floor rather than the number.
     expect(ops).toBeGreaterThanOrEqual(3);
-    engine.free?.();
+    engine.free();
   });
 
   it('charges nothing for a rule the compiler folded to a literal', () => {
     const engine = createWasmEngine(module, {});
-    expect(JSON.parse(engine.evalMetered!('{"+":[1,2]}', '{}')).ops).toBe(0);
-    engine.free?.();
+    expect(JSON.parse(engine.evalMetered('{"+":[1,2]}', '{}')).ops).toBe(0);
+    engine.free();
   });
 
   it('refuses an evaluation that would cross the configured ceiling', () => {
     const engine = createWasmEngine(module, { config: { ops_budget: 10 } });
     let caught: unknown;
-    try { engine.evalMetered!(MAP, large); } catch (err) { caught = err; }
+    try { engine.evalMetered(MAP, large); } catch (err) { caught = err; }
     const structured = parseStructuredError(caught, 'fallback');
     expect(structured.type).toBe('BudgetExceeded');
     expect(structured.budget).toBe(10);
     expect(structured.spent).toBeGreaterThan(10);
     // The breadcrumb survives, so the editor can still highlight the node.
     expect(structured.node_ids?.length).toBeGreaterThan(0);
-    engine.free?.();
+    engine.free();
   });
 
   it('applies the configured ceiling to plain evaluation too, and try cannot catch it', () => {
     const engine = createWasmEngine(module, { config: { ops_budget: 10 } });
     expect(() => engine.evalStr(MAP, large)).toThrow();
     expect(() => engine.evalStr(`{"try":[${MAP},"fallback"]}`, large)).toThrow();
-    engine.free?.();
+    engine.free();
   });
 
   it('leaves an unset budget unbounded', () => {
     const engine = createWasmEngine(module, {});
-    expect(JSON.parse(engine.evalMetered!(MAP, large)).result).toHaveLength(200);
-    engine.free?.();
+    expect(JSON.parse(engine.evalMetered(MAP, large)).result).toHaveLength(200);
+    engine.free();
   });
 
   it('prices tensor operators by the elements they move', () => {
     const engine = createWasmEngine(module, {});
-    const { ops } = JSON.parse(engine.evalMetered!('{"zeros":[[16,16],"f32"]}', '{}'));
+    const { ops } = JSON.parse(engine.evalMetered('{"zeros":[[16,16],"f32"]}', '{}'));
     expect(ops).toBeGreaterThanOrEqual(256);
-    engine.free?.();
+    engine.free();
   });
 
   it('summarizes a budget in the engine-settings badge', () => {

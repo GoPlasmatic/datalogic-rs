@@ -96,16 +96,11 @@ export function parseStructuredError(err: unknown, fallbackMessage: string): Str
 // (`tsc -b`) that the generated `Engine` still satisfies it.
 export interface WasmEngineInstance {
   evalStr: (logic: string, data: string) => string;
-  /**
-   * Metered one-shot: returns `{"result": <value>, "ops": <number>}`.
-   * Optional so a host pinned to a WASM build from before 5.6 still
-   * typechecks — `evaluateMetered` falls back to `evalStr` there and
-   * reports no count.
-   */
-  evalMetered?: (logic: string, data: string, budget?: number) => string;
+  /** Metered one-shot: returns `{"result": <value>, "ops": <number>}`. */
+  evalMetered: (logic: string, data: string, budget?: number) => string;
   evaluateWithTrace: (logic: string, data: string) => string;
-  customOperatorNames?: () => string[];
-  free?: () => void;
+  customOperatorNames: () => string[];
+  free: () => void;
 }
 
 export interface WasmEngineOptions {
@@ -137,7 +132,8 @@ export interface MeteredResult {
   /**
    * Operations charged: one per node the engine dispatched, one per item
    * an iterator walked, plus what operators charge for the data they
-   * move. `null` when the loaded WASM build predates metering.
+   * move. Always a number: the engine is bundled with this package, so
+   * it always meters. The type stays nullable for compatibility.
    */
   ops: number | null;
 }
@@ -364,7 +360,7 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
   // Release the engine when the hook unmounts.
   useEffect(() => {
     return () => {
-      engineRef.current?.engine.free?.();
+      engineRef.current?.engine.free();
       engineRef.current = null;
     };
   }, []);
@@ -381,7 +377,7 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
     if (slot && slot.key === engineKey) {
       return slot.engine;
     }
-    slot?.engine.free?.();
+    slot?.engine.free();
     engineRef.current = null;
     const engine = createWasmEngine(
       module,
@@ -400,9 +396,6 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
       // No budget argument: the engine falls back to its configured
       // `ops_budget`, so the Studio's setting is the single source of
       // truth for both the cap and the reported cost.
-      if (!engine.evalMetered) {
-        return { value: JSON.parse(engine.evalStr(logicStr, dataStr)), ops: null };
-      }
       const envelope = JSON.parse(engine.evalMetered(logicStr, dataStr)) as {
         result: unknown;
         ops: number;
@@ -413,8 +406,7 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
     }
   }, [getEngine]);
 
-  // Same call with the count dropped: the metered path already carries
-  // the non-metered engine as its fallback.
+  // Same call with the count dropped.
   const evaluate = useCallback(
     (logic: unknown, data: unknown): unknown => evaluateMetered(logic, data).value,
     [evaluateMetered],
