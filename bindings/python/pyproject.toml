@@ -34,6 +34,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Programming Language :: Rust",
     "Topic :: Software Development :: Libraries",
     "Typing :: Typed",
@@ -57,6 +58,9 @@ test = ["pytest>=7"]
 module-name = "datalogic_py"
 # `abi3` strips the per-CPython-minor wheel build. With
 # pyo3 features = ["abi3-py310"] one wheel per (os, arch) covers 3.10+.
+# `extension-module` is turned on here, for the wheel build only, and not
+# in Cargo.toml: it leaves libpython unlinked, which a `cargo test` binary
+# cannot do without.
 features = ["pyo3/extension-module"]
 # Strip the .so to keep wheel size down; debug info isn't useful at the
 # Python boundary anyway.

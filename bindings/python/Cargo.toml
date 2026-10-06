@@ -12,6 +12,9 @@ edition = "2024"
 description = "Python bindings for datalogic-rs JSONLogic engine"
 license = "Apache-2.0"
 repository = "https://github.com/GoPlasmatic/datalogic-rs"
+# Published to PyPI as datalogic-py, not to crates.io (and it depends on
+# the unpublished `datalogic-bind`).
+publish = false
 
 [lib]
 # `cdylib` produces the importable `.so`/`.pyd`; `rlib` lets a Rust
@@ -21,20 +24,24 @@ crate-type = ["cdylib", "rlib"]
 # Keep this aligned with `[tool.maturin] module-name` in `pyproject.toml`
 # and with the `#[pymodule] fn datalogic_py(...)` symbol in `src/lib.rs`.
 name = "datalogic_py"
+# The doc comments are the Python docstrings, and their examples are
+# Python: rustdoc must not compile them as Rust.
+doctest = false
 
 [dependencies]
-# Mirrors the `datalogic-wasm` pattern: prefer the local path during
-# in-repo development; the published version pin kicks in once the binding
-# itself is published as a downstream of the released core.
+# Wire formats and plumbing shared with the other bindings.
+datalogic-bind = { path = "../../crates/datalogic-bind" }
+# The binding builds against the in-tree core (maturin carries path
+# dependencies into the sdist); the version is the floor its API use needs
+# (5.8: per-compile modes, check, operators, facts). The crate ships to
+# PyPI, never to crates.io.
 #
 # Feature list is inlined here (rather than via an umbrella feature on the
 # core crate) so the binding owns its operator surface. `serde_json` is
 # required because the binding converts Python dicts ↔ `serde_json::Value`
 # via `pythonize`; the rest mirrors the WASM binding's surface so a rule
 # valid in the JS/UI playground also runs from Python.
-# Wire formats and plumbing shared with the other bindings.
-datalogic-bind = { path = "../../crates/datalogic-bind" }
-datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features = [
+datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.8", features = [
     "serde_json",
     "all-operators",
     "trace",
@@ -44,7 +51,10 @@ datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features =
 # pyo3 0.23 is the floor for Rust edition 2024 + the `Bound<'py, T>` API.
 # `abi3-py310` produces ONE wheel per (os, arch) covering CPython 3.10+;
 # Python 3.9 went EOL in October 2025 so the floor reflects current support.
-pyo3 = { version = "0.29", features = ["abi3-py310", "extension-module"] }
+# `extension-module` is not listed here: maturin turns it on for the wheel
+# (`[tool.maturin] features` in pyproject.toml), and a `cargo test` binary
+# must link libpython, which that feature prevents.
+pyo3 = { version = "0.29", features = ["abi3-py310"] }
 # `pythonize` MUST track pyo3 in lockstep — wrong major pair fails to
 # compile silently. Bumping pyo3 above requires bumping this too.
 pythonize = "0.29"
