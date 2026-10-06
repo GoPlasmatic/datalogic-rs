@@ -1,0 +1,89 @@
+name: Fuzz
+
+# Nightly coverage-guided fuzzing of the `eval_str` target
+# (crates/datalogic-rs/fuzz). The corpus starts from every conformance
+# suite case (scripts/fuzz-seed-corpus.py) plus whatever earlier runs
+# found, carried between runs in the Actions cache. A crash fails the run
+# and uploads the crashing input; minimise it with `cargo +nightly fuzz
+# tmin eval_str <file>` and pin it as a regression test before fixing.
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Fuzzing time budget in seconds
+        required: false
+        default: '900'
+
+concurrency:
+  group: fuzz
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  eval_str:
+    name: Fuzz eval_str
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FUZZ_SECONDS: ${{ github.event.inputs.seconds || '900' }}
+    steps:
+      - uses: actions/checkout@v6
+
+      # cargo-fuzz needs nightly for the sanitizer flags it passes rustc.
+      - name: Setup nightly toolchain
+        uses: dtolnay/rust-toolchain@4fd1da8b0805d2d2e936788875a7d65dbd677dc2 # nightly
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: crates/datalogic-rs/fuzz -> target
+
+      # Pinned; rust-cache keeps ~/.cargo/bin, so this compiles once.
+      - name: Install cargo-fuzz
+        run: |
+          if ! cargo fuzz --version 2>/dev/null | grep -qx 'cargo-fuzz 0.13.2'; then
+            cargo install cargo-fuzz --version 0.13.2 --locked
+          fi
+
+      # Inputs earlier runs kept (new coverage), restored by prefix so the
+      # newest entry wins; saved again at the end under this run's id.
+      - name: Restore corpus
+        uses: actions/cache/restore@v5
+        with:
+          path: crates/datalogic-rs/fuzz/corpus/eval_str
+          key: fuzz-corpus-eval_str-${{ github.run_id }}
+          restore-keys: fuzz-corpus-eval_str-
+
+      - name: Seed the corpus from the conformance suites
+        run: python3 scripts/fuzz-seed-corpus.py crates/datalogic-rs/fuzz/corpus/eval_str
+
+      - name: Fuzz
+        working-directory: crates/datalogic-rs
+        run: |
+          cargo +nightly fuzz run eval_str -- \
+            -max_total_time="$FUZZ_SECONDS" -rss_limit_mb=4096 -timeout=30
+
+      # Keep the corpus small: only inputs that add coverage.
+      - name: Minimise corpus
+        if: success()
+        working-directory: crates/datalogic-rs
+        run: cargo +nightly fuzz cmin eval_str
+
+      - name: Save corpus
+        if: success()
+        uses: actions/cache/save@v5
+        with:
+          path: crates/datalogic-rs/fuzz/corpus/eval_str
+          key: fuzz-corpus-eval_str-${{ github.run_id }}
+
+      - name: Upload crashing inputs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-artifacts-eval_str
+          path: crates/datalogic-rs/fuzz/artifacts/
+          if-no-files-found: ignore
