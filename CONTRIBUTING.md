@@ -34,10 +34,14 @@ git clone https://github.com/GoPlasmatic/datalogic-rs.git
 cd datalogic-rs
 
 # Rust-only workflow. Most contributions stop here.
-# --all-features unlocks the full test surface; without it most
-# integration tests skip silently (they require feature = "serde_json").
+# --all-features unlocks the full test surface; without it cargo skips
+# most integration tests (they declare required-features, most often
+# serde_json).
 cargo test --workspace --all-features
 ```
+
+`make test` runs every Rust test suite in the tree (the root workspace,
+the C ABI, and the WASM tests when `wasm-pack` is installed).
 
 For the full Rust → WASM → UI flow (the UI vendors the locally built
 WASM package automatically), and per-binding build commands, see
@@ -52,7 +56,15 @@ WASM package automatically), and per-binding build commands, see
   workspace; see
   [DEVELOPMENT.md](./DEVELOPMENT.md#repo-wide-commands).
 - Public items should have rustdoc. Examples in rustdoc should compile
-  (they run under `cargo test --doc`).
+  (they run under `cargo test --doc`), and so must the Rust blocks in
+  `crates/datalogic-rs/README.md`, which run as doctests under
+  `--all-features`.
+- A new integration test file gated on features declares the same
+  features as a `[[test]] required-features` entry in
+  `crates/datalogic-rs/Cargo.toml`; `scripts/check-test-features.sh`
+  (`make stats`) fails until it does.
+- A change to dependencies commits the updated `Cargo.lock`: CI builds
+  with `--locked`.
 - Prefer editing existing files over adding new ones. Keep comments
   focused on *why*, not *what*.
 
@@ -107,9 +119,13 @@ for the Rust pattern, or drop into
 
 1. Fork and create a topic branch.
 2. Make your change. Add or update tests.
-3. Run `make lint && cargo test --workspace --all-features`. If you
-   touched a binding or the UI, also run the relevant build scripts and
-   tests ([DEVELOPMENT.md](./DEVELOPMENT.md) has the commands).
+3. Run `make lint && cargo test --workspace --all-features` (and
+   `make stats`, which CI also runs). If you touched a binding or the UI,
+   also run the relevant build scripts and tests
+   ([DEVELOPMENT.md](./DEVELOPMENT.md) has the commands). A PR that adds
+   suite cases does not have to update the quoted conformance counts:
+   CI only warns, and `scripts/check-stats.sh --write` updates them
+   before a release.
 4. Open a PR with a description of the *why* and a short test plan.
 
 Architectural notes live in [ARCHITECTURE.md](./ARCHITECTURE.md).
