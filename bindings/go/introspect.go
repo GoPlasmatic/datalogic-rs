@@ -5,7 +5,10 @@ package datalogic
 */
 import "C"
 
-import "runtime"
+import (
+	"runtime"
+	"unsafe"
+)
 
 // Mode chooses how Engine.CompileMode and Engine.Check read a rule.
 type Mode uint32
@@ -25,7 +28,7 @@ const (
 // reg is the compiling engine's custom-operator registry: the Rule keeps
 // it alive, since the native rule calls into it after the Engine is gone.
 func newRule(ptr *C.datalogic_rule, reg *opRegistry) *Rule {
-	r := &Rule{ptr: ptr, reg: reg}
+	r := &Rule{ptr: unsafe.Pointer(ptr), reg: reg}
 	runtime.SetFinalizer(r, (*Rule).Close)
 	return r
 }

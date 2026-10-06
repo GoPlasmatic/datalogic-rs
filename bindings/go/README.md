@@ -314,6 +314,11 @@ if err != nil {
 | `Session` | One per goroutine: the per-task workhorse                                          |
 | `TracedSession` | Share across goroutines; every `Evaluate` uses a fresh internal arena        |
 
+`Close` is safe to call more than once and from several goroutines at
+once: exactly one call frees the handle. Closing a handle while another
+goroutine is still using it is not supported; finish or join that work
+first. A handle you never close is freed by its GC finalizer.
+
 ## Performance
 
 <!-- canonical-bench v5.1 -->

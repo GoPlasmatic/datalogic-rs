@@ -305,7 +305,7 @@ func (b *EngineBuilder) Build() (*Engine, error) {
 	reg := b.reg
 	b.ptr = nil
 	b.reg = nil
-	e := &Engine{ptr: ePtr, reg: reg}
+	e := &Engine{ptr: unsafe.Pointer(ePtr), reg: reg}
 	runtime.SetFinalizer(e, (*Engine).Close)
 	return e, nil
 }

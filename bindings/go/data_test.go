@@ -550,3 +550,41 @@ func TestNilHandlesReturnInvalidArgument(t *testing.T) {
 	_, err = session.EvaluateTruthy(rule, nilData)
 	expectInvalid("Session.EvaluateTruthy(nil data)", err)
 }
+
+// Close is safe from many goroutines at once: exactly one call frees
+// each handle, the rest see it already closed.
+func TestConcurrentCloseFreesOnce(t *testing.T) {
+	const n = 16
+	for round := 0; round < 20; round++ {
+		e := NewEngine()
+		rule, err := e.Compile(`{"var":"x"}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := ParseData(`{"x":1}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := e.Session()
+		ts := e.TracedSession()
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		for i := 0; i < n; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				ts.Close()
+				s.Close()
+				data.Close()
+				rule.Close()
+				e.Close()
+			}()
+		}
+		close(start)
+		wg.Wait()
+		if _, err := rule.Evaluate(`{}`); err == nil {
+			t.Fatal("want an error from a closed Rule")
+		}
+	}
+}

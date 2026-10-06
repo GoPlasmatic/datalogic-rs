@@ -14,6 +14,8 @@ import "C"
 import (
 	"encoding/json"
 	"runtime"
+	"sync/atomic"
+	"unsafe"
 )
 
 // =============== DataHandle ===============
@@ -30,7 +32,7 @@ import (
 // finalizer, which is best-effort). Handles are not consumed by
 // evaluation.
 type DataHandle struct {
-	ptr *C.datalogic_data
+	ptr unsafe.Pointer // *C.datalogic_data; swapped to nil by Close
 }
 
 // ParseData parses a JSON document into a reusable DataHandle.
@@ -42,29 +44,35 @@ func ParseData(dataJSON string) (*DataHandle, error) {
 	if rc != C.DATALOGIC_STATUS_OK {
 		return nil, takeError(cerr)
 	}
-	d := &DataHandle{ptr: out}
+	d := &DataHandle{ptr: unsafe.Pointer(out)}
 	runtime.SetFinalizer(d, (*DataHandle).Close)
 	return d, nil
 }
 
-// Close releases the data handle. Safe to call multiple times. Do not
-// call while another goroutine is still evaluating against the handle.
+// Close releases the data handle. Safe to call multiple times, including
+// from several goroutines at once: exactly one call frees the handle. Do
+// not call while another goroutine is still evaluating against the
+// handle.
 func (d *DataHandle) Close() {
-	if d == nil || d.ptr == nil {
+	if d == nil {
 		return
 	}
-	C.datalogic_data_free(d.ptr)
-	d.ptr = nil
+	p := atomic.SwapPointer(&d.ptr, nil)
+	if p == nil {
+		return
+	}
+	C.datalogic_data_free((*C.datalogic_data)(p))
 	runtime.SetFinalizer(d, nil)
 }
 
 // AllocatedBytes returns the bytes held by the handle's backing arena
 // (input copy + parsed tree). Useful for sizing and diagnostics.
 func (d *DataHandle) AllocatedBytes() uint64 {
-	if d == nil || d.ptr == nil {
+	p := d.cptr()
+	if p == nil {
 		return 0
 	}
-	n := uint64(C.datalogic_data_allocated_bytes(d.ptr))
+	n := uint64(C.datalogic_data_allocated_bytes(p))
 	runtime.KeepAlive(d)
 	return n
 }
@@ -75,7 +83,7 @@ func (d *DataHandle) cptr() *C.datalogic_data {
 	if d == nil {
 		return nil
 	}
-	return d.ptr
+	return (*C.datalogic_data)(atomic.LoadPointer(&d.ptr))
 }
 
 // =============== data-handle evaluation ===============

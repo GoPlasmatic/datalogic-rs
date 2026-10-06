@@ -58,6 +58,7 @@ import "C"
 import (
 	"fmt"
 	"runtime"
+	"sync/atomic"
 	"unsafe"
 )
 
@@ -117,7 +118,10 @@ func takeBuf(buf C.datalogic_buf) string {
 // goroutines. Close it explicitly when done (or rely on the GC
 // finalizer, which is best-effort).
 type Engine struct {
-	ptr *C.datalogic_engine
+	// ptr is the *C.datalogic_engine. The one Close that frees it swaps
+	// it to nil atomically, so concurrent Close calls never free the
+	// handle twice.
+	ptr unsafe.Pointer
 	// reg holds the custom-operator callbacks (nil when there are
 	// none). Every Rule, Session and TracedSession derived from this
 	// Engine shares it, since they keep dispatching into those
@@ -139,7 +143,7 @@ func NewTemplatingEngine() *Engine {
 }
 
 func newEngine(templating C.int32_t) *Engine {
-	e := &Engine{ptr: C.datalogic_engine_new(templating)}
+	e := &Engine{ptr: unsafe.Pointer(C.datalogic_engine_new(templating))}
 	// Finalizer is best-effort cleanup for callers who forget Close.
 	// Explicit Close clears the finalizer so we never double-free.
 	runtime.SetFinalizer(e, (*Engine).Close)
@@ -147,15 +151,21 @@ func newEngine(templating C.int32_t) *Engine {
 }
 
 // Close releases the underlying engine handle. Safe to call multiple
-// times. Any Rule or Session derived from this Engine continues to work
-// after Close — they hold their own refcount on the underlying engine,
-// and their own reference on its custom-operator callbacks.
+// times, including from several goroutines at once: exactly one call
+// frees the handle. Do not Close an Engine while another goroutine is
+// still calling a method on it. Any Rule or Session derived from this
+// Engine continues to work after Close — they hold their own refcount
+// on the underlying engine, and their own reference on its
+// custom-operator callbacks.
 func (e *Engine) Close() {
-	if e == nil || e.ptr == nil {
+	if e == nil {
 		return
 	}
-	C.datalogic_engine_free(e.ptr)
-	e.ptr = nil
+	p := atomic.SwapPointer(&e.ptr, nil)
+	if p == nil {
+		return
+	}
+	C.datalogic_engine_free((*C.datalogic_engine)(p))
 	runtime.SetFinalizer(e, nil)
 }
 
@@ -165,7 +175,7 @@ func (e *Engine) cptr() *C.datalogic_engine {
 	if e == nil {
 		return nil
 	}
-	return e.ptr
+	return (*C.datalogic_engine)(atomic.LoadPointer(&e.ptr))
 }
 
 // registry returns the custom-operator registry that handles derived
@@ -218,7 +228,7 @@ func (e *Engine) Apply(ruleJSON, dataJSON string) (string, error) {
 // A nil or closed Engine yields a Session whose every evaluation
 // returns an InvalidArgument *Error rather than panicking.
 func (e *Engine) Session() *Session {
-	s := &Session{ptr: C.datalogic_engine_session(e.cptr()), reg: e.registry()}
+	s := &Session{ptr: unsafe.Pointer(C.datalogic_engine_session(e.cptr())), reg: e.registry()}
 	runtime.KeepAlive(e)
 	runtime.SetFinalizer(s, (*Session).Close)
 	return s
@@ -236,17 +246,22 @@ func (e *Engine) Session() *Session {
 // Engine that compiled it; mixing engines yields an InvalidArgument
 // error.
 type Rule struct {
-	ptr *C.datalogic_rule
-	reg *opRegistry // keeps the engine's operator callbacks alive
+	ptr unsafe.Pointer // *C.datalogic_rule; swapped to nil by Close
+	reg *opRegistry    // keeps the engine's operator callbacks alive
 }
 
-// Close releases the rule handle. Safe to call multiple times.
+// Close releases the rule handle. Safe to call multiple times, including
+// from several goroutines at once: exactly one call frees the handle. Do
+// not Close a Rule while another goroutine is still evaluating it.
 func (r *Rule) Close() {
-	if r == nil || r.ptr == nil {
+	if r == nil {
 		return
 	}
-	C.datalogic_rule_free(r.ptr)
-	r.ptr = nil
+	p := atomic.SwapPointer(&r.ptr, nil)
+	if p == nil {
+		return
+	}
+	C.datalogic_rule_free((*C.datalogic_rule)(p))
 	runtime.SetFinalizer(r, nil)
 }
 
@@ -256,7 +271,7 @@ func (r *Rule) cptr() *C.datalogic_rule {
 	if r == nil {
 		return nil
 	}
-	return r.ptr
+	return (*C.datalogic_rule)(atomic.LoadPointer(&r.ptr))
 }
 
 // Evaluate runs the compiled rule against dataJSON and returns the
@@ -281,17 +296,21 @@ func (r *Rule) Evaluate(dataJSON string) (string, error) {
 // arena resets at the start of every call so peak memory stays bounded.
 // Sessions are NOT goroutine-safe — open one per goroutine.
 type Session struct {
-	ptr *C.datalogic_session
-	reg *opRegistry // keeps the engine's operator callbacks alive
+	ptr unsafe.Pointer // *C.datalogic_session; swapped to nil by Close
+	reg *opRegistry    // keeps the engine's operator callbacks alive
 }
 
-// Close releases the session handle. Safe to call multiple times.
+// Close releases the session handle. Safe to call multiple times;
+// exactly one call frees the handle.
 func (s *Session) Close() {
-	if s == nil || s.ptr == nil {
+	if s == nil {
 		return
 	}
-	C.datalogic_session_free(s.ptr)
-	s.ptr = nil
+	p := atomic.SwapPointer(&s.ptr, nil)
+	if p == nil {
+		return
+	}
+	C.datalogic_session_free((*C.datalogic_session)(p))
 	runtime.SetFinalizer(s, nil)
 }
 
@@ -301,7 +320,7 @@ func (s *Session) cptr() *C.datalogic_session {
 	if s == nil {
 		return nil
 	}
-	return s.ptr
+	return (*C.datalogic_session)(atomic.LoadPointer(&s.ptr))
 }
 
 // Evaluate runs rule against dataJSON using this session's arena.
@@ -375,8 +394,8 @@ func (s *Session) AllocatedBytes() uint64 {
 // TracedSession is safe to share across goroutines — every Evaluate
 // uses a fresh internal arena.
 type TracedSession struct {
-	ptr *C.datalogic_traced_session
-	reg *opRegistry // keeps the engine's operator callbacks alive
+	ptr unsafe.Pointer // *C.datalogic_traced_session; swapped to nil by Close
+	reg *opRegistry    // keeps the engine's operator callbacks alive
 }
 
 // TracedSession opens a trace-enabled session bound to this engine.
@@ -386,19 +405,25 @@ type TracedSession struct {
 // Tracing pays for compile-per-call plus step recording — use it for
 // debugging and tooling, not hot paths.
 func (e *Engine) TracedSession() *TracedSession {
-	ts := &TracedSession{ptr: C.datalogic_engine_traced_session(e.cptr()), reg: e.registry()}
+	ts := &TracedSession{ptr: unsafe.Pointer(C.datalogic_engine_traced_session(e.cptr())), reg: e.registry()}
 	runtime.KeepAlive(e)
 	runtime.SetFinalizer(ts, (*TracedSession).Close)
 	return ts
 }
 
-// Close releases the traced-session handle. Safe to call multiple times.
+// Close releases the traced-session handle. Safe to call multiple
+// times, including from several goroutines at once: exactly one call
+// frees the handle. Do not Close a TracedSession while another
+// goroutine is still evaluating through it.
 func (ts *TracedSession) Close() {
-	if ts == nil || ts.ptr == nil {
+	if ts == nil {
 		return
 	}
-	C.datalogic_traced_session_free(ts.ptr)
-	ts.ptr = nil
+	p := atomic.SwapPointer(&ts.ptr, nil)
+	if p == nil {
+		return
+	}
+	C.datalogic_traced_session_free((*C.datalogic_traced_session)(p))
 	runtime.SetFinalizer(ts, nil)
 }
 
@@ -408,7 +433,7 @@ func (ts *TracedSession) cptr() *C.datalogic_traced_session {
 	if ts == nil {
 		return nil
 	}
-	return ts.ptr
+	return (*C.datalogic_traced_session)(atomic.LoadPointer(&ts.ptr))
 }
 
 // Evaluate compiles ruleJSON (optimizer disabled), evaluates it against
