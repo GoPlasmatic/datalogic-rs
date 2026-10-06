@@ -9,6 +9,12 @@
   flex-direction: column;
 }
 
+/* The root takes focus (tabindex="-1") so a click scopes keyboard shortcuts to
+   this editor; it is not a tab stop, so it draws no focus ring. */
+.logic-editor:focus {
+  outline: none;
+}
+
 /* Body: contains main canvas (full size) + floating properties panel */
 .logic-editor-body {
   flex: 1;

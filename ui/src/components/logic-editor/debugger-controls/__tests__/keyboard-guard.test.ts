@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isEditableTarget } from '../keyboard-guard';
+import { isEditableTarget, isTextEntryTarget } from '../keyboard-guard';
 
 /** Minimal stand-in for a DOM element (tests run without a DOM). */
 function fakeElement(options: { tag?: string; contentEditable?: boolean; ancestors?: string[] } = {}) {
@@ -39,5 +39,26 @@ describe('isEditableTarget', () => {
 
   it('guards contenteditable regions', () => {
     expect(isEditableTarget(fakeElement({ tag: 'div', contentEditable: true }))).toBe(true);
+  });
+
+  it('guards links, which Enter follows', () => {
+    expect(isEditableTarget(fakeElement({ tag: 'a' }))).toBe(true);
+    expect(isEditableTarget(fakeElement({ tag: 'span', ancestors: ['a'] }))).toBe(true);
+  });
+});
+
+describe('isTextEntryTarget', () => {
+  it('guards text fields, selects and contenteditable regions', () => {
+    expect(isTextEntryTarget(fakeElement({ tag: 'input' }))).toBe(true);
+    expect(isTextEntryTarget(fakeElement({ tag: 'textarea' }))).toBe(true);
+    expect(isTextEntryTarget(fakeElement({ tag: 'select' }))).toBe(true);
+    expect(isTextEntryTarget(fakeElement({ tag: 'div', contentEditable: true }))).toBe(true);
+  });
+
+  it('lets buttons, links and the canvas through, so editing shortcuts still work there', () => {
+    expect(isTextEntryTarget(fakeElement({ tag: 'button' }))).toBe(false);
+    expect(isTextEntryTarget(fakeElement({ tag: 'a' }))).toBe(false);
+    expect(isTextEntryTarget(fakeElement({ tag: 'div' }))).toBe(false);
+    expect(isTextEntryTarget(null)).toBe(false);
   });
 });

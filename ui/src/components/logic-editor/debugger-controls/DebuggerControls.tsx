@@ -10,6 +10,7 @@ import {
   ListOrdered,
 } from 'lucide-react';
 import { useDebuggerContext } from '../context';
+import { useEditorKeydown } from '../context/EditorRootContext';
 import { Tooltip } from '../../Tooltip';
 import { isEditableTarget } from './keyboard-guard';
 import { StepTimeline } from './StepTimeline';
@@ -48,7 +49,7 @@ export function DebuggerControlsInline() {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       // Nothing to drive, or the target owns its keyboard input (text fields,
-      // selects, buttons, contenteditable)
+      // selects, buttons, links, contenteditable)
       if (totalSteps === 0 || isEditableTarget(e.target)) {
         return;
       }
@@ -83,11 +84,7 @@ export function DebuggerControlsInline() {
     [isPlaying, pause, play, stepBackward, stepForward, reset, goToStep, totalSteps]
   );
 
-  useEffect(() => {
-    if (totalSteps === 0) return;
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown, totalSteps]);
+  useEditorKeydown(handleKeyDown, totalSteps > 0);
 
   // Convert speed (ms) to display value (inverted for intuitive slider)
   // Lower ms = faster, but slider should go left-to-right as faster

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Settings2, Variable, Hash, Calculator, GitBranch, Layers } from 'lucide-react';
 import { UndoRedoToolbar } from './UndoRedoToolbar';
@@ -6,6 +6,9 @@ import { DebuggerControlsInline } from './debugger-controls';
 import { Tooltip } from '../Tooltip';
 import type { FlowDirection } from './context';
 import { useEditorContext } from './context/editor';
+import { useEditorKeydown } from './context/EditorRootContext';
+import { isTextEntryTarget } from './debugger-controls/keyboard-guard';
+import { hasShortcutModifier } from './utils/platform';
 import { ContextMenu, type MenuItemConfig } from './context-menu/ContextMenu';
 import { buildOperatorSubmenu } from './utils/menu-builder';
 import { getOperator } from './config/operators';
@@ -62,26 +65,19 @@ const InsertMenuButton = memo(function InsertMenuButton() {
     buttonRef.current?.focus();
   }, []);
 
-  // Cmd/Ctrl+K toggles the menu unless the user is typing.
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      const isMac = navigator.platform.toUpperCase().includes('MAC');
-      const modifier = isMac ? e.metaKey : e.ctrlKey;
-      if (!modifier || e.key.toLowerCase() !== 'k') return;
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-        return;
-      }
-      e.preventDefault();
-      setMenuPosition((current) => {
-        if (current) return null;
-        const rect = buttonRef.current?.getBoundingClientRect();
-        return rect ? { x: rect.left, y: rect.bottom + 4 } : { x: 16, y: 56 };
-      });
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+  // Cmd/Ctrl+K toggles the menu while focus is in this editor, unless the
+  // user is typing.
+  const onKeyDown = useCallback((e: KeyboardEvent) => {
+    if (!hasShortcutModifier(e) || e.key.toLowerCase() !== 'k') return;
+    if (isTextEntryTarget(e.target)) return;
+    e.preventDefault();
+    setMenuPosition((current) => {
+      if (current) return null;
+      const rect = buttonRef.current?.getBoundingClientRect();
+      return rect ? { x: rect.left, y: rect.bottom + 4 } : { x: 16, y: 56 };
+    });
   }, []);
+  useEditorKeydown(onKeyDown);
 
   const menuItems = useMemo<MenuItemConfig[]>(() => {
     const items: MenuItemConfig[] = [];

@@ -1,13 +1,16 @@
 /**
  * Keyboard Handler Component
  *
- * Handles keyboard shortcuts for the visual editor.
- * Must be placed inside EditorProvider context.
+ * Handles keyboard shortcuts for the visual editor while focus is inside
+ * it. Must be placed inside EditorProvider and the editor root context.
  */
 
-import { useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
 import { useEditorContext } from './context/editor';
+import { useEditorKeydown } from './context/EditorRootContext';
+import { isTextEntryTarget } from './debugger-controls/keyboard-guard';
 import { isRootNode } from './utils/node-deletion';
+import { hasShortcutModifier } from './utils/platform';
 
 export function KeyboardHandler() {
   const {
@@ -32,18 +35,10 @@ export function KeyboardHandler() {
       // Only handle shortcuts in edit mode
       if (!isEditMode) return;
 
-      // Don't handle if user is typing in an input
-      const target = e.target as HTMLElement;
-      if (
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable
-      ) {
-        return;
-      }
+      // Don't handle if user is typing in a field
+      if (isTextEntryTarget(e.target)) return;
 
-      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-      const ctrlOrCmd = isMac ? e.metaKey : e.ctrlKey;
+      const ctrlOrCmd = hasShortcutModifier(e);
 
       // Copy: Cmd/Ctrl + C
       if (ctrlOrCmd && e.key === 'c') {
@@ -119,12 +114,7 @@ export function KeyboardHandler() {
     [isEditMode, selectedNode, selectedNodes, deleteNode, undo, redo, canUndo, canRedo, copyNode, pasteNode, canPaste, selectAllNodes, clearSelection, duplicateNode]
   );
 
-  useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [handleKeyDown]);
+  useEditorKeydown(handleKeyDown);
 
   // This component doesn't render anything
   return null;

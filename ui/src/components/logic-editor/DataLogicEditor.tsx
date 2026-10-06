@@ -31,6 +31,7 @@ import { nodesToJsonLogic } from './utils/nodes-to-jsonlogic';
 import { formatTraceFailure, traceFailureType, type TraceFailure } from './utils/trace';
 import { DebuggerProvider, ConnectedHandlesProvider, EditorProvider, DirectionContext, useDirection, type FlowDirection } from './context';
 import { useEditorContext } from './context/editor';
+import { EditorRootContext } from './context/EditorRootContext';
 import { PropertiesPanel } from './properties-panel';
 import { NodeSelectionHandler } from './NodeSelectionHandler';
 import { KeyboardHandler } from './KeyboardHandler';
@@ -381,6 +382,9 @@ function DataLogicEditorBody({
   // Debounce timer ref for onChange
   const onChangeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // The root element: keyboard shortcuts listen on it (EditorRootContext).
+  const [rootElement, setRootElement] = useState<HTMLDivElement | null>(null);
+
   // Evaluation is enabled whenever data is provided (unified mode - no mode switching needed)
   const evalEnabled = data !== undefined;
 
@@ -483,8 +487,17 @@ function DataLogicEditorBody({
     </div>
   );
 
+  // tabIndex -1 makes a click anywhere in the editor (the canvas included)
+  // focus it, so its shortcuts work after pointing at it, without adding a
+  // tab stop.
   const shell = (
-    <div className={editorClassName} data-theme={resolvedTheme} data-direction={direction}>
+    <div
+      ref={setRootElement}
+      tabIndex={-1}
+      className={editorClassName}
+      data-theme={resolvedTheme}
+      data-direction={direction}
+    >
       {hasDebugger ? (
         <DebuggerProvider
           steps={editor.steps}
@@ -507,18 +520,22 @@ function DataLogicEditorBody({
     </div>
   );
 
-  // Read-only mode skips EditorProvider entirely.
-  if (!editable) return shell;
-
   return (
-    <EditorProvider
-      nodes={editor.nodes}
-      initialEditMode={editable}
-      onNodesChange={handleNodesChange}
-    >
-      <KeyboardHandler />
-      {shell}
-    </EditorProvider>
+    <EditorRootContext.Provider value={rootElement}>
+      {editable ? (
+        <EditorProvider
+          nodes={editor.nodes}
+          initialEditMode={editable}
+          onNodesChange={handleNodesChange}
+        >
+          <KeyboardHandler />
+          {shell}
+        </EditorProvider>
+      ) : (
+        // Read-only mode skips EditorProvider entirely.
+        shell
+      )}
+    </EditorRootContext.Provider>
   );
 }
 
