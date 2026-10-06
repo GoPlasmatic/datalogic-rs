@@ -226,7 +226,9 @@ impl EngineBuilder {
     /// # Example
     ///
     /// ```rust
-    /// use datalogic_rs::{CustomOperator, DataValue, Engine, Result, operator::EvalContext};
+    /// use datalogic_rs::{
+    ///     CustomOperator, DataValue, Engine, ErrorCode, Result, operator::EvalContext,
+    /// };
     ///
     /// struct Answer;
     /// impl CustomOperator for Answer {
@@ -242,7 +244,7 @@ impl EngineBuilder {
     ///
     /// assert!(Engine::builder().try_add_operator("answer", Answer).is_ok());
     /// let err = Engine::builder().try_add_operator("if", Answer).err().unwrap();
-    /// assert_eq!(err.tag(), "ConfigurationError");
+    /// assert_eq!(err.code(), ErrorCode::ConfigurationError);
     /// ```
     pub fn try_add_operator<T>(self, name: impl Into<String>, operator: T) -> crate::Result<Self>
     where

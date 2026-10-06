@@ -1051,7 +1051,7 @@ impl Engine {
     /// ```rust
     /// # #[cfg(feature = "budget")] {
     /// use bumpalo::Bump;
-    /// use datalogic_rs::Engine;
+    /// use datalogic_rs::{Engine, ErrorCode};
     ///
     /// let engine = Engine::new();
     /// let compiled = engine.compile(r#"{"map": [{"var": "xs"}, {"*": [{"var": ""}, 2]}]}"#).unwrap();
@@ -1067,7 +1067,7 @@ impl Engine {
     /// let err = engine
     ///     .evaluate_metered(&compiled, r#"{"xs": [1, 2, 3]}"#, &arena, 2)
     ///     .unwrap_err();
-    /// assert_eq!(err.tag(), "BudgetExceeded");
+    /// assert_eq!(err.code(), ErrorCode::BudgetExceeded);
     /// # }
     /// ```
     ///

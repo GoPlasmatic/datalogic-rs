@@ -417,7 +417,7 @@ impl EvaluationConfig {
     ///
     /// ```rust
     /// # #[cfg(feature = "budget")] {
-    /// use datalogic_rs::{Engine, EvaluationConfig};
+    /// use datalogic_rs::{Engine, ErrorCode, EvaluationConfig};
     ///
     /// let engine = Engine::builder()
     ///     .with_config(EvaluationConfig::default().with_ops_budget(Some(16)))
@@ -428,7 +428,8 @@ impl EvaluationConfig {
     /// // The same rule over 100 items is refused.
     /// let xs: Vec<String> = (0..100).map(|n| n.to_string()).collect();
     /// let data = format!(r#"{{"xs": [{}]}}"#, xs.join(","));
-    /// assert_eq!(engine.eval_str(rule, &data).unwrap_err().tag(), "BudgetExceeded");
+    /// let err = engine.eval_str(rule, &data).unwrap_err();
+    /// assert_eq!(err.code(), ErrorCode::BudgetExceeded);
     /// # }
     /// ```
     #[cfg(feature = "budget")]
