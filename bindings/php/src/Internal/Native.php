@@ -267,10 +267,12 @@ final class Native
             'Darwin'  => 'darwin',
             default   => 'linux',
         };
-        $arch = match (php_uname('m')) {
+        // Windows reports the machine in upper case (`AMD64`, `ARM64`).
+        $machine = strtolower(php_uname('m'));
+        $arch = match ($machine) {
             'x86_64', 'amd64' => 'x86_64',
             'arm64', 'aarch64' => 'aarch64',
-            default => php_uname('m'),
+            default => $machine,
         };
         return $os . '-' . $arch;
     }
