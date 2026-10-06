@@ -1,7 +1,8 @@
-// The vendored 5.3.0 engine (nodejs target); imported relatively so tsc sees
-// its typings (builtinOperatorNames, Engine.evaluateWithTrace) rather than the
-// older package in node_modules.
+// The vendored engine's nodejs target (vendor/datalogic, refreshed by
+// `npm run sync-wasm`), imported by path so tsc checks it against the
+// nodejs typings.
 import * as wasm from '../../../../../../vendor/datalogic/nodejs/datalogic_wasm.js';
+import { evaluateWithTraceStr } from '../../../../../test-utils/engine';
 import type { JsonLogicValue, LogicNode } from '../../../types';
 import type { TracedResult } from '../../../types/trace';
 import { jsonLogicToNodes } from '../../jsonlogic-to-nodes';
@@ -12,7 +13,7 @@ export { wasm };
 
 /** Run the real engine and parse the trace envelope. */
 export function runTrace(rule: JsonLogicValue, data: unknown = {}, templating = false): TracedResult {
-  return JSON.parse(wasm.evaluateWithTrace(JSON.stringify(rule), JSON.stringify(data), templating)) as TracedResult;
+  return JSON.parse(evaluateWithTraceStr(JSON.stringify(rule), JSON.stringify(data), templating)) as TracedResult;
 }
 
 export interface Analysis {

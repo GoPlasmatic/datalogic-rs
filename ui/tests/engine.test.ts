@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { evalStr } from '../src/test-utils/engine';
 import * as wasm from '@goplasmatic/datalogic-wasm/nodejs';
 
 describe('vendored WASM engine (nodejs target)', () => {
   it('evaluates a rule', () => {
-    expect(JSON.parse(wasm.evaluate('{"+": [1, 2]}', '{}', false))).toBe(3);
+    expect(JSON.parse(evalStr('{"+": [1, 2]}', '{}'))).toBe(3);
   });
   it('exposes builtinOperatorNames', () => {
     const names = wasm.builtinOperatorNames();

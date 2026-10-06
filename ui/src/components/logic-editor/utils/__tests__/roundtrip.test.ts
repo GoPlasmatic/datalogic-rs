@@ -17,6 +17,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { evalStr } from '../../../../test-utils/engine';
 import * as wasm from '@goplasmatic/datalogic-wasm';
 import { jsonLogicToNodes } from '../jsonlogic-to-nodes';
 import { nodesToJsonLogic } from '../nodes-to-jsonlogic';
@@ -290,7 +291,7 @@ interface Outcome {
 
 function evaluate(rule: JsonLogicValue | null, data: unknown, templating: boolean): Outcome {
   try {
-    const result = wasm.evaluate(JSON.stringify(rule), JSON.stringify(data ?? {}), templating);
+    const result = evalStr(JSON.stringify(rule), JSON.stringify(data ?? {}), templating);
     return { ok: true, value: JSON.parse(result) };
   } catch (err) {
     return { ok: false, error: String(err) };

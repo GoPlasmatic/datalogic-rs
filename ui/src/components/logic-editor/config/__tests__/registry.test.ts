@@ -9,9 +9,9 @@
  */
 
 import { describe, expect, it } from 'vitest';
-// The root specifier resolves to the vendored 5.3.0 build under both `tsc`
-// (tsconfig `paths`) and vitest (alias to the nodejs target); the `/nodejs`
-// subpath would type-check against the stale node_modules copy.
+// Resolves to the vendored engine (vendor/datalogic, refreshed by
+// `npm run sync-wasm`) under both `tsc` (tsconfig `paths`) and vitest
+// (vite.aliases.ts).
 import * as wasm from '@goplasmatic/datalogic-wasm';
 import { operators, getOperator, isOperator } from '../operators';
 import { categories } from '../categories';

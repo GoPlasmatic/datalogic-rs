@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { evalStr } from '../src/test-utils/engine';
 import * as wasm from '@goplasmatic/datalogic-wasm/nodejs';
 import {
   parseStructuredError,
@@ -17,7 +18,7 @@ describe('parseStructuredError', () => {
   it('reads the structured fields off a real WASM error (detailJson first)', () => {
     let caught: unknown;
     try {
-      wasm.evaluate('{"throw":"x"}', '{}', false);
+      evalStr('{"throw":"x"}', '{}');
     } catch (err) {
       caught = err;
     }
@@ -36,11 +37,11 @@ describe('parseStructuredError', () => {
 
   it('classifies unknown operators and parse errors', () => {
     let badOp: unknown;
-    try { wasm.evaluate('{"foo":[1]}', '{}', false); } catch (err) { badOp = err; }
+    try { evalStr('{"foo":[1]}', '{}'); } catch (err) { badOp = err; }
     expect(parseStructuredError(badOp, '')).toMatchObject({ type: 'InvalidOperator', operator: 'foo' });
 
     let parse: unknown;
-    try { wasm.evaluate('{"foo":', '{}', false); } catch (err) { parse = err; }
+    try { evalStr('{"foo":', '{}'); } catch (err) { parse = err; }
     expect(parseStructuredError(parse, '').type).toBe('ParseError');
   });
 

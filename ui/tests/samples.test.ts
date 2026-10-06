@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import * as wasm from '@goplasmatic/datalogic-wasm/nodejs';
+import { evalStr } from '../src/test-utils/engine';
 import { SAMPLE_EXPRESSIONS } from '../src/constants/sample-expressions';
 import { EMBED_SAMPLE_EXPRESSIONS } from '../src/constants/embed-sample-expressions';
 
@@ -9,7 +9,7 @@ import { EMBED_SAMPLE_EXPRESSIONS } from '../src/constants/embed-sample-expressi
 
 function evaluateSample(sample: { logic: unknown; data: unknown; templating?: boolean }): unknown {
   return JSON.parse(
-    wasm.evaluate(JSON.stringify(sample.logic), JSON.stringify(sample.data), !!sample.templating),
+    evalStr(JSON.stringify(sample.logic), JSON.stringify(sample.data), !!sample.templating),
   );
 }
 
@@ -25,7 +25,7 @@ describe('Studio sample expressions', () => {
     expect(templated.length).toBeGreaterThan(0);
     for (const [, sample] of templated) {
       expect(() =>
-        wasm.evaluate(JSON.stringify(sample.logic), JSON.stringify(sample.data), false),
+        evalStr(JSON.stringify(sample.logic), JSON.stringify(sample.data), false),
       ).toThrow();
     }
   });

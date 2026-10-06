@@ -6,10 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-// The root specifier resolves to the vendored 5.3.0 build under both `tsc`
-// (tsconfig `paths`) and vitest (alias to the nodejs target); the `/nodejs`
-// subpath would type-check against the stale node_modules copy.
-import * as wasm from '@goplasmatic/datalogic-wasm';
+import { evalStr } from '../../../../test-utils/engine';
 import { operators } from '../operators';
 import type { OperatorExample } from '../operators.types';
 
@@ -23,7 +20,7 @@ function run(example: OperatorExample): { value?: unknown; error?: EngineError }
   const logic = JSON.stringify(example.rule);
   const data = JSON.stringify(example.data ?? null);
   try {
-    return { value: JSON.parse(wasm.evaluate(logic, data, example.templating ?? false)) };
+    return { value: JSON.parse(evalStr(logic, data, example.templating ?? false)) };
   } catch (e) {
     return { error: e as EngineError };
   }

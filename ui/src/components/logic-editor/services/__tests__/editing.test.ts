@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import * as wasm from '@goplasmatic/datalogic-wasm';
+import { evalStr } from '../../../../test-utils/engine';
 import { jsonLogicToNodes } from '../../utils/jsonlogic-to-nodes';
 import { nodesToJsonLogic } from '../../utils/nodes-to-jsonlogic';
 import { deleteNodeAndDescendants, updateParentAfterChildDeletion } from '../../utils/node-deletion';
@@ -50,7 +50,7 @@ function childOfCell(nodes: LogicNode[], parent: LogicNode, cellIndex: number): 
 }
 
 function evaluate(rule: JsonLogicValue | null, data: unknown = {}, templating = false): unknown {
-  return JSON.parse(wasm.evaluate(JSON.stringify(rule), JSON.stringify(data), templating));
+  return JSON.parse(evalStr(JSON.stringify(rule), JSON.stringify(data), templating));
 }
 
 /** Structural invariants: every referenced child exists and points back; no orphans. */
