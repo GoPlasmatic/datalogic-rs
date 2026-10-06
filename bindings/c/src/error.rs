@@ -9,7 +9,7 @@
 //! [`datalogic_error_free`]. Passing `NULL` skips capture entirely, so
 //! error-reporting cost sits wholly on the error path.
 
-use datalogic_rs::{Error as DlError, Logic};
+use datalogic_rs::{Error as DlError, ErrorCode, Logic};
 
 /// Coarse, branchable outcome of a fallible call.
 ///
@@ -67,16 +67,10 @@ impl Error {
     /// the Python binding's `.path`); pass `None` when no compiled
     /// `Logic` is in scope (e.g. a rule-parse failure).
     pub(crate) fn from_engine(err: &DlError, compiled: Option<&Logic>) -> Self {
-        let tag = err.tag().to_string();
-        let status = match tag.as_str() {
-            "ParseError" => Status::Parse,
-            "InternalError" => Status::Internal,
-            _ => Status::Eval,
-        };
         Self {
-            status,
+            status: Self::engine_status(err),
             message: err.to_string(),
-            tag,
+            tag: err.tag().to_string(),
             operator: err.operator().map(str::to_owned),
             path_json: compiled.and_then(|c| serialize_path(err, c)),
             extra: (!err.node_ids().is_empty()).then(|| {
@@ -140,6 +134,16 @@ impl Error {
 
     pub(crate) fn status(&self) -> Status {
         self.status
+    }
+
+    /// The [`Status`] an engine error is reported with: `Parse` for a
+    /// `ParseError`, `Eval` for every other kind (the tag tells them
+    /// apart).
+    pub(crate) fn engine_status(err: &DlError) -> Status {
+        match err.code() {
+            ErrorCode::ParseError => Status::Parse,
+            _ => Status::Eval,
+        }
     }
 
     /// Item-level error rendering for the batch entry points: a small
