@@ -8,6 +8,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
+## [Unreleased]
+
+### Fixed
+
+- **A `reduce` can no longer build a value deep enough to abort the
+  process.** A fold that wraps its accumulator each step
+  (`{"reduce": [xs, [{"var": "accumulator"}], null]}`) nested one level per
+  item, and serialising, comparing or copying the result recursed once per
+  level: 100,000 items overflowed an 8 MiB stack and aborted with
+  `fatal runtime error: stack overflow`, which no `catch_unwind` can stop.
+  The accumulator may now nest at most 1,024 levels (four times what the
+  parser accepts as input), and passing that is an `InvalidArguments`
+  error. Accumulators are measured against the previous step's parts and,
+  for bodies of built-ins, only every few steps, so folds to numbers and
+  folds that rebuild flat lists cost what they did.
+- **`format_date` with an unknown chrono specifier is an error, not a
+  panic.** A raw specifier chrono does not know (`"%Q"`) or a trailing `%`
+  panicked inside chrono's formatter. It is now
+  `InvalidArguments("Invalid date format")`.
+- **A rule compiled on one engine follows the evaluating engine's
+  settings.** Constant folding evaluates under the compiling engine's
+  number coercion, NaN and division handling, loose equality and
+  truthiness, so `{"/": [1.5, 0]}` compiled on a default engine kept
+  `1.797e308` on an engine set to return `null` on division by zero, while
+  the same division computed at runtime returned `null`; a dead `if` branch
+  was dropped by the compiling engine's truthiness. A rule whose compile
+  folded something under those settings now keeps its source and is
+  compiled again on an engine whose settings differ (once per distinct
+  setting, cached on the rule). Rules evaluated on the engine that
+  compiled them, or on one with the same settings, are unchanged.
+- **A record with a `datetime` or `timestamp` field is ordinary data.**
+  Any object carrying such a key was taken for the boundary form of a
+  datetime, so `===` and `==` judged two different records equal by that
+  field alone, `in` matched them, `distinct` dropped all but one, and
+  `type` reported `"datetime"` or `"duration"`. Only the single-key form
+  (`{"datetime": "..."}`, `{"timestamp": "..."}`) is a datetime now.
+
+### Fixed (bindings)
+
+- **Node: a panic in the engine throws instead of aborting Node.** No
+  export was guarded, so any panic killed the process (and a panic in
+  `evaluateStrAsync` ran unguarded on the libuv pool). Every export now
+  carries `#[napi(catch_unwind)]`, and every call into the engine turns a
+  panic into a thrown error (or a rejected promise) with
+  `name`/`errorType` `"InternalError"`.
+- **Go: custom operators keep working after the Engine is closed or
+  collected.** `Engine.Close()` (also its finalizer) deleted the callback
+  handles that Rules and Sessions from that engine still call, so a later
+  evaluation crashed the process with `misuse of an invalid Handle`. The
+  handles now belong to a registry that the Engine, every Rule, Session
+  and TracedSession keep alive, and the callback state passes through C as
+  a C-allocated box rather than a Go pointer, as cgo's pointer rules
+  require.
+- **.NET: custom operators keep working after the Engine is disposed or
+  finalized.** `Engine.Dispose()` freed the delegates' `GCHandle`s while
+  Rules and Sessions still called them, failing with
+  `operator handle had wrong type`. The handles now belong to an object
+  that the Engine, every Rule, Session and TracedSession hold.
+
 ## [5.8.0] - 2026-10-05
 
 ### Added
