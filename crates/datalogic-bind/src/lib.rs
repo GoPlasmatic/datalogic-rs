@@ -14,12 +14,22 @@
 //! | Rule facts: `{reads, computed_reads, reads_complete, reads_data, operators, custom_operators, deterministic}` | [`facts_json`] |
 //! | Diagnostics: `[{code, severity, message, pointer, operator}]` | [`diagnostics_json`] |
 //! | Custom operator call: arguments as one JSON array, result as JSON | [`args_json`], [`parse_result`] |
+//! | Batch item failure: `{tag, message, operator?}` | [`ItemError`] |
+//! | Error path: `[{node_id, operator, arg_index, json_pointer}]` (or camelCase) | [`path_value`] |
+//!
+//! The plumbing: [`EngineOptions`] and [`add_operators`] assemble an engine
+//! from constructor options, [`typed`] reads typed results, [`same_engine`]
+//! checks a session's rule, and [`resolve_budget`] / [`resolve_budget_u64`]
+//! settle an operation budget.
+
 use datalogic_rs::bumpalo::Bump;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use datalogic_rs::{
-    CheckMode, DataValue, Diagnostic, Engine, Error, ExecutionStep, ExpressionNode, Facts, Family,
-    IntoLogic, Logic, OperatorInfo, ScopedArg, TracedRun,
+    CheckMode, CustomOperator, DataValue, Diagnostic, Engine, EngineBuilder, Error,
+    EvaluationConfig, ExecutionStep, ExpressionNode, Facts, Family, IntoLogic, Logic, OperatorInfo,
+    ScopedArg, TracedRun,
 };
 use serde::Serialize;
 use serde_json::value::RawValue;
@@ -203,15 +213,23 @@ pub fn resolve_budget(engine: &Engine, budget: Option<f64>) -> Result<u64, &'sta
 /// A custom operator's arguments as one JSON array, the form every host
 /// callback receives.
 pub fn args_json(args: &[&DataValue<'_>]) -> String {
-    let mut json = String::from("[");
+    let mut json = Vec::with_capacity(64);
+    write_args_json(args, &mut json);
+    // The emitter writes UTF-8 only.
+    String::from_utf8(json).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
+}
+
+/// [`args_json`] appended to `out` as bytes, for a host that hands the
+/// callback a byte range (the C ABI).
+pub fn write_args_json(args: &[&DataValue<'_>], out: &mut Vec<u8>) {
+    out.push(b'[');
     for (i, a) in args.iter().enumerate() {
         if i > 0 {
-            json.push(',');
+            out.push(b',');
         }
-        json.push_str(&a.to_json_string());
+        a.write_json_into(out);
     }
-    json.push(']');
-    json
+    out.push(b']');
 }
 
 /// Parse the JSON a host callback returned for custom operator `name` into
@@ -228,6 +246,185 @@ pub fn parse_result<'a>(
         ))
     })?;
     Ok(arena.alloc(parsed))
+}
+
+/// The engine options the Node, Python and WASM constructors take, once
+/// each binding has read them from its host's values (and refused the bad
+/// ones in its own words).
+#[derive(Default)]
+pub struct EngineOptions {
+    /// Multi-key objects compile to output templates.
+    pub templating: bool,
+    /// The operator families besides the core; `None` keeps every family.
+    pub families: Option<Vec<Family>>,
+    /// The template-key escape character.
+    pub template_key_escape: Option<char>,
+    /// The evaluation configuration; `None` keeps the default.
+    pub config: Option<EvaluationConfig>,
+}
+
+impl EngineOptions {
+    /// A builder carrying these options, ready for custom operators.
+    pub fn builder(self) -> EngineBuilder {
+        let mut builder = Engine::builder().with_templating(self.templating);
+        // Before the operators are added, so strict names are judged
+        // against the families and escape the engine has.
+        if let Some(families) = self.families {
+            builder = builder.with_families(families);
+        }
+        if let Some(c) = self.template_key_escape {
+            builder = builder.with_template_key_escape(c);
+        }
+        if let Some(config) = self.config {
+            builder = builder.with_config(config);
+        }
+        builder
+    }
+}
+
+/// Register each of `operators` on `builder`, in order. With `strict`, a
+/// name a built-in answers to is refused
+/// ([`EngineBuilder::try_add_operator`]) with the first such name's
+/// `ConfigurationError`.
+pub fn add_operators<O: CustomOperator + 'static>(
+    mut builder: EngineBuilder,
+    operators: impl IntoIterator<Item = (String, O)>,
+    strict: bool,
+) -> Result<EngineBuilder, Error> {
+    for (name, op) in operators {
+        builder = if strict {
+            builder.try_add_operator(name, op)?
+        } else {
+            builder.add_operator(name, op)
+        };
+    }
+    Ok(builder)
+}
+
+/// The refusal a session gives a rule compiled by another engine, in the
+/// bindings that check (the C ABI and Python's handle-based entry points).
+pub const DIFFERENT_ENGINE: &str = "rule was compiled by a different engine than this session's";
+
+/// Whether a rule compiled by `rule_engine` may run in a session of
+/// `session_engine`: the same engine, or [`DIFFERENT_ENGINE`].
+pub fn same_engine(
+    session_engine: &Arc<Engine>,
+    rule_engine: &Arc<Engine>,
+) -> Result<(), &'static str> {
+    if Arc::ptr_eq(session_engine, rule_engine) {
+        Ok(())
+    } else {
+        Err(DIFFERENT_ENGINE)
+    }
+}
+
+/// Typed results: a result read as one JSON type, or the mismatch message
+/// the binding raises with its own `TypeMismatch` error.
+pub mod typed {
+    use super::{DataValue, type_of};
+
+    /// A strict JSON boolean.
+    pub fn bool(v: &DataValue<'_>) -> Result<bool, String> {
+        v.as_bool()
+            .ok_or_else(|| format!("result is not a boolean (got {})", type_of(v)))
+    }
+
+    /// Any JSON number, as a double.
+    pub fn float(v: &DataValue<'_>) -> Result<f64, String> {
+        v.as_f64()
+            .ok_or_else(|| format!("result is not a number (got {})", type_of(v)))
+    }
+
+    /// An exact 64-bit integer (the C ABI and Python).
+    pub fn int(v: &DataValue<'_>) -> Result<i64, String> {
+        v.as_i64()
+            .ok_or_else(|| format!("result is not an integer number (got {})", type_of(v)))
+    }
+
+    /// An integer a JavaScript number holds exactly, `|n| <= 2^53 - 1`
+    /// (Node and WASM).
+    pub fn safe_int(v: &DataValue<'_>) -> Result<f64, String> {
+        match v.as_i64() {
+            Some(i) if i.unsigned_abs() < (1u64 << 53) => Ok(i as f64),
+            _ => Err(format!("result is not a safe integer (got {})", type_of(v))),
+        }
+    }
+}
+
+/// The key spelling of an error path's steps: the C ABI's JSON uses
+/// `node_id`, Node's objects `nodeId`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PathKeys {
+    /// `node_id`, `operator`, `arg_index`, `json_pointer`.
+    Snake,
+    /// `nodeId`, `operator`, `argIndex`, `jsonPointer`.
+    Camel,
+}
+
+/// `err`'s node-id breadcrumb resolved against the rule it ran in, root to
+/// leaf, as an array of step objects keyed as `keys` says.
+pub fn path_value(err: &Error, compiled: &Logic, keys: PathKeys) -> Value {
+    let (node_id, arg_index, json_pointer) = match keys {
+        PathKeys::Snake => ("node_id", "arg_index", "json_pointer"),
+        PathKeys::Camel => ("nodeId", "argIndex", "jsonPointer"),
+    };
+    Value::Array(
+        err.resolve_path(compiled)
+            .into_iter()
+            .map(|s| {
+                let mut step = serde_json::Map::new();
+                step.insert(node_id.to_string(), json!(s.node_id));
+                step.insert("operator".to_string(), json!(s.operator));
+                step.insert(arg_index.to_string(), json!(s.arg_index));
+                step.insert(json_pointer.to_string(), json!(s.json_pointer));
+                Value::Object(step)
+            })
+            .collect(),
+    )
+}
+
+/// One failed item of a batch call (one rule over many data, or many rules
+/// over one data): `{tag, message, operator?}`, the fields every binding's
+/// batch result carries for a failure.
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+pub struct ItemError {
+    /// The engine's stable error tag, or `"InvalidArgument"` for a bad
+    /// handle or rule in the batch.
+    pub tag: String,
+    /// The error's message.
+    pub message: String,
+    /// The outermost failing operator, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operator: Option<String>,
+}
+
+impl ItemError {
+    /// The item failure for an engine error.
+    pub fn from_engine(err: &Error) -> Self {
+        Self {
+            tag: err.tag().to_string(),
+            message: err.to_string(),
+            operator: err.operator().map(str::to_owned),
+        }
+    }
+
+    /// The item failure for a bad argument in the batch.
+    pub fn invalid_argument(message: impl Into<String>) -> Self {
+        Self {
+            tag: "InvalidArgument".to_string(),
+            message: message.into(),
+            operator: None,
+        }
+    }
+
+    /// The failure as a JSON object value, keys in a [`Value`]'s own
+    /// (sorted) order: what the C ABI writes and Node hands back.
+    pub fn to_value(&self) -> Value {
+        match &self.operator {
+            Some(op) => json!({"tag": self.tag, "message": self.message, "operator": op}),
+            None => json!({"tag": self.tag, "message": self.message}),
+        }
+    }
 }
 
 /// One built-in operator in the catalogue schema, keys in catalogue order.
@@ -593,6 +790,154 @@ mod tests {
         assert_eq!(type_of(&dt), "string");
         let du = DataValue::Duration(DataDuration::parse("1d:2h:3m:4s").unwrap());
         assert_eq!(type_of(&du), "string");
+    }
+
+    #[test]
+    fn typed_results() {
+        let arena = Bump::new();
+        let v = |json: &'static str| DataValue::from_str(json, &arena).unwrap();
+        assert_eq!(typed::bool(&v("true")), Ok(true));
+        assert_eq!(
+            typed::bool(&v("1")),
+            Err("result is not a boolean (got number)".to_string())
+        );
+        assert_eq!(typed::float(&v("2")), Ok(2.0));
+        assert_eq!(
+            typed::float(&v(r#""2""#)),
+            Err("result is not a number (got string)".to_string())
+        );
+        assert_eq!(typed::int(&v("7")), Ok(7));
+        assert_eq!(
+            typed::int(&v("7.5")),
+            Err("result is not an integer number (got number)".to_string())
+        );
+        assert_eq!(
+            typed::safe_int(&v("9007199254740991")),
+            Ok(9007199254740991.0)
+        );
+        assert_eq!(
+            typed::safe_int(&v("9007199254740992")),
+            Err("result is not a safe integer (got number)".to_string())
+        );
+    }
+
+    #[test]
+    fn item_errors() {
+        let engine = Engine::new();
+        let err = engine.eval_str(r#"{"+": ["a", 1]}"#, "null").unwrap_err();
+        let item = ItemError::from_engine(&err);
+        assert_eq!(item.tag, "Thrown");
+        assert_eq!(item.operator.as_deref(), Some("+"));
+        assert_eq!(
+            serde_json::to_string(&item).unwrap(),
+            format!(
+                r#"{{"tag":"Thrown","message":{},"operator":"+"}}"#,
+                json!(item.message)
+            )
+        );
+        assert_eq!(
+            item.to_value().to_string(),
+            format!(
+                r#"{{"message":{},"operator":"+","tag":"Thrown"}}"#,
+                json!(item.message)
+            )
+        );
+        let bad = ItemError::invalid_argument("data handle is null");
+        assert_eq!(
+            serde_json::to_string(&bad).unwrap(),
+            r#"{"tag":"InvalidArgument","message":"data handle is null"}"#
+        );
+        assert_eq!(
+            bad.to_value().to_string(),
+            r#"{"message":"data handle is null","tag":"InvalidArgument"}"#
+        );
+    }
+
+    #[test]
+    fn error_paths() {
+        let engine = Engine::new();
+        let logic = engine
+            .compile(r#"{"if": [{"var": "c"}, {"+": [{"var": "a"}, 1]}]}"#)
+            .unwrap();
+        let arena = Bump::new();
+        let err = engine
+            .evaluate(&logic, r#"{"c": true, "a": "x"}"#, &arena)
+            .unwrap_err();
+        let snake = path_value(&err, &logic, PathKeys::Snake);
+        let plus = |steps: &Value, key: &str| {
+            steps
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|s| s["operator"] == "+")
+                .map(|s| s[key].clone())
+        };
+        assert_eq!(plus(&snake, "json_pointer"), Some(json!("/if/1")));
+        assert!(plus(&snake, "node_id").is_some_and(|v| v.is_number()));
+        let camel = path_value(&err, &logic, PathKeys::Camel);
+        assert_eq!(plus(&camel, "jsonPointer"), Some(json!("/if/1")));
+        assert_eq!(plus(&camel, "argIndex"), Some(json!(1)));
+    }
+
+    #[test]
+    fn engine_options() {
+        let engine = EngineOptions {
+            templating: true,
+            families: Some(vec![]),
+            template_key_escape: Some('$'),
+            config: Some(EvaluationConfig::from_json_str(r#"{"missing_var": "error"}"#).unwrap()),
+        }
+        .builder()
+        .build();
+        assert_eq!(
+            engine.eval_str(r#"{"$type": 1, "k": 2}"#, "null").unwrap(),
+            r#"{"type":1,"k":2}"#
+        );
+        assert!(engine.eval_str(r#"{"var": "nope"}"#, "{}").is_err());
+        assert_eq!(
+            engine.check(r#"{"length": "abc"}"#, CheckMode::Strict)[0].code,
+            datalogic_rs::DiagnosticCode::UnknownOperator
+        );
+
+        struct Nop;
+        impl CustomOperator for Nop {
+            fn evaluate<'a>(
+                &self,
+                _args: &[&'a DataValue<'a>],
+                _ctx: &mut datalogic_rs::operator::EvalContext<'_, 'a>,
+                arena: &'a Bump,
+            ) -> datalogic_rs::Result<&'a DataValue<'a>> {
+                Ok(arena.alloc(DataValue::Null))
+            }
+        }
+        let strict = add_operators(
+            EngineOptions::default().builder(),
+            [("length".to_string(), Nop)],
+            true,
+        );
+        assert_eq!(strict.err().map(|e| e.tag()), Some("ConfigurationError"));
+        // Not strict, or once the family is left out, the name is free.
+        assert!(
+            add_operators(
+                EngineOptions::default().builder(),
+                [("length".to_string(), Nop)],
+                false
+            )
+            .is_ok()
+        );
+        let freed = EngineOptions {
+            families: Some(vec![]),
+            ..Default::default()
+        };
+        assert!(add_operators(freed.builder(), [("length".to_string(), Nop)], true).is_ok());
+    }
+
+    #[test]
+    fn engines() {
+        let a = Arc::new(Engine::new());
+        let b = Arc::new(Engine::new());
+        assert_eq!(same_engine(&a, &a.clone()), Ok(()));
+        assert_eq!(same_engine(&a, &b), Err(DIFFERENT_ENGINE));
     }
 
     #[test]
