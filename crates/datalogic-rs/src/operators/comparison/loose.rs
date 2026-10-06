@@ -15,9 +15,9 @@
 //! | Null      | Bool       | `null` equals `false`          |
 //! | Null      | String     | `null` equals `""`             |
 
-use crate::arena::DataValue;
-use crate::error::NAN_ERROR;
-use crate::{Engine, Error, Result};
+use crate::arena::{ContextStack, DataValue};
+use crate::operators::{NanForm, nan_error};
+use crate::{Engine, Result};
 
 enum LooseEqualsResult {
     Equal,
@@ -152,20 +152,21 @@ pub(super) fn loose_equals(
     left: &DataValue<'_>,
     right: &DataValue<'_>,
     engine: &Engine,
+    ctx: &mut ContextStack<'_>,
 ) -> Result<bool> {
     match loose_equals_core(left, right) {
         LooseEqualsResult::Equal => Ok(true),
         LooseEqualsResult::NotEqual => Ok(false),
-        LooseEqualsResult::Incompatible => incompatible(engine),
+        LooseEqualsResult::Incompatible => incompatible(engine, ctx),
     }
 }
 
 /// The answer for operands loose equality cannot compare (two unequal
 /// arrays among them): an error under `loose_equality_errors`, else
 /// `false`.
-pub(super) fn incompatible(engine: &Engine) -> Result<bool> {
+pub(super) fn incompatible(engine: &Engine, ctx: &mut ContextStack<'_>) -> Result<bool> {
     if engine.config().loose_equality_errors {
-        Err(Error::invalid_arguments(NAN_ERROR))
+        Err(nan_error(NanForm::InvalidArguments, ctx))
     } else {
         Ok(false)
     }

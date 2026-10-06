@@ -3,6 +3,7 @@
 
 use crate::arena::{ContextStack, DataValue, coerce_to_number_cfg, try_coerce_to_integer_cfg};
 use crate::operators::meta::ArithOp;
+use crate::operators::{NanForm, nan_error};
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 use datavalue::NumberValue;
@@ -292,10 +293,11 @@ fn subtract_one_arg<'a>(
         if items.is_empty() {
             return Err(crate::Error::invalid_args());
         }
-        let mut result =
-            coerce_to_number_cfg(&items[0], engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
+        let mut result = coerce_to_number_cfg(&items[0], engine)
+            .ok_or_else(|| nan_error(NanForm::Thrown, ctx))?;
         for elem in &items[1..] {
-            let n = coerce_to_number_cfg(elem, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
+            let n = coerce_to_number_cfg(elem, engine)
+                .ok_or_else(|| nan_error(NanForm::Thrown, ctx))?;
             result -= n;
         }
         return Ok(alloc_number(arena, NumberValue::from_f64(result)));
@@ -312,7 +314,7 @@ fn subtract_one_arg<'a>(
     if let Some(f) = coerce_to_number_cfg(av, engine) {
         return Ok(alloc_number(arena, NumberValue::from_f64(-f)));
     }
-    Err(crate::Error::nan_at(ctx))
+    Err(nan_error(NanForm::Thrown, ctx))
 }
 
 #[inline]
@@ -352,7 +354,7 @@ fn subtract_two_arg<'a>(
         }
     }
 
-    Err(crate::Error::nan_at(ctx))
+    Err(nan_error(NanForm::Thrown, ctx))
 }
 
 /// Variadic (>2) subtract: integer fast path with overflow promotion.
@@ -379,7 +381,7 @@ fn subtract_variadic<'a>(
         None if let Some(first) = crate::operators::datetime::arith::Temporal::of(first_av) => {
             return subtract_temporal_variadic(first, &args[1..], ctx, engine, arena);
         }
-        None => return Err(crate::Error::nan_at(ctx)),
+        None => return Err(nan_error(NanForm::Thrown, ctx)),
     };
     let mut state = FoldState::new(int_init.unwrap_or_default(), float_init);
     state.all_int = int_init.is_some();
@@ -425,7 +427,7 @@ fn subtract_temporal_variadic<'a>(
         let av = engine.dispatch_node(arg, ctx, arena)?;
         acc = Temporal::of(av)
             .and_then(|t| acc.sub(t))
-            .ok_or_else(|| crate::Error::nan_at(ctx))?;
+            .ok_or_else(|| nan_error(NanForm::Thrown, ctx))?;
     }
     Ok(acc.into_value(arena))
 }

@@ -14,6 +14,7 @@ use crate::Engine;
 use crate::Result;
 use crate::arena::{ContextStack, DataValue, coerce_to_number_cfg, try_coerce_to_integer_cfg};
 use crate::config::NanHandling;
+use crate::operators::{NanForm, nan_error};
 use bumpalo::Bump;
 use datavalue::NumberValue;
 
@@ -30,11 +31,11 @@ pub(super) enum NanAction {
 /// Check the engine's NaN handling config and return the appropriate action.
 /// Returns `Err` for `ThrowError`, `Ok(NanAction)` otherwise. Takes the
 /// context so the `ThrowError` arm can use the deferred thrown-payload fast
-/// lane ([`crate::Error::nan_at`]) when a `try` is guaranteed to catch it.
+/// lane (see [`nan_error`]) when a `try` is guaranteed to catch it.
 #[inline]
 pub(super) fn handle_nan(ctx: &mut ContextStack<'_>, engine: &Engine) -> Result<NanAction> {
     match engine.config().arithmetic_nan_handling {
-        NanHandling::ThrowError => Err(crate::Error::nan_at(ctx)),
+        NanHandling::ThrowError => Err(nan_error(NanForm::Thrown, ctx)),
         NanHandling::IgnoreValue => Ok(NanAction::Skip),
         NanHandling::CoerceToZero => Ok(NanAction::Zero),
         NanHandling::ReturnNull => Ok(NanAction::ReturnNull),

@@ -2,7 +2,8 @@
 
 use crate::arena::{ContextStack, DataValue, bvec};
 use crate::operators::string::char_to_byte_offset;
-use crate::{CompiledNode, Engine, Error, Result};
+use crate::operators::{NanForm, nan_error};
+use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
 /// Native arena-mode `slice`. Returns array slices as views over arena items;
@@ -141,9 +142,9 @@ fn extract_opt_i64_arena<'a>(
             datavalue::OwnedDataValue::Null => Ok(None),
             datavalue::OwnedDataValue::Number(n) => match n.as_i64() {
                 Some(i) => Ok(Some(i)),
-                None => Err(Error::invalid_arguments("NaN")),
+                None => Err(nan_error(NanForm::InvalidArguments, ctx)),
             },
-            _ => Err(Error::invalid_arguments("NaN")),
+            _ => Err(nan_error(NanForm::InvalidArguments, ctx)),
         };
     }
     let av = engine.dispatch_node(node, ctx, arena)?;
@@ -151,7 +152,7 @@ fn extract_opt_i64_arena<'a>(
         DataValue::Null => Ok(None),
         _ => match av.as_i64() {
             Some(i) => Ok(Some(i)),
-            None => Err(Error::invalid_arguments("NaN")),
+            None => Err(nan_error(NanForm::InvalidArguments, ctx)),
         },
     }
 }

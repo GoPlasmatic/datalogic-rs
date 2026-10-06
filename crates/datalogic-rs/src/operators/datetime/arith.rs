@@ -170,13 +170,17 @@ pub(crate) fn datetime_multiply<'a>(
 pub(crate) fn datetime_divide<'a>(
     a_av: &'a DataValue<'a>,
     b_av: &'a DataValue<'a>,
+    ctx: &mut crate::arena::ContextStack<'_>,
     arena: &'a Bump,
 ) -> Option<crate::Result<&'a DataValue<'a>>> {
     let (_, a_dur) = extract_dt_dur(a_av);
     let a_dur = a_dur?;
     let divisor = coerce_to_number(b_av)?;
     if divisor == 0.0 {
-        return Some(Err(crate::Error::nan()));
+        return Some(Err(crate::operators::nan_error(
+            crate::operators::NanForm::Thrown,
+            ctx,
+        )));
     }
     Some(Ok(write_into_arena(arena, a_dur.divide(divisor))))
 }

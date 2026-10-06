@@ -3,6 +3,7 @@
 
 use crate::arena::{ContextStack, DataValue, coerce_to_number_cfg, try_coerce_to_integer_cfg};
 use crate::config::DivisionByZeroHandling;
+use crate::operators::{NanForm, nan_error};
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 use datavalue::NumberValue;
@@ -68,24 +69,24 @@ fn div_mod_two_arg<'a>(
     // is not defined).
     #[cfg(feature = "datetime")]
     if !op.is_modulo()
-        && let Some(r) = crate::operators::datetime::arith::datetime_divide(a_av, b_av, arena)
+        && let Some(r) = crate::operators::datetime::arith::datetime_divide(a_av, b_av, ctx, arena)
     {
         return r;
     }
 
-    let na = operand(a_av, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
-    let nb = operand(b_av, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
+    let na = operand(a_av, engine).ok_or_else(|| nan_error(NanForm::Thrown, ctx))?;
+    let nb = operand(b_av, engine).ok_or_else(|| nan_error(NanForm::Thrown, ctx))?;
     if nb.is_zero() {
         // Integer/integer with divisor=0 errors regardless of the
         // `division_by_zero` config (config only governs the float path).
         if a_av.as_i64().is_some() && b_av.as_i64().is_some() {
-            return Err(crate::Error::nan_at(ctx));
+            return Err(nan_error(NanForm::Thrown, ctx));
         }
         return divbyzero(ctx, arena, na.as_f64(), engine);
     }
     match op.apply_number(&na, &nb) {
         Some(r) => Ok(alloc_number(arena, r)),
-        None => Err(crate::Error::nan_at(ctx)),
+        None => Err(nan_error(NanForm::Thrown, ctx)),
     }
 }
 
@@ -112,7 +113,7 @@ fn divbyzero<'a>(
     engine: &Engine,
 ) -> Result<&'a DataValue<'a>> {
     match engine.config().division_by_zero {
-        DivisionByZeroHandling::ThrowError => Err(crate::Error::nan_at(ctx)),
+        DivisionByZeroHandling::ThrowError => Err(nan_error(NanForm::Thrown, ctx)),
         DivisionByZeroHandling::ReturnNull => Ok(crate::arena::singletons::singleton_null()),
         DivisionByZeroHandling::ReturnInfinity => {
             let v = if dividend >= 0.0 {
@@ -155,9 +156,10 @@ fn one_arg_div_mod<'a>(
         if items.is_empty() || (op.is_modulo() && items.len() < 2) {
             return Err(crate::Error::invalid_args());
         }
-        let mut result = operand(&items[0], engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
+        let mut result =
+            operand(&items[0], engine).ok_or_else(|| nan_error(NanForm::Thrown, ctx))?;
         for (i, elem) in items[1..].iter().enumerate() {
-            let n = operand(elem, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
+            let n = operand(elem, engine).ok_or_else(|| nan_error(NanForm::Thrown, ctx))?;
             if n.is_zero() {
                 // First step: the accumulator is still the untouched `items[0]`.
                 let dividend_av = if i == 0 { Some(&items[0]) } else { None };
@@ -175,7 +177,7 @@ fn one_arg_div_mod<'a>(
     // 1/x with integer-preserving fast path.
     if let Some(i) = av.as_i64() {
         if i == 0 {
-            return Err(crate::Error::nan_at(ctx));
+            return Err(nan_error(NanForm::Thrown, ctx));
         }
         if i == -1 {
             return Ok(alloc_number(arena, NumberValue::from_i64(-1)));
@@ -185,9 +187,9 @@ fn one_arg_div_mod<'a>(
         }
         return Ok(alloc_number(arena, NumberValue::from_f64(1.0 / i as f64)));
     }
-    let f = coerce_to_number_cfg(av, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
+    let f = coerce_to_number_cfg(av, engine).ok_or_else(|| nan_error(NanForm::Thrown, ctx))?;
     if f == 0.0 {
-        return Err(crate::Error::nan_at(ctx));
+        return Err(nan_error(NanForm::Thrown, ctx));
     }
     Ok(alloc_number(arena, NumberValue::from_f64(1.0 / f)))
 }
@@ -202,10 +204,10 @@ fn variadic_div_mod<'a>(
     op: DivOp,
 ) -> Result<&'a DataValue<'a>> {
     let first_av = engine.dispatch_node(&args[0], ctx, arena)?;
-    let mut result = operand(first_av, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
+    let mut result = operand(first_av, engine).ok_or_else(|| nan_error(NanForm::Thrown, ctx))?;
     for (i, arg) in args.iter().skip(1).enumerate() {
         let av = engine.dispatch_node(arg, ctx, arena)?;
-        let n = operand(av, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
+        let n = operand(av, engine).ok_or_else(|| nan_error(NanForm::Thrown, ctx))?;
         if n.is_zero() {
             // First step: the accumulator is still the untouched `first_av`.
             let dividend_av = if i == 0 { Some(first_av) } else { None };
@@ -245,7 +247,7 @@ fn fold_divbyzero<'a>(
         }
     };
     if dividend_is_int && divisor.as_i64().is_some() {
-        return Err(crate::Error::nan_at(ctx));
+        return Err(nan_error(NanForm::Thrown, ctx));
     }
     divbyzero(ctx, arena, dividend, engine)
 }

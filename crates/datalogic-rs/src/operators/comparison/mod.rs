@@ -46,6 +46,7 @@ mod loose;
 
 use crate::arena::{ContextStack, DataValue, coerce_to_number_cfg};
 use crate::operators::meta::{EqOp, OrdOp};
+use crate::operators::{NanForm, nan_error};
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 use loose::loose_equals;
@@ -248,10 +249,10 @@ pub(crate) fn compare_equals(
             return if container_eq(left, right, ctx)? {
                 Ok(true)
             } else {
-                loose::incompatible(engine)
+                loose::incompatible(engine, ctx)
             };
         }
-        return loose_equals(left, right, engine);
+        return loose_equals(left, right, engine, ctx);
     }
 
     // Strict: direct equality. Two integers compare exactly (above 2^53
@@ -409,6 +410,7 @@ fn compare_ordered(
     right: &DataValue<'_>,
     op: OrdOp,
     engine: &Engine,
+    ctx: &mut ContextStack<'_>,
 ) -> Result<bool> {
     // Number vs Number — most common case. `NumberValue`'s order: two
     // integers exactly (an `f64` comparison is wrong above 2^53), an
@@ -460,7 +462,7 @@ fn compare_ordered(
     let is_collection =
         |av: &DataValue<'_>| matches!(av, DataValue::Array(_) | DataValue::Object(_));
     if is_collection(left) || is_collection(right) {
-        return Err(crate::Error::nan());
+        return Err(nan_error(NanForm::Thrown, ctx));
     }
 
     // String vs String — datetime-shaped that fell through.
@@ -479,7 +481,7 @@ fn compare_ordered(
     let is_num = |av: &DataValue<'_>| matches!(av, DataValue::Number(_));
     let is_str = |av: &DataValue<'_>| matches!(av, DataValue::String(_));
     if (is_num(left) && is_str(right)) || (is_num(right) && is_str(left)) {
-        return Err(crate::Error::nan());
+        return Err(nan_error(NanForm::Thrown, ctx));
     }
 
     Ok(false)
@@ -537,7 +539,7 @@ pub(crate) fn ordered<'a>(
     let mut prev_av = engine.dispatch_node(&args[0], ctx, arena)?;
     for arg in &args[1..] {
         let cur_av = engine.dispatch_node(arg, ctx, arena)?;
-        if !compare_ordered(prev_av, cur_av, op, engine)? {
+        if !compare_ordered(prev_av, cur_av, op, engine, ctx)? {
             return Ok(crate::arena::singletons::singleton_false());
         }
         prev_av = cur_av;
@@ -656,7 +658,7 @@ mod iso_fastpath_tests {
         let rv = DataValue::String(r);
         for op in ORD_OPS {
             assert_eq!(
-                compare_ordered(&lv, &rv, op, engine).unwrap(),
+                compare_ordered(&lv, &rv, op, engine, &mut test_ctx()).unwrap(),
                 parse_verdict_ord(l, r, op),
                 "ordered mismatch for {l:?} vs {r:?}"
             );
@@ -675,7 +677,7 @@ mod iso_fastpath_tests {
         let engine = Engine::new();
         let lt = |l: &str, r: &str| {
             let (lv, rv) = (DataValue::String(l), DataValue::String(r));
-            compare_ordered(&lv, &rv, OrdOp::Lt, &engine).unwrap()
+            compare_ordered(&lv, &rv, OrdOp::Lt, &engine, &mut test_ctx()).unwrap()
         };
         let eq = |l: &str, r: &str| {
             let (lv, rv) = (DataValue::String(l), DataValue::String(r));
@@ -707,7 +709,7 @@ mod iso_fastpath_tests {
         let engine = Engine::new();
         let lt = |l: &str, r: &str| {
             let (lv, rv) = (DataValue::String(l), DataValue::String(r));
-            compare_ordered(&lv, &rv, OrdOp::Lt, &engine).unwrap()
+            compare_ordered(&lv, &rv, OrdOp::Lt, &engine, &mut test_ctx()).unwrap()
         };
         let eq = |l: &str, r: &str| {
             let (lv, rv) = (DataValue::String(l), DataValue::String(r));

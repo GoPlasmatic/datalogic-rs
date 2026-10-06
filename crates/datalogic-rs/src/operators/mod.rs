@@ -95,6 +95,30 @@ pub(crate) mod tensor;
 #[cfg(test)]
 mod table_tests;
 
+/// The form a NaN failure surfaces as. 5.x keeps both: which one a site
+/// raises is observable (`try` catches either, but the error kind and the
+/// catch arm's payload differ), so unifying them is a v6 change.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum NanForm {
+    /// `Thrown({"type": "NaN"})`: arithmetic, ordering, duration division.
+    Thrown,
+    /// `InvalidArguments("NaN")`: loose equality between operands it cannot
+    /// compare, and a `slice` bound that is not an integer.
+    InvalidArguments,
+}
+
+/// Every NaN error a built-in operator raises comes from here, so the
+/// sites are in one list and a later unification is a one-line change.
+/// The thrown form takes the deferred fast lane inside a `try` (see
+/// [`crate::Error::nan_at`]); what a caller observes is the same.
+#[inline]
+pub(crate) fn nan_error(form: NanForm, ctx: &mut crate::arena::ContextStack<'_>) -> crate::Error {
+    match form {
+        NanForm::Thrown => crate::Error::nan_at(ctx),
+        NanForm::InvalidArguments => crate::Error::invalid_arguments(crate::error::NAN_ERROR),
+    }
+}
+
 /// The name of a value's type: what `type` reports for anything but a
 /// string or a datetime / duration sentinel object (which it classifies
 /// further), and what `throw` puts under `"type"` for a thrown scalar.
