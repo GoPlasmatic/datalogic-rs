@@ -246,5 +246,17 @@
     "rule": {"==": [{"var": "s"}, 5]},
     "data": {"s": "inf"},
     "error": {"type": "NaN"}
+  },
+  {
+    "description": "2^53 == \"9007199254740993\" is false (the string rounds to 2^53 as a float)",
+    "rule": {"==": [{"var": "a"}, "9007199254740993"]},
+    "data": {"a": 9007199254740992},
+    "result": false
+  },
+  {
+    "description": "5 == \"5.0\" is still true",
+    "rule": {"==": [{"var": "a"}, "5.0"]},
+    "data": {"a": 5},
+    "result": true
   }
 ]

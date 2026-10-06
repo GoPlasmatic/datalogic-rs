@@ -56,18 +56,24 @@ fn loose_equals_core(left: &DataValue<'_>, right: &DataValue<'_>) -> LooseEquals
         }
 
         // Number-String coercion. An integer against an integer string
-        // compares exactly, as two numbers do.
+        // compares exactly, as two numbers do: `f64` equality is exact
+        // below 2^53, and from 2^53 up a match is confirmed as integers. (An
+        // `f64` mismatch is always an integer mismatch too.)
         (DataValue::Number(n), DataValue::String(s))
-        | (DataValue::String(s), DataValue::Number(n)) => {
-            if let (Some(i), Ok(si)) = (n.as_i64(), s.parse::<i64>()) {
-                return if i == si { Equal } else { NotEqual };
-            }
-            match crate::arena::parse_finite(s) {
-                Some(s_f) if n.as_f64() == s_f => Equal,
-                Some(_) => NotEqual,
-                None => Incompatible,
-            }
-        }
+        | (DataValue::String(s), DataValue::Number(n)) => match crate::arena::parse_finite(s) {
+            Some(s_f) if n.as_f64() == s_f => match (n.as_i64(), s.parse::<i64>()) {
+                (Some(i), Ok(si)) if i.unsigned_abs() >= 1 << 53 => {
+                    if i == si {
+                        Equal
+                    } else {
+                        NotEqual
+                    }
+                }
+                _ => Equal,
+            },
+            Some(_) => NotEqual,
+            None => Incompatible,
+        },
 
         // Number-Bool coercion
         (DataValue::Number(n), DataValue::Bool(b)) | (DataValue::Bool(b), DataValue::Number(n)) => {
