@@ -307,4 +307,46 @@ final class Native
         }
         return $len > 0 ? FFI::string($ptr, $len) : '';
     }
+
+    /* --- native-handle ownership -------------------------------------- */
+
+    /**
+     * Addresses of the native handles a wrapper object currently owns
+     * (and will free). Wrapping a handle twice, as in
+     * `new Rule($other->handle())`, would free it twice.
+     *
+     * @var array<int, string>
+     */
+    private static array $owned = [];
+
+    /**
+     * Record that a wrapper now owns `$handle` and will free it; returns
+     * the address to pass to {@see Native::disown()} once it has.
+     *
+     * @internal
+     * @throws \InvalidArgumentException if another wrapper already owns it
+     */
+    public static function own(CData $handle, string $wrapper): int
+    {
+        $address = self::ffi()->cast('uintptr_t', $handle)->cdata;
+        if (isset(self::$owned[$address])) {
+            throw new \InvalidArgumentException(sprintf(
+                'this native handle is already owned by another %s; wrapping it again would free it twice',
+                self::$owned[$address],
+            ));
+        }
+        self::$owned[$address] = $wrapper;
+        return $address;
+    }
+
+    /**
+     * Forget an address recorded by {@see Native::own()}, after its
+     * handle has been freed.
+     *
+     * @internal
+     */
+    public static function disown(int $address): void
+    {
+        unset(self::$owned[$address]);
+    }
 }

@@ -25,10 +25,24 @@ use Goplasmatic\Datalogic\Internal\Native;
 final class Session
 {
     private ?CData $handle;
+    /** Address recorded by {@see Native::own()}, released on close. */
+    private int $address;
+    /**
+     * The engine that opened this session, set by {@see Engine}. The
+     * native session keeps calling the engine's custom operators after
+     * {@see Engine::close()}, so it holds the engine, and with it the
+     * operator callbacks, for as long as it lives.
+     */
+    private ?Engine $engine = null;
 
-    /** @internal */
+    /**
+     * @internal
+     * @throws \InvalidArgumentException if another Session already owns
+     *         `$handle`
+     */
     public function __construct(CData $handle)
     {
+        $this->address = Native::own($handle, 'Session');
         $this->handle = $handle;
     }
 
@@ -353,6 +367,7 @@ final class Session
         if ($this->handle !== null) {
             Native::ffi()->datalogic_session_free($this->handle);
             $this->handle = null;
+            Native::disown($this->address);
         }
     }
 

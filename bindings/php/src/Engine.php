@@ -25,10 +25,14 @@ use Goplasmatic\Datalogic\Internal\Native;
 class Engine
 {
     private ?CData $handle;
+    /** Address recorded by {@see Native::own()}, released on close. */
+    private int $address;
     /**
      * Retain Closure references for any custom operators registered on
      * this engine so PHP doesn't GC them while the C side still holds
-     * the function pointer.
+     * the function pointer. Kept after {@see Engine::close()}: every
+     * Rule, Session and TracedSession holds the engine, and their native
+     * handles keep calling these operators.
      *
      * @var list<callable>
      */
@@ -41,6 +45,7 @@ class Engine
         if ($handle === null) {
             throw new \RuntimeException('datalogic_engine_new returned NULL');
         }
+        $this->address = Native::own($handle, 'Engine');
         $this->handle = $handle;
     }
 
@@ -49,10 +54,16 @@ class Engine
      * native handle and adopt the builder's pinned callbacks.
      *
      * @param list<callable> $adoptedCallbacks
+     * @throws \InvalidArgumentException if another Engine already owns
+     *         `$handle`
      */
     public static function fromHandle(CData $handle, array $adoptedCallbacks = []): self
     {
+        // Claim the handle before the instance exists: a refused handle
+        // must leave no Engine behind whose destructor would run.
+        $address = Native::own($handle, 'Engine');
         $engine = (new \ReflectionClass(self::class))->newInstanceWithoutConstructor();
+        $engine->address = $address;
         $engine->handle = $handle;
         $engine->retainedCallbacks = $adoptedCallbacks;
         return $engine;
@@ -103,7 +114,25 @@ class Engine
         if ($rc !== Native::STATUS_OK) {
             throw DatalogicException::fromNative($rc, $err, 'compile failed');
         }
-        return new Rule($out);
+        return $this->adopt(new Rule($out));
+    }
+
+    /**
+     * Make `$wrapper` (a Rule, Session or TracedSession this engine just
+     * opened) hold this engine, whose custom operators its native handle
+     * keeps calling after {@see Engine::close()}.
+     *
+     * @template T of Rule|Session|TracedSession
+     * @param T $wrapper
+     * @return T
+     */
+    private function adopt(Rule|Session|TracedSession $wrapper): Rule|Session|TracedSession
+    {
+        $engine = $this;
+        (function () use ($engine): void {
+            $this->engine = $engine;
+        })->call($wrapper);
+        return $wrapper;
     }
 
     /** Compile `$ruleJson` in templating mode, whatever this engine's mode. */
@@ -236,7 +265,7 @@ class Engine
         if ($s === null) {
             throw new \RuntimeException('datalogic_engine_session returned NULL');
         }
-        return new Session($s);
+        return $this->adopt(new Session($s));
     }
 
     /** Open a {@see TracedSession} for traced evaluation. */
@@ -246,7 +275,7 @@ class Engine
         if ($s === null) {
             throw new \RuntimeException('datalogic_engine_traced_session returned NULL');
         }
-        return new TracedSession($s);
+        return $this->adopt(new TracedSession($s));
     }
 
     /** Construct a builder for engines with custom operators. */
@@ -261,8 +290,8 @@ class Engine
         if ($this->handle !== null) {
             Native::ffi()->datalogic_engine_free($this->handle);
             $this->handle = null;
+            Native::disown($this->address);
         }
-        $this->retainedCallbacks = [];
     }
 
     public function __destruct()

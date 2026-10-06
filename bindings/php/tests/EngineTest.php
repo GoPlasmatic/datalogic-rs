@@ -7,6 +7,7 @@ declare(strict_types=1);
 namespace Goplasmatic\Datalogic\Tests;
 
 use Goplasmatic\Datalogic\Engine;
+use Goplasmatic\Datalogic\Rule;
 use Goplasmatic\Datalogic\Exception\DatalogicException;
 use Goplasmatic\Datalogic\Exception\EvaluateException;
 use Goplasmatic\Datalogic\Exception\ParseException;
@@ -184,5 +185,45 @@ final class EngineTest extends TestCase
 
         $this->expectException(EvaluateException::class);
         $engine->apply('{"+":[null,1]}', '{}');
+    }
+
+    public function test_custom_operator_survives_engine_close_and_gc(): void
+    {
+        $engine = Engine::builder()
+            ->addOperator('triple', fn (string $args): string => (string) (json_decode($args)[0] * 3))
+            ->build();
+        $rule = $engine->compile('{"triple":[{"var":"n"}]}');
+        $session = $engine->openSession();
+        $traced = $engine->openTracedSession();
+        $engine->close();
+        unset($engine);
+        gc_collect_cycles();
+
+        self::assertSame('42', $rule->evaluate('{"n":14}'));
+        self::assertSame('42', $session->evaluate($rule, '{"n":14}'));
+        $run = $traced->evaluate('{"triple":[{"var":"n"}]}', '{"n":14}');
+        self::assertNull($run->error);
+        self::assertSame(42, $run->result);
+    }
+
+    public function test_wrapping_an_owned_handle_again_is_refused(): void
+    {
+        $engine = new Engine();
+        $rule = $engine->compile('{"var":"x"}');
+        try {
+            new Rule($rule->handle());
+            self::fail('expected InvalidArgumentException');
+        } catch (\InvalidArgumentException $ex) {
+            self::assertStringContainsString('already owned', $ex->getMessage());
+        }
+        try {
+            Engine::fromHandle($engine->handle());
+            self::fail('expected InvalidArgumentException');
+        } catch (\InvalidArgumentException $ex) {
+            self::assertStringContainsString('already owned', $ex->getMessage());
+        }
+        // The refused wrappers freed nothing: both originals still work.
+        self::assertSame('1', $rule->evaluate('{"x":1}'));
+        self::assertSame('3', $engine->apply('{"+":[1,2]}', '{}'));
     }
 }
