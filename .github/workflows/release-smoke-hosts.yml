@@ -1,0 +1,197 @@
+name: _release-smoke-hosts
+
+# Internal reusable workflow — called by release.yml's `smoke-hosts` job
+# once the JVM, .NET and PHP packages are built. Installs each packaged
+# artifact the way a consumer would (the JAR on a classpath, the .nupkg
+# from a package source, the Composer dist through a path repository) on
+# macOS (arm64) and Windows (x64), with no in-tree C ABI build to fall back
+# on, and runs one evaluation and one custom operator.
+#
+# Every other test of these bindings runs on linux-x64 against
+# bindings/c/target/release, so the macOS and Windows branches of each
+# native loader, and the per-platform directories staged into each
+# package, are exercised nowhere else.
+#
+# Not yet a publish gate: release.yml does not list it in publish-crate's
+# `needs`, so a failure here is reported without blocking a release.
+# Make it a gate once it has passed on a release.
+
+on:
+  workflow_call:
+
+jobs:
+  smoke:
+    name: ${{ matrix.host }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-latest]
+        host: [jvm, dotnet, php]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # The checkout supplies pom.xml (to resolve the JAR's dependencies);
+      # nothing in it is built, and bindings/c/target does not exist, so
+      # no loader can fall back on an in-tree library.
+      - uses: actions/checkout@v6
+
+      # ------------------------------------------------------------- JVM
+      - if: matrix.host == 'jvm'
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '25'
+
+      - if: matrix.host == 'jvm'
+        name: Download JARs
+        uses: actions/download-artifact@v8
+        with:
+          name: jvm-jars
+          path: jvm-jars
+
+      - if: matrix.host == 'jvm'
+        name: Evaluate through the packaged JAR
+        run: |
+          set -euo pipefail
+          jar=$(ls jvm-jars/datalogic-*.jar | grep -Ev '(sources|javadoc)' | head -1)
+          echo "Testing $jar"
+          # Relative output path: Maven resolves it against bindings/jvm/,
+          # and it keeps a POSIX-style path out of the Windows JVM.
+          mvn -B -q -f bindings/jvm/pom.xml dependency:build-classpath -Dmdep.outputFile=deps-cp.txt
+          sep=':'; [ "$RUNNER_OS" = Windows ] && sep=';'
+          mkdir -p smoke
+          cat > smoke/Smoke.java <<'EOF'
+          import com.goplasmatic.datalogic.Engine;
+
+          public class Smoke {
+              static void check(String got, String want) {
+                  if (!want.equals(got)) {
+                      throw new RuntimeException("expected " + want + ", got " + got);
+                  }
+                  System.out.println("ok " + got);
+              }
+
+              public static void main(String[] args) {
+                  try (Engine engine = Engine.builder()
+                          .addOperator("double", argsJson -> {
+                              String n = argsJson.substring(1, argsJson.length() - 1).trim();
+                              return String.valueOf(Long.parseLong(n) * 2);
+                          })
+                          .build()) {
+                      check(engine.apply("{\"+\": [1, 2]}", "{}"), "3");
+                      check(engine.apply("{\"double\": [21]}", "{}"), "42");
+                  }
+              }
+          }
+          EOF
+          # No -Ddatalogic.library.path: the loader must extract the native
+          # library from the JAR's <os-arch>/ resources.
+          java --enable-native-access=ALL-UNNAMED -cp "${jar}${sep}$(cat bindings/jvm/deps-cp.txt)" smoke/Smoke.java
+
+      # ------------------------------------------------------------ .NET
+      - if: matrix.host == 'dotnet'
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - if: matrix.host == 'dotnet'
+        name: Download .nupkg
+        uses: actions/download-artifact@v8
+        with:
+          name: dotnet-nupkg
+          path: nupkg
+
+      - if: matrix.host == 'dotnet'
+        name: Evaluate through the packaged .nupkg
+        run: |
+          set -euo pipefail
+          pkg=$(ls nupkg/Goplasmatic.Datalogic.*.nupkg | grep -v '\.snupkg$' | head -1)
+          version=$(basename "$pkg" .nupkg); version=${version#Goplasmatic.Datalogic.}
+          echo "Testing $pkg ($version)"
+          dotnet new console -o smoke --framework net10.0
+          cd smoke
+          dotnet new nugetconfig
+          dotnet nuget add source "$GITHUB_WORKSPACE/nupkg" --name local --configfile nuget.config
+          dotnet add package Goplasmatic.Datalogic --version "$version"
+          cat > Program.cs <<'EOF'
+          using System.Globalization;
+          using System.Text.Json.Nodes;
+          using Goplasmatic.Datalogic;
+
+          using var engine = Engine.Builder()
+              .AddOperator("double", argsJson =>
+              {
+                  var n = JsonNode.Parse(argsJson)![0]!.GetValue<double>();
+                  return (n * 2).ToString(CultureInfo.InvariantCulture);
+              })
+              .Build();
+
+          Check(engine.Apply("""{"+": [1, 2]}""", "{}"), "3");
+          Check(engine.Apply("""{"double": [21]}""", "{}"), "42");
+
+          static void Check(string got, string want)
+          {
+              if (got != want) throw new Exception($"expected {want}, got {got}");
+              Console.WriteLine($"ok {got}");
+          }
+          EOF
+          # The native library comes from the package's runtimes/<rid>/native/.
+          dotnet run -c Release
+
+      # ------------------------------------------------------------- PHP
+      - if: matrix.host == 'php'
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.4'
+          extensions: ffi, json
+          coverage: none
+
+      - if: matrix.host == 'php'
+        name: Download PHP distribution
+        uses: actions/download-artifact@v8
+        with:
+          name: php-dist
+          path: php-dist
+
+      - if: matrix.host == 'php'
+        name: Evaluate through the packaged Composer dist
+        run: |
+          set -euo pipefail
+          py=$(command -v python3 || command -v python)
+          "$py" -m zipfile -e php-dist/goplasmatic-datalogic-php.zip php-pkg
+          mkdir -p smoke && cd smoke
+          # A path repository with symlinks off copies the package into
+          # vendor/, as installing it from Packagist would.
+          cat > composer.json <<'EOF'
+          {
+              "repositories": [
+                  {"type": "path", "url": "../php-pkg/goplasmatic-datalogic", "options": {"symlink": false}}
+              ],
+              "require": {"goplasmatic/datalogic": "*@dev"},
+              "minimum-stability": "dev"
+          }
+          EOF
+          composer install --no-interaction --no-progress
+          cat > smoke.php <<'EOF'
+          <?php
+          declare(strict_types=1);
+          require __DIR__ . '/vendor/autoload.php';
+          use Goplasmatic\Datalogic\Engine;
+
+          function check(string $got, string $want): void {
+              if ($got !== $want) {
+                  throw new RuntimeException("expected $want, got $got");
+              }
+              echo "ok $got", PHP_EOL;
+          }
+
+          $engine = Engine::builder()
+              ->addOperator('double', fn (string $args): string => json_encode(json_decode($args, true)[0] * 2))
+              ->build();
+          check($engine->apply('{"+": [1, 2]}', '{}'), '3');
+          check($engine->apply('{"double": [21]}', '{}'), '42');
+          EOF
+          # The native library comes from the package's lib/<os>-<arch>/.
+          php smoke.php

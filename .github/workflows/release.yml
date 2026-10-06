@@ -7,14 +7,17 @@ name: Release
 #
 #   validate
 #      │
+#      ├─ ci             (the whole of ci.yml, against the tagged commit)
 #      ├─ build-wasm
 #      ├─ build-ui (needs build-wasm)
 #      ├─ python-build-wheels (matrix)
 #      ├─ python-build-sdist
 #      ├─ python-test
 #      ├─ go-build-staticlib (matrix)
-#      └─ node-build-prebuild (matrix)
-#      ↓  all builds + tests green
+#      ├─ node-build-prebuild (matrix)
+#      └─ smoke-hosts    (packaged JVM/.NET/PHP on macOS + Windows;
+#                         reported, not yet a gate)
+#      ↓  ci + all builds + tests green
 #   publish-crate              ← single chokepoint; nothing publishes if any build above fails
 #      │
 #      ├─ publish-wasm   (downloads build-wasm artifact, npm publish — no rebuild)
@@ -52,8 +55,8 @@ on:
   # PyPI maintenance) caused a partial release. Trigger via the Actions
   # UI ("Run workflow" → select tag) or:
   #   gh workflow run release.yml --ref v5.0.0
-  # The validate job's tag-match check enforces that the chosen ref is
-  # actually a `v*` tag whose name matches the core's Cargo.toml version.
+  # The validate job refuses a ref that is not a tag, and a tag whose name
+  # does not match the core's Cargo.toml version.
   workflow_dispatch:
 
 # Cancel-in-progress is deliberately OFF: a half-cancelled release is
@@ -100,6 +103,11 @@ jobs:
 
       - name: Validate tag matches version
         run: |
+          # A manual dispatch can pick any ref; only a tag may release.
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            echo "::error::Releases run from a v* tag; $GITHUB_REF is a $GITHUB_REF_TYPE"
+            exit 1
+          fi
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           VERSION="${{ steps.version.outputs.version }}"
           if [ "$TAG_VERSION" != "$VERSION" ]; then
@@ -193,20 +201,39 @@ jobs:
           fi
           echo "CHANGELOG.md entry: ${HEADER} ✓"
 
-      # Same composite as ci.yml's check job — a release must not validate
-      # against a narrower lint surface than a PR does, and sharing one
-      # action makes that structural instead of a mirrored block to keep in
-      # sync. Also sets up the toolchain and cache the test step below uses.
-      - name: Lint (fmt + clippy, every manifest)
-        uses: ./.github/actions/rust-lint
+      # Lint, tests, the feature matrix, MSRV, minimal versions, docs,
+      # examples, cargo-deny and every binding's tests run in the `ci` job
+      # below, which is ci.yml itself. What is left here is what only a
+      # release needs.
 
-      - name: Run tests
-        # `--all-features` is required: most integration tests are gated
-        # behind `serde_json` and the JSONLogic suite runner needs
-        # `templating`. Without it, those tests silently skip and the
-        # step "passes" without exercising them. Matches the
-        # `cargo test --workspace --all-features` in ci.yml's check job.
-        run: cargo test --workspace --all-features
+      # PR CI only warns when a conformance-count quote drifts; a release
+      # must not ship one. `scripts/check-stats.sh --write` fixes them.
+      - name: Check quoted stats (strict)
+        run: bash scripts/check-stats.sh --strict
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+
+      - uses: ./.github/actions/install-cargo-tools
+        with:
+          cargo-semver-checks: 'true'
+
+      # ci.yml's semver job only rejects breaking changes. This one also
+      # holds the version bump to the change: an API addition needs a
+      # minor release, so a patch tag carrying one fails here, before
+      # anything is published.
+      - name: Semver check against the last release (version-aware)
+        run: cargo semver-checks check-release -p datalogic-rs --all-features
+
+  # The whole of ci.yml against the tagged commit, through workflow_call,
+  # so a release passes every gate a PR does. Previously validate ran only
+  # lint and the all-features tests, and skipped the feature matrix, MSRV,
+  # minimal versions, `cargo doc -D warnings`, the no-default-features run
+  # and the examples.
+  ci:
+    name: CI
+    needs: validate
+    uses: ./.github/workflows/ci.yml
 
   publish-crate:
     name: Publish core to crates.io
@@ -218,6 +245,7 @@ jobs:
     # them fails, this gate never opens and no bindings publish.
     needs:
       - validate
+      - ci
       - build-wasm
       - build-ui
       - build-python
@@ -263,7 +291,9 @@ jobs:
         # does (npm view, --skip-duplicate, skip-existing, etc.).
         run: |
           set -o pipefail
-          if cargo publish --manifest-path crates/datalogic-rs/Cargo.toml 2>&1 | tee /tmp/cargo-publish.log; then
+          # `--locked`: the verification build uses the committed
+          # resolution, the one every gate above tested.
+          if cargo publish --locked --manifest-path crates/datalogic-rs/Cargo.toml 2>&1 | tee /tmp/cargo-publish.log; then
             exit 0
           fi
           if grep -q 'already exists on crates.io index' /tmp/cargo-publish.log; then
@@ -466,6 +496,16 @@ jobs:
     needs: [validate, build-c-cdylib]
     uses: ./.github/workflows/release-build-php.yml
 
+  # Installs the packaged JAR, .nupkg and Composer dist on macOS and
+  # Windows and runs one evaluation and one custom operator through each,
+  # with no in-tree library to fall back on. Deliberately not in
+  # publish-crate's `needs` yet: it reports without blocking until it has
+  # passed on a release.
+  smoke-hosts:
+    name: Smoke-test packaged hosts (macOS, Windows)
+    needs: [build-dotnet, build-jvm, build-php]
+    uses: ./.github/workflows/release-smoke-hosts.yml
+
   # ============================================================ Publish phase
   # Everything below runs only after publish-crate succeeds — and
   # publish-crate runs only when every `build-*` is green. The
@@ -497,16 +537,10 @@ jobs:
           # so merging puts every platform dir directly under artifacts/.
           merge-multiple: true
 
+      # The shared mapper fails if any platform's staticlib is missing,
+      # so the module tag never ships without one.
       - name: Stage staticlibs into bindings/go/lib/
-        run: |
-          mkdir -p bindings/go/lib
-          for dir in artifacts/*/; do
-            name=$(basename "$dir")
-            mkdir -p "bindings/go/lib/${name}"
-            cp "${dir}/libdatalogic_c.a" "bindings/go/lib/${name}/"
-          done
-          echo "Staged platform directories:"
-          ls bindings/go/lib/
+        run: bash scripts/stage-natives.sh go artifacts
 
       # The cbindgen-generated header is platform-agnostic — it has no
       # #ifdef'd content — so we generate it once on this Linux runner
@@ -569,7 +603,7 @@ jobs:
 
       - name: Install bindings/node deps
         working-directory: bindings/node
-        run: npm ci || npm install
+        run: npm ci
 
       - name: Download all prebuilds
         uses: actions/download-artifact@v8
@@ -914,6 +948,7 @@ jobs:
     # so an empty release blocks every downstream C/C++/Go consumer.
     needs:
       - validate
+      - ci
       - build-wasm
       - build-ui
       - build-python
