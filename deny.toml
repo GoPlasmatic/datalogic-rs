@@ -62,13 +62,10 @@ ignore = true
 # INFRA-33), but they are not errors.
 multiple-versions = "warn"
 # A `*` requirement can resolve to anything. Path dependencies between our
-# own crates are fine, but cargo-deny exempts them only in crates marked
-# `publish = false`, and the four binding crates (which never go to
-# crates.io; they ship through npm, PyPI and the C artifacts) are not
-# marked. Their `datalogic-bind = { path = ... }` lines would fail a
-# `deny` here, so wildcards warn until those manifests say
-# `publish = false`.
-wildcards = "warn"
+# own crates are fine: cargo-deny exempts them in crates marked
+# `publish = false`, which every crate depending on the unpublished
+# `datalogic-bind` is.
+wildcards = "deny"
 allow-wildcard-paths = true
 
 [sources]

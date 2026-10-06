@@ -19,6 +19,13 @@ on:
         type: boolean
         default: true
 
+# The Rust release that builds the shipped artifacts, pinned so a tag
+# rebuilt later produces the same binaries and a new stable cannot change
+# a release unreviewed. Keep it the same in every release-build-*.yml, and
+# at or above `rust-version` in the root Cargo.toml.
+env:
+  RELEASE_RUST: '1.98.1'
+
 jobs:
   staticlib:
     name: Go staticlib (${{ matrix.target.os }}/${{ matrix.target.arch }})
@@ -52,6 +59,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
+          toolchain: ${{ env.RELEASE_RUST }}
           targets: ${{ matrix.target.cargo_target }}
 
       - uses: actions/setup-go@v6
@@ -90,7 +98,7 @@ jobs:
       # took darwin/arm64 from about 80 MB to about 13 MB; see the
       # profile's comment in bindings/c/Cargo.toml.
       - name: Build C ABI staticlib
-        run: cargo rustc --lib --profile go-release --crate-type staticlib --manifest-path bindings/c/Cargo.toml --target ${{ matrix.target.cargo_target }}
+        run: cargo rustc --locked --lib --profile go-release --crate-type staticlib --manifest-path bindings/c/Cargo.toml --target ${{ matrix.target.cargo_target }}
 
       # Stage straight into the package's lib/include layout so the
       # validation step uses exactly the paths the cgo build tags reference.
