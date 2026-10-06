@@ -12,6 +12,9 @@ edition = "2024"
 description = "C ABI for the datalogic-rs JSONLogic engine — shared FFI surface for Go, PHP, JVM, and other C-FFI consumers"
 license = "Apache-2.0"
 repository = "https://github.com/GoPlasmatic/datalogic-rs"
+# Consumed in-tree by the Go, JVM, .NET and PHP bindings, never from
+# crates.io (and it depends on the unpublished `datalogic-bind`).
+publish = false
 
 [lib]
 # `cdylib`    — the importable shared library (`.so`/`.dylib`/`.dll`)
@@ -25,14 +28,16 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 name = "datalogic_c"
 
 [dependencies]
-# Feature set mirrors `bindings/python` so a rule that runs from Python
-# also runs through the C ABI without surprise. `trace` is wired up via
-# `datalogic_traced_session_*` in `src/traced_session.rs`; `flagd` exposes
-# `fractional` + `sem_ver` to every downstream consumer (Go, Java, .NET,
-# PHP).
 # Wire formats and plumbing shared with the other bindings.
 datalogic-bind = { path = "../../crates/datalogic-bind" }
-datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features = [
+# Feature set mirrors `bindings/python` so a rule that runs from Python
+# also runs through the C ABI without surprise. `all-operators` gives
+# every downstream consumer (Go, Java, .NET, PHP) every operator family,
+# flagd's `fractional` and `sem_ver` among them; `trace` is wired up via
+# `datalogic_traced_session_*` in `src/traced_session.rs`. The version is
+# the floor this crate's API use needs (the 5.8 introspection and
+# per-compile modes).
+datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.8", features = [
     "serde_json",
     "all-operators",
     "trace",
