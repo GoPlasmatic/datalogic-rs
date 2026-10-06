@@ -226,4 +226,21 @@ final class EngineTest extends TestCase
         self::assertSame('1', $rule->evaluate('{"x":1}'));
         self::assertSame('3', $engine->apply('{"+":[1,2]}', '{}'));
     }
+
+    public function test_unbuilt_builder_is_freed_when_dropped(): void
+    {
+        for ($i = 0; $i < 10; $i++) {
+            try {
+                Engine::builder()
+                    ->addOperator('one', fn (string $args): string => '1')
+                    ->setConfigJson('{"no_such_key":1}');
+                self::fail('expected DatalogicException');
+            } catch (DatalogicException) {
+                // the builder is dropped here; __destruct frees it
+            }
+        }
+        gc_collect_cycles();
+        $engine = Engine::builder()->addOperator('one', fn (string $args): string => '1')->build();
+        self::assertSame('1', $engine->apply('{"one":[]}', '{}'));
+    }
 }

@@ -266,6 +266,18 @@ final class EngineBuilder
         return Engine::fromHandle($enginePtr, $this->pinned);
     }
 
+    /**
+     * Free the native builder of a builder that never reached
+     * {@see EngineBuilder::build()}, for instance after a setter threw.
+     */
+    public function __destruct()
+    {
+        if ($this->handle !== null) {
+            Native::ffi()->datalogic_engine_builder_free($this->handle);
+            $this->handle = null;
+        }
+    }
+
     private function ensureFresh(): void
     {
         if ($this->consumed) {
