@@ -4,7 +4,12 @@ Dev-only benchmark harness for `datalogic-rs`. **For the latest captured
 matrix and headline numbers, see [`BENCHMARK.md`](./BENCHMARK.md)**. Link
 to that file from other docs rather than re-quoting cells inline.
 
-Four binaries share a common suite loader and reporter (`src/lib.rs`):
+Five binaries share a common suite loader and reporter (`src/lib.rs`).
+The loader is the core tests' own (`crates/datalogic-rs/tests/common/suite.rs`,
+included by path): a case that sets `templating` or
+`template_key_escape` compiles on an engine built that way, and a suite
+that fails to parse stops the run instead of dropping out of the
+geomean.
 
 | Binary          | Purpose                                                                                |
 |-----------------|----------------------------------------------------------------------------------------|
@@ -12,6 +17,7 @@ Four binaries share a common suite loader and reporter (`src/lib.rs`):
 | `compare`       | Cross-library **matrix**: runs every suite against every available subject (datalogic-rs API tiers, gated Rust crates, JS/WASM via Node) and prints a markdown table of avg ns/op. |
 | `boundary_core` | The rust-core runner for the per-binding boundary benchmark under [`boundary/`](./boundary); emits the same JSON-lines schema as the other runtimes' runners. |
 | `profile_macro` | Sampling-profiler feeder (samply / Instruments): hammers one macro suite in a hot loop so the profile shows only that suite's evaluation path. |
+| `projection`    | Read projection: what one evaluation costs when a rule reads a few fields of a large owned or `serde_json` context, with and without projection. |
 
 A separate area, [`boundary/`](./boundary), measures the opposite of the
 matrix: **per-binding boundary cost**, what a real caller pays per

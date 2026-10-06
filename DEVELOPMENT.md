@@ -396,11 +396,16 @@ Promotion sequencing, launch checklists, and adoption metrics live in
 
 ## `tools/benchmark`: performance harness
 
-Dev-only, never published. Four binaries share `src/lib.rs`: `self`
+Dev-only, never published. Five binaries share `src/lib.rs`: `self`
 (regression baseline), `compare` (cross-library matrix), `boundary_core`
 (the rust-core runner for the per-binding boundary benchmark under
-`tools/benchmark/boundary/`), and `profile_macro` (hammers one macro
-suite in a hot loop as a feeder for samply / Instruments):
+`tools/benchmark/boundary/`), `profile_macro` (hammers one macro
+suite in a hot loop as a feeder for samply / Instruments), and
+`projection` (evaluation over a large context, with and without read
+projection). Suites are read through the core tests' shared loader
+(`crates/datalogic-rs/tests/common/suite.rs`), so each case compiles on
+the engine its `templating` / `template_key_escape` fields ask for, and
+a suite that fails to parse stops the run:
 
 ```bash
 # datalogic-rs alone, fast arena path
@@ -416,9 +421,13 @@ cargo run --release -p datalogic-bench --bin boundary_core
 
 # Profiler feeder: <suite-substring> [seconds], one macro suite in a hot loop
 cargo run --release -p datalogic-bench --bin profile_macro -- checkout 10
+
+# Read projection over a large context
+cargo run --release -p datalogic-bench --bin projection
 ```
 
-Reports land in `tools/benchmark/output/` (gitignored). To add another
+Reports land in `tools/benchmark/output/` (gitignored), labelled with
+the `datalogic-rs` version they measured (`report-self-v5.8.0-*.json`). To add another
 JSONLogic implementation as a comparison subject, see
 [tools/benchmark/README.md](./tools/benchmark/README.md).
 

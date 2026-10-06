@@ -93,7 +93,9 @@ The repo root holds a Cargo workspace with three members:
 - `tools/benchmark` (dev-only, `publish = false`): `self`
   (single-engine regression baseline), `compare` (cross-library matrix),
   `boundary_core` (rust-core runner for the per-binding boundary
-  benchmark), `profile_macro` (hot-loop feeder for sampling profilers).
+  benchmark), `profile_macro` (hot-loop feeder for sampling profilers),
+  `projection` (the cost of evaluating with and without read
+  projection over a large context).
 
 Each Rust-side binding (`bindings/wasm`, `bindings/node`,
 `bindings/python`, `bindings/c`) declares its own `[workspace]` table
@@ -159,16 +161,19 @@ opt in via their dependency line.
 | `wasm-clock`      | JS-host clock for `now` on `wasm32-unknown-unknown` (forwards to `chrono/wasmbind`). Deliberately opt-in: it links JS imports that non-JS wasm runtimes (wasmtime, wazero, Chicory) cannot satisfy (issue #47) | WASM only. Never enable when the module runs outside a JS host |
 | `tensor`          | datavalue's `Tensor` value (dtype + shape + row-major byte buffer) and 20 marshalling-only operators over it. Arithmetic-free by design: every operator's cost is proportional to the data it moves, which is what lets `budget` price it honestly. No new dependency; crosses JSON as the tagged `{"tensor": {..}}` form, so the text-returning bindings carry it with no FFI change | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit), `benchmark` |
 | `tensor-half`     | Lifts the `f16` / `bf16` restriction on the element-wise tensor operators (the byte-moving ones already work on every dtype). Pulls in `half` through datavalue | Opt-in per Rust consumer; not enabled in any binding |
-| `budget`          | Per-evaluation operation counter with a hard abort: `EvaluationConfig::ops_budget`, `Engine::evaluate_metered` / `Session::eval_metered`, `EvalContext::charge`, and `ErrorKind::BudgetExceeded`. Costs ~3.6% geomean when compiled in and unset (22.75 -> 23.56 ns/op on the self benchmark), which is why it is a flag | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit) |
+| `budget`          | Per-evaluation operation counter with a hard abort: `EvaluationConfig::ops_budget`, `Engine::evaluate_metered` / `Session::eval_metered`, `EvalContext::charge`, and `ErrorKind::BudgetExceeded`. Compiled in and unset, it costs about 3% on the self benchmark's micro geomean (+3.6% when it landed, 22.75 -> 23.56 ns/op; +2.8% measured on 5.8, with `distinct` and `map` near +10%), which is why it is a flag | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit) |
+| `all-operators`   | Umbrella: every operator family at once (`datetime`, `error-handling`, the five `ext-*`, `flagd`, `tensor`). Adds no code of its own. `operator_names_test` checks that it lists every family in the operator table, so a new family is one entry here | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit), `benchmark`, `datalogic-bind` (dev) |
 
 The non-Rust bindings (Go, JVM, .NET, PHP) inherit whatever feature set
 `bindings/c` is compiled with, since they don't have their own Cargo
 manifest. To turn an operator family on or off for those bindings, edit
 `bindings/c/Cargo.toml` and rebuild the cdylib.
 
-The `datalogic-bench` crate enables `serde_json` because it reads the
-JSON test-suite files via `serde_json::Value`; it does not need
-`templating`.
+The `datalogic-bench` crate enables `serde_json` (it reads the JSON
+suite files via `serde_json::Value`), `templating` (suite cases that set
+`templating` compile on a templating engine, as in the conformance
+runner) and `all-operators` (so every suite runs). It does not enable
+`trace`, `budget`, `tensor-half` or `wasm-clock`.
 
 ## Where things live
 
