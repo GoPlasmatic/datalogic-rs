@@ -122,8 +122,9 @@ try (Session session = engine.openSession()) {
 ```
 
 Open one session per thread; a `Session` is not thread-safe. Every
-public type implements `AutoCloseable`, so use try-with-resources to
-avoid leaking native handles.
+handle type implements `AutoCloseable`; use try-with-resources to free
+native memory promptly. A handle that is never closed is freed by a
+`java.lang.ref.Cleaner` once it becomes unreachable.
 
 ## Data handles (parse once, evaluate many)
 
@@ -310,7 +311,10 @@ try (Engine engine = new Engine()) {
 | `DataHandle` | Parse once; share across threads          |
 | `Session`    | One per worker thread; never share        |
 
-`TracedSession` is thread-safe as well.
+`TracedSession` is thread-safe as well. `close()` is idempotent and safe
+to call from several threads at once: exactly one call frees the native
+handle. Closing a handle while another thread is still using it is not
+supported; finish that work first.
 
 ## Tracing
 

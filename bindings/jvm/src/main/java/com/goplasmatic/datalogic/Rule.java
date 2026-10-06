@@ -12,23 +12,23 @@ import java.lang.ref.Reference;
  * A compiled JSONLogic rule, ready to evaluate against data. Safe to
  * share across threads — each {@link #evaluate(String)} uses its own
  * short-lived arena. For tight loops, use a {@link Session} per thread.
+ * A rule that is never closed is released by a
+ * {@link java.lang.ref.Cleaner} once it is unreachable.
  */
 public final class Rule implements AutoCloseable {
-    private volatile MemorySegment handle;
+    private final NativeHandle handle;
     // Keeps the owning engine's custom-operator stubs reachable: rules
     // hold an Arc on the Rust engine and may dispatch Java operators
     // even after Engine.close().
     private final Engine owner;
 
     Rule(MemorySegment handle, Engine owner) {
-        this.handle = handle;
+        this.handle = new NativeHandle(this, handle, DatalogicNative.RULE_FREE, "Rule");
         this.owner = owner;
     }
 
     MemorySegment handle() {
-        MemorySegment h = handle;
-        if (h == null) throw new IllegalStateException("Rule is closed");
-        return h;
+        return handle.get();
     }
 
     /**
@@ -105,17 +105,14 @@ public final class Rule implements AutoCloseable {
         }
     }
 
+    /**
+     * Release the native rule. Idempotent and safe to call from several
+     * threads at once, but not while another thread is still evaluating
+     * this rule.
+     */
     @Override
     public void close() {
-        MemorySegment h = handle;
-        if (h != null) {
-            handle = null;
-            try {
-                DatalogicNative.RULE_FREE.invokeExact(h);
-            } catch (Throwable t) {
-                throw DatalogicException.propagate(t);
-            }
-        }
+        handle.close();
         Reference.reachabilityFence(owner);
     }
 }

@@ -13,7 +13,11 @@ import java.util.List;
 /**
  * A JSONLogic compile/evaluate engine. Wraps a shared
  * {@code Arc<datalogic_rs::Engine>} on the Rust side and is safe to
- * share across threads. {@link #close()} releases the native handle.
+ * share across threads. {@link #close()} releases the native handle; an
+ * engine that is never closed is released by a {@link java.lang.ref.Cleaner}
+ * once it is unreachable. {@code close()} is idempotent and safe to call
+ * from several threads at once, but not while another thread is still
+ * using the engine.
  *
  * <pre>
  * try (Engine engine = new Engine()) {
@@ -22,7 +26,7 @@ import java.util.List;
  * </pre>
  */
 public class Engine implements AutoCloseable {
-    private volatile MemorySegment handle;
+    private final NativeHandle handle;
     // Custom-operator upcall stubs live in an automatic arena; keep the
     // arena (and the bound bridges) strongly reachable for as long as
     // the engine — and anything compiled from it — is, so the native
@@ -47,7 +51,7 @@ public class Engine implements AutoCloseable {
         if (handle == null || handle.address() == 0) {
             throw new DatalogicException("datalogic_engine_new returned null", null, null, null);
         }
-        this.handle = handle;
+        this.handle = new NativeHandle(this, handle, DatalogicNative.ENGINE_FREE, "Engine");
         this.callbackArena = callbackArena;
         if (adoptedCallbacks != null) {
             retainedCallbacks.addAll(adoptedCallbacks);
@@ -75,9 +79,7 @@ public class Engine implements AutoCloseable {
     }
 
     MemorySegment handle() {
-        MemorySegment h = handle;
-        if (h == null) throw new IllegalStateException("Engine is closed");
-        return h;
+        return handle.get();
     }
 
     /**
@@ -113,6 +115,8 @@ public class Engine implements AutoCloseable {
                 throw DatalogicException.fromNative(status, errSlot, "compile failed");
             }
             return new Rule(out.get(ValueLayout.ADDRESS, 0), this);
+        } finally {
+            Reference.reachabilityFence(this);
         }
     }
 
@@ -171,6 +175,8 @@ public class Engine implements AutoCloseable {
                 throw DatalogicException.fromNative(status, errSlot, "check failed");
             }
             return DatalogicNative.takeOwnedBuf(buf);
+        } finally {
+            Reference.reachabilityFence(this);
         }
     }
 
@@ -192,6 +198,8 @@ public class Engine implements AutoCloseable {
                 throw DatalogicException.fromNative(status, errSlot, "operators failed");
             }
             return DatalogicNative.takeOwnedBuf(buf);
+        } finally {
+            Reference.reachabilityFence(this);
         }
     }
 
@@ -217,6 +225,8 @@ public class Engine implements AutoCloseable {
                 throw DatalogicException.fromNative(status, errSlot, "truthy failed");
             }
             return out.get(ValueLayout.JAVA_INT, 0) != 0;
+        } finally {
+            Reference.reachabilityFence(this);
         }
     }
 
@@ -261,6 +271,8 @@ public class Engine implements AutoCloseable {
             s = (MemorySegment) DatalogicNative.ENGINE_SESSION.invokeExact(handle());
         } catch (Throwable t) {
             throw DatalogicException.propagate(t);
+        } finally {
+            Reference.reachabilityFence(this);
         }
         if (s.address() == 0) {
             throw new DatalogicException("datalogic_engine_session returned null", null, null, null);
@@ -280,6 +292,8 @@ public class Engine implements AutoCloseable {
             s = (MemorySegment) DatalogicNative.ENGINE_TRACED_SESSION.invokeExact(handle());
         } catch (Throwable t) {
             throw DatalogicException.propagate(t);
+        } finally {
+            Reference.reachabilityFence(this);
         }
         if (s.address() == 0) {
             throw new DatalogicException("datalogic_engine_traced_session returned null", null, null, null);
@@ -292,15 +306,7 @@ public class Engine implements AutoCloseable {
 
     @Override
     public void close() {
-        MemorySegment h = handle;
-        if (h != null) {
-            handle = null;
-            try {
-                DatalogicNative.ENGINE_FREE.invokeExact(h);
-            } catch (Throwable t) {
-                throw DatalogicException.propagate(t);
-            }
-        }
+        handle.close();
         // retainedCallbacks / callbackArena stay referenced by this
         // object (and by rules/sessions created from it) — rules hold an
         // Arc on the Rust engine and may still dispatch custom

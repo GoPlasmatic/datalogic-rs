@@ -20,20 +20,18 @@ import java.lang.ref.Reference;
 public final class TracedSession implements AutoCloseable {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private volatile MemorySegment handle;
+    private final NativeHandle handle;
     // Keeps the owning engine's custom-operator stubs reachable while a
     // traced evaluation (which may dispatch into Java) is in flight.
     private final Engine owner;
 
     TracedSession(MemorySegment handle, Engine owner) {
-        this.handle = handle;
+        this.handle = new NativeHandle(this, handle, DatalogicNative.TRACED_SESSION_FREE, "TracedSession");
         this.owner = owner;
     }
 
     private MemorySegment handle() {
-        MemorySegment h = handle;
-        if (h == null) throw new IllegalStateException("TracedSession is closed");
-        return h;
+        return handle.get();
     }
 
     /**
@@ -94,17 +92,15 @@ public final class TracedSession implements AutoCloseable {
         }
     }
 
+    /**
+     * Release the native traced session. Idempotent and safe to call from
+     * several threads at once, but not while another thread is still
+     * evaluating through it. A traced session that is never closed is
+     * released by a {@link java.lang.ref.Cleaner} once it is unreachable.
+     */
     @Override
     public void close() {
-        MemorySegment h = handle;
-        if (h != null) {
-            handle = null;
-            try {
-                DatalogicNative.TRACED_SESSION_FREE.invokeExact(h);
-            } catch (Throwable t) {
-                throw DatalogicException.propagate(t);
-            }
-        }
+        handle.close();
         Reference.reachabilityFence(owner);
     }
 }

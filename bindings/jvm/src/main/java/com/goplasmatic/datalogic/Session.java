@@ -22,20 +22,18 @@ import java.util.List;
  * callers never observe the borrow.
  */
 public final class Session implements AutoCloseable {
-    private MemorySegment handle;
+    private final NativeHandle handle;
     // Keeps the owning engine's custom-operator stubs reachable while
     // evaluations (which may dispatch into Java) are in flight.
     private final Engine owner;
 
     Session(MemorySegment handle, Engine owner) {
-        this.handle = handle;
+        this.handle = new NativeHandle(this, handle, DatalogicNative.SESSION_FREE, "Session");
         this.owner = owner;
     }
 
     private MemorySegment handle() {
-        MemorySegment h = handle;
-        if (h == null) throw new IllegalStateException("Session is closed");
-        return h;
+        return handle.get();
     }
 
     /**
@@ -327,6 +325,8 @@ public final class Session implements AutoCloseable {
             DatalogicNative.SESSION_RESET.invokeExact(handle());
         } catch (Throwable t) {
             throw DatalogicException.propagate(t);
+        } finally {
+            Reference.reachabilityFence(this);
         }
     }
 
@@ -339,20 +339,19 @@ public final class Session implements AutoCloseable {
             return (long) DatalogicNative.SESSION_ALLOCATED_BYTES.invokeExact(handle());
         } catch (Throwable t) {
             throw DatalogicException.propagate(t);
+        } finally {
+            Reference.reachabilityFence(this);
         }
     }
 
+    /**
+     * Release the native session. Idempotent; a session that is never
+     * closed is released by a {@link java.lang.ref.Cleaner} once it is
+     * unreachable.
+     */
     @Override
     public void close() {
-        MemorySegment h = handle;
-        if (h != null) {
-            handle = null;
-            try {
-                DatalogicNative.SESSION_FREE.invokeExact(h);
-            } catch (Throwable t) {
-                throw DatalogicException.propagate(t);
-            }
-        }
+        handle.close();
         Reference.reachabilityFence(owner);
     }
 }

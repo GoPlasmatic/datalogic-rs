@@ -6,6 +6,7 @@ import com.goplasmatic.datalogic.internal.DatalogicNative;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
+import java.lang.ref.Reference;
 
 /**
  * An immutable, pre-parsed JSON document — parse once, evaluate many.
@@ -24,10 +25,10 @@ import java.lang.foreign.ValueLayout;
  * </pre>
  */
 public final class DataHandle implements AutoCloseable {
-    private volatile MemorySegment handle;
+    private final NativeHandle handle;
 
     private DataHandle(MemorySegment handle) {
-        this.handle = handle;
+        this.handle = new NativeHandle(this, handle, DatalogicNative.DATA_FREE, "DataHandle");
     }
 
     /**
@@ -56,9 +57,7 @@ public final class DataHandle implements AutoCloseable {
     }
 
     MemorySegment handle() {
-        MemorySegment h = handle;
-        if (h == null) throw new IllegalStateException("DataHandle is closed");
-        return h;
+        return handle.get();
     }
 
     /** Bytes held by the handle's backing arena (input copy + parsed tree). */
@@ -67,19 +66,19 @@ public final class DataHandle implements AutoCloseable {
             return (long) DatalogicNative.DATA_ALLOCATED_BYTES.invokeExact(handle());
         } catch (Throwable t) {
             throw DatalogicException.propagate(t);
+        } finally {
+            Reference.reachabilityFence(this);
         }
     }
 
+    /**
+     * Release the native document. Idempotent and safe to call from
+     * several threads at once, but not while another thread is still
+     * evaluating against this handle. A handle that is never closed is
+     * released by a {@link java.lang.ref.Cleaner} once it is unreachable.
+     */
     @Override
     public void close() {
-        MemorySegment h = handle;
-        if (h != null) {
-            handle = null;
-            try {
-                DatalogicNative.DATA_FREE.invokeExact(h);
-            } catch (Throwable t) {
-                throw DatalogicException.propagate(t);
-            }
-        }
+        handle.close();
     }
 }
