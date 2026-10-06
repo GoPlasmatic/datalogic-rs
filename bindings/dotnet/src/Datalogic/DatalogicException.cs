@@ -13,7 +13,10 @@ namespace Goplasmatic.Datalogic;
 /// </summary>
 public class DatalogicException : Exception
 {
-    /// <summary>Stable error tag from the engine (e.g. "ParseError", "Thrown", "NaN", "TypeMismatch").</summary>
+    /// <summary>
+    /// Stable error tag from the engine (e.g. "ParseError", "Thrown", "TypeMismatch"). Arithmetic NaN
+    /// failures surface as "Thrown" with a <c>{"type":"NaN"}</c> payload; there is no "NaN" tag.
+    /// </summary>
     public string? ErrorType { get; }
     /// <summary>Outermost failing operator name (e.g. "+"), or null if not operator-scoped.</summary>
     public string? Operator { get; }

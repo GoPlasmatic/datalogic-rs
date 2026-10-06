@@ -42,7 +42,10 @@ public class DatalogicException extends RuntimeException {
      */
     public String diagnosticsJson() { return diagnosticsJson; }
 
-    /** Stable error tag from the engine (e.g. "ParseError", "Thrown", "NaN", "TypeMismatch"). */
+    /**
+     * Stable error tag from the engine (e.g. "ParseError", "Thrown", "TypeMismatch"). Arithmetic
+     * NaN failures surface as "Thrown" with a {@code {"type":"NaN"}} payload; there is no "NaN" tag.
+     */
     public String errorType() { return errorType; }
 
     /** Outermost failing operator name (e.g. "+"), or null if not operator-scoped. */

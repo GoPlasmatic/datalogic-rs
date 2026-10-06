@@ -6,7 +6,7 @@ namespace Goplasmatic.Datalogic;
 /// Coarse outcome of an evaluation, mirroring the engine's C ABI status
 /// codes. Carried on every <see cref="DatalogicException"/> and on each
 /// per-item <see cref="EvaluationResult"/> of the batch APIs; the
-/// fine-grained engine tag (e.g. <c>"NaN"</c>, <c>"Thrown"</c>) stays
+/// fine-grained engine tag (e.g. <c>"Thrown"</c>, <c>"TypeError"</c>) stays
 /// available alongside it.
 /// </summary>
 public enum EvaluationStatus
@@ -17,7 +17,7 @@ public enum EvaluationStatus
     InvalidArgument = 1,
     /// <summary>Rule / data / config JSON failed to parse.</summary>
     ParseError = 2,
-    /// <summary>Evaluation failed; the error tag carries the detail (<c>"Thrown"</c>, <c>"NaN"</c>, …).</summary>
+    /// <summary>Evaluation failed; the error tag carries the detail (<c>"Thrown"</c>, <c>"TypeError"</c>, …).</summary>
     EvaluationError = 3,
     /// <summary>A typed evaluation succeeded but the result is not of the requested type.</summary>
     TypeMismatch = 4,
@@ -69,7 +69,7 @@ public readonly struct EvaluationResult
     /// <summary>The result as a JSON string, or <c>null</c> if the item failed.</summary>
     public string? Json => _json;
 
-    /// <summary>Stable engine error tag (e.g. <c>"Thrown"</c>, <c>"NaN"</c>), or <c>null</c> on success.</summary>
+    /// <summary>Stable engine error tag (e.g. <c>"Thrown"</c>, <c>"TypeError"</c>), or <c>null</c> on success.</summary>
     public string? ErrorTag { get; }
 
     /// <summary>Human-readable error message, or <c>null</c> on success.</summary>

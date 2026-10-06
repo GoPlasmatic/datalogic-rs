@@ -13,7 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  *
  * @param value         result JSON string, or {@code null} if this item
  *                      failed
- * @param errorTag      stable engine tag ({@code "Thrown"}, {@code "NaN"},
+ * @param errorTag      stable engine tag ({@code "Thrown"}, {@code "TypeError"},
  *                      {@code "InvalidArgument"}, …), or {@code null} on
  *                      success
  * @param errorMessage  human-readable error message, or {@code null} on
