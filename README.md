@@ -9,7 +9,7 @@ Write a [JSONLogic](https://jsonlogic.com) rule once and evaluate it with the ex
 
   [![CI](https://github.com/GoPlasmatic/datalogic-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/GoPlasmatic/datalogic-rs/actions/workflows/ci.yml)
   [![Release](https://img.shields.io/github/v/release/GoPlasmatic/datalogic-rs?label=release)](https://github.com/GoPlasmatic/datalogic-rs/releases)
-  [![Conformance](https://img.shields.io/badge/conformance-65_suites_%2F_1,974_cases-brightgreen)](./crates/datalogic-rs/tests/suites/)
+  [![Conformance](https://img.shields.io/badge/conformance-66_suites_%2F_2,034_cases-brightgreen)](./crates/datalogic-rs/tests/suites/)
   [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
   [🚀 Try the Live Playground](https://goplasmatic.github.io/datalogic-rs/playground/) | [📖 Read the Documentation](https://goplasmatic.github.io/datalogic-rs/)
@@ -28,7 +28,7 @@ Write a [JSONLogic](https://jsonlogic.com) rule once and evaluate it with the ex
 
 ## Why datalogic-rs?
 
-- 🌐 **One rule, every runtime:** every binding runs the same compiled Rust core, so a rule evaluates with identical semantics on your backend, your edge workers, and your frontend. No cross-language drift, verified by a 1,974-case conformance battery in CI.
+- 🌐 **One rule, every runtime:** every binding runs the same compiled Rust core, so a rule evaluates with identical semantics on your backend, your edge workers, and your frontend. No cross-language drift, verified by a 2,034-case conformance battery in CI.
 - 🔒 **100% sandbox-safe:** evaluate user-submitted rules and formulas without arbitrary code execution. No `eval()`, no scripting runtime, no I/O; the core forbids unsafe code.
 - ⚡ **Nanosecond evaluation:** rules compile to OpCode-dispatched programs that run in a reusable memory arena: 10.3 ns geomean, 7.0× the fastest JS engine, 83.6× the reference implementation.
 - 🛠️ **Ready-made rule builder:** ship a visual editor and step-through debugger to your product dashboard with the companion React component, instead of building rule UI from scratch.
@@ -58,7 +58,7 @@ The same evaluation, one line in each runtime:
 | **.NET (C#)** | `engine.Apply(rule, data)` |
 | **PHP** | `$engine->apply($rule, $data)` |
 
-Every binding wraps the same core and passes the same 65-suite conformance battery, so the same input bytes produce the same output bytes. Each package README has the full quickstart for its language, and every binding ships the same three runnable programs under its `examples/` folder, so the folders double as the parity demo.
+Every binding wraps the same core and passes the same 66-suite conformance battery, so the same input bytes produce the same output bytes. Each package README has the full quickstart for its language, and every binding ships the same three runnable programs under its `examples/` folder, so the folders double as the parity demo.
 
 ---
 
@@ -181,7 +181,7 @@ Reproduce it yourself with `cargo run --release -p datalogic-bench --bin compare
 
 ## Engine guarantees
 
-- **Conformance, enforced in CI**: passes the official JSONLogic suite plus an extended cross-binding battery: 1,974 cases across 65 suites, run against the same core every binding ships.
+- **Conformance, enforced in CI**: passes the official JSONLogic suite plus an extended cross-binding battery: 2,034 cases across 66 suites, run against the same core every binding ships.
 - **84 built-in operators**: comparison, arithmetic, logic, strings, arrays, objects, datetime (with IANA timezones), error handling; you can add custom operators written in each host language.
 - **Thread-safe evaluation**: compiled `Logic` is `Send + Sync`; share it across threads via `Arc`.
 - **Zero `unsafe`**: the core engine forbids unsafe code (`#![forbid(unsafe_code)]`).

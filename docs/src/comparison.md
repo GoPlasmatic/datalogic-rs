@@ -39,7 +39,7 @@ and PHP bindings all embed the same engine; none of them reimplements a
 single operator. Semantic parity across languages follows from the build,
 and two concrete checks keep it that way:
 
-- The same 1,974-case conformance battery (65 suites) runs against the core
+- The same 2,034-case conformance battery (66 suites) runs against the core
   in CI. Every binding ships the exact engine those cases validated, so
   there is no per-language test matrix to fall behind.
 - The flagd [`fractional` operator](operators/flagd.md) is byte-compatible
