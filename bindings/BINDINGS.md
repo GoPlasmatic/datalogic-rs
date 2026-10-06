@@ -243,6 +243,21 @@ idiomatic spelling (a Java or C# `Int` is 32-bit, so those bindings say
 | Refuse a built-in name | `try_add_operator` | `strict_operator_names=True` | `strictOperatorNames` | `StrictOperatorNames` | `withStrictOperatorNames` | `WithStrictOperatorNames` | `withStrictOperatorNames` | `datalogic_engine_builder_set_strict_operator_names` |
 | Operator families | `with_families` | `families=[...]` | `families` | `Families` | `withFamilies` | `WithFamilies` | `withFamilies` | `datalogic_engine_builder_set_families` |
 | Error type | `Error::code` | `.error_type` | `.errorType` | `.Type` | `errorType()` | `.ErrorType` | `->errorType` | `datalogic_error_tag` |
+| Open a session | `Engine::session` | `session()` | `session()` | `Session()` | `openSession()` | `OpenSession()` | `openSession()` | `datalogic_engine_session` |
+| Parse a data handle | n/a | `DataHandle(json)` | `new DataHandle(json)` | `ParseData(json)` | `DataHandle.parse(json)` | `DataHandle.Parse(json)` | `new DataHandle($json)` | `datalogic_data_parse` |
+| Metered result | `Metered { value, ops }` | tuple `(result_json, ops)` | Node: `{ result, ops }` object; WASM: JSON string `{"result", "ops"}` | `(value, ops, err)` | `Metered(value, ops)` record | `MeteredResult(Value, Ops)` | array `['value' => …, 'ops' => …]` | out-params |
+| Builder config | `with_config` | `config=` | `config` option | `SetConfigJSON(json) error`, the one setter that returns an error instead of the builder | `setConfigJson(json)` | `SetConfigJson(json)` | `setConfigJson($json)` | `datalogic_engine_builder_set_config_json` |
+| Mode argument | `CheckMode` | `"engine"` / `"strict"` / `"template"` | `'engine'` / `'strict'` / `'template'` | `Mode` constants | `CompileMode` enum | `CompileMode` enum | `int` (`Native::MODE_ENGINE`, `MODE_STRICT`, `MODE_TEMPLATE`) | `uint32_t` |
+| `check` mode | required | optional | optional | required | required | optional | optional | required |
+
+A batch item that fails carries the engine's error tag, message and
+operator. The C-ABI hosts decode it the same way: a field that is
+missing or not a string falls back to tag `"InternalError"` and the raw
+item JSON as the message. A null element in the list of rules or data
+handles is a per-item failure in Go, and an
+argument exception for the whole call in the JVM
+(`NullPointerException`), .NET (`ArgumentException`) and PHP
+(`InvalidArgumentException`).
 
 `truthy` reads a string as JSON text in every binding, as data is read:
 `truthy("[]")` asks about an empty array. A metered call's budget is at
@@ -254,6 +269,22 @@ Deprecated in 5.8 and removed in 6.0: the WASM `CompiledRule` class and
 the free `evaluate(logic, data, templating)` / `evaluateWithTrace(...,
 templating)` functions (use an `Engine`), and `evaluateNumber` in Node and
 WASM (use `evaluateFloat`).
+
+## Handle lifecycle in the C-ABI hosts
+
+Every native handle (engine, rule, session, traced session, data handle,
+engine builder) in Go, the JVM, .NET and PHP follows the same rules:
+
+| Rule | Go | JVM | .NET | PHP |
+|---|---|---|---|---|
+| Explicit release | `Close()` | `close()` (`AutoCloseable`) | `Dispose()` | `close()` |
+| Fallback when never released | GC finalizer | shared `java.lang.ref.Cleaner` | finalizer | `__destruct` |
+| Release frees once, even from several threads | `atomic.SwapPointer` | `AtomicReference.getAndSet` | `Interlocked.Exchange` | single-threaded per request |
+| A builder dropped before `Build` | finalizer frees it | Cleaner frees it | finalizer frees it | `__destruct` frees it |
+| Custom operators outlive `Engine` close | shared `opRegistry` | rules and sessions hold the `Engine` | shared `CallbackRoots` | wrappers hold the `Engine` |
+
+Releasing a handle while another thread is still using it is not
+supported in any host; the binding does not guard against it.
 
 ## Scenarios (`bindings/scenarios/api.json`)
 
