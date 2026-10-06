@@ -8,8 +8,9 @@ use bumpalo::Bump;
 use datavalue::{NumberValue, OwnedDataValue};
 use std::ops::ControlFlow;
 
-use super::fused::{FieldCursor, FusedMapBody, combine_ints, with_arith, with_ops};
+use super::fused::{FieldCursor, FusedMapBody, with_arith, with_ops};
 use super::input::{Items, IterSrc, for_each_iter_array, for_each_iter_object};
+use crate::operators::arithmetic::try_int_op;
 
 /// `map`: the body's value for each item (or object pair). A scalar source
 /// is mapped as a one-item collection. Body fast path for var/field-extract
@@ -96,11 +97,11 @@ fn map_arith_var_lit<'a>(
     // makes every element float, exactly as `combine` would decide.
     with_ops!(op, |int_op, float_op| match (lit.as_i64(), var_is_lhs) {
         (Some(li), true) => map_numbers(src, var_segs, arena, |v| match v.as_i64() {
-            Some(x) => combine_ints(x, li, int_op, float_op),
+            Some(x) => try_int_op(x, li, int_op, float_op),
             None => NumberValue::from_f64(float_op(v.as_f64(), lit_f)),
         }),
         (Some(li), false) => map_numbers(src, var_segs, arena, |v| match v.as_i64() {
-            Some(x) => combine_ints(li, x, int_op, float_op),
+            Some(x) => try_int_op(li, x, int_op, float_op),
             None => NumberValue::from_f64(float_op(lit_f, v.as_f64())),
         }),
         (None, true) => map_numbers(src, var_segs, arena, |v| {

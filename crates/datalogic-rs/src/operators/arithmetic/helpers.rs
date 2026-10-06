@@ -58,15 +58,18 @@ pub(super) fn alloc_number<'a>(arena: &'a Bump, n: NumberValue) -> &'a DataValue
 /// The overflow arm is `from_f64`, which collapses a whole,
 /// exactly-i64-representable result back to `Integer`, unlike
 /// `NumberValue`'s own `add`/`sub`/`mul` which leave it `Float`. The
-/// `map` / `reduce` fast paths reproduce this exact decision in
-/// `operators::array::fused::combine`; `tests/fast_arith_test.rs` checks
-/// them against general dispatch.
-#[inline]
-pub(super) fn try_int_op(
+/// `map` / `reduce` fast paths make this exact decision by calling this
+/// same function (through `operators::array::fused::combine`);
+/// `tests/fast_arith_test.rs` checks them against general dispatch.
+///
+/// Generic over the two operations so each caller's loop gets them
+/// inlined; `inline(always)` because the fast paths call it per element.
+#[inline(always)]
+pub(crate) fn try_int_op(
     a: i64,
     b: i64,
-    int_op: fn(i64, i64) -> Option<i64>,
-    float_op: fn(f64, f64) -> f64,
+    int_op: impl Fn(i64, i64) -> Option<i64>,
+    float_op: impl Fn(f64, f64) -> f64,
 ) -> NumberValue {
     match int_op(a, b) {
         Some(r) => NumberValue::from_i64(r),

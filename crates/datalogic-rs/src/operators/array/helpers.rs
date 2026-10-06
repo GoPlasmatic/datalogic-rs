@@ -9,7 +9,7 @@ use crate::operators::meta::{Algebra, EqOp, Logic, OrdOp, Truth};
 use crate::{CompiledNode, Engine};
 use std::ops::ControlFlow;
 
-use super::input::IterSrc;
+use super::input::{IterSrc, plain_var_segments};
 
 /// Check if a compiled node is loop-invariant — i.e. whether hoisting it out
 /// of the iteration and evaluating it once yields what the per-item path
@@ -69,20 +69,8 @@ pub(super) fn try_extract_filter_field_cmp<'a>(
     a: &'a CompiledNode,
     b: &'a CompiledNode,
 ) -> Option<(&'a [crate::node::PathSegment], &'a CompiledNode)> {
-    if let CompiledNode::Var {
-        scope_level: 0,
-        segments,
-        reduce_hint: ReduceHint::None,
-        metadata_hint: MetadataHint::None,
-        default_value: None,
-        ..
-    } = a
-        && !segments.is_empty()
-        && is_filter_invariant(b)
-    {
-        return Some((segments, b));
-    }
-    None
+    let segments = plain_var_segments(a)?;
+    (!segments.is_empty() && is_filter_invariant(b)).then_some((segments, b))
 }
 
 /// Represents a detected fast-path predicate pattern for quantifier/filter
@@ -212,17 +200,7 @@ impl FastPredicate {
             // with strict equality, so a non-string needle is always false —
             // total semantics, no coercion involved.
             (OpCode::In, _) if args.len() == 2 => {
-                let CompiledNode::Var {
-                    scope_level: 0,
-                    segments,
-                    reduce_hint: ReduceHint::None,
-                    metadata_hint: MetadataHint::None,
-                    default_value: None,
-                    ..
-                } = &args[0]
-                else {
-                    return None;
-                };
+                let segments = plain_var_segments(&args[0])?;
                 let CompiledNode::Value {
                     value: datavalue::OwnedDataValue::Array(items),
                     ..
@@ -238,7 +216,7 @@ impl FastPredicate {
                     })
                     .collect();
                 Some(FastPredicate::InStrLits {
-                    var_path: segments.clone(),
+                    var_path: segments.into(),
                     items: strs?,
                 })
             }
@@ -249,17 +227,12 @@ impl FastPredicate {
     /// Detection for a combinator operand: a bare scope-0 `var` is a
     /// truthiness test; a nested operator recurses through [`Self::detect_op`].
     fn detect_operand(node: &CompiledNode, depth: u32) -> Option<Self> {
+        if let Some(segments) = plain_var_segments(node) {
+            return Some(FastPredicate::Truthy {
+                var_path: segments.into(),
+            });
+        }
         match node {
-            CompiledNode::Var {
-                scope_level: 0,
-                segments,
-                reduce_hint: ReduceHint::None,
-                metadata_hint: MetadataHint::None,
-                default_value: None,
-                ..
-            } => Some(FastPredicate::Truthy {
-                var_path: segments.clone(),
-            }),
             CompiledNode::BuiltinOperator { opcode, args, .. } => {
                 Self::detect_op(*opcode, args, depth)
             }
@@ -274,17 +247,10 @@ impl FastPredicate {
         }
         // Try both orderings: (var, literal) and (literal, var)
         for (var_idx, lit_idx, var_is_lhs) in [(0, 1, true), (1, 0, false)] {
-            if let CompiledNode::Var {
-                scope_level: 0,
-                segments,
-                reduce_hint: ReduceHint::None,
-                metadata_hint: MetadataHint::None,
-                default_value: None,
-                ..
-            } = &pred_args[var_idx]
+            if let Some(segments) = plain_var_segments(&pred_args[var_idx])
                 && let CompiledNode::Value { value: literal, .. } = &pred_args[lit_idx]
             {
-                let var_path: Box<[crate::node::PathSegment]> = segments.clone();
+                let var_path: Box<[crate::node::PathSegment]> = segments.into();
 
                 match opcode.algebra() {
                     Some(Algebra::Eq(EqOp {

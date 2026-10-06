@@ -3,11 +3,10 @@
 use std::cmp::Ordering;
 
 use crate::arena::{ContextStack, DataValue, IterGuard, bvec};
-use crate::node::{MetadataHint, ReduceHint};
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
-use super::input::{IterArgKind, IterSrc, ResolvedInput, resolve_iter_input};
+use super::input::{IterArgKind, IterSrc, ResolvedInput, plain_var_segments, resolve_iter_input};
 
 /// `sort`. Borrows input via `IterSrc` (no input clone), runs
 /// `slice::sort_by` over indices, and emits `DataValue::Array` re-borrowing
@@ -144,18 +143,7 @@ fn sort_no_extractor<'a>(src: &IterSrc<'a>, ascending: bool, arena: &'a Bump) ->
 /// [`super::fast_paths`].
 #[inline]
 pub(super) fn sort_key_field(extractor: &CompiledNode) -> Option<&[crate::node::PathSegment]> {
-    let CompiledNode::Var {
-        scope_level: 0,
-        segments,
-        reduce_hint: ReduceHint::None,
-        metadata_hint: MetadataHint::None,
-        default_value: None,
-        ..
-    } = extractor
-    else {
-        return None;
-    };
-    (!segments.is_empty()).then_some(&**segments)
+    plain_var_segments(extractor).filter(|segments| !segments.is_empty())
 }
 
 /// Extractor fast path: `{var: "field..."}` over non-empty segments at scope 0.

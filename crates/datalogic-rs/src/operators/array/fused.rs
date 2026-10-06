@@ -4,9 +4,11 @@
 
 use crate::CompiledNode;
 use crate::arena::DataValue;
-use crate::node::{MetadataHint, ReduceHint};
 use crate::operators::meta::ArithOp;
 use datavalue::NumberValue;
+
+use super::input::plain_var_segments;
+use crate::operators::arithmetic::try_int_op;
 
 /// Per-loop resolver for a scope-0 var path against successive row items.
 /// Single object-key paths (the dominant row shape) carry a remembered pair
@@ -76,10 +78,7 @@ pub(super) fn combine(
     float_op: impl Fn(f64, f64) -> f64,
 ) -> NumberValue {
     match (a.as_i64(), b.as_i64()) {
-        (Some(x), Some(y)) => match int_op(x, y) {
-            Some(r) => NumberValue::from_i64(r),
-            None => NumberValue::from_f64(float_op(x as f64, y as f64)),
-        },
+        (Some(x), Some(y)) => try_int_op(x, y, int_op, float_op),
         _ => NumberValue::from_f64(float_op(a.as_f64(), b.as_f64())),
     }
 }
@@ -131,22 +130,6 @@ macro_rules! with_arith {
 }
 pub(super) use with_arith;
 
-/// `x op y` for an integer pair, promoting this result to `from_f64` on
-/// overflow: [`combine`]'s integer arm, for loops that already know both
-/// operands are integers.
-#[inline(always)]
-pub(super) fn combine_ints(
-    x: i64,
-    y: i64,
-    int_op: impl Fn(i64, i64) -> Option<i64>,
-    float_op: impl Fn(f64, f64) -> f64,
-) -> NumberValue {
-    match int_op(x, y) {
-        Some(r) => NumberValue::from_i64(r),
-        None => NumberValue::from_f64(float_op(x as f64, y as f64)),
-    }
-}
-
 /// Classified fusible map body shape — the three per-item transforms the
 /// map fast paths execute without per-item context pushes. Shared with the
 /// reduce(map(...)) fusion in `reduce.rs`, which runs the same transforms
@@ -169,25 +152,6 @@ pub(super) enum FusedMapBody<'n> {
         a_segments: &'n [crate::node::PathSegment],
         b_segments: &'n [crate::node::PathSegment],
     },
-}
-
-/// Match a plain scope-0 var with no reduce/metadata hints and no default —
-/// the only var shape the fused loops can resolve with a `FieldCursor`.
-#[inline]
-fn plain_var_segments(node: &CompiledNode) -> Option<&[crate::node::PathSegment]> {
-    if let CompiledNode::Var {
-        scope_level: 0,
-        segments,
-        reduce_hint: ReduceHint::None,
-        metadata_hint: MetadataHint::None,
-        default_value: None,
-        ..
-    } = node
-    {
-        Some(segments.as_ref())
-    } else {
-        None
-    }
 }
 
 impl FusedMapBody<'_> {

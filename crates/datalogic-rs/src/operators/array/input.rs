@@ -90,20 +90,34 @@ impl IterArgKind {
     /// [`crate::node::populate_lits`] whenever the parent
     /// `BuiltinOperator` is one of the iterator ops listed above.
     pub(crate) fn classify(arg: &CompiledNode) -> Self {
-        if let CompiledNode::Var {
-            scope_level: 0,
-            segments,
-            reduce_hint: ReduceHint::None,
-            metadata_hint: MetadataHint::None,
-            default_value: None,
-            ..
-        } = arg
-        {
-            return IterArgKind::RootVarBorrow {
+        match plain_var_segments(arg) {
+            Some(segments) => IterArgKind::RootVarBorrow {
                 path_segments_empty: segments.is_empty(),
-            };
+            },
+            None => IterArgKind::General,
         }
-        IterArgKind::General
+    }
+}
+
+/// The segments of a plain `{"var": path}` that reads the current frame:
+/// scope level 0, no reduce or metadata hint, no default. Every fast path
+/// that reads a field straight from an element (or a root borrow straight
+/// from the input) recognises its operands with this one test; an empty
+/// path is the element itself.
+#[inline]
+pub(super) fn plain_var_segments(node: &CompiledNode) -> Option<&[crate::node::PathSegment]> {
+    if let CompiledNode::Var {
+        scope_level: 0,
+        segments,
+        reduce_hint: ReduceHint::None,
+        metadata_hint: MetadataHint::None,
+        default_value: None,
+        ..
+    } = node
+    {
+        Some(segments.as_ref())
+    } else {
+        None
     }
 }
 
