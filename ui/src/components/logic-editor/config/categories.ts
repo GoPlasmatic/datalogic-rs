@@ -2,7 +2,8 @@
  * Category Metadata
  *
  * Defines colors, icons, labels and docs pages for each operator category.
- * Used for consistent styling across the UI.
+ * Used for consistent styling across the UI. The colors come from the
+ * exported CATEGORY_COLORS, the single source of the category palette.
  *
  * `icon` is typed as IconName so an unregistered name is a compile error
  * instead of a runtime crash inside <Icon> (which has no fallback).
@@ -10,13 +11,14 @@
 
 import type { CategoryMeta, OperatorCategory } from './operators.types';
 import type { IconName } from '../utils/icons';
+import { CATEGORY_COLORS } from '../constants/colors';
 
 export const categories: Record<OperatorCategory, CategoryMeta> = {
   variable: {
     name: 'variable',
     label: 'Variables',
     description: 'Access data from the context',
-    color: '#6366f1', // indigo
+    color: CATEGORY_COLORS.variable,
     icon: 'database',
     docsPage: 'variable-access',
   },
@@ -24,7 +26,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     name: 'comparison',
     label: 'Comparison',
     description: 'Compare values',
-    color: '#14b8a6', // teal
+    color: CATEGORY_COLORS.comparison,
     icon: 'scale',
     docsPage: 'comparison',
   },
@@ -32,7 +34,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     name: 'logical',
     label: 'Logical',
     description: 'Boolean logic operations',
-    color: '#8b5cf6', // violet
+    color: CATEGORY_COLORS.logical,
     icon: 'binary',
     docsPage: 'logical',
   },
@@ -40,7 +42,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     name: 'arithmetic',
     label: 'Arithmetic',
     description: 'Mathematical operations',
-    color: '#22c55e', // green
+    color: CATEGORY_COLORS.arithmetic,
     icon: 'calculator',
     docsPage: 'arithmetic',
   },
@@ -48,7 +50,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     name: 'control',
     label: 'Control Flow',
     description: 'Conditional branching',
-    color: '#f59e0b', // amber
+    color: CATEGORY_COLORS.control,
     icon: 'git-branch',
     docsPage: 'control-flow',
   },
@@ -56,7 +58,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     name: 'string',
     label: 'String',
     description: 'Text manipulation',
-    color: '#06b6d4', // cyan
+    color: CATEGORY_COLORS.string,
     icon: 'type',
     docsPage: 'string',
   },
@@ -64,7 +66,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     name: 'array',
     label: 'Array',
     description: 'Array operations and iteration',
-    color: '#7c3aed', // deep violet
+    color: CATEGORY_COLORS.array,
     icon: 'layers',
     docsPage: 'array',
   },
@@ -72,7 +74,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     name: 'object',
     label: 'Object',
     description: 'Object take-apart: keys, values, entries',
-    color: '#a855f7', // purple
+    color: CATEGORY_COLORS.object,
     icon: 'braces',
     docsPage: 'object',
   },
@@ -80,7 +82,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     name: 'datetime',
     label: 'Date & Time',
     description: 'Date and time operations',
-    color: '#0ea5e9', // sky
+    color: CATEGORY_COLORS.datetime,
     icon: 'clock',
     docsPage: 'datetime',
   },
@@ -88,7 +90,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     name: 'validation',
     label: 'Validation',
     description: 'Check for missing values',
-    color: '#94a3b8', // slate
+    color: CATEGORY_COLORS.validation,
     icon: 'alert-circle',
     docsPage: 'missing',
   },
@@ -96,7 +98,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     name: 'error',
     label: 'Error Handling',
     description: 'Handle errors gracefully',
-    color: '#ef4444', // red
+    color: CATEGORY_COLORS.error,
     icon: 'circle-x',
     docsPage: 'error-handling',
   },
@@ -104,7 +106,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     name: 'utility',
     label: 'Utility',
     description: 'Miscellaneous utilities',
-    color: '#64748b', // slate-500
+    color: CATEGORY_COLORS.utility,
     icon: 'cog',
     // `type` is documented on the control-flow page.
     docsPage: 'control-flow',
@@ -113,7 +115,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     name: 'flagd',
     label: 'Feature Flags',
     description: 'flagd targeting: fractional rollouts and semantic versions',
-    color: '#f97316', // orange
+    color: CATEGORY_COLORS.flagd,
     icon: 'toggle-right',
     docsPage: 'flagd',
   },
@@ -121,7 +123,7 @@ export const categories: Record<OperatorCategory, CategoryMeta> = {
     name: 'tensor',
     label: 'Tensor',
     description: 'Marshalling JSON to and from typed n-dimensional buffers',
-    color: '#db2777', // pink-600
+    color: CATEGORY_COLORS.tensor,
     icon: 'layers',
     docsPage: 'tensor',
   },
@@ -152,7 +154,7 @@ export function getCategoryIcon(name: string): IconName {
  * Get category color
  */
 export function getCategoryColor(name: OperatorCategory): string {
-  return categories[name]?.color ?? '#64748b';
+  return categories[name]?.color ?? CATEGORY_COLORS.utility;
 }
 
 /**
