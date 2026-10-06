@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use datalogic_bind::{ItemError, typed};
 use datalogic_rs::bumpalo::Bump;
 use datalogic_rs::operator::EvalContext;
 use datalogic_rs::{
@@ -20,17 +21,14 @@ fn make_engine(
     key_escape: Option<char>,
     config: Option<EvaluationConfig>,
 ) -> RsEngine {
-    let mut builder = RsEngine::builder();
-    if templating {
-        builder = builder.with_templating(true);
+    datalogic_bind::EngineOptions {
+        templating,
+        families: None,
+        template_key_escape: key_escape,
+        config,
     }
-    if let Some(prefix) = key_escape {
-        builder = builder.with_template_key_escape(prefix);
-    }
-    if let Some(config) = config {
-        builder = builder.with_config(config);
-    }
-    builder.build()
+    .builder()
+    .build()
 }
 
 /// Decode a `templateKeyEscape` input: `undefined` / `null` means unset,
@@ -549,34 +547,22 @@ impl Engine {
     #[wasm_bindgen(constructor)]
     pub fn new(options: JsValue) -> Result<Engine, JsValue> {
         let options = parse_engine_options(&options)?;
-        let mut builder = RsEngine::builder();
-        if options.templating {
-            builder = builder.with_templating(true);
-        }
-        if let Some(prefix) = options.key_escape {
-            builder = builder.with_template_key_escape(prefix);
-        }
-        if let Some(config) = options.config {
-            builder = builder.with_config(config);
-        }
-        // Before the operators, so strict names are judged against the
-        // families the engine has.
-        if let Some(families) = options.families {
-            builder = builder.with_families(families);
-        }
-        for (name, callback) in options.custom_ops {
+        let opts = datalogic_bind::EngineOptions {
+            templating: options.templating,
+            families: options.families,
+            template_key_escape: options.key_escape,
+            config: options.config,
+        };
+        let operators = options.custom_ops.into_iter().map(|(name, callback)| {
             let op = JsOperator {
                 name: name.clone(),
                 callback,
             };
-            builder = if options.strict_names {
-                builder
-                    .try_add_operator(name, op)
-                    .map_err(|e| engine_err_to_js(&e))?
-            } else {
-                builder.add_operator(name, op)
-            };
-        }
+            (name, op)
+        });
+        let builder =
+            datalogic_bind::add_operators(opts.builder(), operators, options.strict_names)
+                .map_err(|e| engine_err_to_js(&e))?;
         Ok(Engine {
             inner: Arc::new(builder.build()),
         })
@@ -918,12 +904,7 @@ impl Session {
             .engine
             .evaluate(&rule.compiled, &*data.parsed, &self.arena)
             .map_err(|e| engine_err_to_js(&e))?;
-        av.as_bool().ok_or_else(|| {
-            type_mismatch_err_to_js(&format!(
-                "result is not a boolean (got {})",
-                datalogic_bind::type_of(av)
-            ))
-        })
+        typed::bool(av).map_err(|msg| type_mismatch_err_to_js(&msg))
     }
 
     /// Evaluate and read the result as a number (any JSON number). A
@@ -946,13 +927,7 @@ impl Session {
             .engine
             .evaluate(&rule.compiled, &*data.parsed, &self.arena)
             .map_err(|e| engine_err_to_js(&e))?;
-        match av.as_i64() {
-            Some(i) if i.unsigned_abs() < (1u64 << 53) => Ok(i as f64),
-            _ => Err(type_mismatch_err_to_js(&format!(
-                "result is not a safe integer (got {})",
-                datalogic_bind::type_of(av)
-            ))),
-        }
+        typed::safe_int(av).map_err(|msg| type_mismatch_err_to_js(&msg))
     }
 
     /// Evaluate and read the result as a number (any JSON number). A
@@ -964,12 +939,7 @@ impl Session {
             .engine
             .evaluate(&rule.compiled, &*data.parsed, &self.arena)
             .map_err(|e| engine_err_to_js(&e))?;
-        av.as_f64().ok_or_else(|| {
-            type_mismatch_err_to_js(&format!(
-                "result is not a number (got {})",
-                datalogic_bind::type_of(av)
-            ))
-        })
+        typed::float(av).map_err(|msg| type_mismatch_err_to_js(&msg))
     }
 
     /// Evaluate and collapse the result to a boolean via the engine's
@@ -1202,37 +1172,9 @@ thread_local! {
     static DATA_STASH: RefCell<Option<DataHandle>> = const { RefCell::new(None) };
 }
 
-/// Per-item failure inside a batch result: the `reason` of a rejected
-/// entry. Field set mirrors the C ABI's item-error JSON
-/// (`{tag, message, operator?}`) exactly, so batch consumers see the
-/// same shape in every binding.
-#[derive(Serialize)]
-struct ItemError {
-    tag: String,
-    message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    operator: Option<String>,
-}
-
-impl ItemError {
-    fn from_engine(err: &Error) -> Self {
-        Self {
-            tag: err.tag().to_string(),
-            message: err.to_string(),
-            operator: err.operator().map(str::to_owned),
-        }
-    }
-
-    fn invalid_argument(message: String) -> Self {
-        Self {
-            tag: "InvalidArgument".to_string(),
-            message,
-            operator: None,
-        }
-    }
-}
-
-/// One entry of a batch result, in `Promise.allSettled` shape.
+/// One entry of a batch result, in `Promise.allSettled` shape. A rejected
+/// entry's `reason` is the `{tag, message, operator?}` item failure every
+/// binding's batch result carries.
 #[derive(Serialize)]
 #[serde(tag = "status", rename_all = "lowercase")]
 enum BatchOutcome {
