@@ -71,9 +71,100 @@ These items are fixed in the working tree (see `CHANGELOG.md` → Unreleased) an
 | HOST-01 | Go: the operator handles live in a shared `opRegistry` that Engine, Rule, Session and TracedSession all hold, and a C-allocated box carries the handle in place of a Go pointer. The new tests crashed before the fix. |
 | HOST-02 | .NET: `CallbackRoots` holds the GCHandles and is shared by Engine, Rule, Session and TracedSession. The new tests failed before the fix. |
 
+### Batch 2 (5.x)
+
+All of these are committed and are listed in `CHANGELOG.md` under Unreleased.
+
+The rule applied: bug fixes are in, even when they change output. So are refactors that keep behaviour identical, performance, tests, docs and CI. New APIs or options, deprecations, default changes and design changes are out.
+
+**Done**
+- **Core:** CORE-02, 03, 06, 08, 13, 15, 16, 17, 19, 20, 22, 23, 24; INFRA-34.
+- **Core, partial:**
+  - CORE-05: `PathStep.operator` still says `var` for `val`, and a lone argument written without its array is still reported as `/0`.
+  - CORE-07: `try_build` now refuses a depth of 0 and the docs explain the setting. No new error kinds.
+  - CORE-14: one internal body now serves every entry point. `evaluate` and `evaluate_metered` stay written out by hand, because the closure form cost ~1.2 ns per call.
+- **Operators:** OPS-02, 03, 04, 05, 06, 10, 12.
+- **Operators, partial:**
+  - OPS-07: the predicate code stays in `helpers.rs`, because `operator_table_rule_test` pins that path.
+  - OPS-08: the strict-eq field fast path is not folded into `FastPredicate`.
+  - OPS-11: literal formats are still translated at run time.
+  - OPS-14: there is no feature-off-only pinning.
+- **Fixed in 5.x as plain bugs:**
+  - V6-OPS-03, 09, 12, 14.
+  - V6-OPS-04, partly: `CoerceToZero` and the non-finite strings. Whether `- / % min max` should honour `NanHandling` is still open.
+- **Rust bindings:** BIND-02, 03, 04 (no wire-shape change), 10, 11 (docs only), 12, 15, 16, 17, 18, 19, 21, 22; HOST-15.
+- **Rust bindings, partial:**
+  - BIND-09: covers only the call types every runner already has; WASM now runs the conformance suites.
+  - BIND-20: the WASM `require` condition is kept on purpose.
+  - BIND-23: each binding pins its own behaviour.
+- **Host bindings:** HOST-03, 04, 05, 06, 09, 11, 12, 14 (docs), 16, 17, 19, 20; INFRA-22. Also fixed: PHP failed to find its native library on Windows (a case-sensitive `AMD64` match).
+- **Host bindings, partial:**
+  - HOST-10: per-host null-element handling is kept.
+  - HOST-22: close racing evaluate is not tested.
+- **Infra:** INFRA-01, 02, 03, 04, 06, 07, 09, 11, 12, 13, 14, 15, 16, 19, 21, 23, 24, 25, 27, 28, 29, 30, 31, 32; HOST-13, 18; UI-03.
+- **Infra, partial:**
+  - INFRA-08: the release runs all of CI on the tag; publishing auth is unchanged.
+  - INFRA-17: the README only.
+  - INFRA-26: `join_all` is still used.
+  - HOST-08: the smoke job is not a publish gate yet.
+- **UI:** UI-01, 02, 05, 09, 11, 12, 14, 15, 17, 18, 21.
+- **UI, partial:**
+  - UI-04: the bundled dependencies are now devDependencies and the stray `sourceMappingURL` comments are gone; how the WASM ships is unchanged.
+  - UI-10: one palette now. Defining the undefined tokens needs a design decision.
+  - UI-13: no tests against the peer-version floors.
+  - UI-16: `design-system.html` and the playground token copies are kept.
+  - UI-19: the per-node `expression` stays, because it is exported.
+
+**Deferred, for v6 or a decision.** Each of these is a new API, a behaviour or design change, or work outside the repo.
+
+| Area | Items |
+|---|---|
+| Core | CORE-09, 10, 11, 12, 18, 21, 25, 26 |
+| Operators | OPS-09, OPS-13 |
+| Rust bindings | BIND-05, 06, 07, 08, 13, 14 |
+| Host bindings | HOST-07, HOST-21 |
+| Infra | INFRA-05, 10, 18, 20, 33 |
+| UI | UI-06, 07, 08, 20 |
+| Part 2 | Every V6 item not listed above |
+
+**Verified at the batch head**
+
+| Check | Result |
+|---|---|
+| Core, all features | 838 tests, 0 failures |
+| Core, no default features | 278 tests, 0 failures |
+| CI conformance feature combinations | all 10 pass |
+| C ABI | 47 |
+| Go | passes, including under `-race` |
+| .NET | 114 |
+| PHP | 113 |
+| Node | 171 |
+| Python | 2,926 |
+| WASM | 66 |
+| UI | 1,337 |
+| `cargo deny` | 5 workspaces pass |
+| clippy `-D warnings` | clean everywhere |
+
+The JVM was not compiled: only JDK 17 is installed, and the binding needs 22 or newer.
+
+**Benchmarks against 5.8.0 (`c30cd5d`)**
+- On the 43 suites whose cases did not change, the geomean is +1.0%.
+- Folded rules are back at baseline after `50155fb`.
+- The macro suites are within +3% (checkout-40 +1.4%).
+
+**WASM size gate:** +4.05% over its recorded baseline. That is a warning (the gate fails at +5%), and the growth comes from this batch's fixes.
+
+**For the maintainer**
+1. OIDC Trusted Publishing for crates.io and npm.
+2. Make `release-smoke-hosts` a publish gate once it has passed on a real release.
+3. Decide whether to refresh the WASM size baseline.
+
 New findings from this work:
 - **CORE-26:** a debug build overflows a 2 MiB thread when it evaluates a rule nested about 100 deep. Release builds are fine, and the behaviour predates this work. Dispatch frames are large in debug builds, and the compile-depth cap is 256. Severity Low, effort M, target 5.x.
 - **INFRA-34:** `cargo clippy -p datalogic-rs --all-targets` fails with default features, because test code in `src/path.rs:215` calls `engine.trace()` without `cfg(feature = "trace")`. Severity Low, effort S, target 5.x.
+- **New:** .NET calls `GC.KeepAlive(this)` only after the throw paths. On an error path a finalizer could run mid-call (latent, left alone).
+- **New:** `to_json` of a folded literal object re-parses as an operator call outside templating mode (JSONLogic v5 has no literal-object syntax), and a folded datetime literal serializes as a plain string.
+- **New:** `min`, `max`, `abs`, `ceil` and `floor` still go through `f64` for integers above 2^53.
 - **BIND-24:** now that the core reports `format_date "%Q"` as an error, the Node panic-safety tests no longer reach a real panic, so `guard()` is only exercised indirectly. Its before and after behaviour was checked against 5.8.0. A panic probe built only under a test feature would restore coverage. Severity Low, effort S, target 5.x.
 
 ---
