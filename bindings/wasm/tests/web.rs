@@ -484,13 +484,13 @@ fn test_session_evaluate_batch_mixed_outcomes() {
         outcome_reason_field(&second, "tag").as_string().as_deref(),
         Some("Thrown")
     );
-    // `operator` is the *outermost* failing operator — here the `if`
-    // wrapping the `throw`, same attribution as the scalar error path.
+    // `operator` is the innermost failing operator — here the `throw`
+    // inside the `if`, same attribution as the scalar error path.
     assert_eq!(
         outcome_reason_field(&second, "operator")
             .as_string()
             .as_deref(),
-        Some("if")
+        Some("throw")
     );
     let message = outcome_reason_field(&second, "message")
         .as_string()
