@@ -15,10 +15,16 @@ export function useHistoryState(
   onNodesChange: ((nodes: LogicNode[]) => void) | undefined,
   clearSelection: () => void
 ) {
-  // Stacks live in refs because they hold deep clones, change synchronously
-  // alongside reducer-style updates, and are read by callbacks. The two
-  // `can*` booleans below mirror their `length > 0` state so consumers can
-  // depend on them in render without reading the ref from the memo body.
+  // Stacks live in refs because they change synchronously alongside
+  // reducer-style updates and are read by callbacks. The two `can*`
+  // booleans below mirror their `length > 0` state so consumers can depend
+  // on them in render without reading the ref from the memo body.
+  //
+  // Entries are the node arrays themselves, not copies. Every edit builds
+  // a new array and replaces the nodes it changes (see useNodeOperations,
+  // useNodeCreation, useClipboardState, useNodeEdgeInsert), so a snapshot
+  // is never mutated and consecutive snapshots share their unchanged
+  // nodes. Deep-cloning every snapshot cost O(nodes) per edit, 50 deep.
   const undoStackRef = useRef<LogicNode[][]>([]);
   const redoStackRef = useRef<LogicNode[][]>([]);
   const [canUndo, setCanUndo] = useState(false);
@@ -27,7 +33,7 @@ export function useHistoryState(
   const pushToUndoStack = useCallback((nodes: LogicNode[]) => {
     undoStackRef.current = [
       ...undoStackRef.current.slice(-MAX_HISTORY_SIZE + 1),
-      JSON.parse(JSON.stringify(nodes)),
+      nodes,
     ];
     redoStackRef.current = [];
     setCanUndo(true);
@@ -38,7 +44,7 @@ export function useHistoryState(
     if (undoStackRef.current.length === 0) return;
 
     const previousState = undoStackRef.current.pop()!;
-    redoStackRef.current.push(JSON.parse(JSON.stringify(nodesRef.current)));
+    redoStackRef.current.push(nodesRef.current);
     setCanUndo(undoStackRef.current.length > 0);
     setCanRedo(true);
 
@@ -51,7 +57,7 @@ export function useHistoryState(
     if (redoStackRef.current.length === 0) return;
 
     const nextState = redoStackRef.current.pop()!;
-    undoStackRef.current.push(JSON.parse(JSON.stringify(nodesRef.current)));
+    undoStackRef.current.push(nodesRef.current);
     setCanUndo(true);
     setCanRedo(redoStackRef.current.length > 0);
 

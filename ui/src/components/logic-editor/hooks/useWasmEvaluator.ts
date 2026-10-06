@@ -306,9 +306,12 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
 
   // The latest implementations, read at call time by the adapters registered
   // with the engine, so it survives a caller that rebuilds this object every
-  // render. Refreshed inside `getEngine` below — every evaluation goes
-  // through it, and it sees the current props of whichever render asked.
+  // render. Assigned during render rather than in an effect so an
+  // evaluation made in this same render (inside a host's useMemo, say) sees
+  // this render's functions, while the callbacks below stay stable.
   const customOperatorsRef = useRef(customOperators);
+  // eslint-disable-next-line react-hooks/refs -- latest-value ref, only read when evaluating
+  customOperatorsRef.current = customOperators;
   const latestCustomOperators = useCallback(() => customOperatorsRef.current, []);
 
   // Serialized identity of everything that requires a fresh Engine. Only the
@@ -321,6 +324,13 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
   );
   const operatorNamesKey = customOperatorNamesKey(customOperators);
   const engineKey = `${templating ? 1 : 0}|${configKey}|${operatorNamesKey}`;
+  // The config as the engine sees it, derived from its key so it changes
+  // only when the key does: a host passing an inline `config={{ ... }}`
+  // literal must not churn the callbacks below on every render.
+  const engineConfig = useMemo(
+    () => (JSON.parse(configKey) as DataLogicEvaluationConfig | null) ?? undefined,
+    [configKey],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -367,12 +377,15 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
 
   // Lazily (re)build the Engine so templating/config/customOperators changes
   // take effect on the next evaluation, freeing the previous instance.
+  // Keyed on `engineKey` alone: its identity, and that of the evaluate
+  // functions built on it, changes only when a rebuild is due. Depending on
+  // the option objects instead re-created every callback on each host
+  // render, which made the editor re-check its inputs every time.
   const getEngine = useCallback((): WasmEngineInstance => {
     const module = moduleRef.current;
     if (!module) {
       throw new Error('WASM module not initialized');
     }
-    customOperatorsRef.current = customOperators;
     const slot = engineRef.current;
     if (slot && slot.key === engineKey) {
       return slot.engine;
@@ -381,12 +394,12 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
     engineRef.current = null;
     const engine = createWasmEngine(
       module,
-      { templating, config, customOperators },
+      { templating, config: engineConfig, customOperators: customOperatorsRef.current },
       latestCustomOperators,
     );
     engineRef.current = { key: engineKey, engine };
     return engine;
-  }, [engineKey, templating, config, customOperators, latestCustomOperators]);
+  }, [engineKey, templating, engineConfig, latestCustomOperators]);
 
   const evaluateMetered = useCallback((logic: unknown, data: unknown): MeteredResult => {
     const engine = getEngine();
