@@ -14,7 +14,6 @@
 //! | Rule facts: `{reads, computed_reads, reads_complete, reads_data, operators, custom_operators, deterministic}` | [`facts_json`] |
 //! | Diagnostics: `[{code, severity, message, pointer, operator}]` | [`diagnostics_json`] |
 //! | Custom operator call: arguments as one JSON array, result as JSON | [`args_json`], [`parse_result`] |
-
 use datalogic_rs::bumpalo::Bump;
 use std::collections::BTreeMap;
 
@@ -23,10 +22,15 @@ use datalogic_rs::{
     IntoLogic, Logic, OperatorInfo, ScopedArg, TracedRun,
 };
 use serde::Serialize;
+use serde_json::value::RawValue;
 use serde_json::{Value, json};
 
 /// The JSON type name of a value, as the typed-result entry points report
-/// a mismatch (`"expected a boolean, got string"`).
+/// a mismatch (`"result is not a boolean (got string)"`).
+///
+/// A value with no JSON type of its own (a datetime, a duration, a tensor)
+/// is named by the JSON it serialises to: datetimes and durations cross
+/// every boundary as strings, so they are `"string"` here too.
 pub fn type_of(v: &DataValue<'_>) -> &'static str {
     if v.is_null() {
         "null"
@@ -38,8 +42,19 @@ pub fn type_of(v: &DataValue<'_>) -> &'static str {
         "string"
     } else if v.is_array() {
         "array"
-    } else {
+    } else if v.is_object() {
         "object"
+    } else {
+        // Only reached on a type-mismatch error path, so the serialisation
+        // costs nothing on the success path.
+        match v.to_json_string().as_bytes().first() {
+            Some(b'"') => "string",
+            Some(b'[') => "array",
+            Some(b'n') => "null",
+            Some(b't' | b'f') => "boolean",
+            Some(b'{') | None => "object",
+            Some(_) => "number",
+        }
     }
 }
 
@@ -92,9 +107,19 @@ pub fn traced_json_in(engine: &Engine, rule: &str, data: &str, mode: CheckMode) 
 }
 
 fn traced_wire(run: &TracedRun<String>, logic: Option<&Logic>) -> String {
+    /// The run's result: the engine's own JSON text, spliced in as it is
+    /// so an object keeps its key order, or the text as a JSON string in
+    /// the unexpected case that it is not JSON.
+    #[derive(Serialize)]
+    #[serde(untagged)]
+    enum ResultWire<'a> {
+        Json(&'a RawValue),
+        Text(&'a str),
+    }
+
     #[derive(Serialize)]
     struct Wire<'a> {
-        result: Value,
+        result: ResultWire<'a>,
         expression_tree: &'a ExpressionNode,
         steps: &'a [ExecutionStep],
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -105,15 +130,16 @@ fn traced_wire(run: &TracedRun<String>, logic: Option<&Logic>) -> String {
         pointers: Option<BTreeMap<u32, &'a str>>,
     }
 
+    let null: &RawValue = serde_json::from_str("null").expect("null is JSON");
     let (result, error, structured_error) = match &run.result {
-        // The string is already JSON; surface the parsed value, or the
-        // string itself in the unexpected case that it does not parse.
         Ok(s) => (
-            serde_json::from_str::<Value>(s).unwrap_or_else(|_| Value::String(s.clone())),
+            serde_json::from_str::<&RawValue>(s)
+                .map(ResultWire::Json)
+                .unwrap_or(ResultWire::Text(s)),
             None,
             None,
         ),
-        Err(e) => (Value::Null, Some(e.to_string()), Some(e)),
+        Err(e) => (ResultWire::Json(null), Some(e.to_string()), Some(e)),
     };
     serde_json::to_string(&Wire {
         result,
@@ -123,7 +149,17 @@ fn traced_wire(run: &TracedRun<String>, logic: Option<&Logic>) -> String {
         structured_error,
         pointers: logic.map(|logic| logic.pointers().collect()),
     })
-    .unwrap_or_default()
+    .unwrap_or_else(|e| {
+        // Not expected: every field serialises. Still answer the envelope
+        // a host parses, rather than text that is not JSON.
+        json!({
+            "result": null,
+            "expression_tree": {"id": 0, "expression": "", "children": []},
+            "steps": [],
+            "error": format!("the trace could not be serialised: {e}"),
+        })
+        .to_string()
+    })
 }
 
 /// The largest operation budget a JavaScript number carries exactly.
@@ -255,7 +291,9 @@ fn with_operators<T>(engine: &Engine, f: impl FnOnce(&[OperatorJson<'_>]) -> T) 
 /// (`[["user", "id"], ["items"]]`), which keeps a key containing a dot
 /// unambiguous.
 pub fn facts_json(facts: &Facts) -> String {
-    serde_json::to_string(&facts_wire(facts)).unwrap_or_default()
+    // The wire holds only strings, lists and booleans, so this does not
+    // fail; if it did, `null` is what `facts_value` answers too.
+    serde_json::to_string(&facts_wire(facts)).unwrap_or_else(|_| "null".to_string())
 }
 
 /// [`facts_json`] as a [`Value`], for a host that converts one.
@@ -514,6 +552,47 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(v, plain);
+    }
+
+    #[test]
+    fn a_traced_result_keeps_its_key_order() {
+        let engine = Engine::new();
+        let data = r#"{"o": {"z": 1, "a": {"y": 2, "b": 3}}}"#;
+        let text = traced_json(&engine, r#"{"var": "o"}"#, data);
+        assert!(
+            text.starts_with(r#"{"result":{"z":1,"a":{"y":2,"b":3}},"#),
+            "{text}"
+        );
+        let run = engine.trace().eval_str(r#"{"var": "o"}"#, data);
+        let text = traced_run_json(&run);
+        assert!(text.starts_with(r#"{"result":{"z":1,"a":{"y":2,"b":3}},"#));
+        // A failure still answers `null`.
+        let text = traced_json(&engine, r#"{"throw": "x"}"#, "null");
+        assert!(text.starts_with(r#"{"result":null,"#), "{text}");
+    }
+
+    #[test]
+    fn type_names() {
+        let arena = Bump::new();
+        for (json, want) in [
+            ("null", "null"),
+            ("true", "boolean"),
+            ("1.5", "number"),
+            (r#""s""#, "string"),
+            ("[1]", "array"),
+            (r#"{"a": 1}"#, "object"),
+        ] {
+            let v = DataValue::from_str(json, &arena).unwrap();
+            assert_eq!(type_of(&v), want, "{json}");
+        }
+        // A datetime or a duration is no JSON type of its own; each crosses
+        // as a string. (The dev-dependencies turn the datetime family on.)
+        use datalogic_rs::datavalue::{DataDateTime, DataDuration};
+        let dt = DataValue::DateTime(DataDateTime::parse("2024-01-02T03:04:05Z").unwrap());
+        assert!(!dt.is_string() && !dt.is_object());
+        assert_eq!(type_of(&dt), "string");
+        let du = DataValue::Duration(DataDuration::parse("1d:2h:3m:4s").unwrap());
+        assert_eq!(type_of(&du), "string");
     }
 
     #[test]
