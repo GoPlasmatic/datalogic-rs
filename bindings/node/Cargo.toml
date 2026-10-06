@@ -12,6 +12,9 @@ edition = "2024"
 description = "Node.js native bindings for datalogic-rs JSONLogic engine"
 license = "Apache-2.0"
 repository = "https://github.com/GoPlasmatic/datalogic-rs"
+# Published to npm as @goplasmatic/datalogic-node, not to crates.io (and
+# it depends on the unpublished `datalogic-bind`).
+publish = false
 
 [lib]
 # `cdylib` produces the importable `.node` artifact napi-rs loads at
@@ -20,28 +23,27 @@ repository = "https://github.com/GoPlasmatic/datalogic-rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# Mirrors the `datalogic-wasm` / `datalogic-py` pattern: prefer local
-# path during in-repo development; the published `5.0` requirement
-# kicks in once the binding is published as a downstream of the released
-# core.
+# The binding builds against the in-tree core; the version is the floor
+# its API use needs (5.8: per-compile modes, check, operators, facts). The
+# crate itself ships to npm, never to crates.io.
 #
 # Feature list mirrors the Python binding so a rule valid from Python is
 # also valid from Node. `serde_json` is required for napi-rs's serde
 # bridge to convert JS objects ↔ `serde_json::Value`.
-datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features = [
+datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.8", features = [
     "serde_json",
     "all-operators",
     "trace",
     "templating",
     "budget",
 ] }
-# napi 3.x is the current major and the floor for `napi-derive` 3.x's
-# improved async / class ergonomics. `napi9` enables Node 18+ ABI. The
-# `serde-json` feature wires the `serde_json::Value` ↔ `JsUnknown` bridge
-# we lean on in conv.rs.
 # Wire formats and plumbing shared with the other bindings.
 datalogic-bind = { path = "../../crates/datalogic-bind" }
-napi = { version = "3", default-features = false, features = ["napi9", "serde-json"] }
+# napi 3.x is the current major and the floor for `napi-derive` 3.x's
+# improved async / class ergonomics. `napi9` enables Node 18+ ABI. The
+# `serde-json` feature wires the `serde_json::Value` ↔ JS value bridge
+# every method that takes or returns a JS value leans on.
+napi ={ version = "3", default-features = false, features = ["napi9", "serde-json"] }
 napi-derive = "3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
