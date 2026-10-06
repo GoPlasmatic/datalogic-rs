@@ -148,6 +148,83 @@ fn every_reported_name_is_live_under_templating() {
 // the source whether or not this build compiled it in.
 // ---------------------------------------------------------------------
 
+/// Representative names per feature, written out here rather than read
+/// from the table under test, so a name that moves to another family (or
+/// loses its gate) fails. Asserted in both directions: present with the
+/// feature, absent without it.
+#[test]
+fn representative_names_follow_their_feature() {
+    let names = names();
+    let families: [(&str, bool, &[&str]); 8] = [
+        (
+            "datetime",
+            cfg!(feature = "datetime"),
+            &[
+                "datetime",
+                "timestamp",
+                "parse_date",
+                "format_date",
+                "date_diff",
+                "now",
+            ],
+        ),
+        (
+            "ext-string",
+            cfg!(feature = "ext-string"),
+            &[
+                "length",
+                "starts_with",
+                "ends_with",
+                "upper",
+                "lower",
+                "trim",
+                "split",
+            ],
+        ),
+        (
+            "ext-array",
+            cfg!(feature = "ext-array"),
+            &["sort", "slice", "group_by", "distinct"],
+        ),
+        (
+            "ext-object",
+            cfg!(feature = "ext-object"),
+            &["keys", "values", "entries"],
+        ),
+        (
+            "ext-control",
+            cfg!(feature = "ext-control"),
+            &["exists", "??", "switch", "match", "type"],
+        ),
+        (
+            "error-handling",
+            cfg!(feature = "error-handling"),
+            &["try", "throw"],
+        ),
+        (
+            "ext-math",
+            cfg!(feature = "ext-math"),
+            &["abs", "ceil", "floor"],
+        ),
+        ("flagd", cfg!(feature = "flagd"), &["fractional", "sem_ver"]),
+    ];
+    for (feature, enabled, expected) in families {
+        for name in expected {
+            assert_eq!(
+                names.contains(name),
+                enabled,
+                "{name:?} with `{feature}` {}",
+                if enabled { "on" } else { "off" }
+            );
+            let entry = CATALOGUE
+                .iter()
+                .find(|e| e.names.contains(name))
+                .unwrap_or_else(|| panic!("{name:?} is not in the catalogue"));
+            assert_eq!(entry.feature(), Some(feature), "{name:?}");
+        }
+    }
+}
+
 #[test]
 fn compiled_families_are_reported_and_gated_ones_are_not() {
     let names = names();

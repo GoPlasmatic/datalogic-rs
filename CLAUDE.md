@@ -10,9 +10,10 @@ Cargo workspace + npm monorepo organized into four areas: **`crates/`**
 
 **Core**: `crates/`
 
-| Path                  | Package               | Publishes to |
-|-----------------------|-----------------------|--------------|
-| `crates/datalogic-rs` | `datalogic-rs` (Rust) | crates.io    |
+| Path                    | Package                                     | Publishes to  |
+|-------------------------|---------------------------------------------|---------------|
+| `crates/datalogic-rs`   | `datalogic-rs` (Rust)                       | crates.io     |
+| `crates/datalogic-bind` | `datalogic-bind` (shared binding plumbing)  | not published |
 
 **Language bindings**: `bindings/`
 

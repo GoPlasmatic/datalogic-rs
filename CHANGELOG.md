@@ -395,6 +395,19 @@ compared with the engine on every suite case and on generated rules.
   boolean's truthiness is itself; a `TruthyEvaluator::Custom` need not
   agree. The collapse is skipped under a custom evaluator, as the CSE
   pass already was.
+- **A computed timezone fails the same way folded or not.** Folding
+  turned `{"cat": ["Nowhere/", "Zone"]}` in `format_date` / `parse_date`
+  into a literal, which the compile-time zone check rejected with a bare
+  `InvalidArguments`; unfolded it was `Unknown timezone: Nowhere/Zone`.
+  The zone position is declared `literal_args`.
+- **Traced `sort` by a field records each key.** The keys were read on a
+  fast path, so the trace showed no step for them.
+- **Error-path pointers escape like trace pointers.** `PathStep`'s
+  `json_pointer` did not escape `/` and `~` in an operator name (`/~1/0`
+  under `/`), and for a rule compiled for tracing it is now that rule's
+  recorded pointer.
+- **A huge `missing_some` minimum stays huge on 32-bit targets.** On
+  wasm32 a minimum past `u32::MAX` wrapped to a small one.
 
 ### Performance
 

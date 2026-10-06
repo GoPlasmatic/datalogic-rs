@@ -114,6 +114,16 @@ impl Projection {
                         kept.push((key.as_str(), child.owned(value, arena)));
                     }
                 }
+                // A wide object is looked up by an ordered probe, which on
+                // a repeated key may find a later copy than the first-match
+                // scan the narrower kept object gets. Rare (a document that
+                // repeats a key the rule reads), so view such an object
+                // whole rather than replicate the probe.
+                if pairs.len() >= crate::arena::value::ORDERED_PROBE_MIN_PAIRS
+                    && kept.len() > self.children.len()
+                {
+                    return input.view_in(arena);
+                }
                 DataValue::Object(kept.into_bump_slice())
             }
             other => other.view_in(arena),

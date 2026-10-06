@@ -293,3 +293,28 @@ fn test_is_night_complex_structured_object() {
         })
     );
 }
+
+/// A computed timezone gives the same error with folding on and off:
+/// folding must not turn it into a literal for the compile-time zone
+/// check, which reports a generic `InvalidArguments`.
+#[test]
+fn a_computed_timezone_fails_alike_folded_or_not() {
+    for op in ["format_date", "parse_date"] {
+        let first = if op == "format_date" {
+            r#"{"datetime":"2024-01-01T00:00:00Z"}"#
+        } else {
+            r#""2024""#
+        };
+        let rule = format!(r#"{{"{op}":[{first},"%Y",{{"cat":["Nowhere/","Zone"]}}]}}"#);
+        let run = |fold: bool| {
+            let engine = Engine::builder().with_constant_folding(fold).build();
+            format!("{:?}", engine.eval_str(&rule, "null").unwrap_err().kind)
+        };
+        assert_eq!(run(true), run(false), "{rule}");
+        assert!(
+            run(true).contains("Unknown timezone"),
+            "{rule}: {}",
+            run(true)
+        );
+    }
+}

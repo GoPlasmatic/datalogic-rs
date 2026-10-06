@@ -1,10 +1,10 @@
 # Root Makefile — cargo commands that reach *every* Rust manifest in the tree.
 #
-# The root workspace has only two members (crates/datalogic-rs,
-# tools/benchmark). Every other Rust crate — the four bindings and the fuzz
-# crate — is `exclude`d from it and declares its own `[workspace]` table, so
-# `cargo fmt --all`, `cargo clippy --workspace` and `cargo clean` run from
-# the root silently skip them.
+# The root workspace has only three members (crates/datalogic-rs,
+# crates/datalogic-bind, tools/benchmark). Every other Rust crate — the four
+# bindings and the fuzz crate — is `exclude`d from it and declares its own
+# `[workspace]` table, so `cargo fmt --all`, `cargo clippy --workspace` and
+# `cargo clean` run from the root silently skip them.
 #
 # The exclusions are deliberate, for different reasons per crate — the
 # `exclude` comment in ./Cargo.toml is the authoritative list. In short:
@@ -20,7 +20,8 @@ CARGO        ?= cargo
 CLIPPY_FLAGS := --all-features --all-targets -- -D warnings
 
 # Every Cargo manifest in the tree: the root workspace (which covers
-# crates/datalogic-rs + tools/benchmark) plus the standalone workspace
+# crates/datalogic-rs, crates/datalogic-bind and tools/benchmark) plus the
+# standalone workspace
 # roots, reachable only via --manifest-path. A new Rust binding is picked up
 # by the wildcard automatically — everything below derives from this list.
 MANIFESTS := Cargo.toml \

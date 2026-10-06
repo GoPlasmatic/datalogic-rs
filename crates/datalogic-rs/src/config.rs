@@ -160,6 +160,10 @@ pub enum MissingVar {
     Null,
     /// An [`ErrorKind::VariableNotFound`](crate::ErrorKind::VariableNotFound)
     /// error naming the path.
+    ///
+    /// Iterators then read every element through the general path, since
+    /// an inline field read cannot raise: slower, and charged more by
+    /// `Engine::evaluate_metered`.
     Error,
 }
 

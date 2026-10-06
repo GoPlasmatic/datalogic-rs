@@ -377,3 +377,25 @@ fn test_trace_custom_operator_error_propagation() {
         run.expression_tree
     );
 }
+
+/// `sort` by a field records the key of every item when traced, as every
+/// other iterator does, instead of reading the keys on its fast path.
+#[test]
+fn traced_sort_by_a_field_records_each_key() {
+    let engine = Engine::new();
+    let rule = r#"{"sort": [{"var": "xs"}, true, {"var": "k"}]}"#;
+    let logic = engine.trace().compile(rule).unwrap();
+    let run = engine
+        .trace()
+        .eval(&logic, r#"{"xs": [{"k": 3}, {"k": 1}, {"k": 2}]}"#);
+    assert_eq!(
+        run.result.unwrap().to_string(),
+        r#"[{"k":1},{"k":2},{"k":3}]"#
+    );
+    let key_steps = run
+        .steps
+        .iter()
+        .filter(|s| logic.pointer(s.node_id) == Some("/sort/2"))
+        .count();
+    assert_eq!(key_steps, 3);
+}

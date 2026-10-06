@@ -30,8 +30,8 @@ cargo install mdbook   # only if you are editing docs/
 
 ## Repo-wide commands
 
-The repo holds six Cargo manifests, but the root workspace has only two
-members. The four bindings and the fuzz crate are `exclude`d from it (each
+The repo holds six Cargo manifests, but the root workspace has only three
+members (`crates/datalogic-rs`, `crates/datalogic-bind`, `tools/benchmark`). The four bindings and the fuzz crate are `exclude`d from it (each
 declares its own `[workspace]` table; the `exclude` comment in the root
 `Cargo.toml` explains why per crate), so root-level `cargo fmt --all`,
 `cargo clippy --workspace` and `cargo clean` **silently skip them**.

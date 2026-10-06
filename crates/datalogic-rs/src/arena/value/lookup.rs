@@ -22,7 +22,7 @@ use super::DataValue;
 /// prefiltered linear scan wins: a probe is a byte-wise key compare plus a
 /// data-dependent branch (~7 of them at 128 pairs), while a prefilter
 /// rejection is a length compare on sequential memory.
-const ORDERED_PROBE_MIN_PAIRS: usize = 32;
+pub(crate) const ORDERED_PROBE_MIN_PAIRS: usize = 32;
 
 /// Byte-wise lexicographic compare without the libc `memcmp` call that
 /// `<[u8] as Ord>::cmp` lowers to. Probe keys are short JSONLogic field

@@ -83,9 +83,13 @@ beats per-platform prebuilds.
 
 ## Cargo workspace layout
 
-The repo root holds a Cargo workspace with two members:
+The repo root holds a Cargo workspace with three members:
 
 - `crates/datalogic-rs`: the published crate, `datalogic-rs`.
+- `crates/datalogic-bind` (`publish = false`): the wire formats and
+  plumbing the language bindings share (traced-run envelope, operator
+  catalogue, facts and diagnostics JSON, the custom-operator bridge).
+  Each binding builds it from the tree.
 - `tools/benchmark` (dev-only, `publish = false`): `self`
   (single-engine regression baseline), `compare` (cross-library matrix),
   `boundary_core` (rust-core runner for the per-binding boundary

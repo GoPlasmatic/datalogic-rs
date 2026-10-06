@@ -64,8 +64,9 @@ pub(crate) fn evaluate_sort<'a>(
     let extractor = &args[2];
 
     // Fast path: extractor is a root-scope `var` over non-empty segments —
-    // keys come from `traverse_segments` directly.
-    if engine.reads_fields_inline()
+    // keys come from `traverse_segments` directly. Not when traced, so the
+    // trace records each item's key, as for every other iterator.
+    if super::fast_paths::allowed(ctx, engine)
         && let Some(result) = sort_fast_path_var_extractor(&src, extractor, ascending, arena)
     {
         return Ok(result);

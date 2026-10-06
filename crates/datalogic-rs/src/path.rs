@@ -31,7 +31,11 @@ pub struct PathStep {
     pub arg_index: Option<u32>,
     /// JSONLogic-flavoured pointer from the root to this node — e.g.
     /// `/if/0/>/0` for the `var` slot of the inner `>` inside an `if`.
-    /// Empty string for the root step.
+    /// Empty string for the root step. Tokens are escaped as RFC 6901
+    /// escapes them (`/` is `~1`), as in a trace's pointers; for a rule
+    /// compiled with `TracedSession::compile` it is
+    /// [`Logic::pointer`](crate::Logic::pointer), the pointer into the
+    /// rule as written.
     pub json_pointer: String,
 }
 
@@ -66,7 +70,9 @@ impl Logic {
                     node_id: id,
                     operator: ni.operator.clone(),
                     arg_index: ni.arg_index,
-                    json_pointer: ni.json_pointer.clone(),
+                    json_pointer: self
+                        .pointer(id)
+                        .map_or_else(|| ni.json_pointer.clone(), str::to_string),
                 });
             }
         }
@@ -126,12 +132,16 @@ fn walk(
 
 #[inline]
 fn build_pointer(parent_pointer: &str, parent_op: Option<&str>, arg_index: Option<u32>) -> String {
-    match (parent_op, arg_index) {
-        (Some(op), Some(idx)) => format!("{}/{}/{}", parent_pointer, op, idx),
-        // Child of an Array (no operator key) — JSON pointer "/idx".
-        (None, Some(idx)) => format!("{}/{}", parent_pointer, idx),
-        _ => parent_pointer.to_string(),
+    let mut pointer = parent_pointer.to_string();
+    if let Some(idx) = arg_index {
+        // A child of an Array has no operator key — JSON pointer "/idx".
+        if let Some(op) = parent_op {
+            crate::node::push_pointer_token(&mut pointer, op);
+        }
+        pointer.push('/');
+        pointer.push_str(itoa::Buffer::new().format(idx));
     }
+    pointer
 }
 
 #[cfg(test)]
@@ -184,5 +194,32 @@ mod tests {
         // First step (root-to-leaf) is the outermost operator.
         assert_eq!(steps[0].operator.as_deref(), Some("+"));
         assert_eq!(steps[0].json_pointer, "");
+    }
+
+    /// Error-path pointers escape tokens as trace pointers do, and a rule
+    /// compiled for tracing reports its recorded pointers.
+    #[test]
+    fn pointers_escape_and_follow_the_traced_compile() {
+        let engine = engine();
+        let rule = r#"{"/": [{"+": [{"var": "x"}, 1]}, 2]}"#;
+        let steps = |compiled: &crate::Logic| {
+            let arena = bumpalo::Bump::new();
+            let err = engine
+                .evaluate(compiled, r#"{"x": "a"}"#, &arena)
+                .unwrap_err();
+            err.resolve_path(compiled)
+        };
+        let plain = engine.compile(rule).unwrap();
+        let got: Vec<_> = steps(&plain).into_iter().map(|s| s.json_pointer).collect();
+        assert_eq!(got, ["", "/~1/0"]);
+        let traced = engine.trace().compile(rule).unwrap();
+        let traced_steps = steps(&traced);
+        assert_eq!(traced_steps.last().unwrap().json_pointer, "/~1/0");
+        for step in &traced_steps {
+            assert_eq!(
+                traced.pointer(step.node_id),
+                Some(step.json_pointer.as_str())
+            );
+        }
     }
 }

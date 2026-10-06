@@ -150,10 +150,10 @@ impl Logic {
     /// for a call (a computed `var` path, say) points at that call.
     ///
     /// Recorded only for a rule compiled with
-    /// [`TracedSession::compile`](crate::TracedSession::compile); `None`
+    /// `TracedSession::compile`; `None`
     /// for any other rule and for an id it does not have. A trace's
-    /// [`ExpressionNode::id`](crate::ExpressionNode) and
-    /// [`ExecutionStep::node_id`](crate::ExecutionStep) are such ids, so a
+    /// `ExpressionNode::id` and
+    /// `ExecutionStep::node_id` are such ids, so a
     /// debugger can place every step in the rule it shows.
     pub fn pointer(&self, id: u32) -> Option<&str> {
         let pointers = self.pointers.as_deref()?;
@@ -183,7 +183,7 @@ impl Logic {
 
     /// Every `(node id, pointer)` [`Self::pointer`] knows, in id order;
     /// empty unless the rule was compiled with
-    /// [`TracedSession::compile`](crate::TracedSession::compile).
+    /// `TracedSession::compile`.
     pub fn pointers(&self) -> impl Iterator<Item = (u32, &str)> {
         self.pointers
             .as_deref()

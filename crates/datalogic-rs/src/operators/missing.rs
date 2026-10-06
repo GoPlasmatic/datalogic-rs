@@ -219,7 +219,9 @@ pub(crate) fn evaluate_compiled_missing_some<'a>(
 pub(crate) fn min_present(av: &DataValue<'_>) -> usize {
     match av {
         DataValue::Number(n) => match n.as_i64() {
-            Some(i) => i.max(0) as usize,
+            // Saturating, not `as`: on a 32-bit target (wasm32) `as`
+            // would wrap a minimum past `usize::MAX` to a small one.
+            Some(i) => usize::try_from(i.max(0)).unwrap_or(usize::MAX),
             // `as` saturates: a huge minimum is never met, NaN needs none.
             None => n.as_f64().ceil().max(0.0) as usize,
         },
@@ -275,4 +277,23 @@ fn accumulate_dynamic_missing<'a>(
         _ => {}
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::min_present;
+    use crate::arena::DataValue;
+
+    #[test]
+    fn a_minimum_past_usize_saturates() {
+        let big = DataValue::from_i64(i64::MAX);
+        assert_eq!(
+            min_present(&big),
+            usize::try_from(i64::MAX).unwrap_or(usize::MAX)
+        );
+        // 2^32 + 1 wrapped to 1 on a 32-bit target.
+        assert!(min_present(&DataValue::from_i64((1 << 32) + 1)) > 1);
+        assert_eq!(min_present(&DataValue::from_i64(-3)), 0);
+        assert_eq!(min_present(&DataValue::from_f64(2.5)), 3);
+    }
 }

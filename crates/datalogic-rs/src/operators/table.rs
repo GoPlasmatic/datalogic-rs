@@ -566,10 +566,16 @@ operators! {
         ParseDate ["parse_date"] => eager(Any, Any, Lazy) datetime::parse_date {
             on_missing: Miss::Err("parse_date requires date string and format"),
             compile: Some(CompileHook::Args(hooks::timezone_literal)),
+            // The hook validates a literal zone; a computed one must not
+            // fold into a literal and fail the hook's way instead.
+            literal_args: LiteralArgs::At(2),
         };
         FormatDate ["format_date"] => eager(Any, Any, Lazy) datetime::format_date {
             on_missing: Miss::Err("format_date requires datetime and format"),
             compile: Some(CompileHook::Args(hooks::timezone_literal)),
+            // The hook validates a literal zone; a computed one must not
+            // fold into a literal and fail the hook's way instead.
+            literal_args: LiteralArgs::At(2),
         };
         DateDiff ["date_diff"] => eager(Any, Any, Any) datetime::date_diff
             { on_missing: Miss::Err("date_diff requires two dates and a unit") };

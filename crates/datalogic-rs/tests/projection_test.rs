@@ -465,3 +465,25 @@ fn a_very_long_read_path_does_not_overflow() {
         ["ok null", "ok null", "ok null"]
     );
 }
+
+/// A wide object that repeats a key the rule reads gives the same value
+/// projected as whole: wide objects are looked up by an ordered probe,
+/// which may find a later copy of the key than a first-match scan.
+#[test]
+fn a_repeated_key_in_a_wide_object_reads_as_on_the_whole_input() {
+    let engine = Engine::new();
+    for fields in [4, 31, 40] {
+        let mut text = String::from(r#"{"k":1"#);
+        for i in 0..fields {
+            text.push_str(&format!(r#","f{i}":null"#));
+        }
+        text.push_str(r#","k":2}"#);
+        let own = OwnedDataValue::from_json(&text).unwrap();
+        for rule in [json!({"var": "k"}), json!([{"var": "k"}, {"var": "f0"}])] {
+            let logic = engine.compile(&rule).unwrap();
+            let whole = outcome(engine.session().eval_str(&logic, text.as_str()));
+            let projected = outcome(engine.session().eval_str(&logic, &own));
+            assert_eq!(projected, whole, "{rule} over {fields} fields");
+        }
+    }
+}
