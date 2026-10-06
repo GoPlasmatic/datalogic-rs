@@ -97,13 +97,24 @@ function EmptyState({
  * are shown there by the debugger instead.
  */
 function TraceErrorBanner({ failure }: { failure: TraceFailure }) {
-  const kind = traceFailureType(failure);
+  return <ErrorBanner kind={traceFailureType(failure)} message={formatTraceFailure(failure)} />;
+}
+
+function ErrorBanner({ kind, message }: { kind?: string | null; message: string }) {
   return (
     <div className="logic-editor-trace-error" role="alert">
       {kind && <span className="logic-editor-trace-error-kind">{kind}</span>}
-      <span className="logic-editor-trace-error-message">{formatTraceFailure(failure)}</span>
+      <span className="logic-editor-trace-error-message">{message}</span>
     </div>
   );
+}
+
+/**
+ * Banner for an engine that failed to load. Without it the editor fell back
+ * to the static diagram and the debugger silently never appeared.
+ */
+function EngineErrorBanner({ error }: { error: string }) {
+  return <ErrorBanner kind="Engine" message={`The evaluation engine failed to load: ${error}`} />;
 }
 
 /**
@@ -367,6 +378,8 @@ interface EditorBodyProps {
   onDirectionChange: (direction: FlowDirection) => void;
   configSummary: string | null;
   evaluateWithTrace?: (logic: unknown, data: unknown) => TracedResult;
+  /** The WASM engine's load error, if it failed to start. */
+  engineError: string | null;
 }
 
 /**
@@ -389,6 +402,7 @@ function DataLogicEditorBody({
   onDirectionChange,
   configSummary,
   evaluateWithTrace,
+  engineError,
 }: EditorBodyProps) {
   // Debounce timer ref for onChange
   const onChangeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -511,6 +525,7 @@ function DataLogicEditorBody({
         ) : (
           <>
             {toolbar}
+            {evalEnabled && engineError && <EngineErrorBanner error={engineError} />}
             {editor.traceError && <TraceErrorBanner failure={editor.traceError} />}
             <div className="logic-editor-body">
               <div className="logic-editor-main">
@@ -566,6 +581,7 @@ function DataLogicEditorBody({
         ) : (
           <>
             {toolbar}
+            {evalEnabled && engineError && <EngineErrorBanner error={engineError} />}
             {editor.traceError && <TraceErrorBanner failure={editor.traceError} />}
             <div className="logic-editor-body">
               <div className="logic-editor-main">
@@ -605,6 +621,7 @@ export function DataLogicEditor({
   // Internal WASM evaluator: one Engine per (templating, config, customOperators)
   const {
     ready: wasmReady,
+    error: wasmError,
     evaluateWithTrace,
   } = useWasmEvaluator({ templating, config, customOperators });
 
@@ -636,6 +653,7 @@ export function DataLogicEditor({
       onDirectionChange={setDirection}
       configSummary={configSummary}
       evaluateWithTrace={wasmReady ? evaluateWithTrace : undefined}
+      engineError={wasmError}
     />
   );
 }
