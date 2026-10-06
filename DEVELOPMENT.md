@@ -160,6 +160,12 @@ Crashing inputs land in `fuzz/artifacts/`; minimize with
 `cargo +nightly fuzz tmin eval_str <artifact>` and turn the minimized case
 into a regression test before fixing.
 
+The `fuzz` workflow (`.github/workflows/fuzz.yml`) runs the target nightly
+for a bounded time, seeded with every rule and data value in the
+conformance suites, and uploads any crash as an artifact. The fuzz crate
+depends on `all-operators`, so a new operator family is fuzzed without an
+edit there.
+
 ## `bindings/wasm`: WebAssembly bindings (browser / Deno / Bun / Workers)
 
 ```bash
@@ -349,59 +355,53 @@ bundle embeds the WASM engine, so consumers install neither.
 ## Releases
 
 All publishing flows through `.github/workflows/release.yml`, triggered by
-pushing a `v*` tag whose version matches `crates/datalogic-rs/Cargo.toml`. The
-workflow validates → publishes the crate to crates.io → builds and publishes
-every binding (`@goplasmatic/datalogic-wasm` WASM and
-`@goplasmatic/datalogic-node` napi-rs prebuilds to npm, `datalogic-py` to
-PyPI, `io.github.goplasmatic:datalogic` to Maven Central, `Goplasmatic.Datalogic`
-to NuGet, `goplasmatic/datalogic` to Packagist, the Go module tag, and
-`@goplasmatic/datalogic-ui`) → cuts the GitHub Release. There are no local
-publish scripts; do not run `npm publish` or `cargo publish` by hand.
-Use `scripts/bump-version.sh <x.y.z>` to update every versioned file the
-validate job checks.
+pushing a `v*` tag whose version matches `crates/datalogic-rs/Cargo.toml`.
+There are no local publish scripts; do not run `npm publish` or
+`cargo publish` by hand.
 
-### Open release-ops items
+### Cutting a release
 
-The one-time watch list for the first 5.0.1 release legs (added
-2026-07-02) was retired after that release brought all nine registries
-up. Still open:
+1. `scripts/bump-version.sh <x.y.z>` updates every versioned file the
+   validate job checks, then refreshes the five `Cargo.lock` files (CI and
+   the release build with `--locked`).
+2. `scripts/check-stats.sh --write` updates every quoted conformance count.
+   The release runs the script with `--strict`, where a stale count fails.
+3. Give the root `CHANGELOG.md` a dated `## [x.y.z] - YYYY-MM-DD` section.
+   The crates.io `crates/datalogic-rs/CHANGELOG.md` only links to it; leave
+   it alone.
+4. Merge, wait for CI on `main`, then tag that commit and push the tag.
 
-- **JVM natives on a clean machine:** `publish-jvm`'s Maven Central
-  deploy first ran with the classpath-root layout on 2026-07-07; verify
-  once that the published JAR loads its bundled natives on a machine
-  with no repo checkout and `datalogic.library.path` unset.
-- **NuGet signing** remains unimplemented: needs org certificates and a
-  signing decision (README embedding, SourceLink, and snupkg already ship).
+### What the workflow does
 
-### One-time registry / marketing ops (added 2026-07-03; maintainer-only)
+1. **`validate`**: the tag is a tag and matches every package version; the
+   CHANGELOG section exists and is dated; `check-stats.sh --strict`; and
+   `cargo semver-checks` against the last crates.io release, version-aware,
+   so a patch tag that adds API fails.
+2. **`ci`, and every `build-*` job, in parallel**: `ci` is the whole of
+   `ci.yml` (lint, tests, feature matrix, MSRV, minimal versions, docs,
+   examples, cargo-deny, every binding's tests) run against the tag. Each
+   `build-*` job is a `release-build-*.yml` reusable workflow that builds
+   one binding's publishable artifact with the pinned release toolchain
+   and the committed lockfile: the WASM package and the UI bundle, Python
+   wheels and sdist, Node prebuilds, the C cdylib matrix, the Go
+   staticlib matrix, and from the cdylibs the NuGet package, the JAR and
+   the PHP dist (staged by `scripts/stage-natives.sh`, which fails if a
+   platform is missing). `smoke-hosts` then installs the JAR, .nupkg and
+   PHP dist on macOS and Windows; it reports but does not gate yet.
+3. **`publish-crate`**: runs only when `validate`, `ci` and every build
+   passed. Once it succeeds the version is on crates.io for good.
+4. **Publish phase**, each job downloading its artifact and pushing it
+   (no rebuild): npm (WASM, Node), PyPI, NuGet, Maven Central, Packagist
+   (through the `GoPlasmatic/datalogic-php` split), and the
+   `bindings/go/vX.Y.Z` module tag. `publish-ui` waits for `publish-wasm`.
+5. **`github-release`**: runs alongside `publish-crate`, gated on `ci` and
+   the builds only, so a registry outage cannot leave the release page
+   without its assets.
 
-Registry state is a living figure; the release workflow run for the
-latest `v*` tag is the source of truth, not this paragraph. Last
-recorded check (2026-08-19, the 5.2.0 release): eight of the nine
-registries served the tag (crates.io, npm ×3, PyPI, NuGet, the Go proxy,
-and Maven Central, first published 2026-07-07); Packagist (registered
-2026-07-03) lagged because the PHP dist push token had expired, so the
-PHP leg needs `PHP_DIST_PUSH_TOKEN` rotated and `release.yml` rerun on
-the tag. Done on 2026-07-03: Packagist
-registration + webhook, GitHub Discussions enabled, wiki disabled. Done
-on 2026-07-07: first Maven Central publish (`io.github.goplasmatic:datalogic`);
-the root README's Maven row now carries the shields.io maven-central
-badge. Done: Discussions categories created (Announcements, Q&A, Ideas,
-Show and tell). Done on 2026-07-15: the stale v4 npm package
-`@goplasmatic/datalogic` was deprecated and removed from the registry
-(`npm view` now 404s); do **not** re-register or republish that name;
-any new publish would resurrect its search-rank signal and split the
-lineup three ways again. Still open:
-
-- **Pin a "Who's using datalogic-rs? Add your project" thread** in the
-  Show and tell Discussions category (the categories themselves exist;
-  `.github/ISSUE_TEMPLATE/config.yml` already links to Q&A).
-- **FUNDING.yml is intentionally absent**: add it only after enrolling
-  the org (or a maintainer account) in GitHub Sponsors. A Sponsor
-  button that 404s is worse than none.
-
-Promotion sequencing, launch checklists, and adoption metrics live in
-[.github/LAUNCH-PLAYBOOK.md](./.github/LAUNCH-PLAYBOOK.md).
+A failed registry leg is re-run with `gh workflow run release.yml --ref
+vX.Y.Z`; every publish step skips a version the registry already has.
+Registry status, open release-ops items and one-time maintainer chores live
+in [.github/LAUNCH-PLAYBOOK.md](./.github/LAUNCH-PLAYBOOK.md#registry-and-release-ops).
 
 ## `tools/benchmark`: performance harness
 

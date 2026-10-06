@@ -111,6 +111,54 @@ Week 3+ (per-ecosystem):
 - Refresh BENCHMARK.md quarterly; never quote numbers older than the last
   refresh in new posts.
 
+## Registry and release ops
+
+Moved here from DEVELOPMENT.md, which now describes only the release
+flow. Dated entries are a log, not a status: the release workflow run
+for the latest `v*` tag is the source of truth.
+
+### Open release-ops items
+
+The one-time watch list for the first 5.0.1 release legs (added
+2026-07-02) was retired after that release brought all nine registries
+up. Still open:
+
+- **JVM natives on a clean machine:** `publish-jvm`'s Maven Central
+  deploy first ran with the classpath-root layout on 2026-07-07; verify
+  once that the published JAR loads its bundled natives on a machine
+  with no repo checkout and `datalogic.library.path` unset. Every release
+  now runs that check on macOS and Windows against the JAR it built
+  (`release-smoke-hosts.yml`); a Linux machine is still unchecked.
+- **NuGet signing** remains unimplemented: needs org certificates and a
+  signing decision (README embedding, SourceLink, and snupkg already ship).
+
+### One-time registry / marketing ops (added 2026-07-03)
+
+Registry state is a living figure; the release workflow run for the
+latest `v*` tag is the source of truth, not this paragraph. Last
+recorded check (2026-08-19, the 5.2.0 release): eight of the nine
+registries served the tag (crates.io, npm ×3, PyPI, NuGet, the Go proxy,
+and Maven Central, first published 2026-07-07); Packagist (registered
+2026-07-03) lagged because the PHP dist push token had expired, so the
+PHP leg needs `PHP_DIST_PUSH_TOKEN` rotated and `release.yml` rerun on
+the tag. Done on 2026-07-03: Packagist
+registration + webhook, GitHub Discussions enabled, wiki disabled. Done
+on 2026-07-07: first Maven Central publish (`io.github.goplasmatic:datalogic`);
+the root README's Maven row now carries the shields.io maven-central
+badge. Done: Discussions categories created (Announcements, Q&A, Ideas,
+Show and tell). Done on 2026-07-15: the stale v4 npm package
+`@goplasmatic/datalogic` was deprecated and removed from the registry
+(`npm view` now 404s); do **not** re-register or republish that name;
+any new publish would resurrect its search-rank signal and split the
+lineup three ways again. Still open:
+
+- **Pin a "Who's using datalogic-rs? Add your project" thread** in the
+  Show and tell Discussions category (the categories themselves exist;
+  `.github/ISSUE_TEMPLATE/config.yml` already links to Q&A).
+- **FUNDING.yml is intentionally absent**: add it only after enrolling
+  the org (or a maintainer account) in GitHub Sponsors. A Sponsor
+  button that 404s is worse than none.
+
 ## Metrics: snapshot fortnightly as comments on a pinned "Adoption metrics" issue
 
 GitHub traffic has a 14-day retention window; capture on schedule:
