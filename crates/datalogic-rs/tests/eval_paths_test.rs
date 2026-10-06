@@ -91,3 +91,34 @@ fn one_shot_roots_agree_with_evaluate() {
         assert_eq!(got, want, "{rule}");
     }
 }
+
+/// A rule reading more keys than the projection scans linearly finds
+/// each of them through the sorted search, in any read order.
+#[test]
+fn wide_read_sets_project_every_key() {
+    let engine = Engine::new();
+    let keys: Vec<String> = (0..40).map(|i| format!("k{:02}", (i * 7) % 40)).collect();
+    let data = serde_json::Value::Object(
+        (0..60)
+            .map(|i| (format!("k{i:02}"), serde_json::json!(i)))
+            .collect(),
+    );
+    let text = data.to_string();
+    let owned = OwnedDataValue::from_json(&text).unwrap();
+    let rule = serde_json::json!({
+        "cat": keys.iter().map(|k| serde_json::json!({"var": k})).collect::<Vec<_>>()
+    });
+    let compiled = engine.compile(&rule).unwrap();
+    let arena = datalogic_rs::bumpalo::Bump::new();
+    let parsed = DataValue::from_str(&text, &arena).unwrap();
+    let want = engine
+        .evaluate(&compiled, &parsed, &arena)
+        .unwrap()
+        .to_json_string();
+    for got in [
+        engine.evaluate(&compiled, &owned, &arena).unwrap(),
+        engine.evaluate(&compiled, &data, &arena).unwrap(),
+    ] {
+        assert_eq!(got.to_json_string(), want);
+    }
+}

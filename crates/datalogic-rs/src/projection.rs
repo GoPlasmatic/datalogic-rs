@@ -40,7 +40,8 @@ const MAX_PATH_SEGMENTS: usize = crate::node::MAX_COMPILE_DEPTH;
 pub(crate) struct Projection {
     /// A read ends here: keep the whole value.
     whole: bool,
-    /// The keys read below this point, each with what is read under it.
+    /// The keys read below this point, each with what is read under it,
+    /// sorted by key.
     children: Vec<(Box<str>, Projection)>,
 }
 
@@ -67,15 +68,27 @@ impl Projection {
         Some(root)
     }
 
-    /// What is read under key `key`, or `None` when nothing is: for an
-    /// input whose top-level object is assembled from parts
-    /// ([`crate::Roots`]).
+    /// What is read under key `key`, or `None` when nothing is. Called
+    /// once per entry of each projected input object, and for each part of
+    /// a [`crate::Roots`] input.
+    ///
+    /// `children` is kept sorted by key, so a wide read set is searched in
+    /// O(log n) rather than scanned for every input key; a narrow one (the
+    /// common case) is still scanned, which is faster at that size.
     #[inline]
     pub(crate) fn under(&self, key: &str) -> Option<&Projection> {
+        const SCAN_MAX: usize = 8;
+        if self.children.len() <= SCAN_MAX {
+            return self
+                .children
+                .iter()
+                .find(|(k, _)| **k == *key)
+                .map(|(_, n)| n);
+        }
         self.children
-            .iter()
-            .find(|(k, _)| **k == *key)
-            .map(|(_, n)| n)
+            .binary_search_by(|(k, _)| (**k).cmp(key))
+            .ok()
+            .map(|at| &self.children[at].1)
     }
 
     fn insert(&mut self, segments: &[String]) {
@@ -87,12 +100,16 @@ impl Projection {
             self.children = Vec::new();
             return;
         };
-        let at = match self.children.iter().position(|(k, _)| **k == **first) {
-            Some(at) => at,
-            None => {
+        // Insert in key order; see `under`.
+        let at = match self
+            .children
+            .binary_search_by(|(k, _)| (**k).cmp(first.as_str()))
+        {
+            Ok(at) => at,
+            Err(at) => {
                 self.children
-                    .push((first.as_str().into(), Projection::default()));
-                self.children.len() - 1
+                    .insert(at, (first.as_str().into(), Projection::default()));
+                at
             }
         };
         self.children[at].1.insert(rest);
