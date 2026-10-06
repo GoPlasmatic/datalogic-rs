@@ -123,6 +123,20 @@ class LifecycleTest {
                 .setConfigJson("{\"no_such_key\":1}"));
     }
 
+    @Test
+    void session_reset_keeps_the_session_usable() {
+        try (Engine engine = new Engine();
+             Rule rule = engine.compile("{\"cat\":[{\"var\":\"a\"},{\"var\":\"b\"}]}")) {
+            Session session = engine.openSession();
+            assertEquals("\"xy\"", session.evaluate(rule, "{\"a\":\"x\",\"b\":\"y\"}"));
+            session.reset();
+            session.reset();
+            assertEquals("\"zw\"", session.evaluate(rule, "{\"a\":\"z\",\"b\":\"w\"}"));
+            session.close();
+            assertThrows(IllegalStateException.class, session::reset);
+        }
+    }
+
     /** Run {@code action} from eight threads released at the same moment. */
     private static void closeConcurrently(Runnable action) throws InterruptedException {
         CountDownLatch start = new CountDownLatch(1);
