@@ -1,0 +1,78 @@
+# cargo-deny policy for every Cargo workspace in the tree (the root plus
+# bindings/{c,node,python,wasm}). `make deny` runs it against each one, CI
+# runs it on every PR that touches a manifest or lockfile, and a weekly
+# cron catches advisories published against dependencies that did not
+# change. The bindings redistribute every transitive dependency inside
+# their binaries, so this is the policy for what ships.
+#
+#   cargo deny --manifest-path <Cargo.toml> check --config deny.toml
+#
+# Checked with cargo-deny 0.20.
+
+[graph]
+# Judge every dependency any feature can pull in, not only the default
+# build: the bindings ship with `all-operators`.
+all-features = true
+
+[advisories]
+# RustSec advisories (vulnerabilities, unsound crates) and yanked
+# releases fail the check. An unmaintained-crate notice fails only for a
+# direct dependency of one of our crates, which we can replace; one deep
+# in the graph is left to chase upstream.
+unmaintained = "workspace"
+yanked = "deny"
+# Add an entry only with a reason and a tracking link, and remove it when
+# the fix ships:
+#   { id = "RUSTSEC-YYYY-NNNN", reason = "..." },
+ignore = []
+
+[licenses]
+# Permissive licenses compatible with redistributing the dependencies
+# inside Apache-2.0 binaries. Anything else fails until it is reviewed
+# and added here.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.9
+# One allow list serves five graphs; a license only some of them use is
+# not a finding.
+unused-allowed-license = "allow"
+
+# cbindgen is a build-time code generator for bindings/c (it writes the
+# committed header); none of its code is linked into what ships.
+[[licenses.exceptions]]
+crate = "cbindgen"
+allow = ["MPL-2.0"]
+
+[licenses.private]
+# Our unpublished crates (`publish = false`) carry the workspace license,
+# but skip them anyway: they never reach a registry.
+ignore = true
+
+[bans]
+# Two majors of one crate in a graph cost build time and binary size, so
+# they are reported (syn 2 + 3 today, through `half` and `serde_derive`;
+# INFRA-33), but they are not errors.
+multiple-versions = "warn"
+# A `*` requirement can resolve to anything. Path dependencies between our
+# own crates are fine, but cargo-deny exempts them only in crates marked
+# `publish = false`, and the four binding crates (which never go to
+# crates.io; they ship through npm, PyPI and the C artifacts) are not
+# marked. Their `datalogic-bind = { path = ... }` lines would fail a
+# `deny` here, so wildcards warn until those manifests say
+# `publish = false`.
+wildcards = "warn"
+allow-wildcard-paths = true
+
+[sources]
+# crates.io is the only registry, and no git dependencies.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
