@@ -363,5 +363,68 @@
         },
         "data": {},
         "result": "null"
-    }
+    },
+  "# Strings are classified by the datetime and duration parsers",
+  {
+    "description": "A UTC datetime string",
+    "rule": {"type": {"val": "s"}},
+    "data": {"s": "2024-01-15T10:30:00Z"},
+    "requires": ["datetime"],
+    "result": "datetime"
+  },
+  {
+    "description": "A datetime string with a negative offset",
+    "rule": {"type": {"val": "s"}},
+    "data": {"s": "2024-01-15T10:30:00-05:00"},
+    "requires": ["datetime"],
+    "result": "datetime"
+  },
+  {
+    "description": "A naive datetime string",
+    "rule": {"type": {"val": "s"}},
+    "data": {"s": "2024-01-15T10:30:00"},
+    "requires": ["datetime"],
+    "result": "datetime"
+  },
+  {
+    "description": "A duration string",
+    "rule": {"type": {"val": "s"}},
+    "data": {"s": "2h30m"},
+    "requires": ["datetime"],
+    "result": "duration"
+  },
+  {
+    "description": "A duration in the canonical form",
+    "rule": {"type": {"val": "s"}},
+    "data": {"s": "1d:2h:0m:0s"},
+    "requires": ["datetime"],
+    "result": "duration"
+  },
+  {
+    "description": "A word with a digit is not a duration",
+    "rule": {"type": {"val": "s"}},
+    "data": {"s": "password1"},
+    "requires": ["datetime"],
+    "result": "string"
+  },
+  {
+    "description": "A fractional duration does not parse",
+    "rule": {"type": {"val": "s"}},
+    "data": {"s": "1.5h"},
+    "requires": ["datetime"],
+    "result": "string"
+  },
+  {
+    "description": "A sentence with T, a colon and a Z is a string",
+    "rule": {"type": {"val": "s"}},
+    "data": {"s": "Time: 10 o'clock Zulu"},
+    "requires": ["datetime"],
+    "result": "string"
+  },
+  {
+    "description": "A numeric string is a string",
+    "rule": {"type": {"val": "s"}},
+    "data": {"s": "42"},
+    "result": "string"
+  }
 ]

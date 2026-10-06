@@ -18,9 +18,14 @@
 //!
 //! # Special Type Detection
 //!
-//! The operator performs heuristic detection for datetime and duration strings:
-//! - Datetime: Contains `T`, `:`, and either `Z` or `+` (ISO 8601 format)
-//! - Duration: Contains time unit letters (`d`, `h`, `m`, `s`) with digits
+//! With the `datetime` feature, a string is classified the way the
+//! comparisons (`==`, `<`, ...) decide to compare it as a datetime or
+//! duration: a string that starts with a digit, read by their parsers:
+//! - Datetime: parses as an ISO 8601 / RFC 3339 datetime, with or without
+//!   an offset (`2024-01-15T10:30:00Z`, `2024-01-15T10:30:00-05:00`).
+//! - Duration: parses as a duration (`2h30m`, `1d:2h:0m:0s`).
+//!
+//! Anything else (`"password1"` included) is a `"string"`.
 //!
 //! # Examples
 //!
@@ -68,22 +73,25 @@ pub(crate) fn type_<'a>(_cx: &mut Cx<'_, 'a>, av: &'a DataValue<'a>) -> Result<&
     Ok(crate::arena::singletons::singleton_type_name(type_str))
 }
 
-/// Classify a string into "datetime" / "duration" / "string" using the
-/// `type` operator's string heuristic.
+/// Classify a string into "datetime" / "duration" / "string" the way the
+/// comparisons decide to compare it as one: their cheap shape gate, then
+/// the datetime and duration parsers. So `type` names a string a datetime
+/// exactly when `==` and `<` would compare it as one. (A character
+/// heuristic here once called `"password1"` a duration and an offset
+/// datetime such as `"2024-01-15T10:30:00-05:00"` a string.)
 #[inline]
 fn classify_string(s: &str) -> &'static str {
     #[cfg(feature = "datetime")]
     {
-        if s.contains('T') && s.contains(':') && (s.contains('Z') || s.contains('+')) {
-            return "datetime";
+        if !crate::operators::comparison::could_be_datetime_or_duration(s) {
+            return "string";
         }
-        if s.chars().any(|c| matches!(c, 'd' | 'h' | 'm' | 's'))
-            && s.chars().any(|c| c.is_ascii_digit())
-            && !s.contains(' ')
-        {
-            return "duration";
+        let as_value = DataValue::String(s);
+        match crate::operators::datetime::arith::Temporal::of(&as_value) {
+            Some(crate::operators::datetime::arith::Temporal::DateTime(_)) => "datetime",
+            Some(crate::operators::datetime::arith::Temporal::Duration(_)) => "duration",
+            None => "string",
         }
-        "string"
     }
     #[cfg(not(feature = "datetime"))]
     {

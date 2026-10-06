@@ -54,7 +54,7 @@ use loose::loose_equals;
 /// Filters out pure numeric strings and short strings that can't be either format.
 #[cfg(feature = "datetime")]
 #[inline]
-fn could_be_datetime_or_duration(s: &str) -> bool {
+pub(crate) fn could_be_datetime_or_duration(s: &str) -> bool {
     let b = s.as_bytes();
     if b.len() < 2 || !b[0].is_ascii_digit() {
         return false;
