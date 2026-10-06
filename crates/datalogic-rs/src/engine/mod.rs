@@ -879,18 +879,23 @@ impl Engine {
         data: D,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::arena::DataValue<'a>> {
-        self.run(
-            compiled,
-            arena,
-            |compiled| data.into_arena_for(compiled, self, arena),
-            |_| {},
-            |result, _| result,
-        )
+        // The steps of [`Self::run`], written out: through `run`'s closures
+        // this body measured ~1.2 ns slower per call (a third of the cost
+        // of evaluating a folded rule), so the hot entry points keep the
+        // straight-line form.
+        let compiled = compiled.for_engine(self);
+        let _depth_guard = self.enter_dispatch_boundary()?;
+        let data_ref = data.into_arena_for(compiled, self, arena)?;
+        let mut ctx = self.new_context(compiled, data_ref);
+        match self.dispatch_node(&compiled.root, &mut ctx, arena) {
+            Ok(av) => Ok(av),
+            Err(e) => Err(e.decorated(ctx.take_error_path(), compiled)),
+        }
     }
 
-    /// The evaluation body every entry point shares: plain, metered,
-    /// session and traced runs, and the one-shot methods through
-    /// [`Self::evaluate`].
+    /// The evaluation body, with hooks: the traced run uses it.
+    /// [`Self::evaluate`] and [`Self::evaluate_metered`] write the same
+    /// steps out by hand (see there why); keep the three in step.
     ///
     /// In order: pick the rule as this engine runs it
     /// ([`Logic::for_engine`]), enter the re-entrancy guard, bring the
@@ -901,8 +906,7 @@ impl Engine {
     /// the context together, for what is read off the context afterwards
     /// (operations spent, the trace).
     ///
-    /// `#[inline(always)]` with closure arguments, so each entry point
-    /// compiles to the same straight-line body it had before.
+    #[cfg(feature = "trace")]
     #[inline(always)]
     pub(crate) fn run<'a, R>(
         &self,
@@ -1064,18 +1068,19 @@ impl Engine {
         arena: &'a bumpalo::Bump,
         budget: u64,
     ) -> Result<Metered<&'a crate::arena::DataValue<'a>>> {
-        self.run(
-            compiled,
-            arena,
-            |compiled| data.into_arena_for(compiled, self, arena),
-            |ctx| ctx.set_budget(budget),
-            |result, ctx| {
-                result.map(|value| Metered {
-                    value,
-                    ops: ctx.ops_spent(),
-                })
-            },
-        )
+        // [`Self::evaluate`]'s straight-line body, with the budget set.
+        let compiled = compiled.for_engine(self);
+        let _depth_guard = self.enter_dispatch_boundary()?;
+        let data_ref = data.into_arena_for(compiled, self, arena)?;
+        let mut ctx = self.new_context(compiled, data_ref);
+        ctx.set_budget(budget);
+        match self.dispatch_node(&compiled.root, &mut ctx, arena) {
+            Ok(value) => Ok(Metered {
+                value,
+                ops: ctx.ops_spent(),
+            }),
+            Err(e) => Err(e.decorated(ctx.take_error_path(), compiled)),
+        }
     }
 
     /// Apply the engine's configured truthiness rules

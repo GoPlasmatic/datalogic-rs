@@ -245,14 +245,11 @@ impl<'engine, E: Deref<Target = Engine>> Session<'engine, E> {
         D: EvalInput<'a>,
     {
         let arena: &'a Bump = &self.arena;
-        let engine = &self.engine;
-        engine.run(
-            compiled,
-            arena,
-            |compiled| data.into_arena_for(compiled, engine, arena),
-            |_| {},
-            |result, _| R::from_arena(result?),
-        )
+        // Bring the input in against the rule as this engine runs it, so
+        // a projection matches the tree `evaluate` dispatches.
+        let compiled = compiled.for_engine(&self.engine);
+        let av = data.into_arena_for(compiled, &self.engine, arena)?;
+        R::from_arena(self.engine.evaluate(compiled, av, arena)?)
     }
 
     /// JSON-string convenience: evaluate against `data` and serialise
@@ -322,19 +319,13 @@ impl<'engine, E: Deref<Target = Engine>> Session<'engine, E> {
         D: EvalInput<'a>,
     {
         let arena: &'a Bump = &self.arena;
-        let engine = &self.engine;
-        engine.run(
-            compiled,
-            arena,
-            |compiled| data.into_arena_for(compiled, engine, arena),
-            |ctx| ctx.set_budget(budget),
-            |result, ctx| {
-                Ok(crate::Metered {
-                    value: crate::FromDataValue::from_arena(result?)?,
-                    ops: ctx.ops_spent(),
-                })
-            },
-        )
+        let compiled = compiled.for_engine(&self.engine);
+        let av = data.into_arena_for(compiled, &self.engine, arena)?;
+        let metered = self.engine.evaluate_metered(compiled, av, arena, budget)?;
+        Ok(crate::Metered {
+            value: crate::FromDataValue::from_arena(metered.value)?,
+            ops: metered.ops,
+        })
     }
 
     /// Evaluate and return a borrowed result tied to this session's
