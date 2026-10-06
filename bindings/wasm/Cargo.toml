@@ -12,6 +12,9 @@ edition = "2024"
 description = "WebAssembly bindings for datalogic-rs JSONLogic engine"
 license = "Apache-2.0"
 repository = "https://github.com/GoPlasmatic/datalogic-rs"
+# Published to npm as @goplasmatic/datalogic-wasm (see build.sh), not to
+# crates.io (and it depends on the unpublished `datalogic-bind`).
+publish = false
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
@@ -28,26 +31,20 @@ wasm-opt = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# `path` resolves locally for in-repo builds; `version` resolves against
-# crates.io once `datalogic-rs 5.x` is published. Cargo prefers the path
-# when both are set, so this keeps developer builds against the local
-# tree while making the WASM crate publishable as a downstream of the
-# released core. Bump the requirement deliberately when the core API
-# breaks (i.e. on each major).
+# Wire formats and plumbing shared with the other bindings.
+datalogic-bind = { path = "../../crates/datalogic-bind" }
+# The binding builds against the in-tree core (`path`); `version` is the
+# floor its API use needs (5.8: per-compile modes, check, operators,
+# facts). The crate ships to npm, never to crates.io.
 # The `datalogic-rs` crate re-exports `bumpalo`, so this crate uses
 # `datalogic_rs::bumpalo` instead of pulling its own copy — keeps the
 # major version aligned automatically.
 # Feature list is inlined here (rather than via an umbrella feature on the
 # core crate) so the binding owns its operator surface and the core
-# Cargo.toml stays free of binding-specific bundling. Keep this in sync
-# with the UI palette — every operator family the JS/UI playground exposes
-# (`try`, `throw`, `switch`, `match`, `??`, `type`, `length`,
-# `upper`/`lower`/`trim`/`split`/`starts_with`/`ends_with`, `sort`,
-# `slice`, `exists`, `abs`/`ceil`/`floor`) needs the matching feature here
-# or it returns `UnknownOperator` at runtime.
-# Wire formats and plumbing shared with the other bindings.
-datalogic-bind = { path = "../../crates/datalogic-bind" }
-datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.0", features = [
+# Cargo.toml stays free of binding-specific bundling. `all-operators`
+# gives the JS/UI playground every operator family; a family left out
+# here would compile its names as unknown operators.
+datalogic-rs = { path = "../../crates/datalogic-rs", version = "5.8", features = [
     "all-operators",
     # This package is wasm-bindgen based, i.e. always hosted by JS, so the
     # JS clock is safe here; without it `now` traps on wasm32. Core

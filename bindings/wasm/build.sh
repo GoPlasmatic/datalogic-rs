@@ -107,84 +107,9 @@ fi
 cp LICENSE pkg/
 cp README.md pkg/
 
-# Create package.json
-cat > pkg/package.json << EOF
-{
-  "name": "@goplasmatic/datalogic-wasm",
-  "version": "$VERSION",
-  "description": "JSONLogic (json-logic) rules engine for browsers, edge, Deno, Bun, and Node — Rust core compiled to WebAssembly. A fast alternative to json-logic-js with identical semantics across 8 runtimes; flagd-compatible operators for OpenFeature-style feature flags.",
-  "license": "Apache-2.0",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/GoPlasmatic/datalogic-rs"
-  },
-  "homepage": "https://github.com/GoPlasmatic/datalogic-rs",
-  "bugs": {
-    "url": "https://github.com/GoPlasmatic/datalogic-rs/issues"
-  },
-  "keywords": [
-    "jsonlogic",
-    "json-logic",
-    "json-logic-js",
-    "rules-engine",
-    "business-rules",
-    "expression-engine",
-    "feature-flags",
-    "openfeature",
-    "flagd",
-    "wasm",
-    "webassembly",
-    "browser"
-  ],
-  "type": "module",
-  "main": "./nodejs/datalogic_wasm.js",
-  "module": "./web/datalogic_wasm.js",
-  "types": "./web/datalogic_wasm.d.ts",
-  "exports": {
-    ".": {
-      "node": {
-        "types": "./nodejs/datalogic_wasm.d.ts",
-        "default": "./nodejs/datalogic_wasm.js"
-      },
-      "import": {
-        "types": "./web/datalogic_wasm.d.ts",
-        "default": "./web/datalogic_wasm.js"
-      },
-      "require": {
-        "types": "./bundler/datalogic_wasm.d.ts",
-        "default": "./bundler/datalogic_wasm.js"
-      },
-      "default": {
-        "types": "./web/datalogic_wasm.d.ts",
-        "default": "./web/datalogic_wasm.js"
-      }
-    },
-    "./web": {
-      "types": "./web/datalogic_wasm.d.ts",
-      "default": "./web/datalogic_wasm.js"
-    },
-    "./bundler": {
-      "types": "./bundler/datalogic_wasm.d.ts",
-      "default": "./bundler/datalogic_wasm.js"
-    },
-    "./nodejs": {
-      "types": "./nodejs/datalogic_wasm.d.ts",
-      "default": "./nodejs/datalogic_wasm.js"
-    }
-  },
-  "files": [
-    "web/",
-    "bundler/",
-    "nodejs/",
-    "LICENSE",
-    "README.md"
-  ],
-  "engines": {
-    "node": ">=16.0.0"
-  },
-  "sideEffects": false
-}
-EOF
+# Create package.json from the checked-in template, stamping the
+# version (the npm package tracks this crate's Cargo.toml version).
+sed "s/@VERSION@/$VERSION/" package.template.json > pkg/package.json
 
 # Clean up temporary directories
 rm -rf pkg-web pkg-bundler pkg-nodejs
