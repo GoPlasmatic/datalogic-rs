@@ -94,5 +94,12 @@
         "rule": { "ceil": 0.0001 },
         "data": null,
         "result": 1
-    }
-] 
+    },
+  "# Strings that parse to no finite number are not numbers",
+  {
+    "description": "ceil(\"inf\") is invalid",
+    "rule": {"ceil": {"var": "s"}},
+    "data": {"s": "inf"},
+    "error": {"type": "Invalid Arguments"}
+  }
+]

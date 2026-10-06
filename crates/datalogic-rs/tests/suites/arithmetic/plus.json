@@ -383,5 +383,30 @@
     "rule": {"+": [{"var": "a"}, 2]},
     "data": {"a": "9007199254740993"},
     "result": 9007199254740995
+  },
+  "# Strings that parse to no finite number are not numbers",
+  {
+    "description": "\"NaN\" is NaN, not a number",
+    "rule": {"+": [1, {"var": "s"}]},
+    "data": {"s": "NaN"},
+    "error": {"type": "NaN"}
+  },
+  {
+    "description": "\"inf\" is NaN, not infinity",
+    "rule": {"+": [1, {"var": "s"}]},
+    "data": {"s": "inf"},
+    "error": {"type": "NaN"}
+  },
+  {
+    "description": "\"Infinity\" literal is NaN",
+    "rule": {"+": [1, "Infinity"]},
+    "data": null,
+    "error": {"type": "NaN"}
+  },
+  {
+    "description": "An overflowing literal string is NaN",
+    "rule": {"+": [{"var": "s"}, 1, 2]},
+    "data": {"s": "1e400"},
+    "error": {"type": "NaN"}
   }
 ]

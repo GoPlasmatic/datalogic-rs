@@ -19,8 +19,10 @@ use datavalue::NumberValue;
 
 /// Result of NaN handling check: what the caller should do with a non-numeric value.
 pub(super) enum NanAction {
-    /// Skip/ignore this value (`IgnoreValue` or `CoerceToZero`).
+    /// Skip/ignore this value (`IgnoreValue`).
     Skip,
+    /// Use `0` in its place (`CoerceToZero`).
+    Zero,
     /// Return null immediately.
     ReturnNull,
 }
@@ -33,7 +35,8 @@ pub(super) enum NanAction {
 pub(super) fn handle_nan(ctx: &mut ContextStack<'_>, engine: &Engine) -> Result<NanAction> {
     match engine.config().arithmetic_nan_handling {
         NanHandling::ThrowError => Err(crate::Error::nan_at(ctx)),
-        NanHandling::IgnoreValue | NanHandling::CoerceToZero => Ok(NanAction::Skip),
+        NanHandling::IgnoreValue => Ok(NanAction::Skip),
+        NanHandling::CoerceToZero => Ok(NanAction::Zero),
         NanHandling::ReturnNull => Ok(NanAction::ReturnNull),
     }
 }
@@ -198,6 +201,9 @@ impl FoldState {
         }
         match handle_nan(ctx, engine)? {
             NanAction::Skip => Ok(FoldStepOutcome::Continue),
+            // The operand is `0`: an integer, so an all-integer fold stays
+            // on the integer track.
+            NanAction::Zero => self.step(Some(0), None, i_combine, f_combine, ctx, engine),
             NanAction::ReturnNull => Ok(FoldStepOutcome::ReturnNull),
         }
     }

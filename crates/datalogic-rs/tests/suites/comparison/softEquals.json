@@ -233,5 +233,18 @@
     "rule": {"some": [{"var": "xs"}, {"==": [{"var": ""}, 9007199254740992]}]},
     "data": {"xs": [9007199254740993]},
     "result": false
+  },
+  "# Strings that parse to no finite number are not numbers",
+  {
+    "description": "5 == \"NaN\" compares a number with a non-numeric string",
+    "rule": {"==": [5, {"var": "s"}]},
+    "data": {"s": "NaN"},
+    "error": {"type": "NaN"}
+  },
+  {
+    "description": "5 == \"inf\" compares a number with a non-numeric string",
+    "rule": {"==": [{"var": "s"}, 5]},
+    "data": {"s": "inf"},
+    "error": {"type": "NaN"}
   }
 ]

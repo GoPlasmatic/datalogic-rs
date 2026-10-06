@@ -230,11 +230,96 @@ fn test_multiplication_with_config() {
         EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::CoerceToZero);
     let engine = Engine::builder().with_config(config).build();
 
+    // `CoerceToZero` substitutes 0 for the bad operand: 2 * 0 * 3. (This
+    // once pinned 6, the `IgnoreValue` answer: the two modes were one.)
     let logic = json!({"*": [2, "invalid", 3]});
     let result = engine
         .eval_into::<serde_json::Value, _, _>(&logic, &json!({}))
         .unwrap();
-    assert_eq!(result, json!(6));
+    assert_eq!(result, json!(0));
+}
+
+/// `CoerceToZero` and `IgnoreValue` differ wherever a 0 operand differs
+/// from a missing one: every form of `*`, and a one-operand `+` / `*`.
+#[test]
+fn test_coerce_to_zero_substitutes_zero_in_every_form() {
+    let zero = Engine::builder()
+        .with_config(
+            EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::CoerceToZero),
+        )
+        .build();
+    let skip = Engine::builder()
+        .with_config(
+            EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::IgnoreValue),
+        )
+        .build();
+    let data = json!({"xs": [2, "x", 3], "s": "x"});
+    let eval = |engine: &Engine, logic: serde_json::Value| {
+        engine
+            .eval_into::<serde_json::Value, _, _>(&logic, &data)
+            .unwrap()
+    };
+    for (logic, as_zero, skipped) in [
+        // Two operands, either side.
+        (json!({"*": [2, {"var": "s"}]}), json!(0), json!(2)),
+        (json!({"*": [{"var": "s"}, 5]}), json!(0), json!(5)),
+        // Variadic.
+        (json!({"*": [2, {"var": "s"}, 3]}), json!(0), json!(6)),
+        // An array folded by a one-operand `*`.
+        (json!({"*": {"var": "xs"}}), json!(0), json!(6)),
+        // A single non-numeric operand.
+        (json!({"*": [{"var": "s"}]}), json!(0), json!(1)),
+        (json!({"+": [{"var": "s"}]}), json!(0), json!(0)),
+        // Sums agree: adding 0 is skipping.
+        (json!({"+": [1, {"var": "s"}, 2]}), json!(3), json!(3)),
+        (json!({"+": {"var": "xs"}}), json!(5), json!(5)),
+        (json!({"-": [10, {"var": "s"}, 3]}), json!(7), json!(7)),
+    ] {
+        assert_eq!(eval(&zero, logic.clone()), as_zero, "CoerceToZero: {logic}");
+        assert_eq!(eval(&skip, logic.clone()), skipped, "IgnoreValue: {logic}");
+    }
+}
+
+/// `"NaN"`, `"inf"` and `"infinity"` parse as `f64`, but are not numbers a
+/// rule can compute with: they coerce like any other non-numeric string,
+/// so the NaN config decides, instead of producing a non-finite number
+/// that serialises as `null`.
+#[test]
+fn test_non_finite_strings_are_not_numbers() {
+    let engine = Engine::new();
+    let skip = Engine::builder()
+        .with_config(
+            EvaluationConfig::default().with_arithmetic_nan_handling(NanHandling::IgnoreValue),
+        )
+        .build();
+    for s in [
+        "NaN",
+        "nan",
+        "inf",
+        "-inf",
+        "Infinity",
+        "+infinity",
+        "1e400",
+    ] {
+        let sum = json!({"+": [1, s]});
+        let err = engine
+            .eval_into::<serde_json::Value, _, _>(&sum, &json!(null))
+            .expect_err(s);
+        assert_eq!(err.tag(), "Thrown", "{s}: {err}");
+        assert_eq!(
+            skip.eval_into::<serde_json::Value, _, _>(&sum, &json!(null))
+                .unwrap(),
+            json!(1),
+            "{s}"
+        );
+        let product = json!({"*": [s, 2, 3]});
+        assert_eq!(
+            skip.eval_into::<serde_json::Value, _, _>(&product, &json!(null))
+                .unwrap(),
+            json!(6),
+            "{s}"
+        );
+    }
 }
 
 #[test]

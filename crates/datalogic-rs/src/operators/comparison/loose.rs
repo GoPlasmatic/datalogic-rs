@@ -62,7 +62,7 @@ fn loose_equals_core(left: &DataValue<'_>, right: &DataValue<'_>) -> LooseEquals
             if let (Some(i), Ok(si)) = (n.as_i64(), s.parse::<i64>()) {
                 return if i == si { Equal } else { NotEqual };
             }
-            match s.parse::<f64>().ok() {
+            match crate::arena::parse_finite(s) {
                 Some(s_f) if n.as_f64() == s_f => Equal,
                 Some(_) => NotEqual,
                 None => Incompatible,

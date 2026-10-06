@@ -119,7 +119,8 @@ impl<'a> Coerce<'a> for Int {
 }
 
 /// A number or a numeric string, as `f64`; anything else (including
-/// `true` and `null`) is `InvalidArguments` (`abs` / `ceil` / `floor`).
+/// `true`, `null` and a string such as `"NaN"` or `"inf"` that parses to
+/// no finite number) is `InvalidArguments` (`abs` / `ceil` / `floor`).
 pub(crate) struct StrictNum;
 
 impl<'a> Coerce<'a> for StrictNum {
@@ -128,7 +129,7 @@ impl<'a> Coerce<'a> for StrictNum {
     fn coerce(value: &'a DataValue<'a>, _cx: &mut Cx<'_, 'a>) -> Result<Self::Out> {
         match value {
             DataValue::Number(n) => Ok(n.as_f64()),
-            DataValue::String(s) => s.parse().map_err(|_| Error::invalid_args()),
+            DataValue::String(s) => crate::arena::parse_finite(s).ok_or_else(Error::invalid_args),
             _ => Err(Error::invalid_args()),
         }
     }

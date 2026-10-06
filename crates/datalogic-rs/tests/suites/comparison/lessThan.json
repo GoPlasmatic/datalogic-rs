@@ -287,5 +287,12 @@
     "rule": {"filter": [{"var": "xs"}, {"<": [5, {"var": ""}]}]},
     "data": {"xs": [9007199254740993, 3]},
     "result": [9007199254740993]
+  },
+  "# Strings that parse to no finite number are not numbers",
+  {
+    "description": "1 < \"inf\" compares a number with a non-numeric string",
+    "rule": {"<": [1, {"var": "s"}]},
+    "data": {"s": "inf"},
+    "error": {"type": "NaN"}
   }
 ]

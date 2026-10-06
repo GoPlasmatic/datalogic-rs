@@ -17,6 +17,16 @@
 
 use super::DataValue;
 
+/// A string's number, for every coercion that reads one: the `f64` it
+/// parses as, when finite. `str::parse` also accepts `"NaN"`, `"inf"`,
+/// `"infinity"` (any case, either sign) and overflowing literals such as
+/// `"1e400"`; none of those is a number a rule can compute with (they
+/// serialise as `null`), so they coerce like any other non-numeric string.
+#[inline]
+pub(crate) fn parse_finite(s: &str) -> Option<f64> {
+    s.parse::<f64>().ok().filter(|f| f.is_finite())
+}
+
 /// Config-aware arena-native f64 coercion. Honours the engine's
 /// [`crate::EvaluationConfig::numeric_coercion`] flags
 /// (`reject_non_numeric`, `empty_string_to_zero`, `bool_to_number`,
@@ -30,7 +40,7 @@ pub(crate) fn coerce_to_number_cfg(v: &DataValue<'_>, engine: &crate::Engine) ->
     if coercion.reject_non_numeric {
         return match v {
             DataValue::Number(n) => Some(n.as_f64()),
-            DataValue::String(s) => s.parse().ok(),
+            DataValue::String(s) => parse_finite(s),
             _ => None,
         };
     }
@@ -40,7 +50,7 @@ pub(crate) fn coerce_to_number_cfg(v: &DataValue<'_>, engine: &crate::Engine) ->
             if s.is_empty() && coercion.empty_string_to_zero {
                 Some(0.0)
             } else {
-                s.parse().ok()
+                parse_finite(s)
             }
         }
         DataValue::Bool(b) if coercion.bool_to_number => Some(if *b { 1.0 } else { 0.0 }),
@@ -95,7 +105,7 @@ pub(crate) fn coerce_to_number(v: &DataValue<'_>) -> Option<f64> {
             if t.is_empty() {
                 Some(0.0)
             } else {
-                t.parse().ok()
+                parse_finite(t)
             }
         }
         DataValue::Array(items) => match items.len() {

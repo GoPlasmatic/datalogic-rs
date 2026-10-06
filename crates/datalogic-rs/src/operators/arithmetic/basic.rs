@@ -164,7 +164,8 @@ fn add_two_arg<'a>(
             sum += f;
         } else {
             match handle_nan(ctx, engine)? {
-                NanAction::Skip => {}
+                // Adding `0` leaves the sum as skipping does.
+                NanAction::Skip | NanAction::Zero => {}
                 NanAction::ReturnNull => return Ok(crate::arena::singletons::singleton_null()),
             }
         }
@@ -250,6 +251,7 @@ fn multiply_two_arg<'a>(
         } else {
             match handle_nan(ctx, engine)? {
                 NanAction::Skip => {}
+                NanAction::Zero => product = 0.0,
                 NanAction::ReturnNull => return Ok(crate::arena::singletons::singleton_null()),
             }
         }
@@ -440,13 +442,7 @@ fn one_arg_arith<'a>(
     // Literal array argument is invalid for + / *. Apply NaN config (default
     // ThrowError → propagates the error up).
     if is_literal_array(arg) {
-        return match handle_nan(ctx, engine)? {
-            NanAction::Skip => Ok(alloc_number(
-                arena,
-                NumberValue::from_i64(op.right_identity()),
-            )),
-            NanAction::ReturnNull => Ok(crate::arena::singletons::singleton_null()),
-        };
+        return nan_operand(op, ctx, engine, arena);
     }
 
     let av = engine.dispatch_node(arg, ctx, arena)?;
@@ -472,13 +468,24 @@ fn one_arg_arith<'a>(
             NumberValue::from_f64(op.apply_f64(op.right_identity() as f64, f)),
         ));
     }
-    match handle_nan(ctx, engine)? {
-        NanAction::Skip => Ok(alloc_number(
-            arena,
-            NumberValue::from_i64(op.right_identity()),
-        )),
-        NanAction::ReturnNull => Ok(crate::arena::singletons::singleton_null()),
-    }
+    nan_operand(op, ctx, engine, arena)
+}
+
+/// The result of a one-operand `+` / `*` whose operand is not a number,
+/// per the NaN config: the identity when it is skipped, `identity op 0`
+/// (which is `0`) when it counts as zero.
+fn nan_operand<'a>(
+    op: ArithOp,
+    ctx: &mut ContextStack<'a>,
+    engine: &Engine,
+    arena: &'a Bump,
+) -> Result<&'a DataValue<'a>> {
+    let value = match handle_nan(ctx, engine)? {
+        NanAction::Skip => op.right_identity(),
+        NanAction::Zero => op.checked_i64(op.right_identity(), 0).unwrap_or(0),
+        NanAction::ReturnNull => return Ok(crate::arena::singletons::singleton_null()),
+    };
+    Ok(alloc_number(arena, NumberValue::from_i64(value)))
 }
 
 /// Fold an arena-resident array under `op` (`+` or `*`) with integer fast

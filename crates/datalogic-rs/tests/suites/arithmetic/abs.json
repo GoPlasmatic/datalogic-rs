@@ -88,5 +88,18 @@
         "rule": { "abs": [1, 2, 3] },
         "data": null,
         "result": [1, 2, 3]
-    }
-] 
+    },
+  "# Strings that parse to no finite number are not numbers",
+  {
+    "description": "abs(\"NaN\") is invalid, not null",
+    "rule": {"abs": {"var": "s"}},
+    "data": {"s": "NaN"},
+    "error": {"type": "Invalid Arguments"}
+  },
+  {
+    "description": "abs(\"-inf\") is invalid",
+    "rule": {"abs": {"var": "s"}},
+    "data": {"s": "-inf"},
+    "error": {"type": "Invalid Arguments"}
+  }
+]

@@ -181,5 +181,12 @@
     "rule": {"*": [{"var": "a"}, 1]},
     "data": {"a": "9007199254740993"},
     "result": 9007199254740993
+  },
+  "# Strings that parse to no finite number are not numbers",
+  {
+    "description": "\"-infinity\" is NaN",
+    "rule": {"*": [{"var": "s"}, 2]},
+    "data": {"s": "-infinity"},
+    "error": {"type": "NaN"}
   }
 ]

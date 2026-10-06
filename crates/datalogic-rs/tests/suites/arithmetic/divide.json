@@ -226,5 +226,12 @@
     "rule": {"/": [{"var": "a"}, 2]},
     "data": {"a": 7},
     "result": 3.5
+  },
+  "# Strings that parse to no finite number are not numbers",
+  {
+    "description": "\"nan\" is NaN",
+    "rule": {"/": [{"var": "s"}, 2]},
+    "data": {"s": "nan"},
+    "error": {"type": "NaN"}
   }
 ]
