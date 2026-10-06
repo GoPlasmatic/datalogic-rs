@@ -100,19 +100,29 @@ pub struct EvaluationConfig {
     /// about `reject_non_numeric` vs the rest.
     pub numeric_coercion: NumericCoercionConfig,
 
-    /// Maximum number of nested [`Engine::evaluate`](crate::Engine::evaluate)
-    /// boundary calls before the engine bails with
-    /// [`ErrorKind::ConfigurationError`](crate::ErrorKind::ConfigurationError).
-    /// Tracked per-thread, so it
-    /// catches `CustomOperator` impls that hold `Arc<Engine>` and
-    /// re-enter via `engine.evaluate(...)` from inside their
-    /// `evaluate(...)`.
+    /// How many evaluations may be running at once on one thread, counting
+    /// the outermost: the cap on a `CustomOperator` that holds
+    /// `Arc<Engine>` re-entering the engine (`engine.evaluate(...)`, a
+    /// session or a traced run) from inside its own `evaluate(...)`. An
+    /// evaluation that would go past it fails with
+    /// [`ErrorKind::ConfigurationError`](crate::ErrorKind::ConfigurationError)
+    /// before it starts.
     ///
-    /// Default: `256` — generous for legitimate nested rules, tight
-    /// enough to bail well before a stack overflow on typical
-    /// platforms. The check is skipped entirely when the engine has no
-    /// custom operators registered (built-ins can't recurse via
-    /// boundary re-entry), so pure-built-in workloads pay nothing.
+    /// It does **not** bound how deeply a rule nests (the compiler caps
+    /// that at 256 levels for every engine), how deep a value or the data
+    /// gets, or how much work an evaluation does (see `ops_budget` with the
+    /// `budget` feature). The count is kept per thread, across every
+    /// engine on it; each engine compares it with its own setting.
+    ///
+    /// Default: `256`. The check is skipped entirely when the engine has
+    /// no custom operators registered (built-ins can't re-enter the
+    /// engine), so pure-built-in workloads pay nothing.
+    ///
+    /// The value must be at least 1: at 0 no evaluation on an engine with
+    /// custom operators could start. `from_json_str` (`serde_json` feature) and
+    /// [`EngineBuilder::try_build`](crate::EngineBuilder::try_build) refuse
+    /// 0; [`EngineBuilder::build`](crate::EngineBuilder::build), which
+    /// cannot fail, keeps it.
     pub max_recursion_depth: u32,
 
     /// Ceiling on the operations one evaluation may charge, or `None`

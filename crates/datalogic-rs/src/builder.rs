@@ -412,11 +412,23 @@ impl EngineBuilder {
     /// assert!(builder.try_build().is_err());
     /// ```
     ///
+    /// It also refuses a config whose
+    /// [`max_recursion_depth`](EvaluationConfig::max_recursion_depth) is 0,
+    /// as `EvaluationConfig::from_json_str` does: at 0 no evaluation on
+    /// an engine with custom operators could start.
+    ///
     /// # Errors
     ///
-    /// The first name's `ConfigurationError`, in registration order.
+    /// The first name's `ConfigurationError`, in registration order, or a
+    /// `ConfigurationError` for a `max_recursion_depth` of 0.
     pub fn try_build(self) -> crate::Result<Engine> {
         self.check_operator_names()?;
+        if self.settings.config.max_recursion_depth == 0 {
+            return Err(crate::Error::configuration_error(format!(
+                "max_recursion_depth must be an integer between 1 and {}",
+                u32::MAX
+            )));
+        }
         Ok(self.build())
     }
 
