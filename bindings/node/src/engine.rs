@@ -141,17 +141,14 @@ impl Engine {
                 ),
                 None => (false, None, None, false, None),
             };
-            let mut builder = if templating {
-                RsEngine::builder().with_templating(true)
-            } else {
-                RsEngine::builder()
+            let mut opts = datalogic_bind::EngineOptions {
+                templating,
+                ..Default::default()
             };
-            // Before the operators, so strict names are judged against the
-            // families the engine has.
             if let Some(names) = families {
                 let families = datalogic_bind::families(names.iter().map(String::as_str))
                     .map_err(|msg| engine_error(&env, &DlError::configuration_error(msg), None))?;
-                builder = builder.with_families(families);
+                opts.families = Some(families);
             }
             // Reject a mis-typed escape at construction rather than silently
             // ignoring it: an option that looks accepted but does nothing is
@@ -166,33 +163,30 @@ impl Engine {
                         None,
                     )
                 })?;
-                builder = builder.with_template_key_escape(c);
+                opts.template_key_escape = Some(c);
             }
             // JS `null` arrives as `Value::Null` rather than `None` through
             // the serde bridge; treat both as "not provided", matching the
             // other optional fields.
             if let Some(cfg) = config.filter(|c| !c.is_null()) {
-                builder = builder.with_config(parse_config(&env, cfg)?);
+                opts.config = Some(parse_config(&env, cfg)?);
             }
-            if let Some(map) = custom_operators {
-                let env_raw = env.raw();
-                let thread_id = std::thread::current().id();
-                for (name, callback) in map {
+            let env_raw = env.raw();
+            let thread_id = std::thread::current().id();
+            let operators = custom_operators
+                .into_iter()
+                .flatten()
+                .map(|(name, callback)| {
                     let op = NodeOperator {
                         name: name.clone(),
                         callback,
                         env_raw,
                         thread_id,
                     };
-                    builder = if strict_names {
-                        builder
-                            .try_add_operator(name, op)
-                            .map_err(|e| engine_error(&env, &e, None))?
-                    } else {
-                        builder.add_operator(name, op)
-                    };
-                }
-            }
+                    (name, op)
+                });
+            let builder = datalogic_bind::add_operators(opts.builder(), operators, strict_names)
+                .map_err(|e| engine_error(&env, &e, None))?;
             Ok(Self {
                 inner: Arc::new(builder.build()),
             })

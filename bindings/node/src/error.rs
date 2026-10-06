@@ -55,7 +55,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use datalogic_rs::{Error as RsError, Logic};
 use napi::bindgen_prelude::*;
 use napi::{Env, JsValue};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 /// Convert a `datalogic_rs::Error` into a thrown JS Error and return a
 /// `napi::Error` with `Status::PendingException` so the napi runtime
@@ -275,15 +275,8 @@ fn throw_attrs(env: &Env, attrs: &ErrorAttrs<'_>) -> Option<napi::Error> {
 }
 
 fn resolve_path(err: &RsError, compiled: &Logic) -> Vec<Value> {
-    err.resolve_path(compiled)
-        .into_iter()
-        .map(|s| {
-            json!({
-                "nodeId": s.node_id,
-                "operator": s.operator,
-                "argIndex": s.arg_index,
-                "jsonPointer": s.json_pointer,
-            })
-        })
-        .collect()
+    match datalogic_bind::path_value(err, compiled, datalogic_bind::PathKeys::Camel) {
+        Value::Array(steps) => steps,
+        _ => Vec::new(),
+    }
 }

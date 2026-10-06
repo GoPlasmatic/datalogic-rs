@@ -13,6 +13,7 @@
 
 use std::sync::Arc;
 
+use datalogic_bind::typed;
 use datalogic_rs::Engine as RsEngine;
 use datalogic_rs::bumpalo::Bump;
 use napi::Env;
@@ -31,13 +32,10 @@ use crate::error::{engine_error, guard, type_mismatch_error};
 fn batch_item(outcome: std::result::Result<String, &datalogic_rs::Error>) -> Value {
     match outcome {
         Ok(value) => json!({"status": "fulfilled", "value": value}),
-        Err(e) => {
-            let mut reason = json!({"tag": e.tag(), "message": e.to_string()});
-            if let Some(op) = e.operator() {
-                reason["operator"] = Value::String(op.to_string());
-            }
-            json!({"status": "rejected", "reason": reason})
-        }
+        Err(e) => json!({
+            "status": "rejected",
+            "reason": datalogic_bind::ItemError::from_engine(e).to_value(),
+        }),
     }
 }
 
@@ -164,15 +162,7 @@ impl Session {
                 .engine
                 .evaluate(rule.logic(), &handle.parsed, &self.arena)
                 .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?;
-            av.as_bool().ok_or_else(|| {
-                type_mismatch_error(
-                    &env,
-                    &format!(
-                        "result is not a boolean (got {})",
-                        datalogic_bind::type_of(av)
-                    ),
-                )
-            })
+            typed::bool(av).map_err(|msg| type_mismatch_error(&env, &msg))
         })
     }
 
@@ -198,16 +188,7 @@ impl Session {
                 .engine
                 .evaluate(rule.logic(), &handle.parsed, &self.arena)
                 .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?;
-            match av.as_i64() {
-                Some(i) if i.unsigned_abs() < (1u64 << 53) => Ok(i as f64),
-                _ => Err(type_mismatch_error(
-                    &env,
-                    &format!(
-                        "result is not a safe integer (got {})",
-                        datalogic_bind::type_of(av)
-                    ),
-                )),
-            }
+            typed::safe_int(av).map_err(|msg| type_mismatch_error(&env, &msg))
         })
     }
 
@@ -222,15 +203,7 @@ impl Session {
                 .engine
                 .evaluate(rule.logic(), &handle.parsed, &self.arena)
                 .map_err(|e| engine_error(&env, &e, Some(rule.logic())))?;
-            av.as_f64().ok_or_else(|| {
-                type_mismatch_error(
-                    &env,
-                    &format!(
-                        "result is not a number (got {})",
-                        datalogic_bind::type_of(av)
-                    ),
-                )
-            })
+            typed::float(av).map_err(|msg| type_mismatch_error(&env, &msg))
         })
     }
 
