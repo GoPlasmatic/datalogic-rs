@@ -109,4 +109,19 @@ class BatchTest {
             assertEquals("\"second\"", results.get(1).value());
         }
     }
+
+    @Test
+    void malformed_item_falls_back_to_internal_error() {
+        // The fallbacks the Go, .NET and PHP decoders share.
+        assertEquals(new EvalResult(null, "Thrown", "boom", "throw"),
+                EvalResult.failure("{\"tag\":\"Thrown\",\"message\":\"boom\",\"operator\":\"throw\"}"));
+        assertEquals(new EvalResult(null, "InternalError", "no tag", null),
+                EvalResult.failure("{\"message\":\"no tag\"}"));
+        assertEquals(new EvalResult(null, "InternalError", "bad tag", null),
+                EvalResult.failure("{\"tag\":7,\"message\":\"bad tag\"}"));
+        assertEquals(new EvalResult(null, "Thrown", "{\"tag\":\"Thrown\"}", null),
+                EvalResult.failure("{\"tag\":\"Thrown\"}"));
+        assertEquals(new EvalResult(null, "InternalError", "not json", null),
+                EvalResult.failure("not json"));
+    }
 }

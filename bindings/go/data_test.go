@@ -564,6 +564,8 @@ func TestDecodeItemErrorFallbacks(t *testing.T) {
 	}{
 		{`{"tag":"Thrown","message":"boom","operator":"throw"}`, "Thrown", "boom", "throw"},
 		{`{"message":"no tag"}`, "InternalError", "no tag", ""},
+		{`{"tag":7,"message":"bad tag"}`, "InternalError", "bad tag", ""},
+		{`{"tag":null,"message":"null tag"}`, "InternalError", "null tag", ""},
 		{`{"tag":"Thrown"}`, "Thrown", `{"tag":"Thrown"}`, ""},
 		{`not json`, "InternalError", `not json`, ""},
 	}

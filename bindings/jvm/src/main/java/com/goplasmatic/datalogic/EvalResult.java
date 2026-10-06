@@ -37,17 +37,24 @@ public record EvalResult(String value, String errorTag, String errorMessage, Str
 
     /**
      * A failed item, decoded from the C ABI's per-item error object
-     * {@code {"tag": ..., "message": ..., "operator"?: ...}}.
+     * {@code {"tag": ..., "message": ..., "operator"?: ...}}. A field that
+     * is missing or not a string falls back as in the Go, .NET and PHP
+     * decoders: tag {@code "InternalError"}, the raw JSON as the message.
      */
     static EvalResult failure(String errorJson) {
         try {
             JsonNode node = MAPPER.readTree(errorJson);
-            String tag = node.hasNonNull("tag") ? node.get("tag").asText() : "InternalError";
-            String message = node.hasNonNull("message") ? node.get("message").asText() : errorJson;
-            String operator = node.hasNonNull("operator") ? node.get("operator").asText() : null;
+            String tag = text(node, "tag", "InternalError");
+            String message = text(node, "message", errorJson);
+            String operator = text(node, "operator", null);
             return new EvalResult(null, tag, message, operator);
         } catch (Exception e) {
             return new EvalResult(null, "InternalError", errorJson, null);
         }
+    }
+
+    private static String text(JsonNode node, String field, String fallback) {
+        JsonNode value = node.get(field);
+        return value != null && value.isTextual() ? value.asText() : fallback;
     }
 }

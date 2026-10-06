@@ -309,27 +309,23 @@ func collectBatch(results []C.datalogic_slice, statuses []C.datalogic_status) []
 // write into the result slot ({"tag": ..., "message": ...,
 // "operator"?: ...}) into the binding's *Error type.
 //
-// The C side always writes that shape. Should a field be missing anyway,
-// the fallbacks match the JVM, .NET and PHP decoders: Type
-// "InternalError", and the raw item JSON as the Message.
+// The C side always writes that shape. Should a field be missing or not
+// a string anyway, the fallbacks match the JVM, .NET and PHP decoders:
+// Type "InternalError", and the raw item JSON as the Message.
 func decodeItemError(body string) *Error {
-	var item struct {
-		Tag      *string `json:"tag"`
-		Message  *string `json:"message"`
-		Operator *string `json:"operator"`
-	}
 	e := &Error{Message: body, Type: "InternalError"}
-	if err := json.Unmarshal([]byte(body), &item); err != nil {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(body), &fields); err != nil {
 		return e
 	}
-	if item.Tag != nil {
-		e.Type = *item.Tag
+	str := func(key string, dst *string) {
+		var s string
+		if raw, ok := fields[key]; ok && json.Unmarshal(raw, &s) == nil && string(raw) != "null" {
+			*dst = s
+		}
 	}
-	if item.Message != nil {
-		e.Message = *item.Message
-	}
-	if item.Operator != nil {
-		e.Operator = *item.Operator
-	}
+	str("tag", &e.Type)
+	str("message", &e.Message)
+	str("operator", &e.Operator)
 	return e
 }
