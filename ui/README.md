@@ -85,7 +85,11 @@ results at rest; step through the trace to see values:
 
 ### Editable
 
-Enable full visual editing with node selection, properties panel, context menus, and undo/redo:
+Enable full visual editing with node selection, properties panel, context menus, and undo/redo.
+Keyboard shortcuts (the debugger's Space, arrows, Home and End; the editor's
+Cmd/Ctrl+Z, C, V, D, A, K, Backspace and Escape) apply only while focus is
+inside that editor, so they never take keys from the host page or from
+another editor on it. Clicking anywhere in the editor gives it focus.
 
 ```tsx
 <DataLogicEditor
@@ -152,8 +156,6 @@ import type {
   StructureElement,
   CellData,
   ConversionResult,
-  NodeEvaluationResult,
-  EvaluationResultsMap,
   StructuredError,
   TracedResult,
   OperatorCategory,
@@ -195,7 +197,7 @@ import {
   or `'hierarchy'` (root on the left, JSON nesting order).
 - `useWasmEvaluator({ templating, config, customOperators })` is the same
   engine hook the component uses: it returns `{ ready, loading, error,
-  evaluate, evaluateWithTrace }`.
+  evaluate, evaluateMetered, evaluateWithTrace }`.
 - `DataLogicEvaluationError` carries the engine's structured error on
   `.structured` (`type`, `message`, and, where the engine provides them,
   `operator`, `node_ids`, `thrown`, `variable`, `index`, `length`, `stage`).
@@ -216,8 +218,9 @@ import {
 `division_by_zero`, `loose_equality_errors`, `truthy_evaluator`,
 `numeric_coercion` (`empty_string_to_zero`, `null_to_zero`, `bool_to_number`,
 `reject_non_numeric`), `max_recursion_depth` and `ops_budget`. Every key is
-optional and omitted keys keep the engine default. Changing `config` or
-`customOperators` rebuilds the engine, so selection and undo history reset.
+optional and omitted keys keep the engine default. Changing `config`, or
+the set of `customOperators` names, rebuilds the engine, so selection and undo
+history reset. Swapping in new implementations under the same names does not.
 
 `ops_budget` caps the work one evaluation may do: one operation per node
 the engine dispatches, one per item an iterator walks, plus what tensor
@@ -284,18 +287,25 @@ WASM once, and the `predev` / `prebuild*` hooks copy `bindings/wasm/pkg` into
 ```bash
 cd bindings/wasm && ./build.sh   # once, and after any engine change
 cd ../../ui
-npm install       # install dependencies
+npm ci            # install dependencies from the lockfile
 npm run dev       # start the dev playground (Studio)
-npm test          # vitest: round trips, operator help, trace, samples
+npm test          # vitest: round trips, operator help, trace, samples, components
 npm run lint      # run ESLint
+npx tsc -b        # type-check the app, tests, examples and build configs
 npm run build:lib # build the publishable library bundle
 npm run build:embed # build the docs-site embed bundle
 ```
 
-`@goplasmatic/datalogic-wasm` is a devDependency pinned to the last published
-release. Nothing in the build resolves it (Vite and the tsconfigs alias the
-package to `vendor/datalogic`); the release workflow rewrites the pin to the
-version being published. See
+`sync-wasm` (a Node script, so it also runs on Windows) refuses a
+`bindings/wasm/pkg` whose version differs from this package's. Without a
+`pkg/` it keeps an existing `vendor/datalogic` of the right version.
+
+`@goplasmatic/datalogic-wasm` is not declared in `package.json`: nothing in the
+build resolves it (Vite, Vitest and the tsconfigs alias the package to
+`vendor/datalogic`, see `vite.aliases.ts`), and the engine is bundled into the
+output. The release workflow adds it, pinned to the version being published,
+for provenance. `@dagrejs/dagre`, `lucide-react` and `uuid` are bundled too,
+so they are devDependencies and consumers do not install them. See
 [DEVELOPMENT.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/DEVELOPMENT.md)
 for the repo-wide pipeline.
 
@@ -315,6 +325,15 @@ evaluations rather than fixtures:
 - **Samples, sharing, menus, evaluator** (`tests/`): each sample evaluates to
   its stored expected result, share URLs round trip, and every operator is
   reachable from the menus.
+- **Components** (`tests/dom/`, jsdom and Testing Library): the editor renders
+  in every mode; shortcuts stay inside the focused editor; panel ids are
+  unique per editor; selection survives an `onChange` round trip.
+- **CommonJS build** (`tests/cjs-build.test.ts`): `require`s `dist/index.cjs`
+  and evaluates a rule. Run `npm run build:lib` first; without `dist/` it is
+  skipped.
+- **Bundled React Flow CSS** (`tests/reactflow-css.test.ts`): the scoped copy
+  matches the installed `@xyflow/react`. Regenerate it with
+  `node scripts/reactflow-css.mjs`.
 
 When you add an operator config example or a sample, give it the result the
 engine produces; the suites will tell you if it drifts.
@@ -346,9 +365,8 @@ The main component is `DataLogicEditor` which:
 - React 18/19
 - TypeScript
 - Vite
-- React Flow (@xyflow/react)
-- @dagrejs/dagre (graph layout)
-- lucide-react (icons)
+- React Flow (@xyflow/react, a peer dependency)
+- @dagrejs/dagre (graph layout), lucide-react (icons), uuid: bundled into the library output
 - @goplasmatic/datalogic-wasm (bundled into the library output)
 
 The dev playground additionally uses @msgpack/msgpack and fflate for share

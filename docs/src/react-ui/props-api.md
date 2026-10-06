@@ -194,8 +194,9 @@ JSON-serializable value (`undefined` becomes `null`), and a thrown exception
 becomes a runtime evaluation error. Rules using them evaluate and trace
 normally, but the palette and help panel only know built-in operators, so
 custom nodes render with the generic "utility" styling. Built-ins win a name
-collision: registering `"+"` has no effect. Like `config`, changing this prop
-rebuilds the engine.
+collision: registering `"+"` has no effect. Like `config`, changing the set
+of names rebuilds the engine; passing new implementations under the same
+names (an inline object on every render, say) does not.
 
 #### `theme`
 
@@ -378,8 +379,6 @@ import type {
   StructureElement,
   CellData,
   ConversionResult,
-  NodeEvaluationResult,
-  EvaluationResultsMap,
   StructuredError,
   TracedResult,
   OperatorCategory,
@@ -435,7 +434,7 @@ the bundled WASM engine and builds one `Engine` per
 (`templating`, `config`, `customOperators`) combination:
 
 ```tsx
-const { ready, loading, error, evaluate, evaluateWithTrace } = useWasmEvaluator({
+const { ready, loading, error, evaluate, evaluateMetered, evaluateWithTrace } = useWasmEvaluator({
   templating: false,
   config: { preset: 'strict' },
   customOperators: { double: (args) => Number(args[0]) * 2 },
@@ -444,8 +443,12 @@ const { ready, loading, error, evaluate, evaluateWithTrace } = useWasmEvaluator(
 if (ready) {
   const result = evaluate({ '+': [1, 2] }, {});           // 3
   const trace = evaluateWithTrace({ '+': [1, 2] }, {});   // { result, steps, expression_tree, ... }
+  const { value, ops } = evaluateMetered({ '+': [1, 2] }, {}); // 3, plus the operations charged
 }
 ```
+
+`error` holds the message when the engine fails to load. The component shows
+the same message in a banner when `data` asks for evaluation.
 
 **DataLogicEvaluationError:** thrown by `evaluate` when the engine fails. Its
 `.structured` field is a `StructuredError` carrying `type` and `message`, plus

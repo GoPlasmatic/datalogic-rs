@@ -84,7 +84,12 @@ Set `editable` to turn on the full visual builder.
 - Undo/redo, from the toolbar or the keyboard
 - Keyboard shortcuts: copy/paste (Cmd/Ctrl+C / V), duplicate (Cmd/Ctrl+D), select all (Cmd/Ctrl+A), undo/redo (Cmd/Ctrl+Z, Shift+Cmd/Ctrl+Z or Cmd/Ctrl+Y), delete (Backspace/Delete), deselect (Escape)
 
-When `editable` is set, `onChange` is active: the editor debounces edits (about 300ms) and passes back the rebuilt JSONLogic expression so you can keep your own state in sync.
+Shortcuts, the debugger's included, apply only while focus is inside the
+editor; clicking anywhere in it gives it focus. A page with several editors,
+or with shortcuts of its own, keeps its keys. Text fields keep their editing
+keys, and buttons and links keep Space and Enter.
+
+When `editable` is set, `onChange` is active: the editor debounces edits (about 300ms) and passes back the rebuilt JSONLogic expression so you can keep your own state in sync. Feeding that value back through `value` keeps the selection, the open properties panel and the canvas position.
 
 ## Editing with Live Debugging
 
