@@ -42,7 +42,7 @@ No Rust toolchain needed.
 | macOS    | osx-x64, osx-arm64     |
 | Windows  | win-x64, win-arm64     |
 
-Targets `net8.0` or newer.
+Ships `net8.0` and `net10.0` builds; any newer runtime uses the `net10.0` one.
 
 ## Quick start
 

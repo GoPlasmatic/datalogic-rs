@@ -1,7 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- net8.0 reaches end of support on 2026-11-10, so the package also
+       ships a net10.0 build, which uses the in-box System.Text.Json.
+       Only the .NET 10 SDK can build net10.0 (CI and the release job use
+       it); an older SDK builds net8.0 alone, so contributors on SDK 8 or
+       9 can still build and test. -->
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFrameworks>net8.0</TargetFrameworks>
+    <TargetFrameworks Condition="$([MSBuild]::VersionGreaterThanOrEquals('$(NETCoreSdkVersion)', '10.0'))">net8.0;net10.0</TargetFrameworks>
+  </PropertyGroup>
+
+  <PropertyGroup>
     <RootNamespace>Goplasmatic.Datalogic</RootNamespace>
     <AssemblyName>Goplasmatic.Datalogic</AssemblyName>
     <Nullable>enable</Nullable>
@@ -55,6 +64,11 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.401" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- net8.0's in-box System.Text.Json is 8.x; net10.0 has 10.x in the
+       box and needs no package. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
     <PackageReference Include="System.Text.Json" Version="10.0.12" />
   </ItemGroup>
 

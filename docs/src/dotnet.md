@@ -1,6 +1,6 @@
 # .NET / C# (P/Invoke)
 
-The .NET binding `Goplasmatic.Datalogic` is a P/Invoke wrapper over the shared C ABI. It targets **.NET 8.0** and uses source-generated `LibraryImport` stubs, so it is **NativeAOT-ready**.
+The .NET binding `Goplasmatic.Datalogic` is a P/Invoke wrapper over the shared C ABI. It ships **.NET 8.0** and **.NET 10.0** builds and uses source-generated `LibraryImport` stubs, so it is **NativeAOT-ready**.
 
 ## Installation
 
