@@ -94,3 +94,48 @@ pub(crate) mod tensor;
 
 #[cfg(test)]
 mod table_tests;
+
+/// The name of a value's type: what `type` reports for anything but a
+/// string or a datetime / duration sentinel object (which it classifies
+/// further), and what `throw` puts under `"type"` for a thrown scalar.
+#[cfg_attr(
+    not(any(feature = "ext-control", feature = "error-handling")),
+    allow(dead_code)
+)]
+pub(crate) fn type_name(v: &crate::arena::DataValue<'_>) -> &'static str {
+    use crate::arena::DataValue;
+    match v {
+        DataValue::Null => "null",
+        DataValue::Bool(_) => "boolean",
+        DataValue::Number(_) => "number",
+        DataValue::String(_) => "string",
+        DataValue::Array(_) => "array",
+        DataValue::Object(_) => "object",
+        #[cfg(feature = "datetime")]
+        DataValue::DateTime(_) => "datetime",
+        #[cfg(feature = "datetime")]
+        DataValue::Duration(_) => "duration",
+        #[cfg(feature = "tensor")]
+        DataValue::Tensor(_) => "tensor",
+    }
+}
+
+/// [`type_name`] for an owned value.
+#[cfg_attr(not(feature = "error-handling"), allow(dead_code))]
+pub(crate) fn owned_type_name(v: &datavalue::OwnedDataValue) -> &'static str {
+    use datavalue::OwnedDataValue;
+    match v {
+        OwnedDataValue::Null => "null",
+        OwnedDataValue::Bool(_) => "boolean",
+        OwnedDataValue::Number(_) => "number",
+        OwnedDataValue::String(_) => "string",
+        OwnedDataValue::Array(_) => "array",
+        OwnedDataValue::Object(_) => "object",
+        #[cfg(feature = "datetime")]
+        OwnedDataValue::DateTime(_) => "datetime",
+        #[cfg(feature = "datetime")]
+        OwnedDataValue::Duration(_) => "duration",
+        #[cfg(feature = "tensor")]
+        OwnedDataValue::Tensor(_) => "tensor",
+    }
+}

@@ -62,18 +62,8 @@ pub(crate) fn type_<'a>(_cx: &mut Cx<'_, 'a>, av: &'a DataValue<'a>) -> Result<&
     }
 
     let type_str: &'static str = match av {
-        DataValue::Null => "null",
-        DataValue::Bool(_) => "boolean",
-        DataValue::Number(_) => "number",
         DataValue::String(s) => classify_string(s),
-        DataValue::Array(_) => "array",
-        DataValue::Object(_) => "object",
-        #[cfg(feature = "datetime")]
-        DataValue::DateTime(_) => "datetime",
-        #[cfg(feature = "datetime")]
-        DataValue::Duration(_) => "duration",
-        #[cfg(feature = "tensor")]
-        DataValue::Tensor(_) => "tensor",
+        other => super::type_name(other),
     };
     Ok(crate::arena::singletons::singleton_type_name(type_str))
 }

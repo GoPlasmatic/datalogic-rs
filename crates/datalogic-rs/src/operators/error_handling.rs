@@ -77,7 +77,7 @@ pub(crate) fn evaluate_throw<'a>(
         // Scalar / array — wrap in `{type: <name>}` using stable type names
         // (matches the `type` operator's output). `Debug` formatting was
         // not API-stable and revealed `OwnedDataValue` variant constructors.
-        ref other => OwnedDataValue::object([("type", value_type_name(other))]),
+        ref other => OwnedDataValue::object([("type", super::owned_type_name(other))]),
     };
 
     Err(Error::thrown(owned))
@@ -94,50 +94,10 @@ fn normalize_thrown_arena<'a>(av: &'a DataValue<'a>, arena: &'a Bump) -> &'a Dat
     let type_val: DataValue<'a> = match av {
         DataValue::Object(_) => return av,
         DataValue::String(s) => DataValue::String(s),
-        other => DataValue::String(arena_type_name(other)),
+        other => DataValue::String(super::type_name(other)),
     };
     let entry = arena.alloc([("type", type_val)]);
     arena.alloc(DataValue::Object(&entry[..]))
-}
-
-/// Stable type name for a non-string, non-object thrown arena value.
-/// Mirrors [`value_type_name`] (and the `type` operator's output).
-#[inline]
-fn arena_type_name(v: &DataValue<'_>) -> &'static str {
-    match v {
-        DataValue::Null => "null",
-        DataValue::Bool(_) => "boolean",
-        DataValue::Number(_) => "number",
-        DataValue::String(_) => "string",
-        DataValue::Array(_) => "array",
-        DataValue::Object(_) => "object",
-        #[cfg(feature = "datetime")]
-        DataValue::DateTime(_) => "datetime",
-        #[cfg(feature = "datetime")]
-        DataValue::Duration(_) => "duration",
-        #[cfg(feature = "tensor")]
-        DataValue::Tensor(_) => "tensor",
-    }
-}
-
-/// Stable type name for a non-string, non-object thrown value. Mirrors the
-/// names produced by the `type` operator (`operators::inspect`).
-#[inline]
-fn value_type_name(v: &OwnedDataValue) -> &'static str {
-    match v {
-        OwnedDataValue::Null => "null",
-        OwnedDataValue::Bool(_) => "boolean",
-        OwnedDataValue::Number(_) => "number",
-        OwnedDataValue::String(_) => "string",
-        OwnedDataValue::Array(_) => "array",
-        OwnedDataValue::Object(_) => "object",
-        #[cfg(feature = "datetime")]
-        OwnedDataValue::DateTime(_) => "datetime",
-        #[cfg(feature = "datetime")]
-        OwnedDataValue::Duration(_) => "duration",
-        #[cfg(feature = "tensor")]
-        OwnedDataValue::Tensor(_) => "tensor",
-    }
 }
 
 // ─── try ────────────────────────────────────────────────────────────────────
