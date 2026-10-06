@@ -1,4 +1,4 @@
-import { memo, forwardRef, useImperativeHandle } from 'react';
+import { memo, forwardRef, useId, useImperativeHandle, useRef } from 'react';
 import type { PanelField, SelectOption } from '../config/operators.types';
 import { TextInput } from './TextInput';
 import { TextAreaInput } from './TextAreaInput';
@@ -31,14 +31,20 @@ export const FieldRenderer = memo(forwardRef<FieldRendererRef, FieldRendererProp
   onChange,
   disabled = false,
 }, ref) {
-  const fieldId = `panel-field-${field.id}`;
+  // Unique per instance: with two editors on a page, a fixed id bound each
+  // label to the other editor's input.
+  const instanceId = useId();
+  const fieldId = `${instanceId}panel-field-${field.id}`;
   const isDisabled = disabled;
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Expose focus method
+  // Expose focus method. The lookup is scoped to this field's own subtree,
+  // not the document, so focus cannot land in another editor.
   useImperativeHandle(ref, () => ({
     focus: () => {
-      // Try to find and focus the input element
-      const input = document.getElementById(fieldId) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null;
+      const input = containerRef.current?.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+        `[id="${fieldId}"]`
+      );
       input?.focus();
       if (input && 'select' in input) {
         input.select();
@@ -166,7 +172,7 @@ export const FieldRenderer = memo(forwardRef<FieldRendererRef, FieldRendererProp
   };
 
   return (
-    <div className="panel-field">
+    <div className="panel-field" ref={containerRef}>
       <label htmlFor={fieldId} className="panel-field-label">
         {field.label}
         {field.required && <span className="panel-field-required">*</span>}
