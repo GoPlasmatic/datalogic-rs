@@ -69,10 +69,8 @@ fn compile_multi_key_object(
         let fields: Vec<_> = pairs
             .iter()
             .map(|(key, val)| {
-                let mark = ctx.descend(key);
-                let compiled = compile_node(val, engine, templating, ctx);
-                ctx.ascend(mark);
-                compiled.map(|compiled_val| (key.clone(), compiled_val))
+                keyed(key, ctx, |ctx| compile_node(val, engine, templating, ctx))
+                    .map(|compiled_val| (key.clone(), compiled_val))
             })
             .collect::<Result<Vec<_>>>()?;
         // Multi-key object keys are already literal, so the escape changes
@@ -134,10 +132,10 @@ fn compile_operator_invocation(
         return compile_templating_unknown(op_name, args_value, engine, templating, fold, ctx);
     }
 
-    let mark = ctx.descend(op_name);
-    let args = compile_args(args_value, engine, templating, ctx);
-    ctx.ascend(mark);
-    Ok(custom_operator_node(op_name, args?, engine, fold, ctx))
+    let args = keyed(op_name, ctx, |ctx| {
+        compile_args(args_value, engine, templating, ctx)
+    })?;
+    Ok(custom_operator_node(op_name, args, engine, fold, ctx))
 }
 
 /// Build a `CustomOperator` node from an op name and its already-compiled
@@ -196,10 +194,9 @@ fn compile_builtin(
         return Ok(node);
     }
 
-    let mark = ctx.descend(op_name);
-    let args = compile_builtin_args(meta.literal_args, args_value, engine, templating, ctx);
-    ctx.ascend(mark);
-    let mut args = args?;
+    let mut args = keyed(op_name, ctx, |ctx| {
+        compile_builtin_args(meta.literal_args, args_value, engine, templating, ctx)
+    })?;
 
     if let Some(CompileHook::Args(hook)) = meta.compile {
         let hook_args = HookArgs {
@@ -278,10 +275,10 @@ fn compile_templating_unknown(
     if let Some(eng) = engine
         && eng.has_custom_operator(op_name)
     {
-        let mark = ctx.descend(op_name);
-        let args = compile_args(args_value, engine, templating, ctx);
-        ctx.ascend(mark);
-        return Ok(custom_operator_node(op_name, args?, engine, fold, ctx));
+        let args = keyed(op_name, ctx, |ctx| {
+            compile_args(args_value, engine, templating, ctx)
+        })?;
+        return Ok(custom_operator_node(op_name, args, engine, fold, ctx));
     }
     single_field_object(op_name, args_value, engine, templating, false, ctx)
 }
@@ -301,10 +298,8 @@ fn single_field_object(
     escaped: bool,
     ctx: &mut CompileCtx,
 ) -> Result<CompiledNode> {
-    let mark = ctx.descend(key);
-    let compiled_val = compile_node(value, engine, templating, ctx);
-    ctx.ascend(mark);
-    let fields = vec![(key.to_string(), compiled_val?)].into_boxed_slice();
+    let compiled_val = keyed(key, ctx, |ctx| compile_node(value, engine, templating, ctx))?;
+    let fields = vec![(key.to_string(), compiled_val)].into_boxed_slice();
     Ok(CompiledNode::StructuredObject(Box::new(
         crate::node::StructuredObjectData {
             id: Some(ctx.next_id()),
@@ -463,6 +458,15 @@ pub(super) fn compile_args(
             .map(Vec::into_boxed_slice),
         _ => Ok(vec![compile_node(value, engine, templating, ctx)?].into_boxed_slice()),
     }
+}
+
+/// Run `compile` with object key `key` appended to the recorded pointer.
+#[inline]
+fn keyed<T>(key: &str, ctx: &mut CompileCtx, compile: impl FnOnce(&mut CompileCtx) -> T) -> T {
+    let mark = ctx.descend(key);
+    let out = compile(ctx);
+    ctx.ascend(mark);
+    out
 }
 
 /// Run `compile` with array index `i` appended to the recorded pointer.

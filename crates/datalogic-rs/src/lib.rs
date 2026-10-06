@@ -419,6 +419,12 @@ pub struct CustomOperatorInfo {
 }
 
 impl CustomOperatorInfo {
+    /// Whether a call may pass `count` arguments.
+    #[inline]
+    pub(crate) fn accepts(&self, count: usize) -> bool {
+        count >= self.min_args && self.max_args.is_none_or(|max| count <= max)
+    }
+
     /// Nothing assumed: nondeterministic, may read the context, any
     /// number of arguments. The default.
     pub const fn opaque() -> Self {

@@ -107,7 +107,9 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 - **`EngineBuilder::try_add_operator`** refuses a name that a built-in
   operator of the build answers to (aliases included), where the custom
   operator would never run, with a `ConfigurationError` naming the
-  built-in. `add_operator` is unchanged.
+  built-in. `add_operator` is unchanged. `EngineBuilder::check_operator_name`
+  gives the same refusal without consuming the builder, which the C ABI's
+  strict-names registration uses, so it follows the builder's families too.
 - **`Engine::compile_template` and `Engine::compile_strict`** choose
   the templating mode for one compile instead of for the engine. The
   engine's custom operators, template key escape and folding setting

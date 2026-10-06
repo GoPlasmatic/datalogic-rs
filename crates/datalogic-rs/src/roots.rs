@@ -110,7 +110,7 @@ impl<'r> RootValue<'r> {
     }
 
     /// [`Self::view_in`], keeping only what `under` reads.
-    fn project_in<'a>(self, under: crate::projection::Under<'_>, arena: &'a Bump) -> DataValue<'a>
+    fn project_in<'a>(self, under: &crate::projection::Projection, arena: &'a Bump) -> DataValue<'a>
     where
         'r: 'a,
     {
@@ -186,6 +186,24 @@ impl<'r> Roots<'r> {
         arena.alloc(DataValue::Object(fields))
     }
 
+    /// The view a rule compiled as `logic` evaluates on `engine`:
+    /// projected when the rule's reads allow it, whole otherwise.
+    #[inline]
+    fn arena_for<'a>(
+        &self,
+        logic: &crate::Logic,
+        engine: &crate::Engine,
+        arena: &'a Bump,
+    ) -> &'a DataValue<'a>
+    where
+        'r: 'a,
+    {
+        match logic.projection_for(engine) {
+            Some(projection) => self.projected_in(projection, arena),
+            None => self.view_in(arena),
+        }
+    }
+
     /// [`Self::view_in`] for a rule with read projection `projection`:
     /// only the roots it reads, each projected.
     fn projected_in<'a>(
@@ -196,7 +214,7 @@ impl<'r> Roots<'r> {
     where
         'r: 'a,
     {
-        let mut kept = bumpalo::collections::Vec::new_in(arena);
+        let mut kept = bumpalo::collections::Vec::with_capacity_in(self.parts.len(), arena);
         for (name, value) in &self.parts {
             if let Some(under) = projection.under(name) {
                 kept.push((*name, value.project_in(under, arena)));
@@ -255,10 +273,7 @@ impl<'a, 'r: 'a> EvalInput<'a> for &'a Roots<'r> {
         engine: &crate::Engine,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
-        Ok(match logic.projection_for(engine) {
-            Some(projection) => self.projected_in(projection, arena),
-            None => self.view_in(arena),
-        })
+        Ok(self.arena_for(logic, engine, arena))
     }
 }
 
@@ -276,10 +291,7 @@ impl<'a, 'r: 'a> EvalInput<'a> for Roots<'r> {
         engine: &crate::Engine,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>> {
-        Ok(match logic.projection_for(engine) {
-            Some(projection) => self.projected_in(projection, arena),
-            None => self.view_in(arena),
-        })
+        Ok(self.arena_for(logic, engine, arena))
     }
 }
 

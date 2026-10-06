@@ -168,18 +168,18 @@ fn sort_fast_path_var_extractor<'a>(
     let segments = sort_key_field(extractor)?;
 
     let len = src.len();
-    let mut keyed = bvec::<(usize, Option<&'a DataValue<'a>>)>(arena, len);
-    keyed.extend((0..len).map(|i| {
-        (
-            i,
-            crate::arena::value::traverse_segments(src.get(i), segments),
-        )
-    }));
     // A missing field reads as `null`, as the key expression would on the
     // general path, so it ties with a present `null` and keeps its place.
     let null = crate::arena::singletons::singleton_null();
+    let mut keyed = bvec::<(usize, &'a DataValue<'a>)>(arena, len);
+    keyed.extend((0..len).map(|i| {
+        (
+            i,
+            crate::arena::value::traverse_segments(src.get(i), segments).unwrap_or(null),
+        )
+    }));
     keyed.sort_by(|(_, ka), (_, kb)| {
-        let cmp = compare_values(ka.unwrap_or(null), kb.unwrap_or(null));
+        let cmp = compare_values(ka, kb);
         if ascending { cmp } else { cmp.reverse() }
     });
     let slice = arena.alloc_slice_fill_iter(keyed.iter().map(|&(i, _)| *src.get(i)));

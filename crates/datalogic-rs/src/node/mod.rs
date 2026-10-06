@@ -24,7 +24,7 @@ mod prelit;
 
 pub use logic::Logic;
 
-pub(crate) use compile_ctx::{CompileCtx, NodeId, SYNTHETIC_ID};
+pub(crate) use compile_ctx::{CompileCtx, NodeId, SYNTHETIC_ID, push_pointer_token};
 pub(crate) use logic::node_is_static;
 #[cfg(feature = "ext-control")]
 pub(crate) use payload::CompiledExistsData;

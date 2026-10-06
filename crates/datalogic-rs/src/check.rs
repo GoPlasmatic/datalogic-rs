@@ -193,7 +193,7 @@ pub(crate) fn check(engine: &Engine, rule: &OwnedDataValue, templating: bool) ->
         engine,
         templating,
         escape: if templating {
-            template_escape(engine)
+            engine.template_key_escape()
         } else {
             None
         },
@@ -203,10 +203,6 @@ pub(crate) fn check(engine: &Engine, rule: &OwnedDataValue, templating: bool) ->
     checker.out
 }
 
-fn template_escape(engine: &Engine) -> Option<char> {
-    engine.template_key_escape()
-}
-
 struct Checker<'e> {
     engine: &'e Engine,
     templating: bool,
@@ -214,22 +210,10 @@ struct Checker<'e> {
     out: Vec<Diagnostic>,
 }
 
-/// Append `token` to a JSON Pointer, escaped per RFC 6901.
-fn push_token(pointer: &mut String, token: &str) {
-    pointer.push('/');
-    for c in token.chars() {
-        match c {
-            '~' => pointer.push_str("~0"),
-            '/' => pointer.push_str("~1"),
-            c => pointer.push(c),
-        }
-    }
-}
-
 /// Run `f` with `token` appended to `pointer`, then restore it.
 fn under(pointer: &mut String, token: &str, f: impl FnOnce(&mut String)) {
     let len = pointer.len();
-    push_token(pointer, token);
+    crate::node::push_pointer_token(pointer, token);
     f(pointer);
     pointer.truncate(len);
 }
@@ -299,7 +283,8 @@ impl Checker<'_> {
 
     fn call(&mut self, op: &str, argv: &OwnedDataValue, pointer: &mut String) {
         // An escaped key is an output field, checked before any operator.
-        if self.templating && self.escape.is_some_and(|c| op.starts_with(c)) {
+        // `escape` is `None` outside templating mode.
+        if self.escape.is_some_and(|c| op.starts_with(c)) {
             under(pointer, op, |p| self.node(argv, p));
             return;
         }
@@ -313,7 +298,7 @@ impl Checker<'_> {
         }
         if let Some(custom) = self.engine.custom_operator(op) {
             let info = custom.info();
-            if count < info.min_args || info.max_args.is_some_and(|max| count > max) {
+            if !info.accepts(count) {
                 let message = format!(
                     "`{op}` takes {}, not {count}",
                     describe_count(info.min_args, info.max_args)
@@ -378,7 +363,7 @@ impl Checker<'_> {
         let relative = std::mem::take(&mut d.pointer);
         let mut placed = pointer.to_string();
         if !relative.is_empty() {
-            push_token(&mut placed, op);
+            crate::node::push_pointer_token(&mut placed, op);
             // A lone argument that is not an array is the argument list's
             // only member, written in place: argument 0 is the call's value.
             match (argv, relative.strip_prefix("/0")) {
@@ -478,8 +463,8 @@ impl Checker<'_> {
             && zone.parse::<chrono_tz::Tz>().is_err()
         {
             let mut at = pointer.clone();
-            push_token(&mut at, op);
-            push_token(&mut at, "2");
+            crate::node::push_pointer_token(&mut at, op);
+            crate::node::push_pointer_token(&mut at, "2");
             let message = format!("unknown timezone `{zone}`");
             self.report(
                 DiagnosticCode::InvalidTimezone,
@@ -497,7 +482,7 @@ impl Checker<'_> {
     /// then the engine's custom operators. Short names are left out, since
     /// almost any short key is one edit from `+` or `in`.
     fn similar_operator(&self, key: &str) -> Option<String> {
-        let close = |name: &str| name.chars().count() >= 3 && edit_distance(key, name) == 1;
+        let close = |name: &str| name.chars().count() >= 3 && one_edit_apart(key, name);
         if let Some(name) = self.engine.builtin_operator_names().find(|n| close(n)) {
             return Some(name.to_string());
         }
@@ -529,33 +514,48 @@ fn describe_count(min: usize, max: Option<usize>) -> String {
     }
 }
 
-/// Levenshtein distance over chars, stopping early above 1 is not worth it
-/// for names this short.
-fn edit_distance(a: &str, b: &str) -> usize {
-    let a: Vec<char> = a.chars().collect();
-    let b: Vec<char> = b.chars().collect();
-    let mut prev: Vec<usize> = (0..=b.len()).collect();
-    for (i, ca) in a.iter().enumerate() {
-        let mut cur = vec![i + 1; b.len() + 1];
-        for (j, cb) in b.iter().enumerate() {
-            let cost = usize::from(ca != cb);
-            cur[j + 1] = (prev[j] + cost).min(prev[j + 1] + 1).min(cur[j] + 1);
+/// Whether `a` and `b` are exactly one edit apart (an insertion, a
+/// deletion or a substitution of one char): Levenshtein distance 1,
+/// without the table.
+fn one_edit_apart(a: &str, b: &str) -> bool {
+    let (la, lb) = (a.chars().count(), b.chars().count());
+    match la.abs_diff(lb) {
+        0 => a.chars().zip(b.chars()).filter(|(x, y)| x != y).count() == 1,
+        1 => {
+            let (long, short) = if la > lb { (a, b) } else { (b, a) };
+            let mut long = long.chars();
+            let mut skipped = false;
+            for c in short.chars() {
+                loop {
+                    match long.next() {
+                        Some(x) if x == c => break,
+                        Some(_) if !skipped => skipped = true,
+                        _ => return false,
+                    }
+                }
+            }
+            true
         }
-        prev = cur;
+        _ => false,
     }
-    prev[b.len()]
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{describe_count, edit_distance};
+    use super::{describe_count, one_edit_apart};
 
     #[test]
     fn distances() {
-        assert_eq!(edit_distance("vr", "var"), 1);
-        assert_eq!(edit_distance("mapp", "map"), 1);
-        assert_eq!(edit_distance("name", "none"), 2);
-        assert_eq!(edit_distance("", "abc"), 3);
+        assert!(one_edit_apart("vr", "var"));
+        assert!(one_edit_apart("var", "vr"));
+        assert!(one_edit_apart("mapp", "map"));
+        assert!(one_edit_apart("mop", "map"));
+        assert!(one_edit_apart("vars", "var"));
+        assert!(!one_edit_apart("map", "map"));
+        assert!(!one_edit_apart("name", "none"));
+        assert!(!one_edit_apart("ab", "ba"));
+        assert!(!one_edit_apart("", "abc"));
+        assert!(!one_edit_apart("mapxy", "map"));
     }
 
     #[test]

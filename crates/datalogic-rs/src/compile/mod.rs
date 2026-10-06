@@ -59,14 +59,17 @@ impl Logic {
     /// **regardless of the engine's setting** — every operator survives
     /// in the tree. Used internally by the trace one-shot path so traces
     /// have full operator coverage even when the engine has folding on.
+    /// `place` records each node's pointer ([`Logic::pointer`]), for a
+    /// `Logic` the caller keeps; a one-shot run drops it unread.
     #[cfg(feature = "trace")]
-    pub(crate) fn compile_for_trace(logic: &OwnedDataValue, engine: &Engine) -> Result<Self> {
-        Self::compile_inner(
-            logic,
-            engine,
-            engine.is_templating_enabled(),
-            CompileCtx::no_fold().recording_pointers(),
-        )
+    pub(crate) fn compile_for_trace(
+        logic: &OwnedDataValue,
+        engine: &Engine,
+        place: bool,
+    ) -> Result<Self> {
+        let ctx = CompileCtx::no_fold();
+        let ctx = if place { ctx.recording_pointers() } else { ctx };
+        Self::compile_inner(logic, engine, engine.is_templating_enabled(), ctx)
     }
 
     #[inline]

@@ -61,8 +61,7 @@ pub(crate) fn quantifier<'a>(
     // when a tracer is attached so iteration markers still get recorded.
     // An indeterminate item (see `FastPredicate::evaluate_opt`) drops to
     // the general loop below, which is exact: fast evaluation is pure.
-    if !ctx.is_tracing()
-        && engine.reads_fields_inline()
+    if super::fast_paths::allowed(ctx, engine)
         && let Some(fast_pred) = FastPredicate::from_node(predicate)
     {
         let short_on = op.short_circuit_on();

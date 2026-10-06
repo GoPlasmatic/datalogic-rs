@@ -100,24 +100,21 @@ impl CompileCtx {
             return 0;
         };
         let mark = pointer.len();
-        pointer.push('/');
-        for c in token.chars() {
-            match c {
-                '~' => pointer.push_str("~0"),
-                '/' => pointer.push_str("~1"),
-                c => pointer.push(c),
-            }
-        }
+        push_pointer_token(pointer, token);
         mark
     }
 
     /// [`Self::descend`] into array index `index`.
     #[inline]
     pub(crate) fn descend_index(&mut self, index: usize) -> usize {
-        if self.pointer.is_none() {
+        use std::fmt::Write;
+        let Some(pointer) = &mut self.pointer else {
             return 0;
-        }
-        self.descend(&index.to_string())
+        };
+        let mark = pointer.len();
+        // Digits need no escaping.
+        let _ = write!(pointer, "/{index}");
+        mark
     }
 
     /// Return to the pointer [`Self::descend`] left.
@@ -176,5 +173,19 @@ impl CompileCtx {
     #[inline]
     pub(crate) fn skip_fold(&self) -> bool {
         self.skip_fold
+    }
+}
+
+/// Append `token` to a JSON Pointer, escaped per RFC 6901. Trace pointers
+/// ([`CompileCtx::descend`]) and diagnostic pointers (`check`) share it, so
+/// the two agree byte for byte.
+pub(crate) fn push_pointer_token(pointer: &mut String, token: &str) {
+    pointer.push('/');
+    for c in token.chars() {
+        match c {
+            '~' => pointer.push_str("~0"),
+            '/' => pointer.push_str("~1"),
+            c => pointer.push(c),
+        }
     }
 }

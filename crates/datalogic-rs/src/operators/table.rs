@@ -287,6 +287,13 @@ macro_rules! operators {
                 }
             }
 
+            /// Whether the row's family is in `families`, a set of
+            /// [`Family::bit`]s.
+            #[inline]
+            pub(crate) const fn in_families(self, families: u32) -> bool {
+                families & self.family().bit() != 0
+            }
+
             /// The row as the catalogue records it: family, gate, names
             /// and shape.
             pub(crate) const fn catalogue_entry(self) -> &'static CatalogueEntry {
@@ -719,6 +726,6 @@ pub(crate) fn builtin_operator_names() -> impl Iterator<Item = &'static str> {
 pub(crate) fn builtin_operator_names_in(families: u32) -> impl Iterator<Item = &'static str> {
     NAMES.iter().copied().filter(move |name| {
         name.parse::<OpCode>()
-            .is_ok_and(|op| families & op.family().bit() != 0)
+            .is_ok_and(|op| op.in_families(families))
     })
 }

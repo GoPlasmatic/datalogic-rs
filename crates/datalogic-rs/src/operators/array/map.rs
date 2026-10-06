@@ -36,8 +36,7 @@ pub(crate) fn evaluate_map<'a>(
     // per-iteration markers. Only enter them when no tracer is attached.
     // Shape detection is shared with the reduce(map(...)) fusion — see
     // `FusedMapBody::detect`.
-    if !ctx.is_tracing()
-        && engine.reads_fields_inline()
+    if super::fast_paths::allowed(ctx, engine)
         && let Some(shape) = FusedMapBody::detect(body)
         && let Some(result) = map_fused(&src, &shape, arena)
     {

@@ -244,13 +244,31 @@ impl EngineBuilder {
         T: CustomOperator + 'static,
     {
         let name = name.into();
-        if let Some(builtin) = crate::engine::builtin_in(self.families, &name) {
-            return Err(crate::Error::configuration_error(format!(
+        self.check_operator_name(&name)?;
+        Ok(self.add_operator(name, operator))
+    }
+
+    /// The refusal [`Self::try_add_operator`] gives a custom operator named
+    /// `name`, without registering anything: a `ConfigurationError` when a
+    /// built-in of this builder's families answers to the name. For a host
+    /// that must keep the builder whether or not the name is taken.
+    ///
+    /// ```rust
+    /// use datalogic_rs::{Engine, Family};
+    ///
+    /// assert!(Engine::builder().check_operator_name("if").is_err());
+    /// // `upper` is free once its family is left out.
+    /// let core = Engine::builder().with_families([Family::ExtArray]);
+    /// assert!(core.check_operator_name("upper").is_ok());
+    /// ```
+    pub fn check_operator_name(&self, name: &str) -> crate::Result<()> {
+        match crate::engine::builtin_in(self.families, name) {
+            Some(builtin) => Err(crate::Error::configuration_error(format!(
                 "custom operator `{name}` would never run: the built-in operator `{}` answers to that name",
                 builtin.as_str()
-            )));
+            ))),
+            None => Ok(()),
         }
-        Ok(self.add_operator(name, operator))
     }
 
     /// Keep the engine to the JSONLogic core and the extension families

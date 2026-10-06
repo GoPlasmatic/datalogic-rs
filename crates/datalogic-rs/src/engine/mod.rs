@@ -227,7 +227,7 @@ pub struct Engine {
 pub(crate) fn builtin_in(families: u32, name: &str) -> Option<crate::OpCode> {
     name.parse::<crate::OpCode>()
         .ok()
-        .filter(|op| families & op.family().bit() != 0)
+        .filter(|op| op.in_families(families))
 }
 
 mod dispatch;
@@ -436,8 +436,8 @@ impl Engine {
     #[inline]
     pub(crate) fn from_builder_parts(
         config: EvaluationConfig,
-        _templating: bool,
-        _template_key_escape: Option<char>,
+        templating: bool,
+        template_key_escape: Option<char>,
         constant_folding: bool,
         operators: HashMap<String, std::sync::Arc<dyn crate::CustomOperator>>,
         families: u32,
@@ -445,8 +445,8 @@ impl Engine {
         Self {
             id: NEXT_ENGINE_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             custom_operators: CustomOperators::new(operators),
-            templating: _templating && cfg!(feature = "templating"),
-            template_key_escape: _template_key_escape,
+            templating: templating && cfg!(feature = "templating"),
+            template_key_escape,
             constant_folding,
             config,
             families,
@@ -493,10 +493,9 @@ impl Engine {
         self.constant_folding
     }
 
-    /// Internal: whether templating mode is on. Always returns `false`
-    /// when the crate is built without `feature = "templating"` (the
-    /// underlying field doesn't exist off-feature). Folded here so the
-    /// single call site in `compile/` doesn't repeat the `#[cfg]` ceremony.
+    /// Internal: whether templating mode is on. Always `false` when the
+    /// crate is built without `feature = "templating"`: the builder seam
+    /// clears the flag off-feature.
     #[inline]
     pub(crate) fn is_templating_enabled(&self) -> bool {
         self.templating

@@ -30,19 +30,15 @@ use datavalue::OwnedDataValue;
 use crate::Facts;
 use crate::arena::DataValue;
 
-/// The paths a rule reads, as a trie. [`Projection::of`] is `None` when an
-/// evaluation needs the whole input.
+/// The paths a rule reads, as a trie: each node is what is read under one
+/// key. [`Projection::of`] is `None` when an evaluation needs the whole
+/// input.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Projection {
-    root: Node,
-}
-
-#[derive(Debug, Clone, Default)]
-struct Node {
     /// A read ends here: keep the whole value.
     whole: bool,
     /// The keys read below this point, each with what is read under it.
-    children: Vec<(Box<str>, Node)>,
+    children: Vec<(Box<str>, Projection)>,
 }
 
 impl Projection {
@@ -53,53 +49,27 @@ impl Projection {
         if !facts.reads_complete() {
             return None;
         }
-        let mut root = Node::default();
+        let mut root = Projection::default();
         for path in facts.reads() {
             if path.is_root() {
                 return None;
             }
             root.insert(path.segments());
         }
-        Some(Projection { root })
+        Some(root)
     }
 
-    /// The view of `input` the rule needs.
-    pub(crate) fn owned<'a>(&self, input: &'a OwnedDataValue, arena: &'a Bump) -> DataValue<'a> {
-        self.root.owned(input, arena)
-    }
-
-    /// What is read under top-level key `key`, or `None` when nothing is:
-    /// for an input whose top-level object is assembled from parts
+    /// What is read under key `key`, or `None` when nothing is: for an
+    /// input whose top-level object is assembled from parts
     /// ([`crate::Roots`]).
-    pub(crate) fn under(&self, key: &str) -> Option<Under<'_>> {
-        self.root.child(key).map(Under)
+    #[inline]
+    pub(crate) fn under(&self, key: &str) -> Option<&Projection> {
+        self.children
+            .iter()
+            .find(|(k, _)| **k == *key)
+            .map(|(_, n)| n)
     }
 
-    /// [`Self::owned`] for a `serde_json` input.
-    #[cfg(feature = "serde_json")]
-    pub(crate) fn serde<'a>(&self, input: &'a serde_json::Value, arena: &'a Bump) -> DataValue<'a> {
-        self.root.serde(input, arena)
-    }
-}
-
-/// The part of a [`Projection`] under one top-level key.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Under<'p>(&'p Node);
-
-impl Under<'_> {
-    /// The view of `input`, the value under the key, the rule needs.
-    pub(crate) fn owned<'a>(self, input: &'a OwnedDataValue, arena: &'a Bump) -> DataValue<'a> {
-        self.0.owned(input, arena)
-    }
-
-    /// [`Self::owned`] for a `serde_json` value.
-    #[cfg(feature = "serde_json")]
-    pub(crate) fn serde<'a>(self, input: &'a serde_json::Value, arena: &'a Bump) -> DataValue<'a> {
-        self.0.serde(input, arena)
-    }
-}
-
-impl Node {
     fn insert(&mut self, segments: &[String]) {
         if self.whole {
             return;
@@ -112,30 +82,27 @@ impl Node {
         let at = match self.children.iter().position(|(k, _)| **k == **first) {
             Some(at) => at,
             None => {
-                self.children.push((first.as_str().into(), Node::default()));
+                self.children
+                    .push((first.as_str().into(), Projection::default()));
                 self.children.len() - 1
             }
         };
         self.children[at].1.insert(rest);
     }
 
-    #[inline]
-    fn child(&self, key: &str) -> Option<&Node> {
-        self.children
-            .iter()
-            .find(|(k, _)| **k == *key)
-            .map(|(_, n)| n)
-    }
-
-    fn owned<'a>(&self, input: &'a OwnedDataValue, arena: &'a Bump) -> DataValue<'a> {
+    /// The view of `input` the rule needs.
+    pub(crate) fn owned<'a>(&self, input: &'a OwnedDataValue, arena: &'a Bump) -> DataValue<'a> {
         if self.whole {
             return input.view_in(arena);
         }
         match input {
             OwnedDataValue::Object(pairs) => {
-                let mut kept = bumpalo::collections::Vec::new_in(arena);
+                // Sized up front: each child's view is allocated between
+                // pushes, so a growing `kept` would copy itself each time.
+                let mut kept =
+                    bumpalo::collections::Vec::with_capacity_in(self.children.len(), arena);
                 for (key, value) in pairs {
-                    if let Some(child) = self.child(key) {
+                    if let Some(child) = self.under(key) {
                         kept.push((key.as_str(), child.owned(value, arena)));
                     }
                 }
@@ -145,8 +112,9 @@ impl Node {
         }
     }
 
+    /// [`Self::owned`] for a `serde_json` input.
     #[cfg(feature = "serde_json")]
-    fn serde<'a>(&self, input: &'a serde_json::Value, arena: &'a Bump) -> DataValue<'a> {
+    pub(crate) fn serde<'a>(&self, input: &'a serde_json::Value, arena: &'a Bump) -> DataValue<'a> {
         if self.whole {
             return crate::arena::value_to_data(input, arena);
         }
@@ -154,7 +122,8 @@ impl Node {
             // A map holds each key once, so look each read key up rather
             // than walk every entry of a wide object.
             serde_json::Value::Object(map) => {
-                let mut kept = bumpalo::collections::Vec::new_in(arena);
+                let mut kept =
+                    bumpalo::collections::Vec::with_capacity_in(self.children.len(), arena);
                 for (key, child) in &self.children {
                     if let Some((key, value)) = map.get_key_value(&**key) {
                         kept.push((key.as_str(), child.serde(value, arena)));

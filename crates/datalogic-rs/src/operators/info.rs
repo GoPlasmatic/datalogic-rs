@@ -88,6 +88,6 @@ impl OperatorInfo {
 pub(crate) fn operators_in(families: u32) -> impl Iterator<Item = OperatorInfo> {
     OpCode::ALL
         .iter()
-        .filter(move |op| families & op.family().bit() != 0)
+        .filter(move |op| op.in_families(families))
         .filter_map(|op| OperatorInfo::of(*op))
 }

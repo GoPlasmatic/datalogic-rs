@@ -33,6 +33,16 @@
 //! time; in 5.x an operator body sees only its arguments, so the per-call
 //! detectors stay where the body can reach them.
 
+use crate::Engine;
+use crate::arena::ContextStack;
+
+/// Whether an iterator may take a fast path this call: not traced and not
+/// under [`MissingVar::Error`](crate::MissingVar::Error), as above.
+#[inline(always)]
+pub(super) fn allowed(ctx: &ContextStack<'_>, engine: &Engine) -> bool {
+    !ctx.is_tracing() && engine.reads_fields_inline()
+}
+
 #[cfg(all(test, feature = "serde_json"))]
 use super::helpers::FusedMapBody;
 

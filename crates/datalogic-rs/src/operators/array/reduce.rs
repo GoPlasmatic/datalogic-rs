@@ -39,7 +39,7 @@ pub(crate) fn evaluate_reduce<'a>(
     // input (the established fast-path precedent — fires only on
     // non-numeric data). The inline candidate pre-check keeps non-pipeline
     // reduces at two discriminant compares.
-    if !ctx.is_tracing() && engine.reads_fields_inline() && is_map_candidate(&args[0]) {
+    if super::fast_paths::allowed(ctx, engine) && is_map_candidate(&args[0]) {
         match try_fused_reduce_map(args, initial, ctx, engine, arena)? {
             FusedOutcome::Done(value) => return Ok(value),
             FusedOutcome::Bail => {}
@@ -62,8 +62,7 @@ pub(crate) fn evaluate_reduce<'a>(
     // operand order for + / - / *. Skipped when a tracer is attached so
     // per-iteration trace markers still get recorded via `run_iter_body` in
     // the general path.
-    if !ctx.is_tracing()
-        && engine.reads_fields_inline()
+    if super::fast_paths::allowed(ctx, engine)
         && let Some(result) = try_reduce_fast_path(&src, initial, body, arena)
     {
         return Ok(result);

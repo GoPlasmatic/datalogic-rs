@@ -30,7 +30,7 @@ pub(crate) fn evaluate_filter<'a>(
 
     // Fast paths bypass `run_iter_body` and skip tracer markers. Defer to the
     // general path when a tracer is attached.
-    if !ctx.is_tracing() && engine.reads_fields_inline() {
+    if super::fast_paths::allowed(ctx, engine) {
         if let Some(result) = filter_strict_eq_field_fast_path(&src, predicate, ctx, engine, arena)?
         {
             return Ok(result);
