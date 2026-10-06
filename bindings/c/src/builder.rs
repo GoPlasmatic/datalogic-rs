@@ -487,14 +487,7 @@ impl CustomOperator for CCustomOperator {
     ) -> DlResult<&'a DataValue<'a>> {
         // 1. Serialize args as one JSON array, straight into bytes.
         let mut args_json: Vec<u8> = Vec::with_capacity(64);
-        args_json.push(b'[');
-        for (i, a) in args.iter().enumerate() {
-            if i > 0 {
-                args_json.push(b',');
-            }
-            a.write_json_into(&mut args_json);
-        }
-        args_json.push(b']');
+        datalogic_bind::write_args_json(args, &mut args_json);
 
         // 2. Invoke the C callback.
         let user_data = self.user_data.load(Ordering::Relaxed);
@@ -526,13 +519,6 @@ impl CustomOperator for CCustomOperator {
                 self.name
             ))
         })?;
-        let arena_str = arena.alloc_str(result_str);
-        let parsed = DataValue::from_str(arena_str, arena).map_err(|e| {
-            DlError::custom_message(format!(
-                "custom operator '{}' returned invalid JSON: {}",
-                self.name, e
-            ))
-        })?;
-        Ok(arena.alloc(parsed))
+        datalogic_bind::parse_result(&self.name, result_str, arena)
     }
 }

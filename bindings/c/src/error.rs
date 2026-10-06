@@ -72,7 +72,9 @@ impl Error {
             message: err.to_string(),
             tag: err.tag().to_string(),
             operator: err.operator().map(str::to_owned),
-            path_json: compiled.and_then(|c| serialize_path(err, c)),
+            path_json: compiled.map(|c| {
+                datalogic_bind::path_value(err, c, datalogic_bind::PathKeys::Snake).to_string()
+            }),
             extra: (!err.node_ids().is_empty()).then(|| {
                 Box::new(Extra {
                     node_ids_json: Some(serde_json::to_string(err.node_ids()).unwrap_or_default()),
@@ -132,10 +134,6 @@ impl Error {
         }
     }
 
-    pub(crate) fn status(&self) -> Status {
-        self.status
-    }
-
     /// The [`Status`] an engine error is reported with: `Parse` for a
     /// `ParseError`, `Eval` for every other kind (the tag tells them
     /// apart).
@@ -145,41 +143,6 @@ impl Error {
             _ => Status::Eval,
         }
     }
-
-    /// Item-level error rendering for the batch entry points: a small
-    /// JSON object written into the shared result buffer so per-item
-    /// failures don't need their own handles.
-    pub(crate) fn write_item_json_into(&self, out: &mut Vec<u8>) {
-        let obj = match &self.operator {
-            Some(op) => serde_json::json!({
-                "tag": self.tag,
-                "message": self.message,
-                "operator": op,
-            }),
-            None => serde_json::json!({
-                "tag": self.tag,
-                "message": self.message,
-            }),
-        };
-        // `to_string` on a json! literal cannot fail.
-        out.extend_from_slice(obj.to_string().as_bytes());
-    }
-}
-
-fn serialize_path(err: &DlError, compiled: &Logic) -> Option<String> {
-    let steps = err.resolve_path(compiled);
-    let arr: Vec<serde_json::Value> = steps
-        .iter()
-        .map(|s| {
-            serde_json::json!({
-                "node_id": s.node_id,
-                "operator": s.operator,
-                "arg_index": s.arg_index,
-                "json_pointer": s.json_pointer,
-            })
-        })
-        .collect();
-    serde_json::to_string(&arr).ok()
 }
 
 /// Store `err` into the caller's out-param (if provided) and return its

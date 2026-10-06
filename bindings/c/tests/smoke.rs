@@ -447,11 +447,23 @@ fn batch_one_rule_many_datas_with_item_failures() {
         serde_json::from_str(&unsafe { copy_out(results[1].ptr, results[1].len) }).unwrap();
     assert!(item_err["tag"].is_string());
     assert!(item_err["message"].is_string());
+    // The item text, byte for byte: keys in sorted order.
+    assert_eq!(
+        unsafe { copy_out(results[1].ptr, results[1].len) },
+        format!(
+            r#"{{"message":{},"operator":"+","tag":{}}}"#,
+            item_err["message"], item_err["tag"]
+        )
+    );
 
     assert_eq!(statuses[2], Status::InvalidArg);
     let item_err: serde_json::Value =
         serde_json::from_str(&unsafe { copy_out(results[2].ptr, results[2].len) }).unwrap();
     assert_eq!(item_err["tag"], "InvalidArgument");
+    assert_eq!(
+        unsafe { copy_out(results[2].ptr, results[2].len) },
+        r#"{"message":"data handle is null","tag":"InvalidArgument"}"#
+    );
 
     assert_eq!(statuses[3], Status::Ok);
     assert_eq!(unsafe { copy_out(results[3].ptr, results[3].len) }, "42");

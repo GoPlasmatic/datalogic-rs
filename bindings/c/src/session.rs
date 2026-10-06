@@ -21,6 +21,7 @@
 use std::cell::{Cell, UnsafeCell};
 use std::sync::Arc;
 
+use datalogic_bind::{ItemError, typed};
 use datalogic_rs::Engine as RsEngine;
 use datalogic_rs::bumpalo::Bump;
 use datalogic_rs::datavalue::DataValue;
@@ -114,11 +115,7 @@ unsafe fn check_pair<'s>(
         unsafe { session.as_ref() }.ok_or_else(|| Error::invalid_arg("session pointer is null"))?;
     let rule =
         unsafe { rule.as_ref() }.ok_or_else(|| Error::invalid_arg("rule pointer is null"))?;
-    if !Arc::ptr_eq(&session.engine, &rule.engine) {
-        return Err(Error::invalid_arg(
-            "rule was compiled by a different engine than this session's",
-        ));
-    }
+    datalogic_bind::same_engine(&session.engine, &rule.engine).map_err(Error::invalid_arg)?;
     Ok((session.enter()?, rule))
 }
 
@@ -363,12 +360,7 @@ pub unsafe extern "C" fn datalogic_session_evaluate_bool(
 ) -> Status {
     unsafe {
         typed_eval(session, rule, data, out, err, |av, _| {
-            av.as_bool().map(|b| b as i32).ok_or_else(|| {
-                Error::type_mismatch(format!(
-                    "result is not a boolean (got {})",
-                    datalogic_bind::type_of(av)
-                ))
-            })
+            typed::bool(av).map(i32::from).map_err(Error::type_mismatch)
         })
     }
 }
@@ -390,12 +382,7 @@ pub unsafe extern "C" fn datalogic_session_evaluate_i64(
 ) -> Status {
     unsafe {
         typed_eval(session, rule, data, out, err, |av, _| {
-            av.as_i64().ok_or_else(|| {
-                Error::type_mismatch(format!(
-                    "result is not an integer number (got {})",
-                    datalogic_bind::type_of(av)
-                ))
-            })
+            typed::int(av).map_err(Error::type_mismatch)
         })
     }
 }
@@ -416,12 +403,7 @@ pub unsafe extern "C" fn datalogic_session_evaluate_f64(
 ) -> Status {
     unsafe {
         typed_eval(session, rule, data, out, err, |av, _| {
-            av.as_f64().ok_or_else(|| {
-                Error::type_mismatch(format!(
-                    "result is not a number (got {})",
-                    datalogic_bind::type_of(av)
-                ))
-            })
+            typed::float(av).map_err(Error::type_mismatch)
         })
     }
 }
@@ -545,9 +527,11 @@ pub unsafe extern "C" fn datalogic_session_evaluate_batch(
             let start = result_buf.len();
             let status = match unsafe { (*datas.add(i)).as_ref() } {
                 None => {
-                    let e = Error::invalid_arg("data handle is null");
-                    e.write_item_json_into(result_buf);
-                    e.status()
+                    write_item(
+                        &ItemError::invalid_argument("data handle is null"),
+                        result_buf,
+                    );
+                    Status::InvalidArg
                 }
                 Some(data) => {
                     // Scratch from the previous item is dead — its
@@ -559,9 +543,8 @@ pub unsafe extern "C" fn datalogic_session_evaluate_batch(
                             Status::Ok
                         }
                         Err(e) => {
-                            let ce = Error::from_engine(&e, Some(&rule.logic));
-                            ce.write_item_json_into(result_buf);
-                            ce.status()
+                            write_item(&ItemError::from_engine(&e), result_buf);
+                            Error::engine_status(&e)
                         }
                     }
                 }
@@ -633,16 +616,18 @@ pub unsafe extern "C" fn datalogic_session_evaluate_many(
             let start = result_buf.len();
             let status = match unsafe { (*rules.add(i)).as_ref() } {
                 None => {
-                    let e = Error::invalid_arg("rule handle is null");
-                    e.write_item_json_into(result_buf);
-                    e.status()
+                    write_item(
+                        &ItemError::invalid_argument("rule handle is null"),
+                        result_buf,
+                    );
+                    Status::InvalidArg
                 }
                 Some(rule) if !Arc::ptr_eq(engine, &rule.engine) => {
-                    let e = Error::invalid_arg(
-                        "rule was compiled by a different engine than this session's",
+                    write_item(
+                        &ItemError::invalid_argument(datalogic_bind::DIFFERENT_ENGINE),
+                        result_buf,
                     );
-                    e.write_item_json_into(result_buf);
-                    e.status()
+                    Status::InvalidArg
                 }
                 Some(rule) => {
                     arena.reset();
@@ -652,9 +637,8 @@ pub unsafe extern "C" fn datalogic_session_evaluate_many(
                             Status::Ok
                         }
                         Err(e) => {
-                            let ce = Error::from_engine(&e, Some(&rule.logic));
-                            ce.write_item_json_into(result_buf);
-                            ce.status()
+                            write_item(&ItemError::from_engine(&e), result_buf);
+                            Error::engine_status(&e)
                         }
                     }
                 }
@@ -672,4 +656,11 @@ pub unsafe extern "C" fn datalogic_session_evaluate_many(
         }
         Status::Ok
     })
+}
+
+/// A failed batch item, written into the shared result buffer so per-item
+/// failures need no handles of their own: `{"message", "operator"?,
+/// "tag"}`.
+fn write_item(item: &ItemError, out: &mut Vec<u8>) {
+    out.extend_from_slice(item.to_value().to_string().as_bytes());
 }
