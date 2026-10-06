@@ -271,6 +271,7 @@ lenient.eval({"/": [1.5, 0]}, {})     # None
 | `arithmetic_nan_handling` | `"throw_error"`, `"ignore_value"`, `"coerce_to_zero"`, `"return_null"` |
 | `division_by_zero` | `"return_saturated"`, `"throw_error"`, `"return_null"`, `"return_infinity"` |
 | `loose_equality_errors` | `bool` |
+| `missing_var` | `"null"` (default: a missing variable reads as `None`), `"error"` (raises `VariableNotFound`) |
 | `truthy_evaluator` | `"javascript"`, `"python"`, `"strict_boolean"` |
 | `numeric_coercion` | object of bools: `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
 | `max_recursion_depth` | integer >= 1 |

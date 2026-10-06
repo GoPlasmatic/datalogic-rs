@@ -60,9 +60,10 @@ impl Engine {
     ///     (``"default"``, ``"safe_arithmetic"``, or ``"strict"``) plus
     ///     per-field overrides: ``arithmetic_nan_handling``,
     ///     ``division_by_zero``, ``loose_equality_errors``,
-    ///     ``truthy_evaluator``, ``numeric_coercion``, and
-    ///     ``max_recursion_depth``. Unknown keys or values raise
-    ///     :class:`EvaluateError` with the engine's message.
+    ///     ``missing_var``, ``truthy_evaluator``, ``numeric_coercion``,
+    ///     ``max_recursion_depth`` and ``ops_budget``. Unknown keys or
+    ///     values raise :class:`EvaluateError` (``error_type ==
+    ///     "ConfigurationError"``) with the engine's message.
     /// :param template_key_escape: one character that marks a template key
     ///     as a literal output field: with ``"$"``, ``{"$type": ...}`` emits
     ///     the key ``type`` instead of calling the ``type`` operator. Only
