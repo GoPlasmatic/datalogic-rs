@@ -3,8 +3,12 @@ package datalogic
 import (
 	"encoding/json"
 	"errors"
+	"runtime"
+	"runtime/cgo"
+	"runtime/debug"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestBuilderNoCustomOps(t *testing.T) {
@@ -271,6 +275,185 @@ func TestBuilderTemplating(t *testing.T) {
 	}
 	if !strings.Contains(got, `"sum":3`) || !strings.Contains(got, `"label":"static"`) {
 		t.Errorf("template output unexpected: %s", got)
+	}
+}
+
+// tripleEngine builds an engine whose "triple" operator multiplies its
+// first argument by three.
+func tripleEngine(t *testing.T) *Engine {
+	t.Helper()
+	e, err := NewEngineBuilder().AddOperator("triple", func(argsJSON string) (string, error) {
+		var args []float64
+		if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+			return "", err
+		}
+		out, _ := json.Marshal(args[0] * 3)
+		return string(out), nil
+	}).Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e
+}
+
+// forceGC runs several collections, giving the finalizer goroutine a
+// moment between them so finalizers queued by one cycle get to run
+// (and free what they own) before the next.
+func forceGC() {
+	for i := 0; i < 5; i++ {
+		runtime.GC()
+		debug.FreeOSMemory()
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// checkTripleSurvives evaluates the "triple" operator through a Rule, a
+// Session and a TracedSession whose Engine is already gone.
+func checkTripleSurvives(t *testing.T, rule *Rule, s *Session, ts *TracedSession) {
+	t.Helper()
+	for i := 0; i < 50; i++ {
+		if i%10 == 0 {
+			forceGC()
+		}
+		got, err := rule.Evaluate(`{"n":14}`)
+		if err != nil || got != "42" {
+			t.Fatalf("rule: want 42, got %q (err %v)", got, err)
+		}
+		got, err = s.Evaluate(rule, `{"n":14}`)
+		if err != nil || got != "42" {
+			t.Fatalf("session: want 42, got %q (err %v)", got, err)
+		}
+		env, err := ts.Evaluate(`{"triple":[{"var":"n"}]}`, `{"n":14}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var trace struct {
+			Result json.RawMessage `json:"result"`
+		}
+		if err := json.Unmarshal([]byte(env), &trace); err != nil || string(trace.Result) != "42" {
+			t.Fatalf("traced session: want result 42, got %s", env)
+		}
+	}
+}
+
+// Rules, Sessions and TracedSessions hold their own reference on the
+// native engine, so closing the Engine and letting it be collected must
+// not free the Go callback state they dispatch into.
+func TestCustomOperatorSurvivesEngineCloseAndGC(t *testing.T) {
+	rule, s, ts := func() (*Rule, *Session, *TracedSession) {
+		e := tripleEngine(t)
+		rule, err := e.Compile(`{"triple":[{"var":"n"}]}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s, ts := e.Session(), e.TracedSession()
+		e.Close()
+		return rule, s, ts
+	}()
+	defer rule.Close()
+	defer s.Close()
+	defer ts.Close()
+	checkTripleSurvives(t, rule, s, ts)
+}
+
+// Same as above, but the Engine is never closed — its GC finalizer is
+// what runs.
+func TestCustomOperatorSurvivesEngineFinalizer(t *testing.T) {
+	rule, s, ts := func() (*Rule, *Session, *TracedSession) {
+		e := tripleEngine(t)
+		rule, err := e.Compile(`{"triple":[{"var":"n"}]}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rule, e.Session(), e.TracedSession()
+	}()
+	defer rule.Close()
+	defer s.Close()
+	defer ts.Close()
+	checkTripleSurvives(t, rule, s, ts)
+}
+
+// Rules from the mode and checked compile paths keep the registry too.
+func TestCustomOperatorSurvivesEngineCloseForEveryCompilePath(t *testing.T) {
+	rules := func() []*Rule {
+		e := tripleEngine(t)
+		defer e.Close()
+		var out []*Rule
+		for _, compile := range []func(string) (*Rule, error){
+			e.Compile,
+			e.CompileTemplate,
+			e.CompileStrict,
+			e.CompileChecked,
+		} {
+			r, err := compile(`{"triple":[{"var":"n"}]}`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, r)
+		}
+		return out
+	}()
+	for i := 0; i < 30; i++ {
+		if i%10 == 0 {
+			forceGC()
+		}
+		for j, r := range rules {
+			got, err := r.Evaluate(`{"n":14}`)
+			if err != nil || got != "42" {
+				t.Fatalf("rule %d: want 42, got %q (err %v)", j, got, err)
+			}
+		}
+	}
+	for _, r := range rules {
+		r.Close()
+	}
+}
+
+// handleLive reports whether h still resolves (Value panics once the
+// handle is deleted).
+func handleLive(h cgo.Handle) (live bool) {
+	defer func() {
+		if recover() != nil {
+			live = false
+		}
+	}()
+	h.Value()
+	return true
+}
+
+// The callback handles are released once the Engine and everything
+// derived from it are unreachable, not leaked.
+func TestOperatorRegistryFreedAfterLastUser(t *testing.T) {
+	h := func() cgo.Handle {
+		e := tripleEngine(t)
+		rule, err := e.Compile(`{"triple":[{"var":"n"}]}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := e.Session()
+		h := e.reg.handles[0]
+		e.Close()
+		rule.Close()
+		s.Close()
+		return h
+	}()
+	for i := 0; i < 50 && handleLive(h); i++ {
+		forceGC()
+	}
+	if handleLive(h) {
+		t.Fatal("operator handle still live after every user was collected")
+	}
+}
+
+// A failed Build releases the callback handles straight away.
+func TestBuilderFailureReleasesHandles(t *testing.T) {
+	b := NewEngineBuilder().AddOperator("\xff", func(string) (string, error) { return "1", nil })
+	h := b.reg.handles[0]
+	if _, err := b.Build(); err == nil {
+		t.Fatal("want an error for a non-UTF-8 operator name")
+	}
+	if handleLive(h) {
+		t.Fatal("handle still live after a failed Build")
 	}
 }
 

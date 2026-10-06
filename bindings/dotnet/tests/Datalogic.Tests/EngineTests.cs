@@ -157,6 +157,69 @@ public class CustomOperatorTests
         var ex = Assert.Throws<EvaluateException>(() => engine.Apply("""{"boom":[]}""", "{}"));
         Assert.Contains("custom-failure", ex.Message);
     }
+
+    // Rules, sessions and traced sessions hold their own reference on the
+    // native engine, so disposing the Engine (or letting it be finalized)
+    // must not free the callback delegates they dispatch into.
+    [Fact]
+    public void Custom_operator_survives_engine_dispose_and_gc()
+        => AssertTripleSurvives(dispose: true);
+
+    [Fact]
+    public void Custom_operator_survives_engine_finalizer()
+        => AssertTripleSurvives(dispose: false);
+
+    private static void AssertTripleSurvives(bool dispose)
+    {
+        var (rule, session, traced) = OpenOnDroppedEngine(dispose);
+        try
+        {
+            for (var i = 0; i < 50; i++)
+            {
+                if (i % 10 == 0) ForceGc();
+                Assert.Equal("42", rule.Evaluate("""{"n":14}"""));
+                Assert.Equal("42", session.Evaluate(rule, """{"n":14}"""));
+                var run = traced.Evaluate("""{"triple":[{"var":"n"}]}""", """{"n":14}""");
+                Assert.Null(run.Error);
+                Assert.Equal("42", run.Result?.ToJsonString());
+            }
+        }
+        finally
+        {
+            traced.Dispose();
+            session.Dispose();
+            rule.Dispose();
+        }
+    }
+
+    // Kept out of line so no reference to the Engine survives on the
+    // caller's stack.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static (Rule, Session, TracedSession) OpenOnDroppedEngine(bool dispose)
+    {
+        var engine = Engine.Builder()
+            .AddOperator("triple", argsJson =>
+            {
+                var n = JsonNode.Parse(argsJson)!.AsArray()[0]!.GetValue<double>();
+                return JsonValue.Create(n * 3).ToJsonString();
+            })
+            .Build();
+        var rule = engine.Compile("""{"triple":[{"var":"n"}]}""");
+        var session = engine.OpenSession();
+        var traced = engine.OpenTracedSession();
+        if (dispose) engine.Dispose();
+        return (rule, session, traced);
+    }
+
+    private static void ForceGc()
+    {
+        for (var i = 0; i < 3; i++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+        }
+    }
 }
 
 public class BuilderConfigTests

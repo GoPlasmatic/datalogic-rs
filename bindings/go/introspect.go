@@ -22,8 +22,10 @@ const (
 )
 
 // newRule wraps a compiled rule handle, freed when the Rule is collected.
-func newRule(ptr *C.datalogic_rule) *Rule {
-	r := &Rule{ptr: ptr}
+// reg is the compiling engine's custom-operator registry: the Rule keeps
+// it alive, since the native rule calls into it after the Engine is gone.
+func newRule(ptr *C.datalogic_rule, reg *opRegistry) *Rule {
+	r := &Rule{ptr: ptr, reg: reg}
 	runtime.SetFinalizer(r, (*Rule).Close)
 	return r
 }
@@ -39,7 +41,7 @@ func (e *Engine) CompileMode(ruleJSON string, mode Mode) (*Rule, error) {
 	if rc != C.DATALOGIC_STATUS_OK {
 		return nil, takeError(cerr)
 	}
-	return newRule(rulePtr), nil
+	return newRule(rulePtr, e.registry()), nil
 }
 
 // CompileTemplate compiles ruleJSON in templating mode.
@@ -64,7 +66,7 @@ func (e *Engine) CompileChecked(ruleJSON string) (*Rule, error) {
 	if rc != C.DATALOGIC_STATUS_OK {
 		return nil, takeError(cerr)
 	}
-	return newRule(rulePtr), nil
+	return newRule(rulePtr, e.registry()), nil
 }
 
 // Check returns every problem the engine can see in ruleJSON before it

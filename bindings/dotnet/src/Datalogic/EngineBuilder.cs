@@ -28,10 +28,10 @@ public sealed class EngineBuilder
 {
     private IntPtr _handle;
     private bool _consumed;
-    // Keep every registered callback delegate alive (GCHandle) until
-    // the resulting Engine is disposed — the native side stores the
-    // GCHandle address as its user_data.
-    private readonly List<GCHandle> _pinned = new();
+    // GCHandles for every registered callback delegate — the native
+    // side stores each handle's address as its user_data. Created on
+    // the first AddOperator and handed to the Engine by Build.
+    private CallbackRoots? _roots;
 
     static EngineBuilder() => NativeInit.EnsureLoaded();
 
@@ -210,12 +210,11 @@ public sealed class EngineBuilder
         ArgumentNullException.ThrowIfNull(op);
         EnsureFresh();
 
-        // A GCHandle keeps the delegate reachable while the engine is
-        // alive; its IntPtr form rides across the boundary as the
-        // callback's user_data. Released when the owning Engine is
-        // disposed.
-        var handle = GCHandle.Alloc(op);
-        _pinned.Add(handle);
+        // A GCHandle keeps the delegate reachable; its IntPtr form rides
+        // across the boundary as the callback's user_data. Released once
+        // the Engine and every Rule / Session derived from it are gone
+        // (see CallbackRoots).
+        var userData = (_roots ??= new CallbackRoots()).Add(op);
 
         unsafe
         {
@@ -229,7 +228,7 @@ public sealed class EngineBuilder
                     _handle,
                     np, (nuint)nameU8.Span.Length,
                     (IntPtr)trampoline,
-                    GCHandle.ToIntPtr(handle),
+                    userData,
                     ref err);
             }
             if (status != DatalogicStatus.Ok)
@@ -260,11 +259,10 @@ public sealed class EngineBuilder
             throw new EvaluateException(
                 "builder build failed", null, null, null, EvaluationStatus.InternalError);
         }
-        var engine = new Engine(enginePtr);
-        // Ownership of pin list transfers to the engine; the builder
-        // keeps its `_pinned` list as the same reference but treats it
-        // as immutable from here (builder is consumed, can't add more).
-        engine.AdoptPinnedCallbacks(_pinned);
+        // Ownership of the callback roots transfers to the engine (and,
+        // through it, to every Rule / Session it opens).
+        var engine = new Engine(enginePtr, _roots);
+        _roots = null;
         return engine;
     }
 
@@ -274,10 +272,12 @@ public sealed class EngineBuilder
         if (_handle == IntPtr.Zero) throw new ObjectDisposedException(nameof(EngineBuilder));
     }
 
+    // Build failure path: no engine ever picked the callbacks up, so
+    // release them now instead of waiting for the finalizer.
     private void ReleasePins()
     {
-        foreach (var h in _pinned) h.Free();
-        _pinned.Clear();
+        _roots?.Free();
+        _roots = null;
     }
 
     /// <summary>
@@ -339,4 +339,44 @@ public sealed class EngineBuilder
             // produces a generic engine error naming the operator.
         }
     }
+}
+
+/// <summary>
+/// Owns the <see cref="GCHandle"/>s for an engine's custom-operator
+/// delegates. The native engine is refcounted: every
+/// <see cref="Rule"/>, <see cref="Session"/> and
+/// <see cref="TracedSession"/> holds its own reference and keeps
+/// dispatching into these callbacks after <see cref="Engine.Dispose"/>.
+/// So the Engine and everything derived from it keep a reference to
+/// this object, and the handles are freed only by its finalizer, once
+/// the last of them is unreachable. Engines without custom operators
+/// carry <c>null</c> instead.
+/// </summary>
+internal sealed class CallbackRoots
+{
+    private readonly List<GCHandle> _handles = new();
+
+    /// <summary>
+    /// Root <paramref name="op"/> and return the handle's address, which
+    /// rides across the boundary as the callback's user_data.
+    /// </summary>
+    internal IntPtr Add(CustomOperator op)
+    {
+        var handle = GCHandle.Alloc(op);
+        _handles.Add(handle);
+        return GCHandle.ToIntPtr(handle);
+    }
+
+    /// <summary>
+    /// Free every handle now. Only for callbacks no engine picked up
+    /// (the builder's failure path); otherwise the finalizer does it.
+    /// </summary>
+    internal void Free()
+    {
+        foreach (var h in _handles) h.Free();
+        _handles.Clear();
+        GC.SuppressFinalize(this);
+    }
+
+    ~CallbackRoots() { Free(); }
 }

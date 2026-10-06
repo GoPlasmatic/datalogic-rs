@@ -22,10 +22,10 @@ public sealed class Engine : IDisposable
 {
     private IntPtr _handle;
     // GCHandles for any custom-operator callbacks registered on this
-    // engine. Released alongside the native handle on Dispose to keep
-    // the delegates the native trampolines resolve alive until the
-    // engine dies.
-    private List<System.Runtime.InteropServices.GCHandle>? _pinnedCallbacks;
+    // engine (null when there are none). Passed to every Rule / Session
+    // opened here, since they keep dispatching into the callbacks after
+    // Dispose; freed by its own finalizer, never by Dispose.
+    private readonly CallbackRoots? _callbackRoots;
 
     static Engine() => NativeInit.EnsureLoaded();
 
@@ -49,16 +49,14 @@ public sealed class Engine : IDisposable
         }
     }
 
-    internal Engine(IntPtr handle) { _handle = handle; }
-
     /// <summary>
-    /// Adopt a set of GCHandles owned by a builder so they stay alive
-    /// until this engine is disposed. Called once at construction time
-    /// by <see cref="EngineBuilder.Build"/>.
+    /// Wrap a native engine built by <see cref="EngineBuilder.Build"/>,
+    /// taking over the builder's callback roots.
     /// </summary>
-    internal void AdoptPinnedCallbacks(List<System.Runtime.InteropServices.GCHandle> pinned)
+    internal Engine(IntPtr handle, CallbackRoots? callbackRoots)
     {
-        _pinnedCallbacks = pinned;
+        _handle = handle;
+        _callbackRoots = callbackRoots;
     }
 
     internal IntPtr Handle
@@ -116,7 +114,7 @@ public sealed class Engine : IDisposable
                 throw DatalogicException.FromNative(status, err, "compile failed");
             }
             GC.KeepAlive(this);
-            return new Rule(rulePtr);
+            return new Rule(rulePtr, _callbackRoots);
         }
     }
 
@@ -144,7 +142,7 @@ public sealed class Engine : IDisposable
                 throw DatalogicException.FromNative(status, err, "compile failed");
             }
             GC.KeepAlive(this);
-            return new Rule(rulePtr);
+            return new Rule(rulePtr, _callbackRoots);
         }
     }
 
@@ -278,7 +276,7 @@ public sealed class Engine : IDisposable
                 "datalogic_engine_session returned NULL", null, null, null, EvaluationStatus.InternalError);
         }
         GC.KeepAlive(this);
-        return new Session(ptr);
+        return new Session(ptr, _callbackRoots);
     }
 
     /// <summary>
@@ -295,7 +293,7 @@ public sealed class Engine : IDisposable
                 "datalogic_engine_traced_session returned NULL", null, null, null, EvaluationStatus.InternalError);
         }
         GC.KeepAlive(this);
-        return new TracedSession(ptr);
+        return new TracedSession(ptr, _callbackRoots);
     }
 
     /// <summary>
@@ -305,17 +303,17 @@ public sealed class Engine : IDisposable
     public static EngineBuilder Builder() => new();
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Rules and sessions opened on this engine keep working after
+    /// Dispose: they hold their own reference on the native engine and
+    /// on its custom-operator callbacks.
+    /// </remarks>
     public void Dispose()
     {
         if (_handle != IntPtr.Zero)
         {
             NativeMethods.datalogic_engine_free(_handle);
             _handle = IntPtr.Zero;
-        }
-        if (_pinnedCallbacks is not null)
-        {
-            foreach (var h in _pinnedCallbacks) h.Free();
-            _pinnedCallbacks = null;
         }
         GC.SuppressFinalize(this);
     }

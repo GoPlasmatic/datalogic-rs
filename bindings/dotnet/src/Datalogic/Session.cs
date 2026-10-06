@@ -23,8 +23,15 @@ namespace Goplasmatic.Datalogic;
 public sealed class Session : IDisposable
 {
     private IntPtr _handle;
+    // Never read: holding it keeps the engine's custom-operator
+    // callbacks alive for as long as this session can dispatch into them.
+    private readonly CallbackRoots? _callbackRoots;
 
-    internal Session(IntPtr handle) { _handle = handle; }
+    internal Session(IntPtr handle, CallbackRoots? callbackRoots)
+    {
+        _handle = handle;
+        _callbackRoots = callbackRoots;
+    }
 
     private IntPtr Handle
     {

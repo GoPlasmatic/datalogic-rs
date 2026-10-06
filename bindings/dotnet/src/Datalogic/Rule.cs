@@ -15,8 +15,15 @@ namespace Goplasmatic.Datalogic;
 public sealed class Rule : IDisposable
 {
     private IntPtr _handle;
+    // Never read: holding it keeps the engine's custom-operator
+    // callbacks alive for as long as this rule can dispatch into them.
+    private readonly CallbackRoots? _callbackRoots;
 
-    internal Rule(IntPtr handle) { _handle = handle; }
+    internal Rule(IntPtr handle, CallbackRoots? callbackRoots)
+    {
+        _handle = handle;
+        _callbackRoots = callbackRoots;
+    }
 
     internal IntPtr Handle
     {

@@ -1,8 +1,9 @@
 package datalogic
 
 // Custom operator support via the C-ABI builder. Routes Go callbacks
-// through a C trampoline; the user_data slot carries a `cgo.Handle` so
-// we can fan out to many distinct Go closures per engine.
+// through a C trampoline; the user_data slot points at a C-allocated box
+// holding a `cgo.Handle`, so we can fan out to many distinct Go closures
+// per engine.
 //
 // v2 callback contract: the trampoline receives the pre-evaluated
 // arguments as a borrowed (ptr, len) JSON-array byte range, writes its
@@ -69,14 +70,59 @@ import (
 //     bubbles back to the caller as part of the evaluation error.
 type OperatorFunc func(argsJSON string) (string, error)
 
-// handleBox wraps a cgo.Handle inside an addressable struct so we can
-// pass a real Go heap pointer through `void* user_data` instead of
-// coercing the handle's `uintptr` value into an `unsafe.Pointer` — the
-// latter trips `go vet`'s `unsafeptr` check because the integer-to-
-// pointer conversion is indistinguishable from a synthesised pointer.
-// The trampoline recovers the `cgo.Handle` via a normal pointer cast.
-type handleBox struct {
-	h cgo.Handle
+// opRegistry owns the host-side state the native trampoline calls into:
+// one `cgo.Handle` per registered operator, plus a C-allocated box (a
+// single uintptr_t holding the handle value) that rides across the
+// boundary as the callback's user_data. The boxes live in C memory
+// because C retains user_data past the registering call, which the cgo
+// pointer-passing rules forbid for Go pointers; and passing the box,
+// rather than coercing the handle's integer into an `unsafe.Pointer`,
+// keeps `go vet`'s `unsafeptr` check quiet.
+//
+// The native engine is refcounted: every Rule, Session and
+// TracedSession holds its own reference and keeps dispatching into
+// these callbacks after Engine.Close. So the Engine and everything
+// derived from it point at the registry, and only the registry's own
+// finalizer frees the handles and boxes, once the last of them is
+// unreachable. Go runs finalizers in dependency order, so a Rule's
+// finalizer releases the native rule before the registry it points at
+// is finalized.
+type opRegistry struct {
+	handles []cgo.Handle
+	boxes   []unsafe.Pointer // C memory, each holding one handle
+}
+
+// newOpRegistry allocates an empty registry with its cleanup finalizer
+// attached.
+func newOpRegistry() *opRegistry {
+	r := &opRegistry{}
+	runtime.SetFinalizer(r, (*opRegistry).free)
+	return r
+}
+
+// add wraps fn in a fresh handle and returns the C box carrying it.
+func (r *opRegistry) add(fn OperatorFunc) unsafe.Pointer {
+	h := cgo.NewHandle(fn)
+	box := C.malloc(C.size_t(unsafe.Sizeof(C.uintptr_t(0))))
+	*(*C.uintptr_t)(box) = C.uintptr_t(h)
+	r.handles = append(r.handles, h)
+	r.boxes = append(r.boxes, box)
+	return box
+}
+
+// free deletes every handle and releases every box. Runs as the
+// registry's finalizer, or directly on the builder failure paths where
+// no engine ever picked the callbacks up.
+func (r *opRegistry) free() {
+	for _, h := range r.handles {
+		h.Delete()
+	}
+	for _, box := range r.boxes {
+		C.free(box)
+	}
+	r.handles = nil
+	r.boxes = nil
+	runtime.SetFinalizer(r, nil)
 }
 
 // EngineBuilder accumulates engine configuration. Call Build to produce
@@ -85,9 +131,9 @@ type handleBox struct {
 // Builders are NOT goroutine-safe — construct from a single goroutine
 // and call Build before sharing the resulting Engine.
 type EngineBuilder struct {
-	ptr     *C.datalogic_engine_builder
-	handles []*handleBox // freed when the consuming Engine is closed
-	err     error        // first registration error; surfaced by Build
+	ptr *C.datalogic_engine_builder
+	reg *opRegistry // callback state, handed to the Engine by Build
+	err error       // first registration error; surfaced by Build
 }
 
 // fail records err as the builder's error unless one is already recorded.
@@ -211,19 +257,22 @@ func (b *EngineBuilder) SetConfigJSON(configJSON string) error {
 // first. Multiple calls with the same name overwrite the prior
 // registration.
 //
-// The callback is held by the resulting Engine; it stays alive until
-// Engine.Close. A failed registration (e.g. a name that is not valid
-// UTF-8) is remembered and surfaced by Build.
+// The callback stays alive while the resulting Engine, or any Rule,
+// Session or TracedSession derived from it, is reachable — Engine.Close
+// alone does not release it. A failed registration (e.g. a name that is
+// not valid UTF-8) is remembered and surfaced by Build.
 func (b *EngineBuilder) AddOperator(name string, fn OperatorFunc) *EngineBuilder {
 	np, nl := strBytes(name)
-	hb := &handleBox{h: cgo.NewHandle(fn)}
-	b.handles = append(b.handles, hb)
+	if b.reg == nil {
+		b.reg = newOpRegistry()
+	}
+	box := b.reg.add(fn)
 	var cerr *C.datalogic_error
 	rc := C.datalogic_engine_builder_add_operator(
 		b.ptr,
 		np, nl,
 		C.datalogic_go_get_trampoline(),
-		unsafe.Pointer(hb),
+		box,
 		&cerr,
 	)
 	if rc != C.DATALOGIC_STATUS_OK {
@@ -253,10 +302,10 @@ func (b *EngineBuilder) Build() (*Engine, error) {
 		}
 	}
 	C.datalogic_engine_builder_free(b.ptr)
-	handles := b.handles
+	reg := b.reg
 	b.ptr = nil
-	b.handles = nil
-	e := &Engine{ptr: ePtr, opHandles: handles}
+	b.reg = nil
+	e := &Engine{ptr: ePtr, reg: reg}
 	runtime.SetFinalizer(e, (*Engine).Close)
 	return e, nil
 }
@@ -264,24 +313,20 @@ func (b *EngineBuilder) Build() (*Engine, error) {
 // release frees the native builder and reclaims callback handles the
 // engine never picked up. Used on the Build failure paths.
 func (b *EngineBuilder) release() {
-	for _, hb := range b.handles {
-		hb.h.Delete()
-	}
-	b.handles = nil
 	C.datalogic_engine_builder_free(b.ptr)
 	b.ptr = nil
+	if b.reg != nil {
+		b.reg.free()
+		b.reg = nil
+	}
 }
 
 //export goDatalogicOpTrampoline
 func goDatalogicOpTrampoline(argsJSON *C.uint8_t, argsLen C.size_t, userData unsafe.Pointer, out *C.datalogic_op_result) C.int32_t {
-	hb := (*handleBox)(userData)
-	fn, ok := hb.h.Value().(OperatorFunc)
-	if !ok {
-		setOpError(out, "internal: operator handle had wrong type")
-		return 1
-	}
 	args := goStringN(argsJSON, argsLen)
-	// Recover panics so we don't unwind across the cgo boundary.
+	// Recover panics so we don't unwind across the cgo boundary. The
+	// handle lookup sits inside too: Handle.Value panics on a deleted
+	// handle, which must surface as an operator error, not a crash.
 	var (
 		result string
 		err    error
@@ -292,6 +337,12 @@ func goDatalogicOpTrampoline(argsJSON *C.uint8_t, argsLen C.size_t, userData uns
 				err = errors.New("panic in custom operator")
 			}
 		}()
+		h := cgo.Handle(*(*C.uintptr_t)(userData))
+		fn, ok := h.Value().(OperatorFunc)
+		if !ok {
+			err = errors.New("internal: operator handle had wrong type")
+			return
+		}
 		result, err = fn(args)
 	}()
 	if err != nil {

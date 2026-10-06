@@ -118,10 +118,12 @@ func takeBuf(buf C.datalogic_buf) string {
 // finalizer, which is best-effort).
 type Engine struct {
 	ptr *C.datalogic_engine
-	// opHandles retains heap-allocated `cgo.Handle` boxes for every
-	// registered custom operator so the trampoline can still resolve
-	// them during evaluation. Released on Close.
-	opHandles []*handleBox
+	// reg holds the custom-operator callbacks (nil when there are
+	// none). Every Rule, Session and TracedSession derived from this
+	// Engine shares it, since they keep dispatching into those
+	// callbacks after Close; it is freed by its own finalizer, never by
+	// Close.
+	reg *opRegistry
 }
 
 // NewEngine constructs an engine with default configuration.
@@ -146,17 +148,14 @@ func newEngine(templating C.int32_t) *Engine {
 
 // Close releases the underlying engine handle. Safe to call multiple
 // times. Any Rule or Session derived from this Engine continues to work
-// after Close — they hold their own refcount on the underlying engine.
+// after Close — they hold their own refcount on the underlying engine,
+// and their own reference on its custom-operator callbacks.
 func (e *Engine) Close() {
 	if e == nil || e.ptr == nil {
 		return
 	}
 	C.datalogic_engine_free(e.ptr)
 	e.ptr = nil
-	for _, hb := range e.opHandles {
-		hb.h.Delete()
-	}
-	e.opHandles = nil
 	runtime.SetFinalizer(e, nil)
 }
 
@@ -167,6 +166,15 @@ func (e *Engine) cptr() *C.datalogic_engine {
 		return nil
 	}
 	return e.ptr
+}
+
+// registry returns the custom-operator registry that handles derived
+// from this Engine must keep alive, tolerating nil receivers.
+func (e *Engine) registry() *opRegistry {
+	if e == nil {
+		return nil
+	}
+	return e.reg
 }
 
 // Compile parses a JSONLogic rule (as a JSON string) into a reusable
@@ -180,7 +188,7 @@ func (e *Engine) Compile(ruleJSON string) (*Rule, error) {
 	if rc != C.DATALOGIC_STATUS_OK {
 		return nil, takeError(cerr)
 	}
-	return newRule(rulePtr), nil
+	return newRule(rulePtr, e.registry()), nil
 }
 
 // Apply compiles ruleJSON and evaluates it against dataJSON in one call,
@@ -210,7 +218,7 @@ func (e *Engine) Apply(ruleJSON, dataJSON string) (string, error) {
 // A nil or closed Engine yields a Session whose every evaluation
 // returns an InvalidArgument *Error rather than panicking.
 func (e *Engine) Session() *Session {
-	s := &Session{ptr: C.datalogic_engine_session(e.cptr())}
+	s := &Session{ptr: C.datalogic_engine_session(e.cptr()), reg: e.registry()}
 	runtime.KeepAlive(e)
 	runtime.SetFinalizer(s, (*Session).Close)
 	return s
@@ -229,6 +237,7 @@ func (e *Engine) Session() *Session {
 // error.
 type Rule struct {
 	ptr *C.datalogic_rule
+	reg *opRegistry // keeps the engine's operator callbacks alive
 }
 
 // Close releases the rule handle. Safe to call multiple times.
@@ -273,6 +282,7 @@ func (r *Rule) Evaluate(dataJSON string) (string, error) {
 // Sessions are NOT goroutine-safe — open one per goroutine.
 type Session struct {
 	ptr *C.datalogic_session
+	reg *opRegistry // keeps the engine's operator callbacks alive
 }
 
 // Close releases the session handle. Safe to call multiple times.
@@ -366,6 +376,7 @@ func (s *Session) AllocatedBytes() uint64 {
 // uses a fresh internal arena.
 type TracedSession struct {
 	ptr *C.datalogic_traced_session
+	reg *opRegistry // keeps the engine's operator callbacks alive
 }
 
 // TracedSession opens a trace-enabled session bound to this engine.
@@ -375,7 +386,7 @@ type TracedSession struct {
 // Tracing pays for compile-per-call plus step recording — use it for
 // debugging and tooling, not hot paths.
 func (e *Engine) TracedSession() *TracedSession {
-	ts := &TracedSession{ptr: C.datalogic_engine_traced_session(e.cptr())}
+	ts := &TracedSession{ptr: C.datalogic_engine_traced_session(e.cptr()), reg: e.registry()}
 	runtime.KeepAlive(e)
 	runtime.SetFinalizer(ts, (*TracedSession).Close)
 	return ts
