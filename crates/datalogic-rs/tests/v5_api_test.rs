@@ -451,3 +451,24 @@ fn eval_as_agrees_with_eval_into() {
         r#""é""#
     );
 }
+
+/// `to_json` reads back as the rule it came from: a lone argument that is
+/// an array stays wrapped (else it reads back as the argument list), and
+/// `and` / `or` / `if`, which take only an argument array, keep theirs.
+#[test]
+fn to_json_round_trips_one_argument_calls() {
+    let engine = Engine::new();
+    for rule in [
+        r#"{"max": [{"or": [0]}]}"#,
+        r#"{"max": [[1, 2]]}"#,
+        r#"{"min": {"or": [[3, 1]]}}"#,
+        r#"{"and": [{"var": "x"}]}"#,
+        r#"{"!": [{"var": "x"}]}"#,
+        r#"{"merge": [[1, 2]]}"#,
+    ] {
+        let compiled = engine.compile(rule).unwrap();
+        let back = compiled.to_json();
+        let run = |r: &str| format!("{:?}", engine.eval_str(r, r#"{"x": [1]}"#).map_err(|e| e.kind));
+        assert_eq!(run(&back), run(rule), "{rule} -> {back}");
+    }
+}

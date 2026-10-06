@@ -408,6 +408,13 @@ compared with the engine on every suite case and on generated rules.
   recorded pointer.
 - **A huge `missing_some` minimum stays huge on 32-bit targets.** On
   wasm32 a minimum past `u32::MAX` wrapped to a small one.
+- **`Logic::to_json()` reads back as the rule.** A call with one argument
+  was written with the argument in place, so an argument that is an
+  array read back as the argument list (`{"max": [[1, 2]]}` became
+  `{"max": [1, 2]}`), and `and` / `or` / `if`, which take only an array,
+  read back as an error (`{"or": [0]}` became `{"or": 0}`). Both now keep
+  the array. Literal-shape arguments staying unfolded in this release made
+  the shapes reachable on the default engine.
 
 ### Performance
 

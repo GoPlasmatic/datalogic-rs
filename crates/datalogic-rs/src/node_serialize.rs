@@ -86,23 +86,36 @@ pub(crate) fn node_to_json_string(node: &CompiledNode) -> String {
     }
 }
 
-/// Render an operator's argument list: a single arg inlines, multiple args
-/// become a JSON array. Shared by the builtin and custom operator renderers.
-fn args_to_json_string(args: &[CompiledNode]) -> String {
-    if args.len() == 1 {
-        node_to_json_string(&args[0])
-    } else {
-        let items: Vec<String> = args.iter().map(node_to_json_string).collect();
-        format!("[{}]", items.join(", "))
+/// Render an operator's argument list as a JSON array, or a single
+/// argument in place when `inline` allows and that reads back the same: an
+/// argument that renders as an array would be read back as the argument
+/// list itself (`{"max": [[1, 2]]}` is not `{"max": [1, 2]}`). Shared by
+/// the builtin and custom operator renderers.
+fn args_to_json_string(args: &[CompiledNode], inline: bool) -> String {
+    if let [arg] = args {
+        let rendered = node_to_json_string(arg);
+        if inline && !rendered.starts_with('[') {
+            return rendered;
+        }
+        return format!("[{rendered}]");
     }
+    let items: Vec<String> = args.iter().map(node_to_json_string).collect();
+    format!("[{}]", items.join(", "))
 }
 
 pub(crate) fn builtin_to_json_string(opcode: &OpCode, args: &[CompiledNode]) -> String {
-    format!("{{\"{}\": {}}}", opcode.as_str(), args_to_json_string(args))
+    // `and` / `or` / `if` read only an argument array: a lone argument
+    // written in place is an error, not that argument.
+    let inline = opcode.meta().args_form != crate::operators::meta::ArgsForm::ArrayOnly;
+    format!(
+        "{{\"{}\": {}}}",
+        opcode.as_str(),
+        args_to_json_string(args, inline)
+    )
 }
 
 pub(crate) fn custom_to_json_string(name: &str, args: &[CompiledNode]) -> String {
-    format!("{{\"{}\": {}}}", name, args_to_json_string(args))
+    format!("{{\"{}\": {}}}", name, args_to_json_string(args, true))
 }
 
 #[cfg(feature = "templating")]
