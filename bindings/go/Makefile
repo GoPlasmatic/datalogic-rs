@@ -6,7 +6,7 @@
 #     The release tag already has prebuilt static libraries for every
 #     supported (os, arch) under bindings/go/lib/, so `go build` /
 #     `go test` work without a Rust toolchain. CI produces these via
-#     the matrix in .github/workflows/release.yml.
+#     the matrix in .github/workflows/release-build-go.yml.
 #
 #  2. In-tree development
 #     The static libraries are gitignored on main. `make build` runs
@@ -44,7 +44,12 @@ endif
 
 PLATFORM    := $(GOOS)_$(GOARCH)
 C_DIR       := ../c
-C_BUILD_DIR := $(C_DIR)/target/release
+# The `go-release` profile (bindings/c/Cargo.toml) drops debuginfo, and
+# building the staticlib on its own lets fat LTO fold the whole crate
+# graph into one object. Both keep the library the release tag ships
+# small; see release-build-go.yml.
+C_PROFILE   := go-release
+C_BUILD_DIR := $(C_DIR)/target/$(C_PROFILE)
 LIB_DIR     := lib/$(PLATFORM)
 INC_DIR     := include
 LIB_NAME    := libdatalogic_c.a
@@ -58,13 +63,13 @@ build: $(LIB_DIR)/$(LIB_NAME) $(INC_DIR)/$(HEADER)
 # Skipping the recipe based on file timestamps would miss Rust-source-only
 # changes that don't update the artifact mtime via cargo's incremental.
 $(C_BUILD_DIR)/$(LIB_NAME): FORCE
-	cargo build --release --manifest-path $(C_DIR)/Cargo.toml
+	cargo rustc --lib --profile $(C_PROFILE) --crate-type staticlib --manifest-path $(C_DIR)/Cargo.toml
 
 $(LIB_DIR)/$(LIB_NAME): $(C_BUILD_DIR)/$(LIB_NAME)
 	@mkdir -p $(LIB_DIR)
 	cp $(C_BUILD_DIR)/$(LIB_NAME) $(LIB_DIR)/
 
-# cargo build re-runs build.rs and regenerates the header on every
+# The cargo build re-runs build.rs and regenerates the header on every
 # invocation, so depending on the generated file picks up cbindgen changes.
 $(INC_DIR)/$(HEADER): $(C_DIR)/include/$(HEADER)
 	@mkdir -p $(INC_DIR)

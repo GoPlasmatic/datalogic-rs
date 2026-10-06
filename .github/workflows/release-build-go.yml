@@ -83,8 +83,14 @@ jobs:
           key: ${{ runner.os }}-${{ matrix.target.arch }}-c-${{ hashFiles('bindings/c/Cargo.toml', 'bindings/c/src/**', 'crates/datalogic-rs/Cargo.toml', 'crates/datalogic-rs/src/**') }}
           restore-keys: ${{ runner.os }}-${{ matrix.target.arch }}-c-
 
+      # The `go-release` profile carries no debuginfo, and building the
+      # staticlib as the only crate type lets fat LTO fold the crate graph
+      # into one object (with `cargo build`, the shared rlib invocation
+      # keeps every dependency's object and its embedded bitcode). That
+      # took darwin/arm64 from about 80 MB to about 13 MB; see the
+      # profile's comment in bindings/c/Cargo.toml.
       - name: Build C ABI staticlib
-        run: cargo build --release --manifest-path bindings/c/Cargo.toml --target ${{ matrix.target.cargo_target }}
+        run: cargo rustc --lib --profile go-release --crate-type staticlib --manifest-path bindings/c/Cargo.toml --target ${{ matrix.target.cargo_target }}
 
       # Stage straight into the package's lib/include layout so the
       # validation step uses exactly the paths the cgo build tags reference.
@@ -93,8 +99,25 @@ jobs:
         run: |
           PLATFORM=${{ matrix.target.os }}_${{ matrix.target.arch }}
           mkdir -p bindings/go/lib/$PLATFORM bindings/go/include
-          cp bindings/c/target/${{ matrix.target.cargo_target }}/release/libdatalogic_c.a bindings/go/lib/$PLATFORM/
+          cp bindings/c/target/${{ matrix.target.cargo_target }}/go-release/libdatalogic_c.a bindings/go/lib/$PLATFORM/
           cp bindings/c/include/datalogic.h bindings/go/include/
+
+      # publish-go commits all six staticlibs into the module tag, and the
+      # Go module proxy refuses a module zip over 500 MiB. Fail the leg
+      # if one library outgrows its share, so a profile regression shows
+      # up here and not as an unfetchable release. 40 MiB per platform
+      # keeps the six well under the cap.
+      - name: Check staticlib size
+        shell: bash
+        run: |
+          LIB=bindings/go/lib/${{ matrix.target.os }}_${{ matrix.target.arch }}/libdatalogic_c.a
+          LIMIT=$((40 * 1024 * 1024))
+          SIZE=$(wc -c < "$LIB" | tr -d ' ')
+          echo "$LIB: $SIZE bytes (limit $LIMIT)"
+          if [ "$SIZE" -gt "$LIMIT" ]; then
+            echo "::error::$LIB is $SIZE bytes, over the $LIMIT-byte limit; check the go-release profile in bindings/c/Cargo.toml"
+            exit 1
+          fi
 
       # Native: full `go test` validates the link step + runtime behavior.
       - name: Validate via go test (native)

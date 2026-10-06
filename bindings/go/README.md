@@ -103,7 +103,7 @@ platform's staticlib and header where the cgo build tags find them:
 ```bash
 git clone https://github.com/GoPlasmatic/datalogic-rs
 cd datalogic-rs/bindings/go
-make build   # cargo build in bindings/c, stage lib/<os>_<arch>/ + include/
+make build   # build the staticlib in bindings/c, stage lib/<os>_<arch>/ + include/
 make test    # go test ./...
 ```
 

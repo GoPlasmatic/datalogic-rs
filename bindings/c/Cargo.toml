@@ -58,3 +58,17 @@ lto = "fat"
 codegen-units = 1
 # Line tables let perf tools resolve frames without bloating the .so.
 debug = "line-tables-only"
+
+# The Go module tag commits one staticlib per platform, and the Go module
+# proxy caps a module zip at 500 MiB. Under `release`, the staticlib
+# carried line tables and, because it shared a rustc invocation with the
+# rlib, every dependency's object plus its embedded LLVM bitcode: about
+# 80 MB per platform. The Go build (bindings/go/Makefile and
+# release-build-go.yml) uses this profile with
+# `cargo rustc --crate-type staticlib`, so fat LTO folds the crate graph
+# into one object, and no debuginfo is emitted: about 13 MB on
+# darwin-arm64.
+[profile.go-release]
+inherits = "release"
+debug = false
+strip = "debuginfo"
