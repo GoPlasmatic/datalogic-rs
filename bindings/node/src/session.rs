@@ -306,7 +306,9 @@ impl Session {
     /// Bytes currently allocated to the session's arena (sum of all
     /// chunks). Useful for sizing or diagnostics.
     #[napi(catch_unwind)]
-    pub fn allocated_bytes(&self) -> u32 {
-        self.arena.allocated_bytes() as u32
+    pub fn allocated_bytes(&self) -> f64 {
+        // A JS number rather than a u32, so an arena past 4 GiB does not
+        // wrap; exact far beyond any arena.
+        self.arena.allocated_bytes() as f64
     }
 }

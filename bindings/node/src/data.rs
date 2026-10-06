@@ -77,7 +77,9 @@ impl DataHandle {
     /// Bytes held by the handle's backing arena (input copy + parsed
     /// tree). Useful for sizing and diagnostics.
     #[napi(catch_unwind, getter)]
-    pub fn allocated_bytes(&self) -> u32 {
-        self.parsed.allocated_bytes() as u32
+    pub fn allocated_bytes(&self) -> f64 {
+        // A JS number rather than a u32, so a handle past 4 GiB does not
+        // wrap; exact far beyond any handle.
+        self.parsed.allocated_bytes() as f64
     }
 }
