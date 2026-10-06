@@ -5,7 +5,7 @@ import type { TraceConversionResult, TraceToNodesOptions, TraceContext } from '.
 import { traceIdToNodeId } from './trace-ids';
 import { determineNodeType } from './node-type';
 import { isCompileFailedTrace } from './trace-failure';
-import { parseTraceExpression } from './child-matching';
+import { TraceSources, enclosingNode } from './pointer-matching';
 import { isVariableOperatorName } from '../converters/variable-cells';
 import { isStaticVariableExpression } from './node-creators/variable';
 import {
@@ -38,10 +38,13 @@ export function traceToNodes(trace: TracedResult, options: TraceToNodesOptions =
 
   // Use original value if provided (preserves key ordering), otherwise parse from trace
   const rootExpression: JsonLogicValue | undefined =
-    options.originalValue ?? (parseTraceExpression(trace.expression_tree) as JsonLogicValue | null) ?? undefined;
+    options.originalValue ?? parseExpression(trace.expression_tree);
   if (rootExpression === undefined) {
     return EMPTY_RESULT();
   }
+  // Trace node pointers are into the rule as written, so they resolve
+  // against the value the editor shows.
+  const sources = new TraceSources(rootExpression, trace.pointers);
 
   const nodes: LogicNode[] = [];
   const edges: LogicEdge[] = [];
@@ -52,9 +55,10 @@ export function traceToNodes(trace: TracedResult, options: TraceToNodesOptions =
     edges,
     traceNodeMap,
     templating: options.templating ?? false,
+    sources,
   }, {}, rootExpression);
 
-  resolveHiddenTraceIds(trace, traceNodeMap);
+  resolveHiddenTraceIds(trace, traceNodeMap, sources);
 
   return {
     nodes,
@@ -67,26 +71,28 @@ export function traceToNodes(trace: TracedResult, options: TraceToNodesOptions =
 /**
  * Some compiled nodes keep their operator arguments out of the expression
  * tree (`missing` / `missing_some` with dynamic paths are leaves) yet still
- * record steps for them. Compile-time ids are assigned post-order, so the
- * nearest ancestor of an unknown id is the smallest tree id greater than it.
- * Map every step / breadcrumb id the tree does not list onto that ancestor's
- * visual node so the debugger never points at a node that does not exist.
+ * record steps for them. Map every step / breadcrumb id the tree does not
+ * list onto the visual node of the tree node whose rule location encloses
+ * it, so the debugger never points at a node that does not exist.
  */
-function resolveHiddenTraceIds(trace: TracedResult, traceNodeMap: Map<string, string>): void {
-  const knownIds: number[] = [];
+function resolveHiddenTraceIds(
+  trace: TracedResult,
+  traceNodeMap: Map<string, string>,
+  sources: TraceSources,
+): void {
+  const listed: number[] = [];
   const collect = (node: ExpressionNode) => {
-    knownIds.push(node.id);
+    listed.push(node.id);
     for (const child of node.children ?? []) collect(child);
   };
   collect(trace.expression_tree);
-  knownIds.sort((a, b) => a - b);
   const rootVisualId = traceNodeMap.get(traceIdToNodeId(trace.expression_tree.id));
 
   const resolve = (id: number) => {
     const traceId = traceIdToNodeId(id);
     if (traceNodeMap.has(traceId)) return;
-    const ancestor = knownIds.find((known) => known > id);
-    const visualId = ancestor !== undefined ? traceNodeMap.get(traceIdToNodeId(ancestor)) : undefined;
+    const enclosing = enclosingNode(id, listed, sources);
+    const visualId = enclosing !== undefined ? traceNodeMap.get(traceIdToNodeId(enclosing)) : undefined;
     const target = visualId ?? rootVisualId;
     if (target) traceNodeMap.set(traceId, target);
   };
@@ -109,7 +115,7 @@ function processExpressionNode(
   // Use original expression if provided (preserves key ordering), otherwise parse from trace.
   // An unparseable expression string (unescaped quotes in a path) renders as its raw text.
   const expression: JsonLogicValue =
-    originalExpression ?? ((parseTraceExpression(exprNode) ?? exprNode.expression) as JsonLogicValue);
+    originalExpression ?? parseExpression(exprNode) ?? exprNode.expression;
 
   // Register this node in the trace map - it maps to itself since it creates a visual node
   context.traceNodeMap.set(nodeId, nodeId);
@@ -187,5 +193,17 @@ function createNodeForExpression(
         processExpressionNode, createFallbackNode
       );
       break;
+  }
+}
+
+/**
+ * A tree node's expression string as JSON, or `undefined` when it does not
+ * parse (the engine does not escape quotes inside keys or paths).
+ */
+function parseExpression(node: ExpressionNode): JsonLogicValue | undefined {
+  try {
+    return JSON.parse(node.expression) as JsonLogicValue;
+  } catch {
+    return undefined;
   }
 }

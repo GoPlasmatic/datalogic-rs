@@ -10,7 +10,7 @@ import type { TraceContext, ChildMatch } from '../types';
 import { generateExpressionText, formatOperandLabel } from '../../formatting';
 import { isSimpleOperand } from '../../type-helpers';
 import { createBranchEdge, createArgEdge } from '../../node-factory';
-import { matchOperandsToChildren, unmatchedChildren } from '../child-matching';
+import { matchOperandsToChildren, unmatchedChildren } from '../pointer-matching';
 import { mapInlinedChildren } from '../inline-mapping';
 import { traceIdToNodeId } from '../trace-ids';
 
@@ -64,7 +64,7 @@ export function createSwitchNodeFromTrace(
   let cellIndex = 0;
 
   // Top level: [discriminant, cases wrapper, default] against the direct children
-  const topMatches = matchOperandsToChildren(switchArgs, children, context.templating);
+  const topMatches = matchOperandsToChildren(switchArgs, children, context.sources);
   mapInlinedChildren(unmatchedChildren(children, topMatches), nodeId, context.traceNodeMap);
 
   // The cases wrapper and its pair arrays record no steps of their own; fold
@@ -76,7 +76,7 @@ export function createSwitchNodeFromTrace(
     : [];
   const wrapper = topMatches[1]?.child;
   const pairMatches: (ChildMatch | null)[] = wrapper
-    ? matchOperandsToChildren(casePairs, wrapper.children ?? [], context.templating)
+    ? matchOperandsToChildren(casePairs, wrapper.children ?? [], context.sources)
     : casePairs.map(() => null);
   if (wrapper) {
     context.traceNodeMap.set(traceIdToNodeId(wrapper.id), nodeId);
@@ -86,7 +86,7 @@ export function createSwitchNodeFromTrace(
     const pairNode = pairMatches[i]?.child;
     if (!pairNode) return [null, null];
     context.traceNodeMap.set(traceIdToNodeId(pairNode.id), nodeId);
-    const matches = matchOperandsToChildren([pair[0], pair[1]], pairNode.children ?? [], context.templating);
+    const matches = matchOperandsToChildren([pair[0], pair[1]], pairNode.children ?? [], context.sources);
     mapInlinedChildren(unmatchedChildren(pairNode.children ?? [], matches), nodeId, context.traceNodeMap);
     return matches;
   });

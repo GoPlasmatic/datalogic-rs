@@ -8,8 +8,6 @@ export {
   type ValueType,
   type NodeType,
   type ChildMatch,
-  findMatchingChild,
-  getNextUnusedChild,
   determineNodeType,
   mapInlinedChildren,
 } from './trace';

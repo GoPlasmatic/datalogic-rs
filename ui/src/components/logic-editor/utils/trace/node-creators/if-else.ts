@@ -9,7 +9,7 @@ import type { ParentInfo } from '../../converters/types';
 import type { TraceContext, ChildMatch } from '../types';
 import { generateExpressionText } from '../../formatting';
 import { createBranchEdge, createArgEdge } from '../../node-factory';
-import { matchOperandsToChildren, unmatchedChildren } from '../child-matching';
+import { matchOperandsToChildren, unmatchedChildren } from '../pointer-matching';
 import { mapInlinedChildren } from '../inline-mapping';
 
 type BranchType = 'yes' | 'no' | 'branch' | 'condition';
@@ -51,7 +51,7 @@ export function createIfElseNodeFromTrace(
 
   // Resolve every argument to its trace child in evaluation order, so a
   // rewritten or constant-folded argument cannot steal a sibling's child.
-  const matches = matchOperandsToChildren(ifArgs, children, context.templating);
+  const matches = matchOperandsToChildren(ifArgs, children, context.sources);
 
   // Resolve one arg to a child node (its trace child, else a fallback node), returning its id.
   const processArg = (

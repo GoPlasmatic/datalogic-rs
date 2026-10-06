@@ -15,7 +15,7 @@ import { generateExpressionText, generateArgSummary, formatOperandLabel } from '
 import { isSimpleOperand } from '../../type-helpers';
 import { createBranchEdge, createArgEdge } from '../../node-factory';
 import { inlineVarIndices } from '../../inline-vars';
-import { matchOperandsToChildren, unmatchedChildren } from '../child-matching';
+import { matchOperandsToChildren, unmatchedChildren } from '../pointer-matching';
 import { mapInlinedChildren } from '../inline-mapping';
 import { traceIdToNodeId } from '../trace-ids';
 
@@ -69,7 +69,7 @@ export function createVerticalCellNodeFromTrace(
   const inlineVarIdx = forceChildren ? new Set<number>() : inlineVarIndices(operandArray);
 
   // Resolve every operand to its trace child up front (exact, loose, positional)
-  const matches = matchOperandsToChildren(operandArray, children, context.templating);
+  const matches = matchOperandsToChildren(operandArray, children, context.sources);
 
   operandArray.forEach((operand, idx) => {
     const typeIcon = getOperandTypeIcon(operand as JsonLogicValue);

@@ -20,7 +20,7 @@ import {
   parseExistsOperand,
   type VariableOperator,
 } from '../../converters/variable-cells';
-import { matchOperandsToChildren, unmatchedChildren } from '../child-matching';
+import { matchOperandsToChildren, unmatchedChildren } from '../pointer-matching';
 import { mapInlinedChildren } from '../inline-mapping';
 
 // Forward declaration for processExpressionNode and createFallbackNode
@@ -105,7 +105,7 @@ export function createVariableNodeFromTrace(
   });
 
   if (hasComplexDefault && defaultValue !== undefined && processExpressionNode && createFallbackNode) {
-    const matches = matchOperandsToChildren([defaultValue], children, context.templating);
+    const matches = matchOperandsToChildren([defaultValue], children, context.sources);
     let branchId: string;
     if (matches[0]) {
       branchId = processExpressionNode(matches[0].child, context, {

@@ -1,5 +1,6 @@
 import type { ConversionResult, JsonLogicValue, LogicNode, LogicEdge } from '../../types';
 import type { ExpressionNode } from '../../types/trace';
+import type { TraceSources } from './pointer-matching';
 
 // Extended result type that includes trace-to-visual node mapping
 export interface TraceConversionResult extends ConversionResult {
@@ -20,6 +21,8 @@ export interface TraceContext {
   edges: LogicEdge[];
   traceNodeMap: Map<string, string>;
   templating: boolean;
+  /** Where each trace node came from in the rule being shown. */
+  sources: TraceSources;
 }
 
 // Value type for evaluation results

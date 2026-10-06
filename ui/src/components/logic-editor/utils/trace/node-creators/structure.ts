@@ -10,7 +10,7 @@ import type { TraceContext, ChildMatch } from '../types';
 import { generateExpressionText } from '../../formatting';
 import { isJsonLogicExpression } from '../../type-helpers';
 import { createBranchEdge, createArgEdge } from '../../node-factory';
-import { matchOperandsToChildren, unmatchedChildren } from '../child-matching';
+import { matchOperandsToChildren, unmatchedChildren } from '../pointer-matching';
 import { mapInlinedChildren } from '../inline-mapping';
 import { traceIdToNodeId } from '../trace-ids';
 import { exprMarkerFactory, resolveExprMarkers } from '../../converters/structure-paths';
@@ -108,7 +108,7 @@ export function createStructureNodeFromTrace(
     const matches = matchOperandsToChildren(
       entries.map((e) => e.item as JsonLogicValue),
       scope,
-      context.templating
+      context.sources
     );
 
     const rendered = entries.map(({ key, item }, i) => {

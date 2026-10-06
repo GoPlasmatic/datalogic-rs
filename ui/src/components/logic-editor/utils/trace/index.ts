@@ -22,14 +22,14 @@ export type {
   ChildMatch,
 } from './types';
 
-// Child matching utilities (exported for potential reuse)
+// Trace node placement by the engine's JSON Pointers
 export {
-  findMatchingChild,
-  getNextUnusedChild,
+  TraceSources,
+  resolvePointer,
   matchOperandsToChildren,
-  normalizeExpression,
-  mayHaveTraceNode,
-} from './child-matching';
+  unmatchedChildren,
+  enclosingNode,
+} from './pointer-matching';
 
 // Node type determination
 export { determineNodeType } from './node-type';

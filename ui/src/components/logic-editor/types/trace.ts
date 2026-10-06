@@ -59,4 +59,10 @@ export interface TracedResult {
   steps: ExecutionStep[];
   error?: string;
   structured_error?: StructuredError;
+  /**
+   * The RFC 6901 JSON Pointer into the rule of the value each node id was
+   * compiled from, keyed by the id as a decimal string. Absent when the rule
+   * did not compile.
+   */
+  pointers?: Record<string, string>;
 }
