@@ -669,9 +669,9 @@ jobs:
         working-directory: ui
         run: npm ci
 
-      # `npm test` and `tsc -b` read the vendored engine but have no
-      # lifecycle hook that syncs it (only dev / build* do), so sync it
-      # explicitly before either runs.
+      # `tsc -b` and the build read the vendored engine; `npm test` syncs
+      # it through `pretest`, but `tsc -b` has no hook, so sync it
+      # explicitly first.
       - name: Vendor the freshly built WASM engine
         working-directory: ui
         run: npm run sync-wasm
@@ -679,13 +679,6 @@ jobs:
       - name: Lint UI
         working-directory: ui
         run: npm run lint
-
-      # The guard suites (catalogue.test.ts pins operators.json against
-      # the picker, registry.test.ts, wasm-typings.test.ts, round trips,
-      # trace mapping) evaluate against the vendored engine.
-      - name: Test UI
-        working-directory: ui
-        run: npm test
 
       # The library build is Vite-only and does not type-check; the docs
       # site's `npm run build` does (`tsc -b && vite build`), so a type
@@ -697,6 +690,15 @@ jobs:
       - name: Build UI library
         working-directory: ui
         run: npm run build:lib
+
+      # After the library build: cjs-build.test.ts `require`s
+      # dist/index.cjs and skips when dist/ is missing. The guard suites
+      # (catalogue.test.ts pins operators.json against the picker,
+      # registry.test.ts, wasm-typings.test.ts, round trips, trace
+      # mapping) evaluate against the vendored engine.
+      - name: Test UI
+        working-directory: ui
+        run: npm test
 
   # .NET binding smoke. Single platform — the binding is P/Invoke over
   # the C ABI's cdylib, so the .NET-side logic (LibraryImport stubs,
