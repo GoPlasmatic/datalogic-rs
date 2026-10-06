@@ -43,22 +43,31 @@ make lint        # fmt-check + clippy, all six manifests; run before a PR
 make fmt         # format everything
 make fmt-check   # check formatting without writing (what CI gates on)
 make clippy      # clippy everything, every crate's failures in one pass
+make test        # every Rust test suite: root workspace, C ABI, WASM
+make doc         # core rustdoc with warnings denied (all + default features)
+make deny        # cargo-deny every shipping workspace against deny.toml
+make stats       # quoted stats + the tests' required-features (CI gates on both)
+make stats-write # rewrite every conformance-count quote to the current count
+make semver      # cargo-semver-checks the core crate against its last release
 make clean       # cargo clean every manifest (~3 GB in a warm tree)
 make clean-all   # clean + node_modules, venv, vendor, pkg/, dotnet bin+obj, ...
 make help        # list all targets
 ```
 
-Two crates need more than the stable host toolchain, and `make` degrades
-rather than failing if you don't have it:
+`make deny` and `make semver` need `cargo install cargo-deny
+cargo-semver-checks --locked`. Some targets need more than the stable
+host toolchain:
 
 - **`bindings/wasm`**: `rustup target add wasm32-unknown-unknown`. Its
   `tests/web.rs` is `#![cfg(target_arch = "wasm32")]`, so a host-target lint
   compiles it to an empty file and checks nothing. Without the target, `make
   clippy` warns and falls back to a host lint (in CI, where `CI` is set, it
-  fails instead so lost coverage can't hide).
-- **`crates/datalogic-rs/fuzz`**: `rustup toolchain install nightly`.
-  `#![no_main]` + `libfuzzer_sys` don't build on stable. Without nightly,
-  `make clippy` prints a SKIP; `make fmt` covers it either way.
+  fails instead so lost coverage can't hide). `make test` runs that file
+  under `wasm-pack test --node`, and skips it without `wasm-pack` (again,
+  except in CI).
+- **`crates/datalogic-rs/fuzz`**: lints on stable (its build script
+  compiles libFuzzer's C++, so it needs a C++ compiler); only
+  `cargo fuzz run` needs nightly.
 
 Individual crates are reachable as `make clippy-c`, `make clippy-wasm`, etc.
 

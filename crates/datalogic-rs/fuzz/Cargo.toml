@@ -23,19 +23,17 @@ non_kebab_case_bins = "allow"
 [dependencies]
 libfuzzer-sys = "0.4"
 
+# Every operator family through the umbrella feature, so a new family is
+# fuzzed without an edit here (the hand-written list this replaced had
+# missed `ext-object`, `tensor` and `budget`).
 [dependencies.datalogic-rs]
 path = ".."
 features = [
     "serde_json",
     "templating",
     "trace",
-    "datetime",
-    "error-handling",
-    "ext-string",
-    "ext-array",
-    "ext-control",
-    "ext-math",
-    "flagd",
+    "budget",
+    "all-operators",
 ]
 
 [[bin]]

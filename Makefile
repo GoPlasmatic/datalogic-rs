@@ -11,7 +11,8 @@
 # bindings/wasm carries a sizing profile (`opt-level = "z"`, `lto`,
 # `panic = "abort"`) that cargo only honors at a workspace root and cannot
 # express as a per-package override; python/c/node keep pyo3, cbindgen and
-# napi codegen out of core-only builds; fuzz needs nightly + libfuzzer.
+# napi codegen out of core-only builds; fuzz runs under cargo-fuzz, which
+# needs nightly (linting it does not).
 #
 # So instead of one workspace, this Makefile fans each command out over all
 # the manifests.
@@ -28,14 +29,19 @@ MANIFESTS := Cargo.toml \
              $(wildcard bindings/*/Cargo.toml) \
              crates/datalogic-rs/fuzz/Cargo.toml
 
-# Binding lints that are a plain `cargo clippy`. wasm needs a --target and
-# fuzz needs nightly, so those two keep hand-written recipes below.
+# The Cargo workspaces that ship code: every manifest but the fuzz crate.
+# `make deny` checks these against deny.toml.
+SHIPPING_MANIFESTS := Cargo.toml $(wildcard bindings/*/Cargo.toml)
+
+# Binding lints that are a plain `cargo clippy`. wasm needs a --target, so
+# it keeps a hand-written recipe below; so does fuzz, for its path.
 CLIPPY_PLAIN   := $(filter-out clippy-wasm,\
                   $(patsubst bindings/%/Cargo.toml,clippy-%,$(wildcard bindings/*/Cargo.toml)))
 CLIPPY_TARGETS := clippy-root $(CLIPPY_PLAIN) clippy-wasm clippy-fuzz
 
 .DEFAULT_GOAL := help
-.PHONY: help fmt fmt-check lint clippy $(CLIPPY_TARGETS) clean clean-all
+.PHONY: help fmt fmt-check lint clippy $(CLIPPY_TARGETS) clean clean-all \
+        test test-root test-c test-wasm doc deny stats stats-write semver
 
 help: ## Show this help
 	@echo "datalogic-rs — repo-wide cargo targets"
@@ -112,21 +118,75 @@ clippy-wasm: ## Clippy bindings/wasm (needs wasm32-unknown-unknown for full cove
 	echo "==> clippy bindings/wasm $${target:-(host target)}"; \
 	$(CARGO) clippy --manifest-path bindings/wasm/Cargo.toml $$target $(CLIPPY_FLAGS)
 
-# The fuzz crate is #![no_main] + libfuzzer_sys::fuzz_target!, neither of
-# which builds on stable — skipped (not failed) when nightly is missing.
-# That includes CI: no workflow installs nightly for lint, so the SKIP there
-# is deliberate. `make fmt` still covers the crate, since rustfmt doesn't
-# build. Probed via `rustup toolchain list` rather than `cargo +nightly`,
-# which rustup <1.28 treats as permission to auto-install a whole toolchain.
-clippy-fuzz: ## Clippy the fuzz crate (requires a nightly toolchain)
-	@if rustup toolchain list 2>/dev/null | grep -q '^nightly'; then \
-	  echo "==> clippy crates/datalogic-rs/fuzz (+nightly)"; \
-	  $(CARGO) +nightly clippy \
-	    --manifest-path crates/datalogic-rs/fuzz/Cargo.toml $(CLIPPY_FLAGS); \
+# The fuzz crate lints on stable: `#![no_main]` and `fuzz_target!` type-check
+# fine, and only `cargo fuzz run` (sanitizer flags) needs nightly. Its
+# libfuzzer-sys build script compiles libFuzzer's C++, so a C++ compiler
+# must be on PATH, as it is on every CI runner.
+clippy-fuzz: ## Clippy the fuzz crate (stable; `cargo fuzz run` needs nightly)
+	@echo "==> clippy crates/datalogic-rs/fuzz"
+	$(CARGO) clippy --manifest-path crates/datalogic-rs/fuzz/Cargo.toml $(CLIPPY_FLAGS)
+
+# --- testing ----------------------------------------------------------------
+#
+# The Rust test suites of every workspace. The other bindings test in their
+# own languages (npm test, pytest, go test, mvn test, dotnet test, phpunit);
+# DEVELOPMENT.md has the per-binding commands. `-k` again, so one failing
+# suite never hides another.
+
+test: ## Run every Rust test suite (root workspace, C ABI, WASM)
+	@$(MAKE) -k test-root test-c test-wasm
+
+# `--all-features`: most integration tests declare `required-features`,
+# so a default-feature run skips them.
+test-root: ## Test the root workspace (core, datalogic-bind, benchmark)
+	@echo "==> test <root workspace>"
+	$(CARGO) test --workspace --all-features
+
+test-c: ## Test the C ABI (smoke, scenarios, conformance, header sync)
+	@echo "==> test bindings/c"
+	$(CARGO) test --manifest-path bindings/c/Cargo.toml
+
+# tests/web.rs is wasm32-only, so it runs under wasm-pack in Node. Without
+# wasm-pack the suite is skipped with a note, except in CI, where it fails.
+test-wasm: ## Test bindings/wasm under Node (needs wasm-pack)
+	@if command -v wasm-pack >/dev/null 2>&1; then \
+	  echo "==> test bindings/wasm (wasm-pack, node)"; \
+	  cd bindings/wasm && wasm-pack test --node; \
+	elif [ -n "$$CI" ]; then \
+	  echo "ERROR: wasm-pack is not installed, so bindings/wasm cannot be tested."; \
+	  exit 1; \
 	else \
-	  echo "==> SKIP crates/datalogic-rs/fuzz — needs nightly clippy"; \
-	  echo "    Install it with: rustup toolchain install nightly"; \
+	  echo "==> SKIP bindings/wasm: needs wasm-pack"; \
 	fi
+
+# --- docs, policy and stats -------------------------------------------------
+
+# The same two runs CI gates on: the docs.rs configuration, and the default
+# features, where an intra-doc link to a feature-gated item breaks.
+doc: ## Build the core crate's docs with warnings denied (all + default features)
+	@echo "==> doc datalogic-rs (all features)"
+	RUSTDOCFLAGS="-D warnings" $(CARGO) doc -p datalogic-rs --all-features --no-deps
+	@echo "==> doc datalogic-rs (default features)"
+	RUSTDOCFLAGS="-D warnings" $(CARGO) doc -p datalogic-rs --no-deps
+
+# Needs cargo-deny (`cargo install cargo-deny --locked`).
+deny: ## cargo-deny every shipping workspace against deny.toml
+	@fail=0; for m in $(SHIPPING_MANIFESTS); do \
+	  echo "==> deny $$m"; \
+	  $(CARGO) deny --manifest-path $$m --config deny.toml check || fail=1; \
+	done; exit $$fail
+
+stats: ## Check quoted stats and the tests' required-features
+	@bash scripts/check-stats.sh
+	@bash scripts/check-test-features.sh
+
+stats-write: ## Rewrite every conformance-count quote to the current count
+	@bash scripts/check-stats.sh --write
+
+# Needs cargo-semver-checks; compares against the newest release on
+# crates.io.
+semver: ## cargo-semver-checks the core crate against its last release
+	$(CARGO) semver-checks check-release -p datalogic-rs --all-features
 
 # --- cleaning ---------------------------------------------------------------
 
