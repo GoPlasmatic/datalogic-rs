@@ -468,7 +468,12 @@ fn to_json_round_trips_one_argument_calls() {
     ] {
         let compiled = engine.compile(rule).unwrap();
         let back = compiled.to_json();
-        let run = |r: &str| format!("{:?}", engine.eval_str(r, r#"{"x": [1]}"#).map_err(|e| e.kind));
+        let run = |r: &str| {
+            format!(
+                "{:?}",
+                engine.eval_str(r, r#"{"x": [1]}"#).map_err(|e| e.kind)
+            )
+        };
         assert_eq!(run(&back), run(rule), "{rule} -> {back}");
     }
 }
