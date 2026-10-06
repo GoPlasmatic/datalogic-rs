@@ -219,17 +219,20 @@ pub(crate) fn ends_with<'a>(cx: &mut Cx<'_, 'a>, text: &'a str, suffix: &'a str)
 #[inline]
 pub(crate) fn upper<'a>(cx: &mut Cx<'_, 'a>, s: &'a str) -> Result<&'a str> {
     cx.charge_bytes(s.len())?;
-    // Build the upper-cased text straight into the arena instead of
-    // allocating a heap `String` via `to_uppercase()` then copying it in.
-    // Pre-size to the source byte length so the common (ASCII, length-
-    // preserving) case never re-grows the arena buffer.
-    let mut buf = bumpalo::collections::String::with_capacity_in(s.len(), cx.arena);
-    for c in s.chars() {
-        for u in c.to_uppercase() {
-            buf.push(u);
-        }
+    if s.is_ascii() {
+        return Ok(ascii_case(s, cx.arena, str::make_ascii_uppercase));
     }
-    Ok(buf.into_bump_str())
+    Ok(cx.arena.alloc_str(&s.to_uppercase()))
+}
+
+/// `s` re-cased in place in an arena copy: the common ASCII text, which
+/// cases per byte, with no context and no change of length.
+#[cfg(feature = "ext-string")]
+#[inline]
+fn ascii_case<'a>(s: &str, arena: &'a Bump, recase: fn(&mut str)) -> &'a str {
+    let buf = arena.alloc_str(s);
+    recase(buf);
+    buf
 }
 
 /// `lower(text)`: `text` lower-cased.
@@ -237,17 +240,13 @@ pub(crate) fn upper<'a>(cx: &mut Cx<'_, 'a>, s: &'a str) -> Result<&'a str> {
 #[inline]
 pub(crate) fn lower<'a>(cx: &mut Cx<'_, 'a>, s: &'a str) -> Result<&'a str> {
     cx.charge_bytes(s.len())?;
-    // Build the lower-cased text straight into the arena instead of
-    // allocating a heap `String` via `to_lowercase()` then copying it in.
-    // Pre-size to the source byte length so the common (ASCII, length-
-    // preserving) case never re-grows the arena buffer.
-    let mut buf = bumpalo::collections::String::with_capacity_in(s.len(), cx.arena);
-    for c in s.chars() {
-        for l in c.to_lowercase() {
-            buf.push(l);
-        }
+    if s.is_ascii() {
+        return Ok(ascii_case(s, cx.arena, str::make_ascii_lowercase));
     }
-    Ok(buf.into_bump_str())
+    // `str::to_lowercase`, not a per-character mapping: lower-casing has
+    // context rules a character alone cannot apply (a Greek capital sigma
+    // ends a word as `ς`, so "ΟΔΟΣ" is "οδος", not "οδοσ").
+    Ok(cx.arena.alloc_str(&s.to_lowercase()))
 }
 
 /// `trim(text)`: `text` without leading and trailing whitespace.

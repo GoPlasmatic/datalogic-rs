@@ -245,5 +245,30 @@
     "rule": { "split": ["a,b,c", ","] },
     "data": null,
     "result": ["a", "b", "c"]
+  },
+  "# upper / lower apply context-sensitive case rules",
+  {
+    "description": "lower keeps a word-final Greek sigma final",
+    "rule": {"lower": {"var": "text"}},
+    "data": {"text": "ΟΔΟΣ"},
+    "result": "οδος"
+  },
+  {
+    "description": "lower: a sigma inside a word stays medial",
+    "rule": {"lower": {"var": "text"}},
+    "data": {"text": "ΣΟΦΟΣ ΑΣ"},
+    "result": "σοφος ας"
+  },
+  {
+    "description": "upper expands ß",
+    "rule": {"upper": {"var": "text"}},
+    "data": {"text": "straße"},
+    "result": "STRASSE"
+  },
+  {
+    "description": "lower of mixed ASCII",
+    "rule": {"lower": {"var": "text"}},
+    "data": {"text": "Hello, World 42"},
+    "result": "hello, world 42"
   }
 ]
