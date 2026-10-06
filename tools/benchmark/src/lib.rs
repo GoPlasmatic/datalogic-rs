@@ -8,12 +8,38 @@
 
 pub mod macro_suites;
 
+/// The suite reader the core crate's conformance runner and oracle test
+/// use, included by path so the benchmark reads `index.json`, splits a
+/// suite and picks an engine flavour exactly as they do.
+#[path = "../../../crates/datalogic-rs/tests/common/suite.rs"]
+pub mod suite;
+
+use std::collections::HashMap;
 use std::fs;
 use std::hint::black_box;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use datalogic_rs::Engine;
 use serde_json::Value;
+
+pub use suite::Flavour;
+
+/// The version of the `datalogic-rs` crate this benchmark links against,
+/// read from its manifest at compile time. Reports carry it so a number
+/// can be tied to the engine release it measured (the bench crate's own
+/// version never changes).
+pub fn engine_version() -> &'static str {
+    const MANIFEST: &str = include_str!("../../../crates/datalogic-rs/Cargo.toml");
+    MANIFEST
+        .lines()
+        .skip_while(|line| line.trim() != "[package]")
+        .find_map(|line| {
+            let value = line.strip_prefix("version = \"")?;
+            value.strip_suffix('"')
+        })
+        .expect("crates/datalogic-rs/Cargo.toml has a [package] version")
+}
 
 /// Resolve a suite path relative to the workspace root, so the benchmark
 /// works regardless of the caller's cwd.
@@ -37,6 +63,35 @@ pub fn output_root() -> PathBuf {
 pub struct SuiteCase {
     pub rule_json: String,
     pub data_json: String,
+    /// The engine the case asks for (`templating`, `template_key_escape`).
+    /// A datalogic-rs subject compiles the rule on [`Engines::get`] for it;
+    /// timing a templating case on a plain engine measures a different rule.
+    pub flavour: Flavour,
+}
+
+/// One datalogic-rs engine per suite flavour, built on first use, so each
+/// case compiles on the engine it asks for, as in the conformance runner.
+///
+/// Both flavour knobs are compile-time settings and every engine here has
+/// the default `EvaluationConfig`, so a rule compiled on any of them
+/// evaluates identically in a session of any other. That lets a timing
+/// loop compile per flavour and still evaluate every rule in one session.
+#[derive(Default)]
+pub struct Engines {
+    by_flavour: HashMap<Flavour, Engine>,
+}
+
+impl Engines {
+    /// The engine for `flavour`.
+    pub fn get(&mut self, flavour: Flavour) -> &Engine {
+        self.by_flavour.entry(flavour).or_insert_with(|| {
+            let mut builder = Engine::builder().with_templating(flavour.templating);
+            if let Some(c) = flavour.key_escape {
+                builder = builder.with_template_key_escape(c);
+            }
+            builder.build()
+        })
+    }
 }
 
 /// Load a suite file into reusable (rule, data) string pairs. Skips
@@ -45,6 +100,14 @@ pub struct SuiteCase {
 /// where every Rust call is the same engine and error-path cost doesn't
 /// skew comparisons. Cross-library callers should prefer
 /// [`load_suite_for_compare`].
+///
+/// `None` when the suite has no usable case.
+///
+/// # Panics
+///
+/// When the file cannot be read or parsed, or a case's flavour fields are
+/// malformed. A suite that silently dropped out would shrink every
+/// geomean without anyone noticing.
 pub fn load_suite(file_path: &Path) -> Option<Vec<SuiteCase>> {
     load_suite_inner(file_path, false)
 }
@@ -55,17 +118,16 @@ pub fn load_suite(file_path: &Path) -> Option<Vec<SuiteCase>> {
 /// paths differ wildly in cost (e.g. richly-formatted `Display` impls
 /// vs cheap return-null), so including negative cases would penalise
 /// the verbose ones unfairly. The matrix runner in `bin/compare.rs`
-/// uses this variant.
+/// uses this variant. Panics as [`load_suite`] does.
 pub fn load_suite_for_compare(file_path: &Path) -> Option<Vec<SuiteCase>> {
     load_suite_inner(file_path, true)
 }
 
 fn load_suite_inner(file_path: &Path, drop_error_cases: bool) -> Option<Vec<SuiteCase>> {
-    let raw = fs::read_to_string(file_path).ok()?;
-    let entries: Vec<Value> = serde_json::from_str(&raw).ok()?;
+    let entries = suite::entries(file_path);
 
     let mut cases = Vec::new();
-    for entry in entries {
+    for (index, entry) in entries.into_iter().enumerate() {
         if entry.is_string() {
             continue;
         }
@@ -80,6 +142,8 @@ fn load_suite_inner(file_path: &Path, drop_error_cases: bool) -> Option<Vec<Suit
             continue;
         }
         let data = test_case.get("data").cloned().unwrap_or(Value::Null);
+        let flavour = Flavour::of(&test_case)
+            .unwrap_or_else(|e| panic!("{} case {index}: {e}", file_path.display()));
 
         let Ok(rule_json) = serde_json::to_string(rule) else {
             continue;
@@ -90,6 +154,7 @@ fn load_suite_inner(file_path: &Path, drop_error_cases: bool) -> Option<Vec<Suit
         cases.push(SuiteCase {
             rule_json,
             data_json,
+            flavour,
         });
     }
 
@@ -98,11 +163,7 @@ fn load_suite_inner(file_path: &Path, drop_error_cases: bool) -> Option<Vec<Suit
 
 /// Read `suites/index.json` (the suite-of-suites index) and return its list.
 pub fn load_index() -> Vec<String> {
-    let index_path = suites_root().join("index.json");
-    let raw = fs::read_to_string(&index_path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {e}", index_path.display()));
-    serde_json::from_str(&raw)
-        .unwrap_or_else(|e| panic!("failed to parse {}: {e}", index_path.display()))
+    suite::index(&suites_root())
 }
 
 /// Aggregate per-suite numbers reported by both binaries.
@@ -734,4 +795,45 @@ pub fn write_matrix_report(
     let path = out_dir.join(format!("report-{label}-{timestamp}.json"));
     fs::write(&path, serde_json::to_string_pretty(&report).unwrap()).expect("write report");
     path
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every indexed suite loads (a parse error panics) and the flavour
+    /// fields reach the cases. Guards the loader the timings depend on
+    /// without running a timing loop.
+    #[test]
+    fn indexed_suites_load_with_their_flavours() {
+        let mut engines = Engines::default();
+        let (mut loaded, mut templating, mut compiled) = (0usize, 0usize, 0usize);
+        for name in load_index() {
+            let Some(cases) = load_suite(&suites_root().join(&name)) else {
+                continue;
+            };
+            for case in &cases {
+                loaded += 1;
+                if case.flavour.templating {
+                    templating += 1;
+                    if engines.get(case.flavour).compile(&case.rule_json).is_ok() {
+                        compiled += 1;
+                    }
+                }
+            }
+        }
+        assert!(loaded > 1500, "only {loaded} cases loaded");
+        assert!(templating > 0, "no case carried its templating flag");
+        assert!(compiled > 0, "no templating case compiled on its engine");
+    }
+
+    #[test]
+    fn engine_version_reads_the_core_manifest() {
+        let version = engine_version();
+        assert_eq!(version.split('.').count(), 3, "{version:?}");
+        assert!(
+            version.split('.').all(|p| p.parse::<u64>().is_ok()),
+            "{version:?}"
+        );
+    }
 }

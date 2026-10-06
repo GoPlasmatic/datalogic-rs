@@ -40,7 +40,7 @@ use std::time::{Duration, Instant};
 
 use bumpalo::Bump;
 use datalogic_bench::{
-    MatrixCell, MatrixRow, SubjectRun, SuiteCase, load_index, load_suite_for_compare,
+    Engines, MatrixCell, MatrixRow, SubjectRun, SuiteCase, load_index, load_suite_for_compare,
     macro_suites::macro_suites, pairwise_shared_ratios, render_matrix, render_pairwise_ratios,
     suites_root, write_matrix_report,
 };
@@ -99,12 +99,15 @@ fn median_of_three(samples: Vec<SubjectRun>) -> Option<SubjectRun> {
 
 struct DlrsEngine {
     engine: Engine,
+    /// Per-flavour compile engines; see `datalogic_bench::Engines`.
+    engines: Engines,
 }
 
 impl DlrsEngine {
     fn new() -> Self {
         Self {
             engine: Engine::new(),
+            engines: Engines::default(),
         }
     }
 }
@@ -115,10 +118,12 @@ impl Subject for DlrsEngine {
     }
 
     fn run_suite(&mut self, cases: &[SuiteCase], target: Duration) -> Option<SubjectRun> {
-        // Pre-compile once; each median sample reuses the same `Logic` set.
+        // Pre-compile once, each rule on the engine its case asks for;
+        // each median sample reuses the same `Logic` set. Evaluation runs
+        // on `self.engine`: the flavours differ only in compile settings.
         let compiled: Vec<Logic> = cases
             .iter()
-            .map(|c| self.engine.compile(c.rule_json.as_str()))
+            .map(|c| self.engines.get(c.flavour).compile(c.rule_json.as_str()))
             .collect::<datalogic_rs::Result<_>>()
             .ok()?;
 
@@ -312,6 +317,7 @@ impl Subject for NodeSubject {
                     "data": data,
                     "rule_str": c.rule_json,
                     "data_str": c.data_json,
+                    "templating": c.flavour.templating,
                 }))
             })
             .collect();

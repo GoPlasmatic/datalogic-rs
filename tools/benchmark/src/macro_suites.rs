@@ -53,6 +53,7 @@ fn case(rule: &Value, data: &Value) -> SuiteCase {
     SuiteCase {
         rule_json: rule.to_string(),
         data_json: data.to_string(),
+        flavour: crate::Flavour::default(),
     }
 }
 

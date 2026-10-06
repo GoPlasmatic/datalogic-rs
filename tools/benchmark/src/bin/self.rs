@@ -41,8 +41,8 @@ use std::time::{Duration, Instant};
 
 use bumpalo::Bump;
 use datalogic_bench::{
-    SuiteResult, geomean, load_index, load_suite, macro_suites::macro_suites, print_suite_line,
-    print_summary, suites_root, write_report,
+    Engines, Flavour, SuiteResult, engine_version, geomean, load_index, load_suite,
+    macro_suites::macro_suites, print_suite_line, print_summary, suites_root, write_report,
 };
 use datalogic_rs::{DataValue, Engine, Logic};
 
@@ -155,14 +155,19 @@ struct SuiteRun {
     spread: f64,
 }
 
-fn benchmark_suite(engine: &Engine, suite_name: &str) -> Option<SuiteRun> {
+fn benchmark_suite(engines: &mut Engines, suite_name: &str) -> Option<SuiteRun> {
     let path = suites_root().join(suite_name);
     let cases = load_suite(&path)?;
 
-    // Pre-compile every rule.
-    let compiled: Vec<Logic> = cases
+    // Pre-compile every rule on the engine its case asks for (templating,
+    // template-key escape), keeping each rule with its own case's data. A
+    // rule that does not compile is left out together with its data.
+    let compiled: Vec<(Logic, &str)> = cases
         .iter()
-        .filter_map(|c| engine.compile(&c.rule_json).ok())
+        .filter_map(|c| {
+            let logic = engines.get(c.flavour).compile(&c.rule_json).ok()?;
+            Some((logic, c.data_json.as_str()))
+        })
         .collect();
 
     if compiled.is_empty() {
@@ -172,15 +177,17 @@ fn benchmark_suite(engine: &Engine, suite_name: &str) -> Option<SuiteRun> {
     // Persistent arena holding parsed input data. Never reset, so the
     // &DataValue handles outlive every per-iteration session reset.
     let data_arena = Bump::new();
-    let inputs: Vec<&DataValue<'_>> = cases
+    let pairs: Vec<(&Logic, &DataValue)> = compiled
         .iter()
-        .map(|c| {
-            let av = DataValue::from_str(&c.data_json, &data_arena).expect("test data parses");
-            &*data_arena.alloc(av)
+        .map(|(logic, data)| {
+            let av = DataValue::from_str(data, &data_arena).expect("test data parses");
+            (logic, &*data_arena.alloc(av))
         })
         .collect();
 
-    let pairs: Vec<(&Logic, &DataValue)> = compiled.iter().zip(inputs.iter().copied()).collect();
+    // Every flavour shares the default evaluation settings, so one
+    // session times every rule (see `Engines`).
+    let engine = engines.get(Flavour::default());
 
     // Whole-suite pass: the headline number, comparable with reports
     // generated before the folded/non-folded split existed.
@@ -379,12 +386,11 @@ fn main() {
     let run_all = args.iter().any(|a| a == "--all");
     let run_macro = args.iter().any(|a| a == "--macro");
 
-    let engine = Engine::new();
-    let version = env!("CARGO_PKG_VERSION");
-    let label = format!("self-v{version}");
+    let mut engines = Engines::default();
+    let label = format!("self-v{}", engine_version());
 
     if run_macro {
-        run_macro_tier(&engine, &label);
+        run_macro_tier(engines.get(Flavour::default()), &label);
     } else if run_all {
         let suite_files = load_index();
         println!("Benchmarking all {} suites ({label})\n", suite_files.len());
@@ -393,7 +399,7 @@ fn main() {
         for suite in &suite_files {
             print!("  {suite:<48}");
             std::io::stdout().flush().unwrap();
-            match benchmark_suite(&engine, suite) {
+            match benchmark_suite(&mut engines, suite) {
                 Some(run) => {
                     println!(
                         "{:>4} tests | avg {:>8.2} ns/op ±{:>4.1}% | total {:>10.1?} | arena {:>9}{}",
@@ -419,7 +425,7 @@ fn main() {
             .cloned()
             .unwrap_or_else(|| "compatible.json".into());
         println!("Benchmark file: {suite} ({label})");
-        match benchmark_suite(&engine, &suite) {
+        match benchmark_suite(&mut engines, &suite) {
             Some(run) => {
                 let r = &run.result;
                 println!("\n=== Benchmark Results ===");

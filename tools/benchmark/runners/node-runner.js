@@ -7,7 +7,10 @@
 //   { library: "<npm-name>", target_ms: 200, samples: 3, cases: [...] }
 //
 // Each case has both pre-parsed and raw shapes:
-//   { rule: <obj>, data: <val>, rule_str: "<json>", data_str: "<json>" }
+//   { rule: <obj>, data: <val>, rule_str: "<json>", data_str: "<json>",
+//     templating: <bool> }
+// `templating` is the suite case's flag; libraries without a templating
+// mode ignore it.
 // Libraries pick whichever they prefer (apply() takes parsed objects;
 // our wasm `evaluate` takes JSON strings).
 //
@@ -95,7 +98,7 @@ const LIBS = {
       let built = 0;
       for (const c of cases) {
         try {
-          c._wasm_compiled = new CompiledRule(c.rule_str, false);
+          c._wasm_compiled = new CompiledRule(c.rule_str, Boolean(c.templating));
           built += 1;
         } catch {
           c._wasm_compiled = { evaluate: unsupportedCase };
