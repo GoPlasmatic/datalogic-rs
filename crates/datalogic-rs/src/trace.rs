@@ -385,12 +385,7 @@ impl<'e> TracedSession<'e> {
     ///
     /// The rule does not parse or does not compile.
     pub fn compile<R: crate::IntoLogic>(&self, rule: R) -> crate::Result<crate::Logic> {
-        crate::Logic::compile_for_trace(
-            &rule.into_owned_logic()?,
-            self.engine,
-            self.templating,
-            true,
-        )
+        crate::Logic::compile_for_trace(&*rule.logic_source()?, self.engine, self.templating, true)
     }
 
     /// One-shot traced evaluation with JSON-string boundary on both
@@ -448,7 +443,7 @@ impl<'e> TracedSession<'e> {
         R: crate::IntoLogic,
         D: crate::OwnedInput,
     {
-        let compiled = match rule.into_owned_logic().and_then(|owned| {
+        let compiled = match rule.logic_source().and_then(|owned| {
             crate::Logic::compile_for_trace(&owned, self.engine, self.templating, false)
         }) {
             Ok(compiled) => compiled,

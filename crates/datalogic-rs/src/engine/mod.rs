@@ -681,7 +681,7 @@ impl Engine {
     /// let compiled = engine.compile(r#"{"==": [{"var": "x"}, 1]}"#).unwrap();
     /// ```
     pub fn compile<R: crate::IntoLogic>(&self, rule: R) -> Result<Logic> {
-        let owned = rule.into_owned_logic()?;
+        let owned = rule.logic_source()?;
         Logic::compile_with(&owned, self)
     }
 
@@ -720,7 +720,7 @@ impl Engine {
         rule: R,
         mode: crate::CheckMode,
     ) -> Vec<crate::Diagnostic> {
-        let owned = match rule.into_owned_logic() {
+        let owned = match rule.logic_source() {
             Ok(owned) => owned,
             Err(err) => return crate::CompileError::from_error(err).diagnostics,
         };
@@ -745,7 +745,7 @@ impl Engine {
         rule: R,
     ) -> std::result::Result<Logic, crate::CompileError> {
         let owned = rule
-            .into_owned_logic()
+            .logic_source()
             .map_err(crate::CompileError::from_error)?;
         let diagnostics = crate::check::check(self, &owned, self.is_templating_enabled());
         if diagnostics
@@ -784,7 +784,7 @@ impl Engine {
     #[cfg(feature = "templating")]
     #[cfg_attr(docsrs, doc(cfg(feature = "templating")))]
     pub fn compile_template<R: crate::IntoLogic>(&self, rule: R) -> Result<Logic> {
-        let owned = rule.into_owned_logic()?;
+        let owned = rule.logic_source()?;
         Logic::compile_in_mode(&owned, self, true)
     }
 
@@ -809,7 +809,7 @@ impl Engine {
     /// # }
     /// ```
     pub fn compile_strict<R: crate::IntoLogic>(&self, rule: R) -> Result<Logic> {
-        let owned = rule.into_owned_logic()?;
+        let owned = rule.logic_source()?;
         Logic::compile_in_mode(&owned, self, false)
     }
 

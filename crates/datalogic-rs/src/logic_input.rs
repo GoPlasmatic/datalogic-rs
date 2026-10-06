@@ -6,8 +6,9 @@
 //! caller is likely to have on hand.
 //!
 //! - `&str` — JSON-parsed via `OwnedDataValue::from_json`.
-//! - `&OwnedDataValue` — cloned (cheap; usually just an `Arc` bump in
-//!   practice).
+//! - `&OwnedDataValue` — compiled in place by the engine's compile
+//!   methods. [`IntoLogic::into_owned_logic`] deep-clones it:
+//!   `OwnedDataValue` holds no `Arc`, so a clone copies the whole rule.
 //! - `OwnedDataValue` — moved.
 //! - `&serde_json::Value` (`serde_json`) — deep-converted.
 //!
@@ -17,12 +18,26 @@
 //!
 //! The trait is **sealed**. The supported set is closed.
 
+use std::borrow::Cow;
+
 use datavalue::OwnedDataValue;
 
 use crate::Result;
 
-mod sealed {
-    pub trait Sealed {}
+pub(crate) mod sealed {
+    use std::borrow::Cow;
+
+    use datavalue::OwnedDataValue;
+
+    /// The sealing supertrait. It also carries the compile methods' way in:
+    /// the rule source as a [`Cow`], so a borrowed `&OwnedDataValue` is
+    /// compiled in place rather than deep-cloned first. The module is
+    /// private, so this adds nothing a caller outside the crate can name.
+    pub trait Sealed {
+        fn logic_source<'s>(self) -> crate::Result<Cow<'s, OwnedDataValue>>
+        where
+            Self: 's;
+    }
 }
 
 /// Convert `self` into an [`OwnedDataValue`] suitable for compilation.
@@ -32,12 +47,22 @@ mod sealed {
 pub trait IntoLogic: sealed::Sealed {
     /// Materialise the rule source as an owned value.
     ///
-    /// Implementations either parse (`&str`), clone (`&OwnedDataValue`),
-    /// move (`OwnedDataValue`), or deep-convert from a serde shape.
+    /// Implementations either parse (`&str`), deep-clone
+    /// (`&OwnedDataValue`), move (`OwnedDataValue`), or deep-convert from
+    /// a serde shape. The engine's own compile methods do not go through
+    /// this for a borrowed `&OwnedDataValue`; they compile it in place.
     fn into_owned_logic(self) -> Result<OwnedDataValue>;
 }
 
-impl sealed::Sealed for &str {}
+impl sealed::Sealed for &str {
+    #[inline]
+    fn logic_source<'s>(self) -> Result<Cow<'s, OwnedDataValue>>
+    where
+        Self: 's,
+    {
+        self.into_owned_logic().map(Cow::Owned)
+    }
+}
 impl IntoLogic for &str {
     #[inline]
     fn into_owned_logic(self) -> Result<OwnedDataValue> {
@@ -45,7 +70,15 @@ impl IntoLogic for &str {
     }
 }
 
-impl sealed::Sealed for &String {}
+impl sealed::Sealed for &String {
+    #[inline]
+    fn logic_source<'s>(self) -> Result<Cow<'s, OwnedDataValue>>
+    where
+        Self: 's,
+    {
+        self.into_owned_logic().map(Cow::Owned)
+    }
+}
 impl IntoLogic for &String {
     #[inline]
     fn into_owned_logic(self) -> Result<OwnedDataValue> {
@@ -53,7 +86,15 @@ impl IntoLogic for &String {
     }
 }
 
-impl sealed::Sealed for &OwnedDataValue {}
+impl sealed::Sealed for &OwnedDataValue {
+    #[inline]
+    fn logic_source<'s>(self) -> Result<Cow<'s, OwnedDataValue>>
+    where
+        Self: 's,
+    {
+        Ok(Cow::Borrowed(self))
+    }
+}
 impl IntoLogic for &OwnedDataValue {
     #[inline]
     fn into_owned_logic(self) -> Result<OwnedDataValue> {
@@ -61,7 +102,15 @@ impl IntoLogic for &OwnedDataValue {
     }
 }
 
-impl sealed::Sealed for OwnedDataValue {}
+impl sealed::Sealed for OwnedDataValue {
+    #[inline]
+    fn logic_source<'s>(self) -> Result<Cow<'s, OwnedDataValue>>
+    where
+        Self: 's,
+    {
+        Ok(Cow::Owned(self))
+    }
+}
 impl IntoLogic for OwnedDataValue {
     #[inline]
     fn into_owned_logic(self) -> Result<OwnedDataValue> {
@@ -70,7 +119,15 @@ impl IntoLogic for OwnedDataValue {
 }
 
 #[cfg(feature = "serde_json")]
-impl sealed::Sealed for &serde_json::Value {}
+impl sealed::Sealed for &serde_json::Value {
+    #[inline]
+    fn logic_source<'s>(self) -> Result<Cow<'s, OwnedDataValue>>
+    where
+        Self: 's,
+    {
+        self.into_owned_logic().map(Cow::Owned)
+    }
+}
 #[cfg(feature = "serde_json")]
 impl IntoLogic for &serde_json::Value {
     #[inline]
