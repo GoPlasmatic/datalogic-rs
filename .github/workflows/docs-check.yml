@@ -1,0 +1,48 @@
+name: Docs check
+
+# Runs on every PR and main push, docs-only ones included. ci.yml skips
+# changes that touch only docs/** and *.md, so before this workflow a
+# README-only PR never ran the stats gate (the next unrelated code PR
+# failed instead), and a broken mdBook surfaced only after merge, when
+# docs.yml deployed. Needs no Rust toolchain, so it finishes in seconds.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: docs-check-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  docs-check:
+    name: Docs check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # Conformance counts, geomean and MSRV quotes against their sources
+      # (count drift warns; the release runs it with --strict).
+      - name: Check quoted stats
+        run: bash scripts/check-stats.sh
+
+      # Same pinned version as docs.yml's deploy build.
+      - name: Setup mdBook
+        uses: peaceiris/actions-mdbook@ee69d230fe19748b7abf22df32acaa93833fad08 # v2
+        with:
+          mdbook-version: '0.5.4'
+
+      - name: Build the book
+        run: mdbook build docs
+
+      # Every relative link and #fragment in the rendered book must
+      # resolve. Offline: external URLs are not fetched. The UI embed
+      # bundle and playground that docs.yml adds after the mdBook build
+      # are skipped.
+      - name: Check links (offline)
+        run: python3 scripts/check-book-links.py docs/book

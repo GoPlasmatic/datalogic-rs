@@ -4,10 +4,15 @@ on:
   push:
     branches:
       - main
+    # The playground embeds the WASM engine, which is the core crate
+    # compiled through bindings/wasm, so a core change redeploys it too.
     paths:
       - 'docs/**'
       - 'ui/**'
       - 'bindings/wasm/**'
+      - 'crates/datalogic-rs/src/**'
+      - 'crates/datalogic-rs/Cargo.toml'
+      - 'crates/datalogic-bind/**'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
@@ -27,11 +32,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      # Build mdBook documentation
+      # Build mdBook documentation. Pinned: `latest` let an mdBook release
+      # change the site (or break the build) with no commit here. Keep the
+      # version in step with docs-check.yml, which builds the book on PRs.
       - name: Setup mdBook
         uses: peaceiris/actions-mdbook@ee69d230fe19748b7abf22df32acaa93833fad08 # v2
         with:
-          mdbook-version: 'latest'
+          mdbook-version: '0.5.4'
 
       - name: Build documentation
         run: mdbook build docs
@@ -56,11 +63,9 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             bindings/wasm/target/
-          # `Cargo.lock` is gitignored (this is a library), so a hashFiles
-          # over the (absent) lockfile would yield the empty hash. Key off
-          # the manifest instead to get meaningful cache busts when deps
-          # change.
-          key: ${{ runner.os }}-wasm-${{ hashFiles('bindings/wasm/Cargo.toml') }}
+          # The committed lockfile changes whenever the resolved
+          # dependencies do, so it keys the cache along with the manifest.
+          key: ${{ runner.os }}-wasm-${{ hashFiles('bindings/wasm/Cargo.toml', 'bindings/wasm/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-wasm-
 
       - name: Build WASM
@@ -71,27 +76,15 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '22'
-          # No `cache:` here — `ui/package-lock.json` is generated on first
-          # `npm install`, but isn't checked in. Add `cache: 'npm'` once
-          # a lockfile is committed.
+          cache: 'npm'
+          cache-dependency-path: ui/package-lock.json
 
-      # Wire the freshly-built local WASM as a `file:` dep so `npm install`
-      # installs it from disk instead of the registry. The published
-      # version may not exist yet (release tag fires later in the v5.0.0
-      # cycle), and the previous `npm link` + version-pin dance proved
-      # fragile: tsc -b couldn't resolve types through the symlink, so
-      # the docs UI build (which runs `tsc -b && vite build`) failed even
-      # though CI's `npm run build:lib` (vite-only) passed. docs.yml
-      # doesn't publish, so this in-memory edit is build-only.
-      # Single-quoted because the unquoted step name "...as a file: dep"
-      # contained a colon+space, which YAML parses as a mapping key and
-      # caused the entire workflow to fail to load (zero jobs, 0s
-      # startup failure) when merged in #52. Don't drop the quotes.
-      - name: 'Wire local WASM into ui/package.json as a file: dep'
-        run: cd ui && npm pkg set "dependencies.@goplasmatic/datalogic-wasm=file:../bindings/wasm/pkg"
-
+      # Strict install from ui/package-lock.json. The WASM engine is not an
+      # npm dependency here: the Vite and TypeScript configs alias
+      # @goplasmatic/datalogic-wasm to ui/vendor/datalogic, which the
+      # `prebuild*` hooks fill from the bindings/wasm/pkg built above.
       - name: Install UI dependencies
-        run: cd ui && npm install
+        run: cd ui && npm ci
 
       - name: Build UI demo
         run: cd ui && npm run build
