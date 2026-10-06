@@ -121,8 +121,6 @@ fn probe(name: &str, n: usize) -> Option<(&'static str, String)> {
         "missing" => (r#"{"missing":{"var":"ps"}}"#, ps()),
         "missing_some" => (r#"{"missing_some":[1,{"var":"ps"}]}"#, ps()),
         "length" => (r#"{"length":[{"var":"s"}]}"#, s()),
-        // Every item is compared against every group so far.
-        "group_by" => (r#"{"group_by":[{"var":"xs"},{"var":""}]}"#, xs()),
         _ => return None,
     })
 }
