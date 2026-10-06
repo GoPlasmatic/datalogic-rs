@@ -24,28 +24,8 @@ const SUITES_DIR = join(
   '../../../crates/datalogic-rs/tests/suites',
 );
 
-// Representative slice of the conformance battery: arithmetic,
-// comparison, iteration, control flow, strings, truthiness, structured
-// output, and scoped variables.
-const SUITE_FILES = [
-  'arithmetic/plus.json',
-  'arithmetic/multiply.json',
-  'arithmetic/divide.json',
-  'arithmetic/chain.json',
-  'comparison/softEquals.json',
-  'comparison/strictEquals.json',
-  'comparison/greaterThan.json',
-  'array/map.json',
-  'array/merge.json',
-  'array/reduce.json',
-  'control/if.json',
-  'control/and.json',
-  'control/or.json',
-  'string/string.json',
-  'truthiness.json',
-  'coalesce.json',
-  'val.json',
-];
+// The whole conformance battery, as the suite index lists it.
+const SUITE_FILES = JSON.parse(readFileSync(join(SUITES_DIR, 'index.json'), 'utf-8'));
 
 const engine = new Engine();
 
