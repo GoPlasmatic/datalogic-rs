@@ -295,4 +295,27 @@ public class LifecycleTests
             Assert.Throws<ObjectDisposedException>(() => rule.Evaluate("{}"));
         }
     }
+
+    // A builder dropped after a failed setter is released by its
+    // finalizer, together with the callbacks registered on it.
+    [Fact]
+    public void Unbuilt_builder_is_released_by_its_finalizer()
+    {
+        for (var i = 0; i < 20; i++) DropFailedBuilder();
+        for (var i = 0; i < 3; i++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
+        using var engine = Engine.Builder().AddOperator("one", _ => "1").Build();
+        Assert.Equal("1", engine.Apply("""{"one":[]}""", "{}"));
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static void DropFailedBuilder()
+    {
+        Assert.Throws<EvaluateException>(() => Engine.Builder()
+            .AddOperator("one", _ => "1")
+            .SetConfigJson("""{"no_such_key":1}"""));
+    }
 }

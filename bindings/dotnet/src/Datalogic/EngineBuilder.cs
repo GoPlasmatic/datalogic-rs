@@ -24,6 +24,11 @@ public delegate string CustomOperator(string argsJson);
 /// <c>+</c> / <c>if</c> / <c>var</c> silently dispatches to the built-in
 /// — built-ins always win).
 /// </summary>
+/// <remarks>
+/// A builder dropped without <see cref="Build"/> (for instance after a
+/// setter threw) is released by its finalizer: the native builder and
+/// the callbacks registered on it are freed then.
+/// </remarks>
 public sealed class EngineBuilder
 {
     private IntPtr _handle;
@@ -53,6 +58,7 @@ public sealed class EngineBuilder
     {
         EnsureFresh();
         NativeMethods.datalogic_engine_builder_set_templating(_handle, enabled ? 1 : 0);
+        GC.KeepAlive(this);
         return this;
     }
 
@@ -91,6 +97,7 @@ public sealed class EngineBuilder
         EnsureFresh();
         var err = IntPtr.Zero;
         var status = NativeMethods.datalogic_engine_builder_set_template_key_escape(_handle, codepoint, ref err);
+        GC.KeepAlive(this);
         if (status != DatalogicStatus.Ok)
         {
             throw DatalogicException.FromNative(status, err, "set_template_key_escape failed");
@@ -108,6 +115,7 @@ public sealed class EngineBuilder
     {
         EnsureFresh();
         NativeMethods.datalogic_engine_builder_set_strict_operator_names(_handle, enabled ? 1 : 0);
+        GC.KeepAlive(this);
         return this;
     }
 
@@ -156,6 +164,7 @@ public sealed class EngineBuilder
                 status = NativeMethods.datalogic_engine_builder_set_config_json(
                     _handle, jp, (nuint)jsonU8.Span.Length, ref err);
             }
+            GC.KeepAlive(this);
             if (status != DatalogicStatus.Ok)
             {
                 throw DatalogicException.FromNative(status, err, "set_config_json failed");
@@ -191,6 +200,7 @@ public sealed class EngineBuilder
                 status = NativeMethods.datalogic_engine_builder_set_families(
                     _handle, jp, (nuint)jsonU8.Span.Length, ref err);
             }
+            GC.KeepAlive(this);
             if (status != DatalogicStatus.Ok)
             {
                 throw DatalogicException.FromNative(status, err, "set_families failed");
@@ -231,6 +241,7 @@ public sealed class EngineBuilder
                     userData,
                     ref err);
             }
+            GC.KeepAlive(this);
             if (status != DatalogicStatus.Ok)
             {
                 throw DatalogicException.FromNative(status, err, "add_operator failed");
@@ -252,6 +263,7 @@ public sealed class EngineBuilder
         NativeMethods.datalogic_engine_builder_free(_handle);
         _handle = IntPtr.Zero;
         _consumed = true;
+        GC.SuppressFinalize(this);
 
         if (enginePtr == IntPtr.Zero)
         {
@@ -278,6 +290,21 @@ public sealed class EngineBuilder
     {
         _roots?.Free();
         _roots = null;
+    }
+
+    /// <summary>
+    /// Frees the native builder of a builder that never reached
+    /// <see cref="Build"/>. The callback roots it holds have a finalizer
+    /// of their own; the native builder never runs a callback, so the
+    /// order in which the two finalizers run does not matter.
+    /// </summary>
+    ~EngineBuilder()
+    {
+        var handle = Interlocked.Exchange(ref _handle, IntPtr.Zero);
+        if (handle != IntPtr.Zero)
+        {
+            NativeMethods.datalogic_engine_builder_free(handle);
+        }
     }
 
     /// <summary>
