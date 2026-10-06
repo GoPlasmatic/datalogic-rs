@@ -221,3 +221,138 @@ name = "zero_copy_input"
 # `serde_json` enables the `&serde_json::Value` shape; the example shows
 # all input shapes side by side so it needs the gated impl too.
 required-features = ["serde_json"]
+
+# Integration tests that need features. Each file also opens with a
+# matching `#![cfg(...)]`; declaring the features here as well means cargo
+# skips the target instead of compiling it to an empty binary that reports
+# "0 passed" as success, and `cargo test --test <name>` without them fails
+# with the list of features to pass instead of passing vacuously. Run the
+# whole suite with `--all-features`. `scripts/check-test-features.sh` (run
+# in CI) keeps this list in step with the files' cfg headers.
+[[test]]
+name = "arc_test"
+required-features = ["serde_json"]
+
+[[test]]
+name = "arena_custom_datetime_test"
+required-features = ["datetime", "templating", "serde_json"]
+
+[[test]]
+name = "arena_operator_test"
+required-features = ["serde_json"]
+
+[[test]]
+name = "basic_test"
+required-features = ["serde_json"]
+
+[[test]]
+name = "budget_audit_test"
+required-features = ["budget", "all-operators"]
+
+[[test]]
+name = "budget_test"
+required-features = ["budget", "serde_json"]
+
+[[test]]
+name = "check_test"
+required-features = ["serde_json", "templating", "all-operators"]
+
+[[test]]
+name = "compile_depth_test"
+required-features = ["serde_json"]
+
+[[test]]
+name = "compile_mode_test"
+required-features = ["templating", "serde_json"]
+
+[[test]]
+name = "config_json_test"
+required-features = ["serde_json"]
+
+[[test]]
+name = "config_test"
+required-features = ["serde_json"]
+
+[[test]]
+name = "custom_operator_info_test"
+required-features = ["serde_json", "all-operators"]
+
+[[test]]
+name = "error_context_test"
+required-features = ["serde_json", "error-handling"]
+
+[[test]]
+name = "error_serialization"
+required-features = ["serde_json"]
+
+[[test]]
+name = "families_test"
+required-features = ["ext-string", "ext-array", "datetime", "templating"]
+
+[[test]]
+name = "fast_arith_test"
+required-features = ["trace", "serde_json"]
+
+[[test]]
+name = "fast_predicate_test"
+required-features = ["trace", "serde_json"]
+
+[[test]]
+name = "missing_var_test"
+required-features = ["serde_json", "all-operators"]
+
+[[test]]
+name = "operators_json_test"
+required-features = ["all-operators"]
+
+[[test]]
+name = "oracle_test"
+required-features = ["all-operators", "serde_json", "templating"]
+
+[[test]]
+name = "overflow_test"
+required-features = ["serde_json"]
+
+[[test]]
+name = "owned_input_test"
+required-features = ["serde_json"]
+
+[[test]]
+name = "projection_test"
+required-features = ["serde_json", "templating", "all-operators"]
+
+[[test]]
+name = "property_test"
+required-features = ["serde_json", "trace"]
+
+[[test]]
+name = "roots_test"
+required-features = ["serde_json"]
+
+[[test]]
+name = "template_key_escape_test"
+required-features = ["templating", "serde_json"]
+
+[[test]]
+name = "tensor_test"
+required-features = ["tensor", "serde_json"]
+
+[[test]]
+name = "test_jsonlogic"
+required-features = ["templating", "serde_json"]
+
+[[test]]
+name = "thread_safety_test"
+required-features = ["serde_json"]
+
+[[test]]
+name = "trace_pointers_test"
+required-features = ["trace", "serde_json"]
+
+[[test]]
+name = "trace_test"
+required-features = ["trace"]
+
+[[test]]
+name = "truthy_of_test"
+required-features = ["serde_json"]

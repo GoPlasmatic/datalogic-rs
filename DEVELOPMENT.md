@@ -95,10 +95,18 @@ test the fresh build; see [`ui` below](#ui-react-component).
 
 ```bash
 cargo check -p datalogic-rs
-cargo test  -p datalogic-rs                        # default features
-cargo test  -p datalogic-rs --all-features         # everything
+cargo test  -p datalogic-rs --all-features         # everything; the run CI gates on
 make lint      # fmt + clippy, every manifest (what CI gates on)
 ```
+
+Always pass `--all-features` (or the features a test needs). Most
+integration tests need `serde_json`, and several need more; each declares
+its features as `[[test]] required-features` in
+`crates/datalogic-rs/Cargo.toml`, so a plain `cargo test -p datalogic-rs`
+skips them and runs little beyond the unit tests. Naming one without its
+features (`cargo test -p datalogic-rs --test basic_test`) fails with the
+features to pass. `scripts/check-test-features.sh` keeps those entries in
+step with each file's `#![cfg(...)]` header.
 
 Run a single JSONLogic suite (the `test_jsonlogic` harness picks the file
 from an env var). The path is relative to `crates/datalogic-rs/` because that's
