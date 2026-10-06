@@ -86,8 +86,12 @@ export default defineConfig({
         },
       },
     },
-    sourcemap: true,
-    // Don't minify for better debugging
+    // No sourcemaps: `files` in package.json never shipped the `.map`
+    // files, so every `//# sourceMappingURL` comment pointed at nothing
+    // and devtools reported a failed fetch. The output is unminified and
+    // readable as is.
+    sourcemap: false,
+    // Don't minify, so consumers can read and debug the shipped code.
     minify: false,
   },
 });
