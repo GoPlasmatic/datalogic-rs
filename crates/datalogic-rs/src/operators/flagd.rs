@@ -165,9 +165,9 @@ pub(crate) fn evaluate_fractional<'a>(
     // Collect (variant, weight) pairs. flagd Go errors on malformed
     // distribution entries and returns nil from Evaluate — we mirror by
     // returning null here too rather than trying to recover.
-    let mut buckets: bumpalo::collections::Vec<(&str, i64)> =
+    let mut buckets: bumpalo::collections::Vec<(&str, u64)> =
         bumpalo::collections::Vec::with_capacity_in(distribution_args.len(), arena);
-    let mut total_weight: i64 = 0;
+    let mut total_weight: u64 = 0;
     for (i, node) in distribution_args.iter().enumerate() {
         // The first slot may already have been evaluated above (the
         // non-skipped implicit form). Reuse rather than re-dispatch.
@@ -187,9 +187,14 @@ pub(crate) fn evaluate_fractional<'a>(
             Some(s) => s,
             None => return Ok(crate::arena::singletons::singleton_null()),
         };
-        // Weight defaults to 1 when omitted; clamp negatives to 0.
+        // Weight defaults to 1 when omitted; clamp negatives to 0, and
+        // weights past i32::MAX to it: flagd's weights are 32-bit, and the
+        // clamp keeps the sum (at most n * 2^31) and the bucket product
+        // below overflow. A larger weight used to wrap the sum, picking
+        // the wrong variant (or null) in release builds and panicking in
+        // debug ones.
         let weight = if arr.len() >= 2 {
-            arr[1].as_i64().unwrap_or(1).max(0)
+            arr[1].as_i64().unwrap_or(1).clamp(0, i64::from(i32::MAX)) as u64
         } else {
             1
         };
@@ -197,20 +202,20 @@ pub(crate) fn evaluate_fractional<'a>(
         buckets.push((variant, weight));
     }
 
-    if buckets.is_empty() || total_weight <= 0 {
+    if buckets.is_empty() || total_weight == 0 {
         return Ok(crate::arena::singletons::singleton_null());
     }
 
     let hash = murmurhash3_x86_32(bucket_key.as_bytes(), 0);
     // flagd canonical integer distribution: bucket lives in
-    // [0, total_weight). The shift turns `hash * total_weight` (max
-    // 2^32 * 2^31 = 2^63) into a value bounded by total_weight without
-    // overflow.
-    let bucket = ((hash as u64) * (total_weight as u64)) >> 32;
+    // [0, total_weight). The shift turns `hash * total_weight` into a value
+    // bounded by total_weight; the product is taken in u128 because the
+    // sum of many 32-bit weights passes 2^32.
+    let bucket = ((u128::from(hash) * u128::from(total_weight)) >> 32) as u64;
 
     let mut range_end: u64 = 0;
     for (variant, weight) in &buckets {
-        range_end += *weight as u64;
+        range_end += *weight;
         if bucket < range_end {
             // `variant` already borrows the arena-resident input string, so
             // return it directly instead of copying it back into the arena.

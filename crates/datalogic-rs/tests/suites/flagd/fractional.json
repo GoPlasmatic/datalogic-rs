@@ -563,5 +563,24 @@
         },
         "data": { "targetingKey": "any-user", "$flagd": { "flagKey": "fractional-negative-weight-flag" } },
         "result": "two"
-    }
+    },
+  "## Weights past 32 bits clamp to i32::MAX instead of overflowing the sum",
+  {
+    "description": "equal weights past i32::MAX split like any equal weights",
+    "rule": {"fractional": [{"var": "email"}, ["red", 9223372036854775807], ["blue", 9223372036854775807]]},
+    "data": {"email": "foo@foo.com"},
+    "result": "blue"
+  },
+  {
+    "description": "equal 2^40 weights split like any equal weights",
+    "rule": {"fractional": [{"var": "email"}, ["red", 1099511627776], ["blue", 1099511627776]]},
+    "data": {"email": "foo@foo.com"},
+    "result": "blue"
+  },
+  {
+    "description": "an i64::MAX weight beside a weight of 1 takes nearly every key",
+    "rule": {"fractional": [{"var": "email"}, ["red", 9223372036854775807], ["blue", 1]]},
+    "data": {"email": "foo@foo.com"},
+    "result": "red"
+  }
 ]
