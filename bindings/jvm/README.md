@@ -365,7 +365,7 @@ git clone https://github.com/GoPlasmatic/datalogic-rs
 cd datalogic-rs/bindings/c && cargo build --release
 cd ../jvm      # needs JDK 22+
 mvn test
-mvn package    # target/datalogic-5.6.0.jar + sources + javadoc
+mvn package    # target/datalogic-5.8.0.jar + sources + javadoc
 ```
 
 ## Learn more
