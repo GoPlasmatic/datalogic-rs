@@ -90,19 +90,16 @@ impl Engine {
         template_key_escape: Option<&str>,
         families: Option<Vec<String>>,
     ) -> PyResult<Self> {
-        let mut builder = if templating {
-            RsEngine::builder().with_templating(true)
-        } else {
-            RsEngine::builder()
+        let mut opts = datalogic_bind::EngineOptions {
+            templating,
+            ..Default::default()
         };
-        // Before the operators, so strict names are judged against the
-        // families the engine has.
         if let Some(names) = families {
             let families =
                 datalogic_bind::families(names.iter().map(String::as_str)).map_err(|msg| {
                     engine_error_to_pyerr(py, &DlError::configuration_error(msg), None)
                 })?;
-            builder = builder.with_families(families);
+            opts.families = Some(families);
         }
         if let Some(prefix) = template_key_escape {
             let c = datalogic_bind::single_char(prefix).ok_or_else(|| {
@@ -114,7 +111,7 @@ impl Engine {
                     None,
                 )
             })?;
-            builder = builder.with_template_key_escape(c);
+            opts.template_key_escape = Some(c);
         }
         if let Some(cfg) = config {
             // Accept a JSON string as-is; anything else (normally a dict)
@@ -128,23 +125,21 @@ impl Engine {
             };
             let parsed = EvaluationConfig::from_json_str(&json)
                 .map_err(|e| engine_error_to_pyerr(py, &e, None))?;
-            builder = builder.with_config(parsed);
+            opts.config = Some(parsed);
         }
-        if let Some(map) = custom_operators {
-            for (name, callback) in map {
+        let operators = custom_operators
+            .into_iter()
+            .flatten()
+            .map(|(name, callback)| {
                 let op = PyOperator {
                     name: name.clone(),
                     callback,
                 };
-                builder = if strict_operator_names {
-                    builder
-                        .try_add_operator(name, op)
-                        .map_err(|e| engine_error_to_pyerr(py, &e, None))?
-                } else {
-                    builder.add_operator(name, op)
-                };
-            }
-        }
+                (name, op)
+            });
+        let builder =
+            datalogic_bind::add_operators(opts.builder(), operators, strict_operator_names)
+                .map_err(|e| engine_error_to_pyerr(py, &e, None))?;
         Ok(Self {
             inner: Arc::new(builder.build()),
         })

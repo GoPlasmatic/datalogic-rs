@@ -13,9 +13,10 @@
 
 use std::sync::Arc;
 
+use datalogic_bind::{ItemError, typed};
 use datalogic_rs::bumpalo::Bump;
 use datalogic_rs::datavalue::DataValue;
-use datalogic_rs::{Engine as RsEngine, Error as DlError, Logic};
+use datalogic_rs::{Engine as RsEngine, Logic};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyList, PyString};
 use serde_json::Value;
@@ -42,15 +43,8 @@ impl Session {
     /// Mirror of the C ABI's `check_pair`: every handle-based session
     /// entry point verifies the rule belongs to this session's engine.
     fn check_same_engine(&self, py: Python<'_>, rule: &Rule) -> PyResult<()> {
-        if Arc::ptr_eq(&self.engine, rule.engine_arc()) {
-            Ok(())
-        } else {
-            Err(evaluate_error_with_type(
-                py,
-                "rule was compiled by a different engine than this session's".to_string(),
-                "InvalidArgument",
-            ))
-        }
+        datalogic_bind::same_engine(&self.engine, rule.engine_arc())
+            .map_err(|msg| evaluate_error_with_type(py, msg.to_string(), "InvalidArgument"))
     }
 
     /// Shared body of the typed entry points: reset, evaluate over the
@@ -118,29 +112,12 @@ impl BatchItemError {
     }
 }
 
-/// Owned item-failure detail carried out of the GIL-released batch
-/// loop; converted into [`BatchItemError`] once the GIL is back.
-struct ItemFailure {
-    tag: String,
-    message: String,
-    operator: Option<String>,
-}
-
-impl ItemFailure {
-    fn from_engine(e: &DlError) -> Self {
-        Self {
-            tag: e.tag().to_string(),
-            message: e.to_string(),
-            operator: e.operator().map(str::to_owned),
-        }
-    }
-}
-
 /// Materialise batch outcomes as a Python list: JSON ``str`` for
-/// successes, [`BatchItemError`] instances for failures.
+/// successes, [`BatchItemError`] instances for failures (carried out of
+/// the GIL-released batch loop as owned [`ItemError`]s).
 fn batch_outcomes_to_pylist(
     py: Python<'_>,
-    outcomes: Vec<Result<String, ItemFailure>>,
+    outcomes: Vec<Result<String, ItemError>>,
 ) -> PyResult<Py<PyAny>> {
     let list = PyList::empty(py);
     for outcome in outcomes {
@@ -285,16 +262,7 @@ impl Session {
     /// coercion use :meth:`evaluate_truthy`.
     fn evaluate_bool(&mut self, py: Python<'_>, rule: &Rule, data: &DataHandle) -> PyResult<bool> {
         self.typed_eval(py, rule, data, |av, _| {
-            av.as_bool().ok_or_else(|| {
-                evaluate_error_with_type(
-                    py,
-                    format!(
-                        "result is not a boolean (got {})",
-                        datalogic_bind::type_of(av)
-                    ),
-                    "TypeMismatch",
-                )
-            })
+            typed::bool(av).map_err(|msg| evaluate_error_with_type(py, msg, "TypeMismatch"))
         })
     }
 
@@ -303,16 +271,7 @@ impl Session {
     /// :class:`EvaluateError` with ``error_type == "TypeMismatch"``.
     fn evaluate_int(&mut self, py: Python<'_>, rule: &Rule, data: &DataHandle) -> PyResult<i64> {
         self.typed_eval(py, rule, data, |av, _| {
-            av.as_i64().ok_or_else(|| {
-                evaluate_error_with_type(
-                    py,
-                    format!(
-                        "result is not an integer number (got {})",
-                        datalogic_bind::type_of(av)
-                    ),
-                    "TypeMismatch",
-                )
-            })
+            typed::int(av).map_err(|msg| evaluate_error_with_type(py, msg, "TypeMismatch"))
         })
     }
 
@@ -321,16 +280,7 @@ impl Session {
     /// ``error_type == "TypeMismatch"`` otherwise.
     fn evaluate_float(&mut self, py: Python<'_>, rule: &Rule, data: &DataHandle) -> PyResult<f64> {
         self.typed_eval(py, rule, data, |av, _| {
-            av.as_f64().ok_or_else(|| {
-                evaluate_error_with_type(
-                    py,
-                    format!(
-                        "result is not a number (got {})",
-                        datalogic_bind::type_of(av)
-                    ),
-                    "TypeMismatch",
-                )
-            })
+            typed::float(av).map_err(|msg| evaluate_error_with_type(py, msg, "TypeMismatch"))
         })
     }
 
@@ -370,7 +320,7 @@ impl Session {
         let engine: &RsEngine = &self.engine;
         let logic: &Logic = rule.logic();
         let arena: &mut Bump = &mut self.arena;
-        let outcomes: Vec<Result<String, ItemFailure>> = py.detach(move || {
+        let outcomes: Vec<Result<String, ItemError>> = py.detach(move || {
             trees
                 .iter()
                 .map(|tree| {
@@ -379,7 +329,7 @@ impl Session {
                     arena.reset();
                     match engine.evaluate(logic, tree.value(), &*arena) {
                         Ok(av) => Ok(av.to_string()),
-                        Err(e) => Err(ItemFailure::from_engine(&e)),
+                        Err(e) => Err(ItemError::from_engine(&e)),
                     }
                 })
                 .collect()
@@ -406,22 +356,16 @@ impl Session {
         let engine: &RsEngine = &self.engine;
         let tree = &data.tree;
         let arena: &mut Bump = &mut self.arena;
-        let outcomes: Vec<Result<String, ItemFailure>> = py.detach(move || {
+        let outcomes: Vec<Result<String, ItemError>> = py.detach(move || {
             rule_refs
                 .iter()
                 .map(|rule| {
-                    if !Arc::ptr_eq(engine_arc, rule.engine_arc()) {
-                        return Err(ItemFailure {
-                            tag: "InvalidArgument".to_string(),
-                            message: "rule was compiled by a different engine than this session's"
-                                .to_string(),
-                            operator: None,
-                        });
-                    }
+                    datalogic_bind::same_engine(engine_arc, rule.engine_arc())
+                        .map_err(ItemError::invalid_argument)?;
                     arena.reset();
                     match engine.evaluate(rule.logic(), tree.value(), &*arena) {
                         Ok(av) => Ok(av.to_string()),
-                        Err(e) => Err(ItemFailure::from_engine(&e)),
+                        Err(e) => Err(ItemError::from_engine(&e)),
                     }
                 })
                 .collect()
