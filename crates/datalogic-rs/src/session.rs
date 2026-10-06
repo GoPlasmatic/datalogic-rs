@@ -245,9 +245,14 @@ impl<'engine, E: Deref<Target = Engine>> Session<'engine, E> {
         D: EvalInput<'a>,
     {
         let arena: &'a Bump = &self.arena;
-        let av = data.into_arena_for(compiled, &self.engine, arena)?;
-        let result = self.engine.evaluate(compiled, av, arena)?;
-        R::from_arena(result)
+        let engine = &self.engine;
+        engine.run(
+            compiled,
+            arena,
+            |compiled| data.into_arena_for(compiled, engine, arena),
+            |_| {},
+            |result, _| R::from_arena(result?),
+        )
     }
 
     /// JSON-string convenience: evaluate against `data` and serialise
@@ -317,12 +322,19 @@ impl<'engine, E: Deref<Target = Engine>> Session<'engine, E> {
         D: EvalInput<'a>,
     {
         let arena: &'a Bump = &self.arena;
-        let av = data.into_arena_for(compiled, &self.engine, arena)?;
-        let metered = self.engine.evaluate_metered(compiled, av, arena, budget)?;
-        Ok(crate::Metered {
-            value: crate::FromDataValue::from_arena(metered.value)?,
-            ops: metered.ops,
-        })
+        let engine = &self.engine;
+        engine.run(
+            compiled,
+            arena,
+            |compiled| data.into_arena_for(compiled, engine, arena),
+            |ctx| ctx.set_budget(budget),
+            |result, ctx| {
+                Ok(crate::Metered {
+                    value: crate::FromDataValue::from_arena(result?)?,
+                    ops: ctx.ops_spent(),
+                })
+            },
+        )
     }
 
     /// Evaluate and return a borrowed result tied to this session's
@@ -356,7 +368,6 @@ impl<'engine, E: Deref<Target = Engine>> Session<'engine, E> {
         D: EvalInput<'a>,
     {
         let arena: &'a Bump = &self.arena;
-        let av = data.into_arena_for(compiled, &self.engine, arena)?;
-        self.engine.evaluate(compiled, av, arena)
+        self.engine.evaluate(compiled, data, arena)
     }
 }

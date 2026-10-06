@@ -55,6 +55,21 @@ pub(crate) mod sealed {
             self,
             f: impl for<'a> FnOnce(&'a DataValue<'a>, &'a Bump) -> crate::Result<R>,
         ) -> crate::Result<R>;
+
+        /// [`Self::lend_arena`] for evaluating `logic` on `engine`: an
+        /// input that [`EvalInput::into_arena_for`](super::EvalInput::into_arena_for)
+        /// projects is projected here too, so a one-shot evaluation brings
+        /// in only what the rule reads, as `Engine::evaluate` does.
+        #[inline]
+        fn lend_arena_for<R>(
+            self,
+            logic: &crate::Logic,
+            engine: &crate::Engine,
+            f: impl for<'a> FnOnce(&'a DataValue<'a>, &'a Bump) -> crate::Result<R>,
+        ) -> crate::Result<R> {
+            let _ = (logic, engine);
+            self.lend_arena(f)
+        }
     }
 
     /// The per-call arena of a one-shot evaluation. 4 KB covers typical
@@ -271,6 +286,18 @@ impl sealed::LendArena for &OwnedDataValue {
         let data = arena.alloc(self.view_in(&arena));
         f(data, &arena)
     }
+
+    #[inline]
+    fn lend_arena_for<R>(
+        self,
+        logic: &crate::Logic,
+        engine: &crate::Engine,
+        f: impl for<'a> FnOnce(&'a DataValue<'a>, &'a Bump) -> Result<R>,
+    ) -> Result<R> {
+        let arena = sealed::one_shot_arena();
+        let data = EvalInput::into_arena_for(self, logic, engine, &arena)?;
+        f(data, &arena)
+    }
 }
 impl OwnedInput for &OwnedDataValue {
     #[inline]
@@ -287,6 +314,16 @@ impl sealed::LendArena for OwnedDataValue {
         f: impl for<'a> FnOnce(&'a DataValue<'a>, &'a Bump) -> Result<R>,
     ) -> Result<R> {
         (&self).lend_arena(f)
+    }
+
+    #[inline]
+    fn lend_arena_for<R>(
+        self,
+        logic: &crate::Logic,
+        engine: &crate::Engine,
+        f: impl for<'a> FnOnce(&'a DataValue<'a>, &'a Bump) -> Result<R>,
+    ) -> Result<R> {
+        (&self).lend_arena_for(logic, engine, f)
     }
 }
 impl OwnedInput for OwnedDataValue {
@@ -305,6 +342,18 @@ impl sealed::LendArena for &serde_json::Value {
     ) -> Result<R> {
         let arena = sealed::one_shot_arena();
         let data = arena.alloc(crate::arena::value_to_data(self, &arena));
+        f(data, &arena)
+    }
+
+    #[inline]
+    fn lend_arena_for<R>(
+        self,
+        logic: &crate::Logic,
+        engine: &crate::Engine,
+        f: impl for<'a> FnOnce(&'a DataValue<'a>, &'a Bump) -> Result<R>,
+    ) -> Result<R> {
+        let arena = sealed::one_shot_arena();
+        let data = EvalInput::into_arena_for(self, logic, engine, &arena)?;
         f(data, &arena)
     }
 }

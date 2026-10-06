@@ -305,6 +305,18 @@ impl sealed::LendArena for &Roots<'_> {
         let data = self.view_in(&arena);
         f(data, &arena)
     }
+
+    #[inline]
+    fn lend_arena_for<R>(
+        self,
+        logic: &crate::Logic,
+        engine: &crate::Engine,
+        f: impl for<'a> FnOnce(&'a DataValue<'a>, &'a Bump) -> Result<R>,
+    ) -> Result<R> {
+        let arena = sealed::one_shot_arena();
+        let data = self.arena_for(logic, engine, &arena);
+        f(data, &arena)
+    }
 }
 impl OwnedInput for &Roots<'_> {
     fn into_owned_input(self) -> Result<OwnedDataValue> {
@@ -319,6 +331,16 @@ impl sealed::LendArena for Roots<'_> {
         f: impl for<'a> FnOnce(&'a DataValue<'a>, &'a Bump) -> Result<R>,
     ) -> Result<R> {
         (&self).lend_arena(f)
+    }
+
+    #[inline]
+    fn lend_arena_for<R>(
+        self,
+        logic: &crate::Logic,
+        engine: &crate::Engine,
+        f: impl for<'a> FnOnce(&'a DataValue<'a>, &'a Bump) -> Result<R>,
+    ) -> Result<R> {
+        (&self).lend_arena_for(logic, engine, f)
     }
 }
 impl OwnedInput for Roots<'_> {

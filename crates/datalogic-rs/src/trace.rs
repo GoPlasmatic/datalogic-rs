@@ -498,32 +498,31 @@ impl<'e> TracedSession<'e> {
     where
         D: crate::EvalInput<'a>,
     {
-        let compiled = compiled.for_engine(self.engine);
-        let expression_tree = ExpressionNode::build_from_compiled(&compiled.root);
-        let _depth_guard = match self.engine.enter_dispatch_boundary() {
-            Ok(g) => g,
-            Err(e) => return Self::failed(expression_tree, e),
-        };
-        let data_ref = match data.into_arena_value(arena) {
-            Ok(av) => av,
-            Err(e) => return Self::failed(expression_tree, e),
-        };
-        // Same context as an untraced evaluation, engine-wide budget
+        let expression_tree =
+            ExpressionNode::build_from_compiled(&compiled.for_engine(self.engine).root);
+        // The same body as an untraced evaluation, engine-wide budget
         // included: a rule the engine would refuse must not quietly
-        // succeed in the debugger.
-        let mut ctx = self.engine.new_context(compiled, data_ref);
-        ctx.attach_tracer(TraceCollector::new());
-
-        let outcome = self.engine.dispatch_node(&compiled.root, &mut ctx, arena);
-        let result = match outcome {
-            Ok(av) => Ok(av),
-            Err(e) => Err(e.decorated(ctx.take_error_path(), compiled)),
-        };
-        let collector = ctx.detach_tracer().expect("attach_tracer was called above");
-        TracedRun {
-            result,
-            steps: collector.into_steps(),
-            expression_tree,
+        // succeed in the debugger. The one difference is the input: it is
+        // brought in whole, not projected onto what the rule reads,
+        // because each step records the context it ran in and the
+        // debugger shows the data as given.
+        let outcome = self.engine.run(
+            compiled,
+            arena,
+            |_| data.into_arena_value(arena),
+            |ctx| ctx.attach_tracer(TraceCollector::new()),
+            |result, ctx| {
+                let collector = ctx.detach_tracer().expect("attach_tracer was called above");
+                Ok((result, collector))
+            },
+        );
+        match outcome {
+            Ok((result, collector)) => TracedRun {
+                result,
+                steps: collector.into_steps(),
+                expression_tree,
+            },
+            Err(e) => Self::failed(expression_tree, e),
         }
     }
 

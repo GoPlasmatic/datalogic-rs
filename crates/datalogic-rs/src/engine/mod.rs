@@ -902,14 +902,52 @@ impl Engine {
         data: D,
         arena: &'a bumpalo::Bump,
     ) -> Result<&'a crate::arena::DataValue<'a>> {
+        self.run(
+            compiled,
+            arena,
+            |compiled| data.into_arena_for(compiled, self, arena),
+            |_| {},
+            |result, _| result,
+        )
+    }
+
+    /// The evaluation body every entry point shares: plain, metered,
+    /// session and traced runs, and the one-shot methods through
+    /// [`Self::evaluate`].
+    ///
+    /// In order: pick the rule as this engine runs it
+    /// ([`Logic::for_engine`]), enter the re-entrancy guard, bring the
+    /// input in with `input` (given that rule, so an owned input can be
+    /// projected onto what it reads), build the context, let `prepare`
+    /// adjust it (a per-call budget, a tracer), dispatch the root, and
+    /// decorate an error with its breadcrumb. `finish` sees the result and
+    /// the context together, for what is read off the context afterwards
+    /// (operations spent, the trace).
+    ///
+    /// `#[inline(always)]` with closure arguments, so each entry point
+    /// compiles to the same straight-line body it had before.
+    #[inline(always)]
+    pub(crate) fn run<'a, R>(
+        &self,
+        compiled: &'a Logic,
+        arena: &'a bumpalo::Bump,
+        input: impl FnOnce(&'a Logic) -> Result<&'a crate::arena::DataValue<'a>>,
+        prepare: impl FnOnce(&mut crate::arena::ContextStack<'a>),
+        finish: impl FnOnce(
+            Result<&'a crate::arena::DataValue<'a>>,
+            &mut crate::arena::ContextStack<'a>,
+        ) -> Result<R>,
+    ) -> Result<R> {
         let compiled = compiled.for_engine(self);
         let _depth_guard = self.enter_dispatch_boundary()?;
-        let data_ref = data.into_arena_for(compiled, self, arena)?;
+        let data_ref = input(compiled)?;
         let mut ctx = self.new_context(compiled, data_ref);
-        match self.dispatch_node(&compiled.root, &mut ctx, arena) {
+        prepare(&mut ctx);
+        let result = match self.dispatch_node(&compiled.root, &mut ctx, arena) {
             Ok(av) => Ok(av),
             Err(e) => Err(e.decorated(ctx.take_error_path(), compiled)),
-        }
+        };
+        finish(result, &mut ctx)
     }
 
     /// Build the context stack for one evaluation of `compiled` over
@@ -1047,18 +1085,18 @@ impl Engine {
         arena: &'a bumpalo::Bump,
         budget: u64,
     ) -> Result<Metered<&'a crate::arena::DataValue<'a>>> {
-        let compiled = compiled.for_engine(self);
-        let _depth_guard = self.enter_dispatch_boundary()?;
-        let data_ref = data.into_arena_for(compiled, self, arena)?;
-        let mut ctx = self.new_context(compiled, data_ref);
-        ctx.set_budget(budget);
-        match self.dispatch_node(&compiled.root, &mut ctx, arena) {
-            Ok(value) => Ok(Metered {
-                value,
-                ops: ctx.ops_spent(),
-            }),
-            Err(e) => Err(e.decorated(ctx.take_error_path(), compiled)),
-        }
+        self.run(
+            compiled,
+            arena,
+            |compiled| data.into_arena_for(compiled, self, arena),
+            |ctx| ctx.set_budget(budget),
+            |result, ctx| {
+                result.map(|value| Metered {
+                    value,
+                    ops: ctx.ops_spent(),
+                })
+            },
+        )
     }
 
     /// Apply the engine's configured truthiness rules
@@ -1226,9 +1264,10 @@ impl Engine {
     }
 
     /// Internal generic shared by `eval` / `eval_str` / `eval_into` /
-    /// `eval_as`. Compiles, brings the data into a per-call arena,
-    /// evaluates, and projects the result through
-    /// [`crate::FromDataValue`].
+    /// `eval_as`. Compiles, brings the data into a per-call arena (an
+    /// owned or `serde_json` input projected onto what the rule reads, as
+    /// [`Self::evaluate`] does), evaluates, and converts the result
+    /// through [`crate::FromDataValue`].
     fn eval_with<O, R, D>(&self, rule: R, data: D) -> Result<O>
     where
         O: crate::FromDataValue,
@@ -1236,7 +1275,7 @@ impl Engine {
         D: crate::OwnedInput,
     {
         let compiled = self.compile(rule)?;
-        data.lend_arena(|data, arena| {
+        data.lend_arena_for(&compiled, self, |data, arena| {
             let result = self.evaluate(&compiled, data, arena)?;
             O::from_arena(result)
         })
