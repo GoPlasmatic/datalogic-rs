@@ -156,6 +156,25 @@ pub(crate) enum FastPredicate {
     Bool(Box<FastPredicate>),
 }
 
+/// A numeric literal as the `f64` the numeric leaves compare items with,
+/// when that comparison gives `NumberValue`'s answer for every item: a
+/// float literal (an integer item meets it as `f64` there too), or an
+/// integer literal below 2^53 in magnitude, against which an integer item
+/// rounded to `f64` keeps its order and its (in)equality. A larger integer
+/// literal is left to the general path, which compares two integers
+/// exactly.
+fn f64_exact_literal(literal: &datavalue::OwnedDataValue) -> Option<f64> {
+    const EXACT: i64 = 1 << 53;
+    match literal {
+        datavalue::OwnedDataValue::Number(datavalue::NumberValue::Integer(i))
+            if !(-EXACT < *i && *i < EXACT) =>
+        {
+            None
+        }
+        _ => literal.as_f64(),
+    }
+}
+
 /// Recursion guard for compound-predicate detection. Real filter/quantifier
 /// predicates are shallow (`and(not(in(...)), cmp)` is depth 3); the cap
 /// only bounds pathological rule shapes from doing quadratic populate work.
@@ -281,7 +300,7 @@ impl FastPredicate {
                     })) => {
                         // For loose equality with numeric literals, we can use a fast
                         // numeric comparison (loose == is same as strict for numbers)
-                        if let Some(lit_f) = literal.as_f64() {
+                        if let Some(lit_f) = f64_exact_literal(literal) {
                             return Some(FastPredicate::LooseNumericEq {
                                 var_path,
                                 literal_f: lit_f,
@@ -300,7 +319,7 @@ impl FastPredicate {
                         }
                     }
                     Some(Algebra::Ord(op)) => {
-                        if let Some(lit_f) = literal.as_f64() {
+                        if let Some(lit_f) = f64_exact_literal(literal) {
                             return Some(FastPredicate::NumericCmp {
                                 var_path,
                                 literal_f: lit_f,
@@ -622,7 +641,8 @@ fn number(value: Option<&DataValue<'_>>) -> Option<f64> {
 
 /// `av === literal` as [`compare_equals`] answers it, or `None` (the
 /// general path decides) when that tries the pair as datetimes first.
-/// Numbers compare as `f64`, as strict equality compares them.
+/// Numbers compare with `NumberValue`'s equality, as strict equality
+/// compares them.
 ///
 /// [`compare_equals`]: crate::operators::comparison::compare_equals
 #[inline(always)]
@@ -631,10 +651,7 @@ fn strict_eq_literal(av: &DataValue<'_>, literal: &datavalue::OwnedDataValue) ->
     if datetime_probe(ProbeSide::of(av), ProbeSide::of_owned(literal)) {
         return None;
     }
-    Some(match (av, literal) {
-        (DataValue::Number(a), datavalue::OwnedDataValue::Number(b)) => a.as_f64() == b.as_f64(),
-        _ => value_equals_serde(av, literal),
-    })
+    Some(value_equals_serde(av, literal))
 }
 
 /// Two strings' equality, strict or loose (the same for two strings), or

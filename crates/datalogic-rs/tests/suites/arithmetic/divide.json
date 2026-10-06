@@ -189,5 +189,42 @@
         "rule": { "/": [8, 2, 0] },
         "error": { "type": "NaN" },
         "data": null
-    }
+    },
+  "# Integers above 2^53 divide exactly",
+  {
+    "description": "(2^53+1) / 1",
+    "rule": {"/": [{"var": "a"}, 1]},
+    "data": {"a": 9007199254740993},
+    "result": 9007199254740993
+  },
+  {
+    "description": "(2^53+2) / 2",
+    "rule": {"/": [{"var": "a"}, 2]},
+    "data": {"a": 9007199254740994},
+    "result": 4503599627370497
+  },
+  {
+    "description": "A numeric string above 2^53 divides exactly",
+    "rule": {"/": [{"var": "a"}, 1]},
+    "data": {"a": "9007199254740993"},
+    "result": 9007199254740993
+  },
+  {
+    "description": "Variadic / above 2^53",
+    "rule": {"/": [{"var": "a"}, 1, 1]},
+    "data": {"a": 9007199254740993},
+    "result": 9007199254740993
+  },
+  {
+    "description": "Array-fold / above 2^53",
+    "rule": {"/": {"var": "xs"}},
+    "data": {"xs": [9007199254740993, 1]},
+    "result": 9007199254740993
+  },
+  {
+    "description": "Non-integral quotient is still a float",
+    "rule": {"/": [{"var": "a"}, 2]},
+    "data": {"a": 7},
+    "result": 3.5
+  }
 ]

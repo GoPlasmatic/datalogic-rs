@@ -280,5 +280,24 @@
     "rule": { "map": [{ "sort": [{"val": "array"}] }, { "*": [{"val": []}, 2] }] },
     "data": { "array": [3, 1, 4, 2, 5] },
     "result": [2, 4, 6, 8, 10]
+  },
+  "# Integers above 2^53 sort exactly",
+  {
+    "description": "Neighbours above 2^53 sort by value",
+    "rule": {"sort": [{"var": "xs"}]},
+    "data": {"xs": [9007199254740993, 9007199254740992, 1]},
+    "result": [1, 9007199254740992, 9007199254740993]
+  },
+  {
+    "description": "Neighbours above 2^53 sort by value, by field",
+    "rule": {"sort": [{"var": "rows"}, true, {"var": "k"}]},
+    "data": {"rows": [{"k": 9007199254740993}, {"k": 9007199254740992}]},
+    "result": [{"k": 9007199254740992}, {"k": 9007199254740993}]
+  },
+  {
+    "description": "Integers and floats sort by value together",
+    "rule": {"sort": [{"var": "xs"}, false]},
+    "data": {"xs": [9007199254740993, 1.5, 9007199254740992, 2]},
+    "result": [9007199254740993, 9007199254740992, 2, 1.5]
   }
 ]

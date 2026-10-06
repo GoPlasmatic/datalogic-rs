@@ -208,5 +208,30 @@
         "rule": { "==": [1, {}] },
         "data": {},
         "error": { "type": "NaN" }
-    }
+    },
+  "# Integers above 2^53 compare exactly",
+  {
+    "description": "2^53+1 == 2^53 is false",
+    "rule": {"==": [{"var": "a"}, {"var": "b"}]},
+    "data": {"a": 9007199254740993, "b": 9007199254740992},
+    "result": false
+  },
+  {
+    "description": "2^53+1 == \"9007199254740992\" is false",
+    "rule": {"==": [{"var": "a"}, "9007199254740992"]},
+    "data": {"a": 9007199254740993},
+    "result": false
+  },
+  {
+    "description": "2^53+1 == \"9007199254740993\" is true",
+    "rule": {"==": [{"var": "a"}, "9007199254740993"]},
+    "data": {"a": 9007199254740993},
+    "result": true
+  },
+  {
+    "description": "some by == against a literal above 2^53 (general path)",
+    "rule": {"some": [{"var": "xs"}, {"==": [{"var": ""}, 9007199254740992]}]},
+    "data": {"xs": [9007199254740993]},
+    "result": false
+  }
 ]

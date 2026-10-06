@@ -1,7 +1,7 @@
 //! `/` and `%`: division and modulo. Both rows bind the unified
 //! [`div_or_mod`] entry point with their [`DivOp`].
 
-use crate::arena::{ContextStack, DataValue, coerce_to_number_cfg};
+use crate::arena::{ContextStack, DataValue, coerce_to_number_cfg, try_coerce_to_integer_cfg};
 use crate::config::DivisionByZeroHandling;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
@@ -19,12 +19,11 @@ impl DivOp {
         }
     }
 
+    /// One step of a fold, the divisor known to be non-zero.
     #[inline]
-    fn apply_f64(self, a: f64, b: f64) -> f64 {
-        match self {
-            DivOp::Divide => a / b,
-            DivOp::Modulo => a % b,
-        }
+    fn step(self, acc: NumberValue, divisor: NumberValue) -> NumberValue {
+        self.apply_number(&acc, &divisor)
+            .unwrap_or_else(|| NumberValue::from_f64(f64::NAN))
     }
 
     #[inline]
@@ -74,10 +73,8 @@ fn div_mod_two_arg<'a>(
         return r;
     }
 
-    let af = coerce_to_number_cfg(a_av, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
-    let bf = coerce_to_number_cfg(b_av, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
-    let na = NumberValue::from_f64(af);
-    let nb = NumberValue::from_f64(bf);
+    let na = operand(a_av, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
+    let nb = operand(b_av, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
     if nb.is_zero() {
         // Integer/integer with divisor=0 errors regardless of the
         // `division_by_zero` config (config only governs the float path).
@@ -90,6 +87,21 @@ fn div_mod_two_arg<'a>(
         Some(r) => Ok(alloc_number(arena, r)),
         None => Err(crate::Error::nan_at(ctx)),
     }
+}
+
+/// An operand of `/` or `%`: exact as an integer when it is one (a native
+/// integer, or one the config-aware integer coercion reads, such as a
+/// numeric string), so integers above 2^53 divide exactly; otherwise its
+/// config-aware `f64` coercion.
+#[inline]
+fn operand(av: &DataValue<'_>, engine: &Engine) -> Option<NumberValue> {
+    if let Some(i) = av
+        .as_i64()
+        .or_else(|| try_coerce_to_integer_cfg(av, engine))
+    {
+        return Some(NumberValue::from_i64(i));
+    }
+    coerce_to_number_cfg(av, engine).map(NumberValue::from_f64)
 }
 
 #[inline]
@@ -143,18 +155,17 @@ fn one_arg_div_mod<'a>(
         if items.is_empty() || (op.is_modulo() && items.len() < 2) {
             return Err(crate::Error::invalid_args());
         }
-        let mut result =
-            coerce_to_number_cfg(&items[0], engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
+        let mut result = operand(&items[0], engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
         for (i, elem) in items[1..].iter().enumerate() {
-            let n = coerce_to_number_cfg(elem, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
-            if n == 0.0 {
+            let n = operand(elem, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
+            if n.is_zero() {
                 // First step: the accumulator is still the untouched `items[0]`.
                 let dividend_av = if i == 0 { Some(&items[0]) } else { None };
-                return fold_divbyzero(ctx, arena, result, dividend_av, elem, engine);
+                return fold_divbyzero(ctx, arena, result.as_f64(), dividend_av, elem, engine);
             }
-            result = op.apply_f64(result, n);
+            result = op.step(result, n);
         }
-        return Ok(alloc_number(arena, NumberValue::from_f64(result)));
+        return Ok(alloc_number(arena, result));
     }
 
     // Non-array single value.
@@ -191,19 +202,18 @@ fn variadic_div_mod<'a>(
     op: DivOp,
 ) -> Result<&'a DataValue<'a>> {
     let first_av = engine.dispatch_node(&args[0], ctx, arena)?;
-    let mut result =
-        coerce_to_number_cfg(first_av, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
+    let mut result = operand(first_av, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
     for (i, arg) in args.iter().skip(1).enumerate() {
         let av = engine.dispatch_node(arg, ctx, arena)?;
-        let n = coerce_to_number_cfg(av, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
-        if n == 0.0 {
+        let n = operand(av, engine).ok_or_else(|| crate::Error::nan_at(ctx))?;
+        if n.is_zero() {
             // First step: the accumulator is still the untouched `first_av`.
             let dividend_av = if i == 0 { Some(first_av) } else { None };
-            return fold_divbyzero(ctx, arena, result, dividend_av, av, engine);
+            return fold_divbyzero(ctx, arena, result.as_f64(), dividend_av, av, engine);
         }
-        result = op.apply_f64(result, n);
+        result = op.step(result, n);
     }
-    Ok(alloc_number(arena, NumberValue::from_f64(result)))
+    Ok(alloc_number(arena, result))
 }
 
 /// Zero-divisor policy for the array-fold and variadic paths. Mirrors the

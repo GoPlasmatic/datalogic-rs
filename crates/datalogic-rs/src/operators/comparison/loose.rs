@@ -45,23 +45,29 @@ fn loose_equals_core(left: &DataValue<'_>, right: &DataValue<'_>) -> LooseEquals
                 NotEqual
             }
         }
+        // `NumberValue`'s equality: two integers exactly, as `===`
+        // compares them.
         (DataValue::Number(a), DataValue::Number(b)) => {
-            let a_f = a.as_f64();
-            let b_f = b.as_f64();
-            if !a_f.is_nan() && !b_f.is_nan() && a_f == b_f {
+            if a == b {
                 Equal
             } else {
                 NotEqual
             }
         }
 
-        // Number-String coercion
+        // Number-String coercion. An integer against an integer string
+        // compares exactly, as two numbers do.
         (DataValue::Number(n), DataValue::String(s))
-        | (DataValue::String(s), DataValue::Number(n)) => match s.parse::<f64>().ok() {
-            Some(s_f) if n.as_f64() == s_f => Equal,
-            Some(_) => NotEqual,
-            None => Incompatible,
-        },
+        | (DataValue::String(s), DataValue::Number(n)) => {
+            if let (Some(i), Ok(si)) = (n.as_i64(), s.parse::<i64>()) {
+                return if i == si { Equal } else { NotEqual };
+            }
+            match s.parse::<f64>().ok() {
+                Some(s_f) if n.as_f64() == s_f => Equal,
+                Some(_) => NotEqual,
+                None => Incompatible,
+            }
+        }
 
         // Number-Bool coercion
         (DataValue::Number(n), DataValue::Bool(b)) | (DataValue::Bool(b), DataValue::Number(n)) => {

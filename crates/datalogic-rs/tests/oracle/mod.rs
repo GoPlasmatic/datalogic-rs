@@ -388,10 +388,22 @@ fn compare_values(a: &V, b: &V) -> Ordering {
     match (a, b) {
         (V::Null, V::Null) => Ordering::Equal,
         (V::Bool(x), V::Bool(y)) => x.cmp(y),
-        (V::Number(x), V::Number(y)) => x
-            .as_f64()
-            .partial_cmp(&y.as_f64())
-            .unwrap_or(Ordering::Equal),
+        // By exact value: whole numbers as integers (an `f64` comparison
+        // calls neighbours above 2^53 equal), anything else as `f64`.
+        (V::Number(x), V::Number(y)) => {
+            let whole = |n: &NumberValue| match *n {
+                NumberValue::Integer(i) => Some(i128::from(i)),
+                NumberValue::Float(f) if f.fract() == 0.0 && f.abs() < 1e38 => Some(f as i128),
+                NumberValue::Float(_) => None,
+            };
+            match (whole(x), whole(y)) {
+                (Some(a), Some(b)) => a.cmp(&b),
+                _ => x
+                    .as_f64()
+                    .partial_cmp(&y.as_f64())
+                    .unwrap_or(Ordering::Equal),
+            }
+        }
         (V::String(x), V::String(y)) => x.cmp(y),
         (V::Array(_), V::Array(_)) | (V::Object(_), V::Object(_)) => Ordering::Equal,
         (V::Tensor(x), V::Tensor(y)) => {
@@ -1507,16 +1519,10 @@ impl Inner {
         };
         let mut order: Vec<usize> = (0..items.len()).collect();
         // Stable, so equal keys keep their input order either way round.
+        // Numbers compare by exact value (zeros of either sign tie), which
+        // is also what the engine's all-numbers fast path computes.
         order.sort_by(|&a, &b| {
-            let cmp = if args.len() <= 2 && keys.iter().all(|k| matches!(k, V::Number(_))) {
-                let f = |v: &V| {
-                    let f = v.as_f64().expect("number");
-                    if f == 0.0 { 0.0 } else { f }
-                };
-                f(&keys[a]).total_cmp(&f(&keys[b]))
-            } else {
-                compare_values(&keys[a], &keys[b])
-            };
+            let cmp = compare_values(&keys[a], &keys[b]);
             if ascending { cmp } else { cmp.reverse() }
         });
         Ok(V::Array(

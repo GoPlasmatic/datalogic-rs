@@ -187,5 +187,24 @@
         "rule": { "%": [8, -3] },
         "result": 2,
         "data": null
-    }
+    },
+  "# Integers above 2^53 take the remainder exactly",
+  {
+    "description": "(2^53+1) % 2",
+    "rule": {"%": [{"var": "a"}, 2]},
+    "data": {"a": 9007199254740993},
+    "result": 1
+  },
+  {
+    "description": "Variadic % above 2^53",
+    "rule": {"%": [{"var": "a"}, 10, 7]},
+    "data": {"a": 9007199254740993},
+    "result": 3
+  },
+  {
+    "description": "Array-fold % above 2^53",
+    "rule": {"%": {"var": "xs"}},
+    "data": {"xs": [9007199254740993, 2]},
+    "result": 1
+  }
 ]

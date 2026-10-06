@@ -197,8 +197,10 @@ fn iso_byte_compare_eligible(l: &str, r: &str) -> bool {
 // falls through to `DataValue`'s `PartialEq` in the datavalue crate.
 
 /// Arena-native equality. Loose mode goes through [`loose::loose_equals`];
-/// strict mode is a direct [`PartialEq`] with one carve-out: numeric
-/// variants compare as `f64` so `Integer(1) === Float(1.0)` is `true`.
+/// strict mode is a direct [`PartialEq`]. Numbers compare with
+/// `NumberValue`'s equality: two integers exactly, an integer and a float
+/// as `f64` (so `Integer(1) === Float(1.0)` is `true`), the same answer
+/// a number nested in an array gets.
 ///
 /// Charges, before comparing, the work a comparison of two containers
 /// does (see [`structural_cost`]) and, with `datetime`, one per pair of an
@@ -252,11 +254,11 @@ pub(crate) fn compare_equals(
         return loose_equals(left, right, engine);
     }
 
-    // Strict: direct equality. Number variants compare as f64 so
-    // `Integer(1) === Float(1.0)` is `true` (matches the legacy primitive
-    // fast path; differs from the variant-aware `PartialEq` on `NumberValue`).
+    // Strict: direct equality. Two integers compare exactly (above 2^53
+    // an `f64` comparison would call neighbours equal); an integer and a
+    // float compare as `f64`, so `Integer(1) === Float(1.0)` is `true`.
     if let (DataValue::Number(a), DataValue::Number(b)) = (left, right) {
-        return Ok(a.as_f64() == b.as_f64());
+        return Ok(a == b);
     }
     if let (DataValue::Array(_), DataValue::Array(_))
     | (DataValue::Object(_), DataValue::Object(_)) = (left, right)
@@ -408,12 +410,11 @@ fn compare_ordered(
     op: OrdOp,
     engine: &Engine,
 ) -> Result<bool> {
-    // Number vs Number — most common case. Bind the `NumberValue`s and use
-    // the infallible `NumberValue::as_f64` (every variant converts losslessly
-    // to f64), matching `compare_equals` and avoiding the `Option` + `.expect()`
-    // panic-path codegen of the `DataValue::as_f64` round-trip.
+    // Number vs Number — most common case. `NumberValue`'s order: two
+    // integers exactly (an `f64` comparison is wrong above 2^53), an
+    // integer and a float as `f64`, matching `compare_equals`.
     if let (DataValue::Number(a), DataValue::Number(b)) = (left, right) {
-        return Ok(op.cmp_f64(a.as_f64(), b.as_f64()));
+        return Ok(op.holds(a, b));
     }
 
     // String vs String (non-datetime fast path). Datetime-shaped operands

@@ -184,5 +184,36 @@
         "rule": { "===": [0, false] },
         "data": {},
         "result": false
-    }
+    },
+  "# Integers above 2^53 compare exactly",
+  {
+    "description": "2^53+1 === 2^53 is false",
+    "rule": {"===": [{"var": "a"}, {"var": "b"}]},
+    "data": {"a": 9007199254740993, "b": 9007199254740992},
+    "result": false
+  },
+  {
+    "description": "2^53+1 === 2^53 is false nested too",
+    "rule": {"===": [[{"var": "a"}], [{"var": "b"}]]},
+    "data": {"a": 9007199254740993, "b": 9007199254740992},
+    "result": false
+  },
+  {
+    "description": "An integer still equals the same whole float",
+    "rule": {"===": [{"var": "a"}, 1.0]},
+    "data": {"a": 1},
+    "result": true
+  },
+  {
+    "description": "filter by === above 2^53 (field fast path)",
+    "rule": {"filter": [{"var": "rows"}, {"===": [{"var": "id"}, 9007199254740993]}]},
+    "data": {"rows": [{"id": 9007199254740992}, {"id": 9007199254740993}]},
+    "result": [{"id": 9007199254740993}]
+  },
+  {
+    "description": "some by === above 2^53 (predicate fast path)",
+    "rule": {"some": [{"var": "xs"}, {"===": [{"var": ""}, 9007199254740993]}]},
+    "data": {"xs": [9007199254740992]},
+    "result": false
+  }
 ]

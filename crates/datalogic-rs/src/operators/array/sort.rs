@@ -5,6 +5,7 @@ use std::cmp::Ordering;
 use crate::arena::{ContextStack, DataValue, IterGuard, bvec};
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
+use datavalue::NumberValue;
 
 use super::input::{IterArgKind, IterSrc, ResolvedInput, plain_var_segments, resolve_iter_input};
 
@@ -104,8 +105,14 @@ fn sort_no_extractor<'a>(src: &IterSrc<'a>, ascending: bool, arena: &'a Bump) ->
     // All-numeric fast path: sort scalar `(key, index)` pairs instead of
     // driving `compare_values` through an index indirection per comparison.
     // The index tiebreaker reproduces the stable sort's equal-key order, so
-    // the output is identical to the general path's.
-    if src.0.iter().all(|v| matches!(v, DataValue::Number(_))) {
+    // the output is identical to the general path's. An `f64` key orders
+    // exactly only while every integer fits in one, so an integer beyond
+    // 2^53 takes the general path's exact comparison.
+    if src
+        .0
+        .iter()
+        .all(|v| matches!(v, DataValue::Number(n) if f64_keyed(n)))
+    {
         let mut keyed = bvec::<(f64, u32)>(arena, len);
         keyed.extend(src.0.iter().enumerate().map(|(i, v)| {
             let f = match v {
@@ -230,17 +237,7 @@ fn compare_values(a: &DataValue<'_>, b: &DataValue<'_>) -> Ordering {
     match (a, b) {
         (DataValue::Null, DataValue::Null) => Ordering::Equal,
         (DataValue::Bool(a), DataValue::Bool(b)) => a.cmp(b),
-        (DataValue::Number(a), DataValue::Number(b)) => {
-            let a_f = a.as_f64();
-            let b_f = b.as_f64();
-            if a_f < b_f {
-                Ordering::Less
-            } else if a_f > b_f {
-                Ordering::Greater
-            } else {
-                Ordering::Equal
-            }
-        }
+        (DataValue::Number(a), DataValue::Number(b)) => cmp_numbers(a, b),
         (DataValue::String(a), DataValue::String(b)) => a.cmp(b),
         (DataValue::Array(_), DataValue::Array(_)) => Ordering::Equal,
         (DataValue::Object(_), DataValue::Object(_)) => Ordering::Equal,
@@ -254,6 +251,56 @@ fn compare_values(a: &DataValue<'_>, b: &DataValue<'_>) -> Ordering {
             (x.dtype().name(), x.shape(), x.data()).cmp(&(y.dtype().name(), y.shape(), y.data()))
         }
         _ => type_rank(a).cmp(&type_rank(b)),
+    }
+}
+
+/// Whether `n` converts to `f64` without rounding, so an `f64` sort key
+/// orders it exactly: every float, and an integer within 2^53.
+#[inline(always)]
+fn f64_keyed(n: &NumberValue) -> bool {
+    const EXACT: i64 = 1 << 53;
+    match n {
+        NumberValue::Integer(i) => (-EXACT..=EXACT).contains(i),
+        NumberValue::Float(_) => true,
+    }
+}
+
+/// The numeric order `sort` uses: by value, exactly. Two integers compare
+/// as integers (an `f64` comparison calls neighbours above 2^53 equal),
+/// and an integer and a float by their exact values, so the order stays
+/// total (a mix of exact and `f64` comparisons would not be, and a sort
+/// needs a total order).
+#[inline]
+fn cmp_numbers(a: &NumberValue, b: &NumberValue) -> Ordering {
+    match (*a, *b) {
+        (NumberValue::Integer(x), NumberValue::Integer(y)) => x.cmp(&y),
+        (NumberValue::Float(x), NumberValue::Float(y)) => cmp_floats(x, y),
+        (NumberValue::Integer(x), NumberValue::Float(y)) => cmp_int_float(x, y),
+        (NumberValue::Float(x), NumberValue::Integer(y)) => cmp_int_float(y, x).reverse(),
+    }
+}
+
+/// Two floats; incomparable ones (NaN, which JSON cannot carry) tie.
+#[inline]
+fn cmp_floats(x: f64, y: f64) -> Ordering {
+    x.partial_cmp(&y).unwrap_or(Ordering::Equal)
+}
+
+/// An integer against a float, exactly. `i as f64` rounds to the nearest
+/// float, which keeps its order against any float, so only a tie needs a
+/// second look: then `f` is a whole number, compared as an integer (or it
+/// is 2^63, above every `i64`).
+#[inline]
+fn cmp_int_float(i: i64, f: f64) -> Ordering {
+    match cmp_floats(i as f64, f) {
+        Ordering::Equal if f.is_finite() => {
+            if f >= 9_223_372_036_854_775_808.0 {
+                Ordering::Less
+            } else {
+                i.cmp(&(f as i64))
+            }
+        }
+        other => other,
     }
 }
 

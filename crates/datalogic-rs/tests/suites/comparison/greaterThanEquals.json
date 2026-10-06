@@ -166,5 +166,12 @@
         "rule": { ">=": [1, {}] },
         "data": {},
         "error": { "type": "NaN" }
-    }
+    },
+  "# Integers above 2^53 compare exactly",
+  {
+    "description": "2^53 >= 2^53+1 is false",
+    "rule": {">=": [{"var": "b"}, {"var": "a"}]},
+    "data": {"a": 9007199254740993, "b": 9007199254740992},
+    "result": false
+  }
 ]

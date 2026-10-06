@@ -268,5 +268,24 @@
         "rule": { "<": [1, {}] },
         "data": {},
         "error": { "type": "NaN" }
-    }
+    },
+  "# Integers above 2^53 compare exactly",
+  {
+    "description": "2^53 < 2^53+1",
+    "rule": {"<": [{"var": "b"}, {"var": "a"}]},
+    "data": {"a": 9007199254740993, "b": 9007199254740992},
+    "result": true
+  },
+  {
+    "description": "filter by < against a literal above 2^53",
+    "rule": {"filter": [{"var": "xs"}, {"<": [{"var": ""}, 9007199254740993]}]},
+    "data": {"xs": [9007199254740992, 9007199254740993]},
+    "result": [9007199254740992]
+  },
+  {
+    "description": "filter by < against a small literal keeps large items exact",
+    "rule": {"filter": [{"var": "xs"}, {"<": [5, {"var": ""}]}]},
+    "data": {"xs": [9007199254740993, 3]},
+    "result": [9007199254740993]
+  }
 ]
