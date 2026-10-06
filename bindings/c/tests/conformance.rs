@@ -24,8 +24,12 @@
 //!   *object* into status + tag + message, so unlike the core runner we
 //!   assert "an error surfaced", not its exact shape.)
 //!
-//! The `flagd/` suites run unconditionally: `datalogic-c`'s Cargo.toml
-//! hard-enables the `flagd` feature on the core crate.
+//! Cases that set `templating` or `template_key_escape` run on an engine
+//! built with those settings through the builder. The `flagd/` suites run
+//! unconditionally: `datalogic-c`'s Cargo.toml enables `all-operators`,
+//! which includes the `flagd` family.
+
+use std::collections::BTreeMap;
 
 use datalogic_c::*;
 use serde_json::{Value, json};
@@ -146,6 +150,47 @@ unsafe fn eval_session_data(
     outcome
 }
 
+/// A case's engine settings: templating, and the template-key escape.
+type Flavour = (bool, Option<char>);
+
+/// One engine (and one session on it) per flavour, built on first use.
+#[derive(Default)]
+struct Engines(BTreeMap<Flavour, (*mut Engine, *mut Session)>);
+
+impl Engines {
+    fn get(&mut self, flavour: Flavour) -> (*mut Engine, *mut Session) {
+        *self.0.entry(flavour).or_insert_with(|| unsafe {
+            let builder = datalogic_engine_builder_new();
+            datalogic_engine_builder_set_templating(builder, i32::from(flavour.0));
+            if let Some(c) = flavour.1 {
+                let status = datalogic_engine_builder_set_template_key_escape(
+                    builder,
+                    c as u32,
+                    std::ptr::null_mut(),
+                );
+                assert_eq!(status, Status::Ok);
+            }
+            let engine = datalogic_engine_builder_build(builder);
+            datalogic_engine_builder_free(builder);
+            assert!(!engine.is_null());
+            let session = datalogic_engine_session(engine);
+            assert!(!session.is_null());
+            (engine, session)
+        })
+    }
+}
+
+impl Drop for Engines {
+    fn drop(&mut self) {
+        for (engine, session) in self.0.values() {
+            unsafe {
+                datalogic_session_free(*session);
+                datalogic_engine_free(*engine);
+            }
+        }
+    }
+}
+
 struct SuiteOutcome {
     passed: usize,
     failed: usize,
@@ -159,14 +204,9 @@ fn conformance_suites_pass_through_c_abi() {
     let index: Vec<String> =
         serde_json::from_str(&index_contents).expect("index.json is a JSON array of file names");
 
-    // Engines are stateless across evaluations — share one per
-    // templating mode; sessions are single-threaded but so is this test.
-    let engine_plain = datalogic_engine_new(0);
-    let engine_templating = datalogic_engine_new(1);
-    assert!(!engine_plain.is_null() && !engine_templating.is_null());
-    let session_plain = unsafe { datalogic_engine_session(engine_plain) };
-    let session_templating = unsafe { datalogic_engine_session(engine_templating) };
-    assert!(!session_plain.is_null() && !session_templating.is_null());
+    // Engines are stateless across evaluations — share one per flavour;
+    // sessions are single-threaded but so is this test.
+    let mut engines = Engines::default();
 
     let mut total_passed = 0usize;
     let mut total_failed = 0usize;
@@ -181,13 +221,7 @@ fn conformance_suites_pass_through_c_abi() {
             continue;
         }
 
-        let outcome = run_suite(
-            suite_file,
-            &path,
-            (engine_plain, session_plain),
-            (engine_templating, session_templating),
-            &mut failures,
-        );
+        let outcome = run_suite(suite_file, &path, &mut engines, &mut failures);
         println!(
             "{suite_file}: {} passed, {} failed",
             outcome.passed, outcome.failed
@@ -196,10 +230,7 @@ fn conformance_suites_pass_through_c_abi() {
         total_failed += outcome.failed;
     }
 
-    unsafe { datalogic_session_free(session_plain) };
-    unsafe { datalogic_session_free(session_templating) };
-    unsafe { datalogic_engine_free(engine_plain) };
-    unsafe { datalogic_engine_free(engine_templating) };
+    drop(engines);
 
     println!("\nTOTAL (via C ABI v2, both paths): {total_passed} passed, {total_failed} failed");
     assert!(
@@ -213,8 +244,7 @@ fn conformance_suites_pass_through_c_abi() {
 fn run_suite(
     suite_file: &str,
     path: &str,
-    plain: (*mut Engine, *mut Session),
-    templating: (*mut Engine, *mut Session),
+    engines: &mut Engines,
     failures: &mut Vec<String>,
 ) -> SuiteOutcome {
     let contents =
@@ -254,27 +284,21 @@ fn run_suite(
             .get("rule")
             .unwrap_or_else(|| panic!("{suite_file}[{index}] missing 'rule'"));
         let data = obj.get("data").cloned().unwrap_or(json!({}));
-        // Cases that ask for a template-key escape need an engine option the
-        // C ABI does not expose (`with_template_key_escape`), so there is no
-        // engine here that could satisfy them. Skip rather than fail: the
-        // escape is core-engine semantics, covered by the core suite, the
-        // core integration tests and the WASM/Node binding tests. Delete
-        // this skip once the C ABI grows a setter -- Go, JVM, .NET and PHP
-        // inherit it and would then be covered too.
-        if obj.contains_key("template_key_escape") {
-            continue;
-        }
         let use_templating = obj
             .get("templating")
             .and_then(Value::as_bool)
             .unwrap_or(false);
+        let escape = obj
+            .get("template_key_escape")
+            .and_then(Value::as_str)
+            .and_then(|s| s.chars().next());
         let expects_error = obj.contains_key("error");
         let expected_result = obj.get("result");
         if !expects_error && expected_result.is_none() {
             panic!("{suite_file}[{index}] missing 'result' or 'error'");
         }
 
-        let (engine, session) = if use_templating { templating } else { plain };
+        let (engine, session) = engines.get((use_templating, escape));
         let rule_str = rule.to_string();
         let data_str = data.to_string();
 
