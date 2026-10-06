@@ -317,7 +317,9 @@ pub(crate) fn datetime_probe(left: ProbeSide<'_>, right: ProbeSide<'_>) -> bool 
     {
         match (left, right) {
             (ProbeSide::Scalar, _) | (_, ProbeSide::Scalar) => false,
-            (ProbeSide::Str(s), _) | (_, ProbeSide::Str(s)) if !could_be_datetime_or_duration(s) => {
+            (ProbeSide::Str(s), _) | (_, ProbeSide::Str(s))
+                if !could_be_datetime_or_duration(s) =>
+            {
                 false
             }
             _ => true,

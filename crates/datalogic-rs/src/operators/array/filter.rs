@@ -76,13 +76,8 @@ fn filter_strict_eq_field_fast_path<'a>(
         // compares, so numbers compare as `f64` and datetime strings as
         // instants, whatever path the filter takes.
         let av = field.resolve(item).unwrap_or(&DataValue::Null);
-        let matches = crate::operators::comparison::compare_equals(
-            av,
-            invariant_val,
-            true,
-            engine,
-            ctx,
-        )?;
+        let matches =
+            crate::operators::comparison::compare_equals(av, invariant_val, true, engine, ctx)?;
         if matches == is_eq {
             results.push(*item);
         }
