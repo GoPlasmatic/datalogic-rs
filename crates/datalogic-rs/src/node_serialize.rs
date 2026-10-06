@@ -7,10 +7,84 @@
 //! since the original operator is gone by then. Re-parsing the output
 //! through [`crate::Engine::compile`] yields a [`crate::Logic`] that
 //! evaluates identically.
+//!
+//! Every string that lands in the output — paths, operator names, template
+//! keys, `throw` types — goes through [`push_json_str`], so text holding
+//! quotes, backslashes or control characters stays valid JSON.
 
 use crate::CompiledNode;
 use crate::OpCode;
 use crate::node::PathSegment;
+
+/// Append `s` to `out` as a quoted JSON string literal.
+///
+/// The escapes match datavalue's emitter: `\"`, `\\`, `\n`, `\r`, `\t`,
+/// `\b`, `\f`, `\u00XX` for the other control characters, everything else
+/// verbatim. A string therefore renders the same here as it does inside a
+/// literal value.
+pub(crate) fn push_json_str(out: &mut String, s: &str) {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    out.reserve(s.len() + 2);
+    out.push('"');
+    let mut run = 0;
+    for (i, b) in s.bytes().enumerate() {
+        let escape = match b {
+            b'"' => "\\\"",
+            b'\\' => "\\\\",
+            b'\n' => "\\n",
+            b'\r' => "\\r",
+            b'\t' => "\\t",
+            0x08 => "\\b",
+            0x0C => "\\f",
+            0x00..=0x1F => "",
+            _ => continue,
+        };
+        // Every byte matched above is ASCII, so `i` is a char boundary.
+        out.push_str(&s[run..i]);
+        if escape.is_empty() {
+            out.push_str("\\u00");
+            out.push(HEX[(b >> 4) as usize] as char);
+            out.push(HEX[(b & 0x0F) as usize] as char);
+        } else {
+            out.push_str(escape);
+        }
+        run = i + 1;
+    }
+    out.push_str(&s[run..]);
+    out.push('"');
+}
+
+/// `s` as a quoted JSON string literal; see [`push_json_str`].
+pub(crate) fn json_str(s: &str) -> String {
+    let mut out = String::new();
+    push_json_str(&mut out, s);
+    out
+}
+
+/// The text of a path segment.
+#[inline]
+fn segment_str(seg: &PathSegment) -> &str {
+    match seg {
+        PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => s,
+    }
+}
+
+/// `segments` as a JSON array of strings.
+fn segments_array(segments: &[PathSegment]) -> String {
+    let items: Vec<String> = segments.iter().map(|s| json_str(segment_str(s))).collect();
+    format!("[{}]", items.join(", "))
+}
+
+/// `{"<name>": <args>}`, with the name escaped.
+fn call(name: &str, args: &str) -> String {
+    let mut out = String::with_capacity(name.len() + args.len() + 6);
+    out.push('{');
+    push_json_str(&mut out, name);
+    out.push_str(": ");
+    out.push_str(args);
+    out.push('}');
+    out
+}
 
 /// Serialise an entire compiled tree as a JSONLogic string.
 pub(crate) fn node_to_json_string(node: &CompiledNode) -> String {
@@ -41,16 +115,16 @@ pub(crate) fn node_to_json_string(node: &CompiledNode) -> String {
                 && let Some((_, datavalue::OwnedDataValue::String(s))) =
                     pairs.iter().find(|(k, _)| k == "type")
             {
-                return format!("{{\"throw\": \"{}\"}}", s);
+                return call("throw", &json_str(s));
             }
-            format!("{{\"throw\": {}}}", data.error.to_json_string())
+            call("throw", &data.error.to_json_string())
         }
         CompiledNode::Missing(data) => {
             let parts: Vec<String> = data
                 .args
                 .iter()
                 .map(|a| match a {
-                    crate::node::CompiledMissingArg::Now((path, _)) => format!("\"{}\"", path),
+                    crate::node::CompiledMissingArg::Now((path, _)) => json_str(path),
                     crate::node::CompiledMissingArg::Later(n) => node_to_json_string(n),
                 })
                 .collect();
@@ -63,8 +137,7 @@ pub(crate) fn node_to_json_string(node: &CompiledNode) -> String {
             };
             let paths_str = match &data.paths {
                 crate::node::CompiledMissingPaths::Now(paths) => {
-                    let items: Vec<String> =
-                        paths.iter().map(|(p, _)| format!("\"{}\"", p)).collect();
+                    let items: Vec<String> = paths.iter().map(|(p, _)| json_str(p)).collect();
                     format!("[{}]", items.join(", "))
                 }
                 crate::node::CompiledMissingPaths::Later(n) => node_to_json_string(n),
@@ -80,9 +153,7 @@ pub(crate) fn node_to_json_string(node: &CompiledNode) -> String {
         // ordinary output field, turning an erroring rule into a
         // successful one, and outside it as an unknown operator, losing
         // which op actually failed.
-        CompiledNode::InvalidArgs { op_name, args, .. } => {
-            format!("{{\"{}\": {}}}", op_name, args.to_json_string())
-        }
+        CompiledNode::InvalidArgs { op_name, args, .. } => call(op_name, &args.to_json_string()),
     }
 }
 
@@ -107,71 +178,76 @@ pub(crate) fn builtin_to_json_string(opcode: &OpCode, args: &[CompiledNode]) -> 
     // `and` / `or` / `if` read only an argument array: a lone argument
     // written in place is an error, not that argument.
     let inline = opcode.meta().args_form != crate::operators::meta::ArgsForm::ArrayOnly;
-    format!(
-        "{{\"{}\": {}}}",
-        opcode.as_str(),
-        args_to_json_string(args, inline)
-    )
+    call(opcode.as_str(), &args_to_json_string(args, inline))
 }
 
 pub(crate) fn custom_to_json_string(name: &str, args: &[CompiledNode]) -> String {
-    format!("{{\"{}\": {}}}", name, args_to_json_string(args, true))
+    call(name, &args_to_json_string(args, true))
 }
 
 #[cfg(feature = "templating")]
 pub(crate) fn structured_to_json_string(fields: &[(String, CompiledNode)]) -> String {
     let items: Vec<String> = fields
         .iter()
-        .map(|(key, node)| format!("\"{}\": {}", key, node_to_json_string(node)))
+        .map(|(key, node)| format!("{}: {}", json_str(key), node_to_json_string(node)))
         .collect();
     format!("{{{}}}", items.join(", "))
 }
 
-pub(crate) fn compiled_var_to_json_string(
+/// Render a compiled `var` / `val` read.
+///
+/// `var` and `val` compile to the same node, so the name the rule used is
+/// gone. The read is written as a `var` path, its segments joined with
+/// `.`, whenever that reads back the same segments. A `val` key that holds
+/// a `.` does not: `{"val": "a.b"}` reads the key `a.b`, while
+/// `{"var": "a.b"}` reads `a` then `b`. Such a read is written in the `val`
+/// form, as a list of literal keys that is never split. A level marker
+/// (`scope_level > 0`) exists only in the `val` form.
+fn compiled_var_to_json_string(
     scope_level: u32,
     segments: &[PathSegment],
     default_value: Option<&CompiledNode>,
 ) -> String {
-    if scope_level == 0 {
-        let path: String = segments
-            .iter()
-            .map(|seg| match seg {
-                PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => s.to_string(),
-            })
-            .collect::<Vec<_>>()
-            .join(".");
-        match default_value {
-            Some(def) => format!("{{\"var\": [\"{}\", {}]}}", path, node_to_json_string(def)),
-            None => format!("{{\"var\": \"{}\"}}", path),
-        }
-    } else {
-        let mut parts = vec![format!("[{}]", scope_level)];
+    if scope_level > 0 {
+        let mut list = format!("[[{}]", scope_level);
         for seg in segments {
-            match seg {
-                PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => {
-                    parts.push(format!("\"{}\"", s))
-                }
-            }
+            list.push_str(", ");
+            push_json_str(&mut list, segment_str(seg));
         }
-        format!("{{\"val\": [{}]}}", parts.join(", "))
+        list.push(']');
+        return call("val", &list);
+    }
+    // A `var` path is split on `.`, and an empty one reads the whole
+    // context, so a dotted segment or a lone empty one needs the `val`
+    // form. Only `val` builds those, and `val` takes no default.
+    let needs_val = match segments {
+        [seg] => segment_str(seg).is_empty() || segment_str(seg).contains('.'),
+        _ => segments.iter().any(|s| segment_str(s).contains('.')),
+    };
+    if needs_val && default_value.is_none() {
+        return match segments {
+            [seg] => call("val", &json_str(segment_str(seg))),
+            _ => call("val", &segments_array(segments)),
+        };
+    }
+    let path = segments
+        .iter()
+        .map(segment_str)
+        .collect::<Vec<_>>()
+        .join(".");
+    match default_value {
+        Some(def) => call(
+            "var",
+            &format!("[{}, {}]", json_str(&path), node_to_json_string(def)),
+        ),
+        None => call("var", &json_str(&path)),
     }
 }
 
 #[cfg(feature = "ext-control")]
 pub(crate) fn compiled_exists_to_json_string(segments: &[PathSegment]) -> String {
-    if segments.len() == 1 {
-        match &segments[0] {
-            PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => {
-                format!("{{\"exists\": \"{}\"}}", s)
-            }
-        }
-    } else {
-        let parts: Vec<String> = segments
-            .iter()
-            .map(|seg| match seg {
-                PathSegment::Field(s) | PathSegment::FieldOrIndex(s, _) => format!("\"{}\"", s),
-            })
-            .collect();
-        format!("{{\"exists\": [{}]}}", parts.join(", "))
+    match segments {
+        [seg] => call("exists", &json_str(segment_str(seg))),
+        _ => call("exists", &segments_array(segments)),
     }
 }

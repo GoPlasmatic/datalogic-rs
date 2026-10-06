@@ -67,12 +67,9 @@ impl ExpressionNode {
                 expression: node_serialize::structured_to_json_string(&data.fields),
                 children: Self::op_children_from_fields(&data.fields),
             },
-            CompiledNode::Var {
-                scope_level,
-                segments,
-                default_value,
-                ..
-            } => Self::build_compiled_var(id, *scope_level, segments, default_value.as_deref()),
+            CompiledNode::Var { default_value, .. } => {
+                Self::build_compiled_var(id, node, default_value.as_deref())
+            }
             #[cfg(feature = "ext-control")]
             CompiledNode::Exists(data) => Self::leaf(
                 id,
@@ -134,8 +131,7 @@ impl ExpressionNode {
     /// slice.
     fn build_compiled_var(
         id: u32,
-        scope_level: u32,
-        segments: &[crate::node::PathSegment],
+        node: &CompiledNode,
         default_value: Option<&CompiledNode>,
     ) -> ExpressionNode {
         let mut children = Vec::new();
@@ -146,11 +142,7 @@ impl ExpressionNode {
         }
         ExpressionNode {
             id,
-            expression: node_serialize::compiled_var_to_json_string(
-                scope_level,
-                segments,
-                default_value,
-            ),
+            expression: node_serialize::node_to_json_string(node),
             children,
         }
     }
