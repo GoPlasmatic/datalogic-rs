@@ -4,73 +4,372 @@
 //! committed up to date). Three wrappers declare the same functions by
 //! hand: PHP's FFI header, the JVM's FFM downcall handles and .NET's
 //! P/Invoke imports. This test reads all four and fails when a wrapper
-//! declares a function the header does not have, when PHP's declaration
-//! takes a different number of parameters, or when the header gains a
-//! function a wrapper does not declare (except those listed as not
-//! wrapped, with the reason). The Go wrapper compiles against a copy of
-//! the header itself, so it cannot drift.
+//! declares a function the header does not have, when a wrapper's
+//! declaration differs from the header's in its parameter count or in the
+//! kind of any parameter or of the return value (pointer, `size_t`, 32-bit
+//! or 64-bit integer, double, `datalogic_buf` by value, nothing), or when
+//! the header gains a function a wrapper does not declare (except those
+//! listed in [`NOT_WRAPPED`], with the reason). The Go wrapper compiles
+//! against a copy of the header itself, so it cannot drift.
+//!
+//! A kind mismatch is the drift that compiles and then corrupts the stack
+//! at run time: a `size_t` declared as a 32-bit integer, a parameter
+//! dropped from an FFM descriptor.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 const ROOT: &str = env!("CARGO_MANIFEST_DIR");
 
-/// Functions a wrapper deliberately does not call.
-const NOT_WRAPPED: &[(&str, &str, &str)] = &[];
+/// Functions a wrapper deliberately does not call, so it need not declare
+/// them: `(wrapper, function, reason)`.
+const NOT_WRAPPED: &[(&str, &str, &str)] = &[
+    (
+        "jvm",
+        "datalogic_traced_session_evaluate",
+        "superseded by datalogic_traced_session_evaluate_mode, which mode 0 makes the same call",
+    ),
+    (
+        "dotnet",
+        "datalogic_traced_session_evaluate",
+        "superseded by datalogic_traced_session_evaluate_mode, which mode 0 makes the same call",
+    ),
+    (
+        "php",
+        "datalogic_traced_session_evaluate",
+        "superseded by datalogic_traced_session_evaluate_mode, which mode 0 makes the same call",
+    ),
+    (
+        "dotnet",
+        "datalogic_engine_compile",
+        "superseded by datalogic_engine_compile_mode, which mode 0 makes the same call",
+    ),
+    (
+        "jvm",
+        "datalogic_error_status",
+        "the failing call's own return value is the error's status",
+    ),
+    (
+        "php",
+        "datalogic_error_status",
+        "the failing call's own return value is the error's status",
+    ),
+];
 
-/// Every `datalogic_*` function the C text declares, with its parameter
-/// count. Reads declarations (a name followed by `(`, ending in `);`).
-fn declarations(text: &str) -> BTreeMap<String, usize> {
-    let text: String = text
-        .lines()
-        .filter(|l| !l.trim_start().starts_with('*') && !l.trim_start().starts_with("/*"))
+/// What crosses the boundary in one parameter or return slot, as far as
+/// the calling convention cares.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Kind {
+    /// Any pointer: a handle, a byte range, an out-param, a callback.
+    Ptr,
+    /// `size_t`.
+    Size,
+    /// A 32-bit integer or enum (`int32_t`, `uint32_t`, `datalogic_status`).
+    I32,
+    /// A 64-bit integer.
+    I64,
+    /// A double.
+    F64,
+    /// `datalogic_buf`, passed by value.
+    Buf,
+    /// No value (a `void` return).
+    Void,
+}
+
+/// A function's return kind and parameter kinds.
+#[derive(Clone, PartialEq, Eq, Debug)]
+struct Sig {
+    ret: Kind,
+    params: Vec<Kind>,
+}
+
+/// The kind of a C type as the header (or PHP's copy) spells it.
+fn c_kind(ty: &str) -> Kind {
+    let ty = ty.trim();
+    if ty.contains('*') {
+        return Kind::Ptr;
+    }
+    let base = ty.trim_start_matches("const ").trim();
+    match base {
+        "void" => Kind::Void,
+        "size_t" => Kind::Size,
+        "int32_t" | "uint32_t" | "datalogic_status" | "datalogic_mode" | "int" => Kind::I32,
+        "int64_t" | "uint64_t" => Kind::I64,
+        "double" => Kind::F64,
+        "datalogic_buf" => Kind::Buf,
+        // A function-pointer typedef.
+        "datalogic_op_fn" => Kind::Ptr,
+        other => panic!("unclassified C type `{other}`"),
+    }
+}
+
+/// The type part of one C parameter (`const uint8_t *rule_json` gives
+/// `const uint8_t *`).
+fn c_param_type(param: &str) -> &str {
+    let param = param.trim();
+    let name_start = param
+        .rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .map_or(0, |i| i + 1);
+    &param[..name_start]
+}
+
+/// Strip comments from C text (header docs mention `datalogic_*(` calls).
+fn strip_c_comments(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("/*") {
+        out.push_str(&rest[..at]);
+        rest = match rest[at..].find("*/") {
+            Some(end) => &rest[at + end + 2..],
+            None => "",
+        };
+    }
+    out.push_str(rest);
+    out.lines()
+        .map(|l| l.split("//").next().unwrap_or(""))
         .collect::<Vec<_>>()
-        .join("\n");
-    let mut out = BTreeMap::new();
-    let mut rest = text.as_str();
-    while let Some(at) = rest.find("datalogic_") {
-        let tail = &rest[at..];
-        let name: String = tail
-            .chars()
-            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-            .collect();
-        let after = &tail[name.len()..];
-        rest = &tail[name.len()..];
-        let after_trim = after.trim_start();
-        if !after_trim.starts_with('(') {
-            continue;
+        .join("\n")
+}
+
+/// The text between the `(` at `open` and its matching `)`.
+fn parenthesised(text: &str, open: usize) -> Option<&str> {
+    let mut depth = 0;
+    for (i, c) in text[open..].char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(&text[open + 1..open + i]);
+                }
+            }
+            _ => {}
         }
-        // A declaration's parameter list ends in `);`; a typedef'd
-        // function pointer or a call does not.
-        let Some(close) = after_trim.find(')') else {
-            continue;
-        };
-        if !after_trim[close + 1..].trim_start().starts_with(';') {
-            continue;
+    }
+    None
+}
+
+/// Split on commas outside parentheses.
+fn split_top(list: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let (mut depth, mut start) = (0, 0);
+    for (i, c) in list.char_indices() {
+        match c {
+            '(' | '<' => depth += 1,
+            ')' | '>' => depth -= 1,
+            ',' if depth == 0 => {
+                out.push(list[start..i].trim());
+                start = i + 1;
+            }
+            _ => {}
         }
-        let params = after_trim[1..close].trim();
-        let count = if params.is_empty() || params == "void" {
-            0
-        } else {
-            params.split(',').count()
-        };
-        out.insert(name, count);
+    }
+    let last = list[start..].trim();
+    if !last.is_empty() {
+        out.push(last);
     }
     out
 }
 
-/// Every `datalogic_*` symbol named in a string literal after `marker`.
-fn quoted_symbols(text: &str, marker: &str) -> BTreeSet<String> {
-    let mut out = BTreeSet::new();
-    let mut rest = text;
+/// Every `datalogic_*` function the C text declares, with its signature.
+/// Reads declarations: a return type, a name followed by `(`, and a
+/// parameter list ending in `);`.
+fn declarations(text: &str) -> BTreeMap<String, Sig> {
+    let text = strip_c_comments(text);
+    let mut out = BTreeMap::new();
+    let mut from = 0;
+    while let Some(rel) = text[from..].find("datalogic_") {
+        let at = from + rel;
+        let name: String = text[at..]
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        from = at + name.len();
+        let after = &text[from..];
+        let Some(open_rel) = after.find(|c: char| !c.is_whitespace()) else {
+            break;
+        };
+        if !after[open_rel..].starts_with('(') {
+            continue;
+        }
+        let open = from + open_rel;
+        let Some(params) = parenthesised(&text, open) else {
+            continue;
+        };
+        let close = open + params.len() + 1;
+        // A declaration's parameter list ends in `);`; a typedef'd
+        // function pointer or a call does not.
+        if !text[close + 1..].trim_start().starts_with(';') {
+            continue;
+        }
+        // The return type is the rest of the line before the name.
+        let line_start = text[..at].rfind(['\n', ';', '{', '}']).map_or(0, |i| i + 1);
+        let ret = c_kind(&text[line_start..at]);
+        let params = params.trim();
+        let params = if params.is_empty() || params == "void" {
+            Vec::new()
+        } else {
+            split_top(params)
+                .into_iter()
+                .map(|p| c_kind(c_param_type(p)))
+                .collect()
+        };
+        out.insert(name, Sig { ret, params });
+    }
+    out
+}
+
+/// The signature of the header's `datalogic_op_fn` callback typedef.
+fn op_fn_typedef(header: &str) -> Sig {
+    let text = strip_c_comments(header);
+    let at = text
+        .find("(*datalogic_op_fn)")
+        .expect("datalogic_op_fn typedef");
+    let line_start = text[..at].rfind("typedef").expect("typedef keyword") + "typedef".len();
+    let ret = c_kind(&text[line_start..at]);
+    let open = at + "(*datalogic_op_fn)".len();
+    let params = parenthesised(&text, open).expect("parameter list");
+    Sig {
+        ret,
+        params: split_top(params)
+            .into_iter()
+            .map(|p| c_kind(c_param_type(p)))
+            .collect(),
+    }
+}
+
+/// The kind of one FFM layout token in `DatalogicNative.java`.
+fn jvm_kind(token: &str) -> Kind {
+    match token.trim() {
+        "ValueLayout.ADDRESS" => Kind::Ptr,
+        // `SIZE_T` is the binding's alias for `size_t` (`JAVA_LONG`, which
+        // assumes a 64-bit target).
+        "SIZE_T" => Kind::Size,
+        "ValueLayout.JAVA_INT" => Kind::I32,
+        "ValueLayout.JAVA_LONG" => Kind::I64,
+        "ValueLayout.JAVA_DOUBLE" => Kind::F64,
+        "BUF_LAYOUT" => Kind::Buf,
+        other => panic!("unclassified FFM layout `{other}`"),
+    }
+}
+
+/// The signature a `FunctionDescriptor.of(..)` / `.ofVoid(..)` expression
+/// describes, resolving a named descriptor constant through `named`.
+fn jvm_descriptor(expr: &str, named: &BTreeMap<String, Sig>) -> Sig {
+    let expr = expr.trim();
+    if let Some(sig) = named.get(expr) {
+        return sig.clone();
+    }
+    let (void, open) = if let Some(i) = expr.find("FunctionDescriptor.ofVoid(") {
+        (true, i + "FunctionDescriptor.ofVoid".len())
+    } else if let Some(i) = expr.find("FunctionDescriptor.of(") {
+        (false, i + "FunctionDescriptor.of".len())
+    } else {
+        panic!("not a FunctionDescriptor: `{expr}`");
+    };
+    let args = parenthesised(expr, open).expect("descriptor arguments");
+    let mut kinds: Vec<Kind> = split_top(args).into_iter().map(jvm_kind).collect();
+    let ret = if void { Kind::Void } else { kinds.remove(0) };
+    Sig { ret, params: kinds }
+}
+
+/// The JVM's named descriptor constants (`TYPED_EVAL_DESC = ...`).
+fn jvm_named_descriptors(java: &str) -> BTreeMap<String, Sig> {
+    let mut out = BTreeMap::new();
+    let marker = "static final FunctionDescriptor ";
+    let mut rest = java;
     while let Some(at) = rest.find(marker) {
         rest = &rest[at + marker.len()..];
         let name: String = rest
             .chars()
             .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
             .collect();
-        if name.starts_with("datalogic_") {
-            out.insert(name);
-        }
+        let end = rest.find(';').expect("descriptor ends in `;`");
+        let expr = rest[name.len()..end].trim().trim_start_matches('=').trim();
+        let sig = jvm_descriptor(expr, &BTreeMap::new());
+        out.insert(name, sig);
+    }
+    out
+}
+
+/// Every `dh("datalogic_*", descriptor)` downcall handle, with the
+/// signature its descriptor gives.
+fn jvm_handles(java: &str) -> BTreeMap<String, Sig> {
+    let named = jvm_named_descriptors(java);
+    let mut out = BTreeMap::new();
+    let mut from = 0;
+    while let Some(rel) = java[from..].find("dh(\"") {
+        let open = from + rel + 2;
+        let args = parenthesised(java, open).expect("dh arguments");
+        from = open + args.len();
+        let parts = split_top(args);
+        let name = parts[0].trim_matches('"').to_string();
+        assert_eq!(
+            parts.len(),
+            2,
+            "dh({name}, ..) takes a name and a descriptor"
+        );
+        out.insert(name, jvm_descriptor(parts[1], &named));
+    }
+    out
+}
+
+/// The kind of one C# parameter or return type in `NativeMethods.cs`.
+fn dotnet_kind(ty: &str) -> Kind {
+    let ty = ty.trim();
+    if ty.starts_with("out ") || ty.starts_with("ref ") || ty.starts_with("in ") {
+        return Kind::Ptr;
+    }
+    if ty.ends_with('*') {
+        return Kind::Ptr;
+    }
+    match ty {
+        "void" => Kind::Void,
+        "IntPtr" | "nint" => Kind::Ptr,
+        "nuint" | "UIntPtr" => Kind::Size,
+        "int" | "uint" | "DatalogicStatus" => Kind::I32,
+        "long" | "ulong" => Kind::I64,
+        "double" => Kind::F64,
+        "DatalogicBuf" => Kind::Buf,
+        other => panic!("unclassified C# type `{other}`"),
+    }
+}
+
+/// Every `[LibraryImport(.., EntryPoint = "datalogic_*")]` import, with the
+/// signature of the method it decorates.
+fn dotnet_imports(cs: &str) -> BTreeMap<String, Sig> {
+    let marker = "EntryPoint = \"";
+    let mut out = BTreeMap::new();
+    let mut from = 0;
+    while let Some(rel) = cs[from..].find(marker) {
+        let start = from + rel + marker.len();
+        let end = start + cs[start..].find('"').expect("closing quote");
+        let name = cs[start..end].to_string();
+        from = end;
+        let partial = from + cs[from..].find(" partial ").expect("a partial method") + 9;
+        let open = partial + cs[partial..].find('(').expect("parameter list");
+        let head: Vec<&str> = cs[partial..open].split_whitespace().collect();
+        assert_eq!(
+            head.len(),
+            2,
+            "`{}` is `<return type> <name>`",
+            head.join(" ")
+        );
+        let params = parenthesised(cs, open).expect("parameter list");
+        let params = split_top(params)
+            .into_iter()
+            .map(|p| {
+                // Drop the parameter name (`byte* rule_json` gives `byte*`).
+                let ty = p.rsplit_once(char::is_whitespace).map_or(p, |(ty, _)| ty);
+                dotnet_kind(ty)
+            })
+            .collect();
+        out.insert(
+            name,
+            Sig {
+                ret: dotnet_kind(head[0]),
+                params,
+            },
+        );
     }
     out
 }
@@ -79,8 +378,12 @@ fn read(path: &str) -> String {
     std::fs::read_to_string(format!("{ROOT}/{path}")).unwrap_or_else(|e| panic!("{path}: {e}"))
 }
 
-fn header() -> BTreeMap<String, usize> {
-    let h = declarations(&read("include/datalogic.h"));
+fn header_text() -> String {
+    read("include/datalogic.h")
+}
+
+fn header() -> BTreeMap<String, Sig> {
+    let h = declarations(&header_text());
     assert!(
         h.len() > 40,
         "parsed only {} declarations from datalogic.h",
@@ -89,15 +392,29 @@ fn header() -> BTreeMap<String, usize> {
     h
 }
 
-fn compare(wrapper: &str, declared: &BTreeSet<String>) {
-    let header: BTreeSet<String> = header().into_keys().collect();
-    let unknown: Vec<_> = declared.difference(&header).collect();
+/// Every declaration of `wrapper` must match the header's signature, and
+/// every header function must be declared unless [`NOT_WRAPPED`] says why
+/// not.
+fn compare(wrapper: &str, declared: &BTreeMap<String, Sig>) {
+    let header = header();
+    let mut wrong = Vec::new();
+    for (name, sig) in declared {
+        match header.get(name) {
+            None => wrong.push(format!("{name}: not in datalogic.h")),
+            Some(want) if want != sig => wrong.push(format!(
+                "{name}: declared {sig:?}, datalogic.h has {want:?}"
+            )),
+            Some(_) => {}
+        }
+    }
     assert!(
-        unknown.is_empty(),
-        "{wrapper} declares functions datalogic.h lacks: {unknown:?}"
+        wrong.is_empty(),
+        "{wrapper} declarations disagree with datalogic.h:\n{}",
+        wrong.join("\n")
     );
     let missing: Vec<_> = header
-        .difference(declared)
+        .keys()
+        .filter(|f| !declared.contains_key(*f))
         .filter(|f| !NOT_WRAPPED.iter().any(|(w, n, _)| *w == wrapper && n == f))
         .collect();
     assert!(
@@ -108,27 +425,89 @@ fn compare(wrapper: &str, declared: &BTreeSet<String>) {
 
 #[test]
 fn php_header_matches() {
-    let php = declarations(&read("../php/src/datalogic-ffi.h"));
-    let header = header();
-    for (name, count) in &php {
-        assert_eq!(
-            header.get(name),
-            Some(count),
-            "PHP declares {name} with {count} parameters; datalogic.h has {:?}",
-            header.get(name)
-        );
-    }
-    compare("php", &php.into_keys().collect());
+    compare("php", &declarations(&read("../php/src/datalogic-ffi.h")));
 }
 
 #[test]
 fn jvm_handles_match() {
     let java = read("../jvm/src/main/java/com/goplasmatic/datalogic/internal/DatalogicNative.java");
-    compare("jvm", &quoted_symbols(&java, "dh(\""));
+    compare("jvm", &jvm_handles(&java));
+    // The upcall stub for custom operators mirrors the callback typedef.
+    let named = jvm_named_descriptors(&java);
+    assert_eq!(
+        named.get("OP_FN_DESC"),
+        Some(&op_fn_typedef(&header_text())),
+        "the JVM's OP_FN_DESC disagrees with datalogic_op_fn"
+    );
 }
 
 #[test]
 fn dotnet_imports_match() {
     let cs = read("../dotnet/src/Datalogic/Native/NativeMethods.cs");
-    compare("dotnet", &quoted_symbols(&cs, "EntryPoint = \""));
+    compare("dotnet", &dotnet_imports(&cs));
+}
+
+#[test]
+fn not_wrapped_entries_name_real_functions() {
+    let header = header();
+    for (wrapper, name, reason) in NOT_WRAPPED {
+        assert!(
+            ["php", "jvm", "dotnet"].contains(wrapper),
+            "unknown wrapper {wrapper}"
+        );
+        assert!(header.contains_key(*name), "{name} is not in datalogic.h");
+        assert!(!reason.is_empty(), "{wrapper}/{name} needs a reason");
+    }
+}
+
+#[test]
+fn the_parsers_read_signatures() {
+    let h = declarations(
+        "/* datalogic_fake(int x); */\n\
+         datalogic_status datalogic_a(const uint8_t *p, size_t n, uint64_t b, datalogic_error **err);\n\
+         void datalogic_b(datalogic_buf buf);\n\
+         const uint8_t *datalogic_c(const datalogic_error *err, size_t *len_out);\n",
+    );
+    assert_eq!(h.len(), 3);
+    assert_eq!(
+        h["datalogic_a"],
+        Sig {
+            ret: Kind::I32,
+            params: vec![Kind::Ptr, Kind::Size, Kind::I64, Kind::Ptr],
+        }
+    );
+    assert_eq!(h["datalogic_b"].ret, Kind::Void);
+    assert_eq!(h["datalogic_b"].params, vec![Kind::Buf]);
+    assert_eq!(h["datalogic_c"].ret, Kind::Ptr);
+
+    let java = r#"
+        private static final FunctionDescriptor D = FunctionDescriptor.of(
+                ValueLayout.JAVA_INT, ValueLayout.ADDRESS);
+        public static final MethodHandle A = dh("datalogic_a",
+                FunctionDescriptor.of(ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS, SIZE_T, ValueLayout.JAVA_LONG));
+        public static final MethodHandle B = dh("datalogic_b", FunctionDescriptor.ofVoid(BUF_LAYOUT));
+        public static final MethodHandle C = dh("datalogic_c", D);
+    "#;
+    let j = jvm_handles(java);
+    assert_eq!(
+        j["datalogic_a"].params,
+        vec![Kind::Ptr, Kind::Size, Kind::I64]
+    );
+    assert_eq!(j["datalogic_b"].ret, Kind::Void);
+    assert_eq!(j["datalogic_c"].params, vec![Kind::Ptr]);
+
+    let cs = r#"
+        [LibraryImport(LibraryName, EntryPoint = "datalogic_a")]
+        internal static unsafe partial DatalogicStatus datalogic_a(
+            byte* p,
+            nuint n,
+            ulong b,
+            ref IntPtr err);
+        [LibraryImport(LibraryName, EntryPoint = "datalogic_b")]
+        internal static partial void datalogic_b(DatalogicBuf buf);
+    "#;
+    let d = dotnet_imports(cs);
+    assert_eq!(d["datalogic_a"], h["datalogic_a"]);
+    assert_eq!(d["datalogic_b"], h["datalogic_b"]);
 }
