@@ -60,7 +60,7 @@ impl Logic {
         }
 
         let mut index: HashMap<u32, NodeInfo> = HashMap::new();
-        walk(&self.root, None, None, "", &mut index);
+        walk(&self.root, None, String::new(), &mut index);
 
         let mut out = Vec::with_capacity(ids.len());
         // Breadcrumb is leaf-to-root; reverse for natural root-to-leaf reading.
@@ -81,29 +81,32 @@ impl Logic {
 }
 
 /// Depth-first walk of a [`CompiledNode`], recording (operator, arg_index,
-/// json_pointer) for every reachable node id. `parent_op` and
-/// `parent_pointer` describe how *this* node is reached from above.
+/// json_pointer) for every reachable node id. `arg_index` and
+/// `json_pointer` describe how *this* node is reached from above.
+///
+/// For a rule compiled without folding, the pointers match the ones a
+/// traced compile records, except where an operator's lone argument was
+/// written without its array (`{"!": {"var": "x"}}`): the compiled tree
+/// does not keep that, so the pointer names it as item 0.
 ///
 /// Recursion delegates the "what are this node's children" question to
 /// [`CompiledNode::visit_indexed_children`] so the variant match lives in
 /// exactly one place.
 fn walk(
     node: &CompiledNode,
-    parent_op: Option<&str>,
     arg_index: Option<u32>,
-    parent_pointer: &str,
+    json_pointer: String,
     out: &mut HashMap<u32, NodeInfo>,
 ) {
     // CSE memo wrappers are path-transparent: delegate before the generic
     // body so the wrapped node's operator/pointer are recorded exactly as
     // in an unwrapped tree (no extra "/op/0" step for the wrapper).
     if let CompiledNode::Cse(data) = node {
-        return walk(&data.inner, parent_op, arg_index, parent_pointer, out);
+        return walk(&data.inner, arg_index, json_pointer, out);
     }
 
     let id = node.id();
     let operator = node.operator_name().map(|c| c.into_owned());
-    let json_pointer = build_pointer(parent_pointer, parent_op, arg_index);
 
     // Children of an `Array` form pointers like "/<idx>"; for every other
     // variant the current node's operator name is the pointer prefix.
@@ -116,9 +119,21 @@ fn walk(
     // Recurse first while borrowing `operator` / `json_pointer`, then move
     // both owned values into the map — node ids are unique, so insertion
     // order does not matter, and this avoids cloning them per node.
-    node.visit_indexed_children(&mut |i, child| {
-        walk(child, child_parent_op, Some(i), &json_pointer, out);
-    });
+    match node {
+        // A template field sits under its key, not its position.
+        #[cfg(feature = "templating")]
+        CompiledNode::StructuredObject(data) => {
+            for (i, (key, child)) in data.fields.iter().enumerate() {
+                let mut pointer = json_pointer.clone();
+                crate::node::push_pointer_token(&mut pointer, key);
+                walk(child, Some(i as u32), pointer, out);
+            }
+        }
+        _ => node.visit_indexed_children(&mut |i, child| {
+            let pointer = build_pointer(&json_pointer, child_parent_op, i);
+            walk(child, Some(i), pointer, out);
+        }),
+    }
 
     out.insert(
         id,
@@ -130,17 +145,16 @@ fn walk(
     );
 }
 
+/// The pointer of child `idx` of the node at `parent_pointer`: under the
+/// parent's operator key, or directly under the parent for an array.
 #[inline]
-fn build_pointer(parent_pointer: &str, parent_op: Option<&str>, arg_index: Option<u32>) -> String {
+fn build_pointer(parent_pointer: &str, parent_op: Option<&str>, idx: u32) -> String {
     let mut pointer = parent_pointer.to_string();
-    if let Some(idx) = arg_index {
-        // A child of an Array has no operator key — JSON pointer "/idx".
-        if let Some(op) = parent_op {
-            crate::node::push_pointer_token(&mut pointer, op);
-        }
-        pointer.push('/');
-        pointer.push_str(itoa::Buffer::new().format(idx));
+    if let Some(op) = parent_op {
+        crate::node::push_pointer_token(&mut pointer, op);
     }
+    pointer.push('/');
+    pointer.push_str(itoa::Buffer::new().format(idx));
     pointer
 }
 
@@ -212,14 +226,59 @@ mod tests {
         let plain = engine.compile(rule).unwrap();
         let got: Vec<_> = steps(&plain).into_iter().map(|s| s.json_pointer).collect();
         assert_eq!(got, ["", "/~1/0"]);
-        let traced = engine.trace().compile(rule).unwrap();
-        let traced_steps = steps(&traced);
-        assert_eq!(traced_steps.last().unwrap().json_pointer, "/~1/0");
-        for step in &traced_steps {
-            assert_eq!(
-                traced.pointer(step.node_id),
-                Some(step.json_pointer.as_str())
-            );
+        #[cfg(feature = "trace")]
+        {
+            let traced = engine.trace().compile(rule).unwrap();
+            let traced_steps = steps(&traced);
+            assert_eq!(traced_steps.last().unwrap().json_pointer, "/~1/0");
+            for step in &traced_steps {
+                assert_eq!(
+                    traced.pointer(step.node_id),
+                    Some(step.json_pointer.as_str())
+                );
+            }
         }
+    }
+
+    /// Pointers of every node of a rule compiled without folding.
+    fn pointers(rule: &str, templating: bool) -> Vec<(Option<u32>, String)> {
+        let engine = crate::Engine::builder()
+            .with_constant_folding(false)
+            .with_templating(templating)
+            .build();
+        let compiled = engine.compile(rule).unwrap();
+        let mut index = std::collections::HashMap::new();
+        super::walk(&compiled.root, None, String::new(), &mut index);
+        let mut out: Vec<_> = index
+            .into_iter()
+            .map(|(_, n)| (n.arg_index, n.json_pointer))
+            .collect();
+        out.sort_by(|a, b| a.1.cmp(&b.1));
+        out
+    }
+
+    /// A `var` default is item 1 of `{"var": [path, default]}`.
+    #[test]
+    fn var_default_is_item_one() {
+        let got = pointers(r#"{"var": ["x", {"+": [1, {"var": "y"}]}]}"#, false);
+        let ptrs: Vec<_> = got.iter().map(|(i, p)| (*i, p.as_str())).collect();
+        assert_eq!(
+            ptrs,
+            [
+                (None, ""),
+                (Some(1), "/var/1"),
+                (Some(0), "/var/1/+/0"),
+                (Some(1), "/var/1/+/1"),
+            ]
+        );
+    }
+
+    /// A template field sits under its key.
+    #[cfg(feature = "templating")]
+    #[test]
+    fn template_fields_are_keyed() {
+        let got = pointers(r#"{"a": 1, "b/c": {"var": "x"}}"#, true);
+        let ptrs: Vec<_> = got.iter().map(|(i, p)| (*i, p.as_str())).collect();
+        assert_eq!(ptrs, [(None, ""), (Some(0), "/a"), (Some(1), "/b~1c")]);
     }
 }

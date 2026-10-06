@@ -276,9 +276,10 @@ impl CompiledNode {
                     f(i as u32, n);
                 }
             }
+            // The default is the second item of `{"var": [path, default]}`.
             CompiledNode::Var { default_value, .. } => {
                 if let Some(d) = default_value {
-                    f(0, d);
+                    f(1, d);
                 }
             }
             #[cfg(feature = "ext-control")]
