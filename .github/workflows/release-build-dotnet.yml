@@ -34,27 +34,11 @@ jobs:
 
       # Map the matrix's `<os>-<arch>` directories to NuGet runtime
       # identifiers and stage the native libs into runtimes/<rid>/native/.
+      # The shared mapper fails if any platform is missing, so a package
+      # that cannot load on one of them never gets packed.
       - name: Stage native libs under runtimes/<rid>/native/
         shell: bash
-        run: |
-          set -euo pipefail
-          declare -A RIDS=(
-            [linux-amd64]=linux-x64
-            [linux-arm64]=linux-arm64
-            [darwin-amd64]=osx-x64
-            [darwin-arm64]=osx-arm64
-            [windows-amd64]=win-x64
-            [windows-arm64]=win-arm64
-          )
-          for plat in "${!RIDS[@]}"; do
-            rid=${RIDS[$plat]}
-            if [ -d "cdylib/$plat" ]; then
-              mkdir -p "bindings/dotnet/runtimes/$rid/native"
-              cp "cdylib/$plat/"* "bindings/dotnet/runtimes/$rid/native/"
-              echo "Staged $plat -> $rid"
-            fi
-          done
-          ls -R bindings/dotnet/runtimes
+        run: bash scripts/stage-natives.sh dotnet cdylib
 
       # The test project uses the runtimes/ folder lookup path which
       # `dotnet test` doesn't honor for a project reference — it needs

@@ -29,27 +29,11 @@ jobs:
           pattern: c-cdylib-*
           merge-multiple: true
 
+      # The shared mapper (also used for .NET, the JVM and Go) fails if
+      # any platform is missing.
       - name: Stage native libs under bindings/php/lib/<os>-<arch>/
         shell: bash
-        run: |
-          set -euo pipefail
-          declare -A MAP=(
-            [linux-amd64]=linux-x86_64
-            [linux-arm64]=linux-aarch64
-            [darwin-amd64]=darwin-x86_64
-            [darwin-arm64]=darwin-aarch64
-            [windows-amd64]=windows-x86_64
-            [windows-arm64]=windows-aarch64
-          )
-          for plat in "${!MAP[@]}"; do
-            dest=${MAP[$plat]}
-            if [ -d "cdylib/$plat" ]; then
-              mkdir -p "bindings/php/lib/$dest"
-              cp "cdylib/$plat/"* "bindings/php/lib/$dest/"
-              echo "Staged $plat -> $dest"
-            fi
-          done
-          ls -R bindings/php/lib/
+        run: bash scripts/stage-natives.sh php cdylib
 
       # Composite: setup Rust + cargo cache + build the host's cdylib so
       # PHPUnit's FFI-loaded code can find it.
