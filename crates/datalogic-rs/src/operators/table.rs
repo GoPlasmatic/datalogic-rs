@@ -482,10 +482,10 @@ operators! {
         // The comparisons and `and` / `or` stay `raw`: as `eager` rows
         // (`eager(Any, Any, Rest<Any>)`) they measured 2 to 5% slower on
         // their suites and `macro/eligibility` (phase 2, P6).
-        Equals ["=="] => raw[2..] comparison::equals @ Eq(EqOp::LOOSE);
-        StrictEquals ["==="] => raw[2..] comparison::equals @ Eq(EqOp::STRICT);
-        NotEquals ["!="] => raw[2] comparison::not_equals @ Eq(EqOp::LOOSE_NE);
-        StrictNotEquals ["!=="] => raw[2] comparison::not_equals @ Eq(EqOp::STRICT_NE);
+        Equals ["=="] => raw[2..] comparison::equals @ Eq(EqOp::LOOSE) { cost: Cost::PerItem };
+        StrictEquals ["==="] => raw[2..] comparison::equals @ Eq(EqOp::STRICT) { cost: Cost::PerItem };
+        NotEquals ["!="] => raw[2] comparison::not_equals @ Eq(EqOp::LOOSE_NE) { cost: Cost::PerItem };
+        StrictNotEquals ["!=="] => raw[2] comparison::not_equals @ Eq(EqOp::STRICT_NE) { cost: Cost::PerItem };
         GreaterThan [">"] => raw[2..] comparison::ordered @ Ord(OrdOp::Gt);
         GreaterThanEqual [">="] => raw[2..] comparison::ordered @ Ord(OrdOp::Ge);
         LessThan ["<"] => raw[2..] comparison::ordered @ Ord(OrdOp::Lt);
@@ -508,20 +508,20 @@ operators! {
         // A one-argument `+` / `*` / `max` / `min` rejects a literal array and
         // folds a computed one.
         Add ["+"] => raw arithmetic::evaluate_add
-            { algebra: Some(Algebra::Arith(ArithOp::Add)), literal_args: LiteralArgs::Sole };
+            { algebra: Some(Algebra::Arith(ArithOp::Add)), literal_args: LiteralArgs::Sole, cost: Cost::PerItem };
         Subtract ["-"] => raw[1..] arithmetic::evaluate_subtract
-            { algebra: Some(Algebra::Arith(ArithOp::Sub)) };
+            { algebra: Some(Algebra::Arith(ArithOp::Sub)), cost: Cost::PerItem };
         Multiply ["*"] => raw arithmetic::evaluate_multiply
-            { algebra: Some(Algebra::Arith(ArithOp::Mul)), literal_args: LiteralArgs::Sole };
-        Divide ["/"] => raw[1..] arithmetic::div_or_mod @ Div(DivOp::Divide);
-        Modulo ["%"] => raw[1..] arithmetic::div_or_mod @ Div(DivOp::Modulo);
+            { algebra: Some(Algebra::Arith(ArithOp::Mul)), literal_args: LiteralArgs::Sole, cost: Cost::PerItem };
+        Divide ["/"] => raw[1..] arithmetic::div_or_mod @ Div(DivOp::Divide) { cost: Cost::PerItem };
+        Modulo ["%"] => raw[1..] arithmetic::div_or_mod @ Div(DivOp::Modulo) { cost: Cost::PerItem };
         // `max` / `min` / `merge` disambiguate a literal array from an
         // argument list at runtime (`{"max": [[1, 2]]}`), so folding their
         // static form would bake in the wrong reading.
         Max ["max"] => iter[1..] arithmetic::extremum @ Extremum(Extremum::Max)
-            { fold: Fold::Never, literal_args: LiteralArgs::Sole };
+            { fold: Fold::Never, literal_args: LiteralArgs::Sole, cost: Cost::PerItem };
         Min ["min"] => iter[1..] arithmetic::extremum @ Extremum(Extremum::Min)
-            { fold: Fold::Never, literal_args: LiteralArgs::Sole };
+            { fold: Fold::Never, literal_args: LiteralArgs::Sole, cost: Cost::PerItem };
 
         // ── strings ──────────────────────────────────────────────────────
         Concat ["cat"] => eager(Rest<Any>) string::concat { algebra: Some(Algebra::Concat), ..STRING };
@@ -550,11 +550,12 @@ operators! {
 
         // ── missing values ───────────────────────────────────────────────
         Missing ["missing"] => eager(Rest<Any>) missing::missing
-            { reads_context: true, compile: Some(CompileHook::Args(hooks::missing)) };
+            { reads_context: true, compile: Some(CompileHook::Args(hooks::missing)), cost: Cost::PerItem };
         MissingSome ["missing_some"] => eager(Any, Any) missing::missing_some {
             reads_context: true,
             on_missing: Miss::Return(singleton_empty_array),
             compile: Some(CompileHook::Args(hooks::missing_some)),
+            cost: Cost::PerItem,
         };
     }
 
@@ -583,7 +584,7 @@ operators! {
     }
 
     family ExtString (feature = "ext-string") = STRING {
-        Length ["length"] => eager(Any) array::length { cost: Cost::Node, on_extra: Extra::InvalidArgs };
+        Length ["length"] => eager(Any) array::length { cost: Cost::Bytes, on_extra: Extra::InvalidArgs };
         StartsWith ["starts_with"] => eager(Str, Str) string::starts_with;
         EndsWith ["ends_with"] => eager(Str, Str) string::ends_with;
         Upper ["upper"] => eager(Str) string::upper;
@@ -609,7 +610,7 @@ operators! {
         // bounds, which an `eager` row (every argument first) would not.
         Slice ["slice"] => raw[1..=4] array::evaluate_slice { cost: Cost::PerItem, ..PURE };
         GroupBy ["group_by"] => each[2] array::evaluate_group_by
-            { on_extra: Extra::Ignore, on_empty_source: Some(singleton_empty_array) };
+            { on_extra: Extra::Ignore, on_empty_source: Some(singleton_empty_array), cost: Cost::Quadratic };
         // Without a key expression nothing runs under a frame, so
         // `distinct` folds like any pure operator.
         Distinct ["distinct"] => each[1..=2] array::evaluate_distinct {

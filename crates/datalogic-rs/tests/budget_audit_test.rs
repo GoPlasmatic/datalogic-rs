@@ -44,6 +44,12 @@ fn probe(name: &str, n: usize) -> Option<(&'static str, String)> {
     let o = || format!("{{\"o\":{}}}", object(n));
     let n_ = || format!("{{\"n\":{n},\"xs\":{}}}", ints(n));
     let t = || format!("{{\"t\":{}}}", tensor(n));
+    // `n` ones: a divisor list with no zero in it.
+    let ys = || format!("{{\"ys\":[{}]}}", vec!["1"; n].join(","));
+    let ps = || {
+        let paths: Vec<String> = (0..n).map(|i| format!("\"p{i}\"")).collect();
+        format!("{{\"ps\":[{}]}}", paths.join(","))
+    };
     Some(match name {
         "cat" => (r#"{"cat":[{"var":"s"},{"var":"s"}]}"#, s()),
         "substr" => (r#"{"substr":[{"var":"s"},1]}"#, s()),
@@ -93,6 +99,30 @@ fn probe(name: &str, n: usize) -> Option<(&'static str, String)> {
         "argmax" => (r#"{"argmax":[{"var":"t"},0]}"#, t()),
         "gather" => (r#"{"gather":[{"var":"t"},[0]]}"#, t()),
         "to_list" => (r#"{"to_list":[{"var":"t"}]}"#, t()),
+        // Equality charges the containers it walks.
+        "==" | "===" | "!=" | "!==" => {
+            let rule = match name {
+                "==" => r#"{"==":[{"var":"o"},{"var":"p"}]}"#,
+                "===" => r#"{"===":[{"var":"o"},{"var":"p"}]}"#,
+                "!=" => r#"{"!=":[{"var":"o"},{"var":"p"}]}"#,
+                _ => r#"{"!==":[{"var":"o"},{"var":"p"}]}"#,
+            };
+            (rule, format!("{{\"o\":{0},\"p\":{0}}}", object(n)))
+        }
+        // The arithmetic operators fold a lone computed array per item.
+        "+" => (r#"{"+":[{"var":"xs"}]}"#, xs()),
+        "-" => (r#"{"-":[{"var":"xs"}]}"#, xs()),
+        "*" => (r#"{"*":[{"var":"xs"}]}"#, xs()),
+        "/" => (r#"{"/":[{"var":"ys"}]}"#, ys()),
+        "%" => (r#"{"%":[{"var":"ys"}]}"#, ys()),
+        "max" => (r#"{"max":[{"var":"xs"}]}"#, xs()),
+        "min" => (r#"{"min":[{"var":"xs"}]}"#, xs()),
+        // A path list from data is charged per path.
+        "missing" => (r#"{"missing":{"var":"ps"}}"#, ps()),
+        "missing_some" => (r#"{"missing_some":[1,{"var":"ps"}]}"#, ps()),
+        "length" => (r#"{"length":[{"var":"s"}]}"#, s()),
+        // Every item is compared against every group so far.
+        "group_by" => (r#"{"group_by":[{"var":"xs"},{"var":""}]}"#, xs()),
         _ => return None,
     })
 }
