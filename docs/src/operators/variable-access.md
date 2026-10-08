@@ -2,7 +2,7 @@
 
 These operators access data from the evaluation context.
 
-> **Feature flags (Rust crate).** `var` and `val` are baseline; `exists` requires the `ext-control` feature. Every language binding enables all operator features. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
+> **Feature flags (Rust crate).** `var` and `val` are baseline; `exists` requires the `ext-control` feature. Every language binding enables all operator features. An engine built with [`EngineBuilder::with_families`](../advanced/configuration.md#operator-families) has `exists` only if it names `Family::ExtControl`. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
 
 ## var
 
@@ -15,8 +15,8 @@ Access a value from the data object using dot notation.
 ```
 
 **Arguments:**
-- `path` - Dot-separated path to the value (string)
-- `default` - Optional default value if path doesn't exist
+- `path` - Dot-separated path to the value (a string, a number, or an expression that produces one)
+- `default` - Optional value returned when the path does not exist
 
 **Returns:** The value at the path, or the default value, or `null`.
 
@@ -58,7 +58,9 @@ Access a value from the data object using dot notation.
 - Empty string `""` returns the entire data context
 - In array operations (`map`, `filter`, `reduce`), `""` refers to the current element
 - Numeric segments index arrays (`items.0`); strings are not indexable, so `{ "var": "s.1" }` on `{ "s": "hello" }` is `null`. Use `substr` to read characters
-- Returns `null` if path doesn't exist and no default is provided
+- A literal path always splits on dots, so `{ "var": "a.b" }` cannot read a key named `"a.b"`; use `{ "val": "a.b" }` for that. A path computed at runtime (`{ "var": { "cat": ["a", ".b"] } }`) is looked up as a key first and walked as a dotted path only if no such key exists
+- The default applies only when the path is absent: a present `null` stays `null`
+- Returns `null` if the path doesn't exist and no default is provided, or raises an error under `MissingVar::Error` (see [Missing paths](#missing-paths))
 
 ---
 
@@ -122,15 +124,20 @@ Alternative variable access with explicit path segments and scope levels.
 </div>
 
 **Notes:**
-- `val` does NOT support `var`'s dot-path strings: a string argument is a single
-  literal key, so `{ "val": "a.b" }` looks up the key `"a.b"`; it does not descend
-  into `a` then `b`
+- A literal string argument is a single key, so `{ "val": "a.b" }` looks up the
+  key `"a.b"`; it does not descend into `a` then `b`
 - For nested access use the array form `{ "val": ["a", "b"] }`, where each element
   is one path segment
 - There is no `[path, default]` form: `{ "val": ["a", "b"] }` always walks `a`
   then `b`. Use `{ "var": ["a", "default"] }` or `{ "??": [{ "val": "a" }, "default"] }`
-  for a fallback
-- Useful for complex data navigation where path segments are computed
+  for a fallback. Under `MissingVar::Error` the `??` form raises; see
+  [Missing paths](#missing-paths)
+- A string computed at runtime is read the way `var` reads a computed path:
+  `{ "val": { "cat": ["a", ".b"] } }` reads the key `"a.b"` if present, otherwise
+  `a` then `b`. In the array form, a computed segment containing dots is walked
+  as a dotted path
+- `Logic::to_json()` writes a dotted `val` key back as `{ "val": "a.b" }`, so
+  the serialized rule reads the same key
 
 ### Scope levels
 
@@ -199,8 +206,8 @@ count **frames**, not iterators of a particular kind: a `reduce` body and a
 would give the order's position, and `[[4], "field"]` the root data.
 
 **Differences from json-logic-engine.** datalogic follows that engine for every
-level it resolves, with three deliberate exceptions, all of which return
-something useful where it returns `null`:
+level it resolves, with three exceptions, each returning a value where that
+engine returns `null`:
 
 | case | json-logic-engine | datalogic |
 |------|-------------------|-----------|
@@ -303,11 +310,39 @@ Check if a variable path exists in the data.
 </div>
 
 **Notes:**
-- Returns `false` for paths that don't exist
-- Does not check if the value is null/empty, only if the path exists
+- Checks only whether the path exists: a key holding `null` or `""` exists
 - Segments must be object keys: `exists` does not index arrays, so
   `{ "exists": ["items", 0] }` is `false` even though `{ "val": ["items", 0] }`
-  resolves. Test array elements with `{ "!=": [{ "val": ["items", 0] }, null] }`
+  resolves. Test array elements with `{ "!==": [{ "val": ["items", 0] }, null] }`
   or `length` instead
 - An empty segment list, `{ "exists": [] }`, returns `true`
-- Useful for conditional logic based on data structure
+
+---
+
+## Missing paths
+
+A `var` or `val` read whose path is absent evaluates to `null`, as JSONLogic
+specifies. An engine whose `EvaluationConfig::missing_var` is
+`MissingVar::Error` raises a `VariableNotFound` error naming the path
+instead, so a misspelled path fails rather than producing `null`:
+
+```json
+{ "var": "user.nmae" }
+// Data: { "user": { "name": "Ana" } }
+// Result: null (default)
+// Under MissingVar::Error: VariableNotFound error naming "user.nmae"
+```
+
+These are not misses, and evaluate the same under both settings:
+
+- a `var` with a default: `{ "var": ["x", 0] }` on `{}` is `0`
+- a path that is present and holds `null`
+- `{ "var": "" }` and `{ "val": [] }`, the current data
+- iteration metadata (`{ "val": [[1], "index"] }`), which is `null` outside an iterator
+- `missing`, `missing_some` and `exists`, which report absence
+
+`??` does not shield a miss, because its operand raises before `??` sees a
+value. Use `var`'s default, or `try` (`{ "try": [{ "var": "x" }, "fallback"] }`),
+which catches the error like any other. The language bindings take the
+setting as `"missing_var": "error"` in their JSON config. See
+[Missing Variables](../advanced/configuration.md#missing-variables).

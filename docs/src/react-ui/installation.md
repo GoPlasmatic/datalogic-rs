@@ -19,13 +19,17 @@ pnpm add @goplasmatic/datalogic-ui @xyflow/react
 
 The package requires:
 
-| Package | Version | Purpose |
-|---------|---------|---------|
-| `react` | 18+ or 19+ | React framework |
-| `react-dom` | 18+ or 19+ | React DOM renderer |
-| `@xyflow/react` | 12+ | Flow diagram rendering |
+| Package | Version range | Purpose |
+|---------|---------------|---------|
+| `react` | `^18.0.0 \|\| ^19.0.0` | React framework |
+| `react-dom` | `^18.0.0 \|\| ^19.0.0` | React DOM renderer |
+| `@xyflow/react` | `^12.0.0` | Flow diagram rendering |
 
-> **Note:** The package bundles `@goplasmatic/datalogic-wasm` internally for evaluation.
+The package has no runtime dependencies beyond these. Do not install
+`@goplasmatic/datalogic-wasm` for the editor: the WASM engine, built from the
+same datalogic-rs release (5.8.0), ships inside the package's `dist` with the
+`.wasm` binary inlined, so your bundler needs no WASM loader. `@dagrejs/dagre`,
+`lucide-react` and `uuid` are bundled as well.
 
 ## CSS Setup
 
@@ -39,6 +43,11 @@ React Flow's base styles are vendored into the package's `styles.css`, so
 there is no separate `@xyflow/react/dist/style.css` import and no import-order
 requirement. `@xyflow/react` itself stays a peer dependency because the
 component's JavaScript uses it; only its stylesheet is bundled.
+
+The bundled React Flow rules and the editor's own handle and edge overrides
+apply only inside the editor's `.logic-editor` root, so they leave any other
+React Flow canvas on the page alone. If your app renders its own React Flow
+canvas, import `@xyflow/react/dist/style.css` for that canvas as usual.
 
 ## Minimal Example
 
@@ -60,7 +69,8 @@ function App() {
 
 ## Container Requirements
 
-The editor requires a container with defined dimensions:
+The editor fills its parent (`width: 100%; height: 100%`), so the parent needs
+a height:
 
 ```tsx
 // Option 1: Explicit dimensions
@@ -110,6 +120,13 @@ See [Props & API](props-api.md#types) for the full export list.
 
 ## Bundler Notes
 
+The package publishes an ES module build (`import`, `dist/index.js`) and a
+CommonJS build (`require`, `dist/index.cjs`). Both start the WASM engine, so
+Jest, CommonJS server rendering and older bundlers that pick the `require`
+entry get evaluation and the debugger. If the engine fails to load, an editor
+that has `data` shows a banner above the diagram with the load error and keeps
+the static diagram.
+
 ### Vite
 
 Needs no additional configuration.
@@ -149,6 +166,6 @@ export function LogicVisualizer({ expression }) {
 
 ## Next Steps
 
-- [Quick Start](quick-start.md) - Basic usage examples
-- [Modes](modes.md) - Visualize, debug, and edit modes
-- [Props & API](props-api.md) - Complete props reference
+- [Quick Start](quick-start.md): basic usage examples
+- [Modes](modes.md): visualize, debug, and edit modes
+- [Props & API](props-api.md): complete props reference

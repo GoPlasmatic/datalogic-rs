@@ -1,14 +1,16 @@
 # flagd-Compat Operators
 
-Two operators specified by the OpenFeature flagd in-process provider ([fractional](https://flagd.dev/reference/custom-operations/fractional-operation/), [semantic version](https://flagd.dev/reference/custom-operations/semver-operation/)) for feature-flag targeting. The implementation matches the canonical [Go evaluator](https://github.com/open-feature/flagd/tree/main/core/pkg/evaluator) byte-for-byte, so a flag definition that works under any flagd provider produces identical variants here.
+Two operators specified by the OpenFeature flagd in-process provider ([fractional](https://flagd.dev/reference/custom-operations/fractional-operation/), [semantic version](https://flagd.dev/reference/custom-operations/semver-operation/)) for feature-flag targeting. The implementation follows the canonical [Go evaluator](https://github.com/open-feature/flagd/tree/main/core/pkg/evaluator), so a flag definition that works under a flagd provider picks the same variants here.
 
-**Cargo feature:** `flagd`. Off by default; opt in via:
+**Cargo feature:** `flagd`. Off by default in the Rust crate; every language binding enables it. Opt in via:
 
 ```toml
 datalogic-rs = { version = "5", features = ["flagd"] }
 ```
 
-Both operators return `null` on malformed input (wrong arg count, unparseable version, missing targeting context, etc.) rather than raising. flagd's evaluator observes the `null` and falls back to the flag's default variant; non-flagd callers can compose with `??` or `if` for the same effect.
+**Argument counts:** `fractional` takes one or more arguments; `sem_ver` takes exactly three.
+
+Both operators return `null` on malformed input (a wrong argument count, an unparseable version, a missing targeting key, a bucket that is not a `[variant, weight]` array) rather than raising. flagd's evaluator observes the `null` and falls back to the flag's default variant; non-flagd callers can compose with `??` or `if` for the same effect. An error raised while evaluating an argument, such as a `throw`, still propagates.
 
 ## fractional
 
@@ -16,7 +18,7 @@ Deterministic percentage bucketing for A/B tests and gradual rollouts. Buckets a
 
 **Reference:** [flagd Fractional spec](https://flagd.dev/reference/custom-operations/fractional-operation/)
 
-**Algorithm.** MurmurHash3 x86-32 of the bucketing key, then `bucket = (hash * total_weight) >> 32` and walk cumulative integer weight bands. Identical to the Go evaluator's `core/pkg/evaluator/fractional.go`. The crate vendors the hash inline (~30 LOC) for portability across every target.
+**Algorithm.** MurmurHash3 x86-32 of the bucketing key, then `bucket = (hash * total_weight) >> 32` and walk cumulative integer weight bands, as the Go evaluator's `core/pkg/evaluator/fractional.go` does. The crate vendors the hash, so the feature adds no hashing dependency.
 
 **Two argument shapes:**
 
@@ -65,11 +67,11 @@ Omit the first argument, or let it evaluate to `null` (for example a missing `va
 
 Weights are **relative**, not percentages: `[50, 50]` and `[1, 1]` produce identical splits because the operator divides by the total. This lets you grow a rollout from `[1, 99]` to `[50, 50]` to `[99, 1]` without renormalizing.
 
-Weights must be non-negative integers. Omitted weights default to `1`, so `["red"], ["blue"]` is equivalent to `["red", 1], ["blue", 1]`. A non-integer weight (a fraction such as `99.9`, or a string such as `"50"`) also falls back to `1`, so `[["a", 99.9], ["b", 0.1]]` behaves exactly like `[["a", 1], ["b", 1]]`. Negative weights clamp to `0`.
+Weights must be non-negative integers. Omitted weights default to `1`, so `["red"], ["blue"]` is equivalent to `["red", 1], ["blue", 1]`. A non-integer weight (a fraction such as `99.9`, or a string such as `"50"`) also falls back to `1`, so `[["a", 99.9], ["b", 0.1]]` behaves exactly like `[["a", 1], ["b", 1]]`. Negative weights clamp to `0`, and weights above `i32::MAX` (2,147,483,647) clamp to it, since flagd's weights are 32-bit: two equal weights of 2^40 split like `[1, 1]`. If every weight is `0`, the call returns `null`.
 
 ### Composing with `if`
 
-In practice you usually gate `fractional` behind a precondition instead of running it unconditionally:
+To bucket only the users who pass a precondition, put `fractional` in a branch of `if`:
 
 ```json
 {
@@ -168,4 +170,4 @@ The conformance test suites live under [`crates/datalogic-rs/tests/suites/flagd/
 - [`fractional_test.go`](https://github.com/open-feature/flagd/blob/main/core/pkg/evaluator/fractional_test.go)
 - [`semver_test.go`](https://github.com/open-feature/flagd/blob/main/core/pkg/evaluator/semver_test.go)
 
-Every release runs the full suite, so any flagd-spec drift gets caught before publish.
+The release workflow runs the full suite on the tag before it publishes.

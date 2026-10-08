@@ -12,7 +12,7 @@ subjects). For the per-call **boundary cost of each language binding**
 (string / data handle / batch), see
 [BINDINGS-OVERHEAD.md](./BINDINGS-OVERHEAD.md).
 
-> **Captured:** 2026-07-17  •  **Apple M2 Pro (arm64)** macOS 26.5 (Tahoe)
+> **Captured:** 2026-07-17 at datalogic-rs 5.1.0  •  **Apple M2 Pro (arm64)** macOS 26.5 (Tahoe)
 > •  Rust 1.97.0  •  Node v22.22.2  •  release build, no `target-cpu=native`
 >
 > Each cell is the **median of 3** timed samples, each iteration count
@@ -23,15 +23,18 @@ The matrix shows one column per **library / API tier that takes a
 precompile-once approach**, so cells compare like with like. The matrix
 leaves out convenience-API tiers (parsing on every call, per-call session
 reset, raw one-shot WASM string-string) because their numbers measure
-API-shape costs rather than engine cost. For datalogic-rs's
-own tier-by-tier numbers, see `bin/self.rs`.
+API-shape costs rather than engine cost. For datalogic-rs's own API
+tiers, `bin/self.rs` times `Session::eval_borrowed`, and the boundary
+harness's rust-core rows time parse-per-call, serialize and
+`serde_json::Value` tiers ([BINDINGS-OVERHEAD.md](./BINDINGS-OVERHEAD.md),
+section 1).
 
 ## Subject reference
 
 | Column                       | API                                                                                                                                                                          |
 |------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `dlrs:engine`                | datalogic-rs native: pre-compiled `Logic` + caller-owned `Bump`, `Engine::evaluate(...)` per call                                                                            |
-| `dlrs:wasm:compiled`         | `@goplasmatic/datalogic-wasm` (this repo, via Node): `new CompiledRule(ruleStr, false)` once + `.evaluate(dataStr)` per call                                                 |
+| `dlrs:wasm:compiled`         | `@goplasmatic/datalogic-wasm` (this repo, via Node): `new CompiledRule(ruleStr, false)` once + `.evaluate(dataStr)` per call (`CompiledRule` is deprecated in 5.8.0; see the [README](./README.md#subjects)) |
 | `jsonlogic-rs`               | [bestowinc/json-logic-rs] 0.5 (Rust): `apply(&Value, &Value)`; no compile API, pre-parsed in setup                                                                           |
 | `json-logic-js`              | [json-logic-js] (jwadhams, JS via Node): `apply(rule, data)`; interpreted, no compile API                                                                                    |
 | `json-logic-engine`          | [json-logic-engine] (TotalTechGeek, JS via Node): `engine.run(rule, data)`; interpreted                                                                                      |
@@ -51,15 +54,14 @@ own tier-by-tier numbers, see `bin/self.rs`.
 - **Self benchmark (`bin/self.rs`)**: same median-of-3 discipline, with
   the min/max spread printed per suite (`±n%`), and the evaluation
   result passed through `std::hint::black_box` inside the timed loop so
-  the optimizer cannot elide unused work. Numbers from reports generated
-  before this change are slightly flattered; regenerate before
-  comparing.
+  the optimizer cannot elide unused work. Reports generated before the
+  harness added `black_box` read low; regenerate them before comparing.
 - **Folded vs non-folded split (`bin/self.rs`)**: many suite rules have
   no data dependency, so the compiler constant-folds them to a literal
   (`Logic::is_constant`) and their timed cost is literal-return
   overhead, not engine work. The whole-suite number stays the headline
-  (comparable with older reports), and two additional passes with the
-  same discipline time the folded rules and the rest separately. The
+  (comparable with older reports), and two more passes with the same
+  discipline time the folded rules and the rest separately. The
   summary reports three geomeans of per-suite averages: overall,
   folded-only, non-folded-only. Quote the non-folded geomean when the
   claim is about evaluating data-dependent rules.
@@ -181,11 +183,14 @@ computed only over the suites both subjects completed.
 ## Quick reading
 
 Geomeans across the 51 timed suites (54 discovered at capture time; the
-3 negative-only suites skip). Suites added after this capture are not in
-the matrix: `group_by.json`, `distinct.json`, `object-ops.json`, and
-`datetime/timezone.json` (5.2.0), and the 5.3.x regression cases in
-`control/and.json` / `control/or.json`; the suite index now holds 58
-files. Lower is better:
+3 negative-only suites skip). The matrix leaves out the suites added
+after this capture (`group_by.json`, `distinct.json`, `object-ops.json`
+and `datetime/timezone.json` in 5.2.0, `template-key-escape.json` in
+5.4.0, the four `tensor/*.json` suites in 5.5.0, `scopes-nested.json` in
+5.6.0, `var-computed-path.json` in 5.7.1 and `literal-arguments.json` in
+5.8.0) and the cases added to existing suites since 5.1.0 (for example
+the 5.3.0 regression cases in `control/and.json` / `control/or.json`).
+The 5.8.0 suite index holds 66 files. Lower is better:
 
 | Subject                        | Geomean ns/op (own suite set) | Pairwise vs `dlrs:engine` (shared suites) |
 |--------------------------------|------------------------------:|------------------------------------------:|
@@ -218,10 +223,10 @@ Headline takeaways:
   per-call string contract accounts for the gap, so the binding also
   ships a parse-once `DataHandle` tier that removes the payload
   copy + parse per call (8.3x at 8 KB; measured per tier in
-  [BINDINGS-OVERHEAD.md](./BINDINGS-OVERHEAD.md)). This matrix
-  deliberately keeps the string tier as the wasm column: it is the
-  comparable per-call contract the other subjects use.
-- **`ERR` cells reflect operator-set differences**, not raw failure:
+  [BINDINGS-OVERHEAD.md](./BINDINGS-OVERHEAD.md)). This matrix keeps
+  the string tier as the wasm column because it is the per-call
+  contract the other subjects use.
+- **`ERR` cells mark operator-set differences**:
   - `json-logic-js` ERRs on extension suites (it ships only the spec).
   - `json-logic-engine`'s compiled mode (`engine.build`) eagerly
     validates operator names and ERRs on unknown ones; the interpreted
@@ -235,22 +240,25 @@ Headline takeaways:
     trapped on wasm32 without a JS clock, fixed 2026-07-03 by the core's
     opt-in `wasm-clock` feature. An interim re-run also showed two
     `dlrs:engine` flagd ERRs caused by `datalogic-bench` itself missing
-    the `flagd` feature; when adding an operator-family feature to the
-    core, add it to the bench crate's dependency list too.
-- **`structured-objects.json`** needs templating mode, which the
-  precompile subjects don't enable (`Engine::new()`); the Rust tiers skip
-  the suite (`—`) while the WASM runner counts per-case compile failures
-  (`ERR`). Building with `Engine::builder().with_templating(true).build()`
-  would unblock those columns at the cost of slightly slower non-template
-  paths. Out of scope for this matrix.
+    the `flagd` feature. Since 5.8.0 the bench crate depends on the
+    core's `all-operators` feature, so a new family reaches it once it
+    is listed there.
+- **`structured-objects.json`** needs templating mode. At capture time
+  the precompile subjects compiled every rule on `Engine::new()` (WASM:
+  `templating = false`), so the Rust tier skipped the suite (`—`) and the
+  WASM runner counted per-case compile failures (`ERR`). Since 5.8.0 the
+  harness compiles each case on an engine with the settings its suite
+  asks for, so `dlrs:engine` times this suite, and the WASM runner
+  passes the case's `templating` flag to `CompiledRule`. This matrix
+  predates that change.
 
 ## Reproduce
 
-One-time setup for the Node subjects:
+One-time setup for the Node subjects, from the repo root:
 
 ```bash
-cd bindings/wasm && ./build.sh
-cd tools/benchmark/runners && npm install
+(cd bindings/wasm && ./build.sh)
+(cd tools/benchmark/runners && npm install)
 ```
 
 Run the matrix:
@@ -294,7 +302,7 @@ from warm-up), except the per-suite iteration count is scaled from a
 pilot pass so one timed rep lands near ~250 ms; a fixed 100k iterations
 on a 10k-element array would run for minutes per suite. Every macro case
 is sanity-evaluated before timing; a rule that errors aborts the run
-instead of silently timing the error path. ns/op is per whole-rule
+instead of timing the error path unnoticed. ns/op is per whole-rule
 evaluation: `macro/array-10k` at ~130 µs/op means one filter/map/sort
 pass over 10k elements costs ~130 µs, i.e. ~13 ns per element touched.
 
@@ -315,8 +323,9 @@ matrix cells, per-column means, and pairwise ratios land in
 well under a minute (about 7 s on the capture host), so no reduced
 per-cell budget or suite subset is needed.
 
-Captured 2026-07-17, Apple M2 Pro (arm64), Rust 1.97.0, Node v22.22.2,
-release build from the repo root (no `target-cpu=native`):
+Captured 2026-07-17 at datalogic-rs 5.1.0, Apple M2 Pro (arm64), Rust
+1.97.0, Node v22.22.2, release build from the repo root (no
+`target-cpu=native`):
 
 ```
 === Cross-Library Matrix — avg ns/op (median of 3, ~200ms target/cell, 7 suites) ===
@@ -390,8 +399,7 @@ Reading the macro matrix:
   `sort_unstable` fast path keeps that case cheap now). Even with the
   sort case *included*, dlrs's array-10k cell (67.2 µs) sits at
   parity with jle:compiled's sort-free cell (65.0 µs), and its
-  array-1k cell (5.3 µs) beats the corresponding sort-free 7.0 µs
-  outright. The asymmetry now biases *against* dlrs.
+  array-1k cell (5.3 µs) beats the corresponding sort-free 7.0 µs. The asymmetry now biases *against* dlrs.
 - `jsonlogic-rs` shows full coverage on the array suites but does no
   sorting either: it treats an object whose key is not a known
   operation as a raw literal and returns it unchanged, so the `sort`
@@ -400,8 +408,8 @@ Reading the macro matrix:
   the margin collapsed from 55x to 6x: `substr` now takes an ASCII
   fast path (byte-offset math plus a word-at-a-time `is_ascii` scan)
   instead of O(n) UTF-8 char-boundary walks, and the non-ASCII path
-  only pays the full char count for negative offsets. What remains is
-  structural: `cat` materialises the 20 KB result where V8 builds a
+  only pays the full char count for negative offsets. The remaining gap
+  is structural: `cat` materialises the 20 KB result where V8 builds a
   lazy rope the benchmark sink never forces flat, and each `substr`
   re-scans for ASCII-ness where V8 keeps a one-byte-representation
   flag on the string object. Closing that would need a
@@ -447,11 +455,11 @@ Reading the macro matrix:
 
 ## Optimization provenance
 
-The current numbers include the 2026-07 optimization passes:
+The 5.1.0 capture includes the 2026-07 optimization passes:
 whole-tree common-subexpression elimination for repeated pure
 aggregates (structurally identical pure subtrees share one memoized
 evaluation per rule execution), reduce(map(...)) fusion (the fold runs
-directly over the map's input with no intermediate array), hinted
+over the map's input with no intermediate array), hinted
 `FieldCursor` single-key lookups in the reduce fold and strict-eq
 filter, datavalue 0.2.3's buffered heap-free number emit, zero-copy
 `substr`/string-`slice` with an ASCII byte-offset fast path (and lazy
@@ -466,12 +474,11 @@ compile-time-detected compound predicate trees
 (`and`/`or`/`!`/`in`/truthy-var over comparison leaves) for
 filter/quantifier bodies with an indeterminate-shape fallback that
 also fixed the fast-path/general-path coercion divergences
-(`"9" >= 2`, `"5" == 5`, `true == 1` inside `filter` previously
-evaluated uncoerced), and an `Error` layout shrunk 80 -> 40 bytes. Guardrails
-that check future optimizations: the conformance suite, the
-optimized-vs-traced differential property test,
+(`"9" >= 2`, `"5" == 5`, `true == 1` inside `filter` had evaluated
+uncoerced). `Error` stays at 80 bytes: boxing its operator/path metadata
+to reach 40 bytes was measured and reverted, because the per-error box
+cost more on error-dense suites than the thinner `Result` saved (see
+`tests/layout_test.rs`). Guardrails that check future optimizations: the
+conformance suite, the optimized-vs-traced differential property test,
 `tests/layout_test.rs`, and the folded / non-folded split above (quote
 the non-folded geomean when the claim is about data-dependent rules).
-Engineering notes on candidates that were tried-and-reverted or
-deferred were removed from this file during the 5.0.1 docs cleanup;
-they live in this file's git history.

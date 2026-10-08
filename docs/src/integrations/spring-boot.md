@@ -16,19 +16,22 @@ database column, changeable by ops without a deployment.
 <dependency>
   <groupId>io.github.goplasmatic</groupId>
   <artifactId>datalogic</artifactId>
-  <version>5.8.0</version>
+  <version>5.8.1</version>
 </dependency>
 ```
 
-Native libraries are bundled in the jar per platform. JDK 22+ is
+The jar bundles the native library for each platform. JDK 22+ is
 required; run with native access enabled:
 
 ```
 --enable-native-access=ALL-UNNAMED
 ```
 
-(In `application.properties`-land this usually means adding it to your
-launch script or `JAVA_TOOL_OPTIONS`; Boot itself needs nothing else.)
+Put the flag in your launch script or `JAVA_TOOL_OPTIONS`; Spring Boot
+needs no other setting. On first start the binding extracts the native
+library to `~/.cache/datalogic/native/` (Linux) and reuses it on later
+starts; in a container with a read-only home directory it extracts to a
+temp directory instead.
 
 ## The engine as a bean
 
@@ -72,9 +75,12 @@ public class RuleService {
 }
 ```
 
-Request threads can share compiled rules safely. If rule churn
-is high, evict old versions (Caffeine or a bounded LinkedHashMap) and
-`close()` evicted rules to release their native handles promptly.
+Request threads can share compiled rules. If rule churn is
+high, evict old versions (Caffeine or a bounded LinkedHashMap). Closing
+a rule while a request thread still evaluates it is not supported, so
+either `close()` an evicted rule once no request can hold it, or drop
+the reference and let the binding's `Cleaner` free the native handle
+when the rule becomes unreachable.
 
 ## The endpoint
 
@@ -107,13 +113,18 @@ parse.
 
 ## Validating rules at ingestion
 
-Treat rule ingestion as untrusted input: bound the size, compile, and
-run golden tests before activating.
+Treat rule ingestion as untrusted input: bound the size, compile with
+`compileChecked`, and run golden tests before activating.
+`compileChecked` refuses a rule the engine can see will fail (an
+unknown operator, with a suggestion one edit away; an argument count
+the operator rejects; a timezone that does not exist) and lists every
+problem at once, each with a JSON Pointer into the rule that an admin
+UI can highlight.
 
 ```java
 @PostMapping("/rules")
 public ResponseEntity<?> saveRule(@RequestBody @Size(max = 65_536) String logic) {
-    try (Rule candidate = engine.compile(logic)) {
+    try (Rule candidate = engine.compileChecked(logic)) {
         for (GoldenCase c : goldenCases) {
             if (!candidate.evaluate(c.input()).equals(c.expected())) {
                 return ResponseEntity.unprocessableEntity()
@@ -121,7 +132,9 @@ public ResponseEntity<?> saveRule(@RequestBody @Size(max = 65_536) String logic)
             }
         }
     } catch (DatalogicException e) {
-        return ResponseEntity.unprocessableEntity().body(e.getMessage());
+        // compileChecked: error type "CompileError", diagnostics as a JSON array
+        String body = e.diagnosticsJson() != null ? e.diagnosticsJson() : e.getMessage();
+        return ResponseEntity.unprocessableEntity().body(body);
     }
     // persist with a bumped version...
     return ResponseEntity.noContent().build();
@@ -130,7 +143,12 @@ public ResponseEntity<?> saveRule(@RequestBody @Size(max = 65_536) String logic)
 
 Evaluation itself is sandboxed (rules have no I/O and can only read
 the data document you pass), so ingestion bounds (size limits, golden
-tests) are where your review effort belongs.
+tests) are where your review effort belongs. Two more checks fit here:
+`candidate.facts()` lists the data paths a rule reads, so you can
+refuse one that reads fields outside the applicant schema, and an
+`ops_budget` in the engine's config
+(`Engine.builder().setConfigJson("{\"ops_budget\": 100000}")`) caps the
+work one evaluation may do, failing with error type `BudgetExceeded`.
 
 ## Hot paths: sessions and batch
 

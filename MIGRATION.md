@@ -25,8 +25,8 @@ handles, batch evaluation, typed results). Two environmental notes:
   `opcache.preload` + `ffi.enable=preload` deployments; `FFI::cdef`
   remains the zero-config default.
 
-If you built directly against `bindings/c` (in-tree only, never
-published as a standalone artifact), the v1 symbols are gone. Assert
+If your code calls `bindings/c` itself (it is not published to a
+package registry), the v1 symbols are gone. Assert
 `datalogic_abi_version() == 2` at load, then migrate:
 
 | v1 | v2 |
@@ -107,6 +107,86 @@ it: a level is its **magnitude**. `[[-N]]` and `[[N]]` name
 the same frame; negative levels have never counted from the innermost frame
 outwards.
 
+## 5.7 → 5.8: deprecations and changed results
+
+Code written against 5.7 compiles against 5.8.0 unchanged. Some results
+change where 5.7 was wrong or disagreed with itself; read this list if
+you compare outputs, match on error fields, or record metered counts. The
+[CHANGELOG](./CHANGELOG.md) has the full set of fixes.
+
+**Deprecated, removed in 6.0** (JavaScript bindings only):
+
+| Deprecated | Use instead |
+|---|---|
+| WASM `evaluate(logic, data, templating)` | `new Engine({ templating }).evalStr(logic, data)` |
+| WASM `evaluateWithTrace(logic, data, templating)` | `new Engine({ templating }).evaluateWithTrace(logic, data)` |
+| WASM `new CompiledRule(logic, templating)` | `new Engine({ templating }).compile(logic)`, which returns a `Rule` |
+| Node and WASM `session.evaluateNumber(rule, handle)` | `session.evaluateFloat(rule, handle)`, or `evaluateInt` |
+
+**Results that change:**
+
+- `Error::operator` (and the serialised error's `"operator"`) names the
+  innermost operator that failed, custom operators included, and plain
+  and traced runs agree. 5.7 reported the root operator unless a deeper
+  site set one.
+- Only a single-key `{"datetime": "..."}` or `{"timestamp": "..."}`
+  object is a datetime. A record that carries such a field among others
+  is ordinary data, so `==`, `===`, `in` and `distinct` compare it whole
+  and `type` reports `"object"`.
+- Integers above 2^53 compare, divide and sort exactly in `==` (also
+  against integer strings), `===`, `<` and friends, `/`, `%` and `sort`;
+  5.7 rounded them through `f64`. Variadic `+` / `*` coerce numeric
+  strings as the two-argument forms do.
+- The strings `"NaN"`, `"inf"` and `"infinity"`, and numeric literals
+  that overflow, no longer coerce to non-finite numbers: arithmetic
+  applies the engine's NaN handling, `==` and `<` raise `NaN`, and `abs`,
+  `ceil` and `floor` raise `InvalidArguments`.
+- `NanHandling::CoerceToZero` substitutes `0`: `{"*": [2, "x", 3]}` is
+  `0`, not `6`.
+- `ceil` and `floor` keep results outside the `i64` range as floats
+  instead of saturating.
+- `lower` and `upper` apply context-sensitive Unicode case rules
+  (`"ΟΔΟΣ"` lowers to `"οδος"`).
+- `type` classifies strings with the datetime and duration parsers:
+  `"password1"` is `"string"` (5.7 said `"duration"`), and an ISO
+  datetime with an offset or none is `"datetime"`.
+- `format_date` with a specifier chrono does not know (`"%Q"`, or a
+  trailing `%`) raises `InvalidArguments("Invalid date format")` instead
+  of panicking.
+- Tensor constructors (`zeros`, `full`, `scatter`, `rle_expand`,
+  `one_hot`, `pad`) refuse more than 2^28 elements with
+  `InvalidArguments`.
+- `fractional` weights clamp to `i32::MAX`, as flagd's are 32-bit;
+  weights within 32 bits pick the same buckets as before.
+- A `reduce` accumulator may nest at most 1,024 levels; deeper is
+  `InvalidArguments` (5.7 could overflow the stack and abort).
+- Metered counts (`evaluate_metered`, `eval_metered`) for the iterator
+  fast-path shapes rise to what the general path charges, and no longer
+  depend on data types, tracing or `missing_var`.
+- A rule compiled on one engine and evaluated on another with different
+  settings follows the evaluating engine, including where compiling
+  folded a constant.
+- Where constant folding changed a rule's result, the rule now gives
+  what it gives unfolded: `{"+": [{"if": [true, [1, 2], 0]}]}` is `3`
+  (5.7's default engine gave `NaN`), and `{"var": {"cat": ["a", ".b"]}}`
+  reads the key `"a.b"` (5.7 read `a`, then `b`).
+- PHP: wrapping a native handle a second time throws
+  `InvalidArgumentException`.
+
+**New, opt-in:** `EvaluationConfig::missing_var` set to
+`MissingVar::Error` (`"missing_var": "error"` in a binding's JSON config)
+makes a `var` / `val` read that finds nothing raise `VariableNotFound`
+naming the path. The default, `MissingVar::Null`, keeps JSONLogic's
+`null`.
+
+**C ABI** (for code that calls `bindings/c` itself): v2 gains minor
+1, which adds entry points and changes none, so v2 wrappers keep
+working. A wrapper that calls the new entry points checks
+`datalogic_abi_minor() >= 1` at load. A custom-operator callback that
+re-enters the session running it, and a builder setter called after
+`datalogic_engine_builder_build`, now fail with
+`DATALOGIC_STATUS_INVALID_ARG`.
+
 ## v4 → v5 in 60 seconds
 
 Most call-site changes are mechanical 1:1 renames. The deep-dive is
@@ -149,6 +229,8 @@ If a v4 surface isn't covered here, search this document or
 ## Contents
 
 - [5.0.0 → 5.0.1: C ABI v2 (bindings-internal)](#500--501-c-abi-v2-bindings-internal)
+- [5.5.0 → 5.6.0: `val` scope levels](#550--560-val-scope-levels)
+- [5.7 → 5.8: deprecations and changed results](#57--58-deprecations-and-changed-results)
 - [npm package rename (JS/TS consumers only)](#npm-package-rename-jsts-consumers-only)
 - [What changed at a glance](#what-changed-at-a-glance)
 - [Cargo.toml](#cargotoml)
@@ -186,7 +268,7 @@ If you are a JS consumer:
   still works under Node if you'd rather have a single artifact across
   Node + browser.
 - **React UI consumers** → no change. `@goplasmatic/datalogic-ui`
-  bundles its own WASM internally.
+  bundles its own WASM engine.
 
 The legacy `@goplasmatic/datalogic` name is not republished at v5; v4.x
 versions remain installable for consumers not ready to move.
@@ -221,7 +303,7 @@ datalogic-rs = { version = "5", features = ["serde_json"] }
 ```
 
 If you only used the JSONLogic baseline (no `serde_json::Value`,
-no typed serde input/output), drop the feature entirely:
+no typed serde input/output), drop the feature:
 
 ```toml
 datalogic-rs = "5"
@@ -367,7 +449,7 @@ Registration is unchanged: `Engine::builder().add_operator("double", Double).bui
 
 ## New v5 capabilities (not in v4)
 
-You don't need these to migrate, but they're worth knowing:
+You don't need these to migrate:
 
 - **Module-level helpers.** `datalogic_rs::eval`, `eval_str`, `eval_into`,
   `compile`, backed by a default engine, no construction required.
@@ -384,6 +466,10 @@ You don't need these to migrate, but they're worth knowing:
   `OwnedInput`, and `eval_borrowed` takes `&Logic`, an `EvalInput`, and a
   caller-owned `&Bump`. There is no session-owned arena: each owned call
   allocates a fresh `Bump`.
+- **Rule checks and facts (since 5.8).** `Engine::check` and
+  `compile_checked` report every problem in a rule before it runs, with
+  a JSON Pointer each; `Logic::facts` lists the data paths a rule reads;
+  `Engine::operators` describes every built-in.
 
 ## Common patterns side-by-side
 
@@ -483,15 +569,21 @@ match engine.eval_str(rule, data) {
 ## JavaScript / npm consumers
 
 The `@goplasmatic/datalogic-wasm` (WASM) and `@goplasmatic/datalogic-ui`
-(React) packages share the v5 cutover. Two surface renames mirror the
-Rust core:
+(React) packages share the v5 cutover. The `preserve_structure` flag is
+called `templating`, as in the Rust core, and on the WASM side it moves
+onto an `Engine`:
 
-| v4 JS surface                                | v5 JS surface                                |
-|----------------------------------------------|----------------------------------------------|
-| `evaluate(logic, data, preserve_structure)`  | `evaluate(logic, data, templating)`          |
-| `new CompiledRule(logic, preserve_structure)`| `new CompiledRule(logic, templating)`        |
-| `<DataLogicEditor preserveStructure={…} />`  | `<DataLogicEditor templating={…} />`         |
-| `onPreserveStructureChange={…}`              | `onTemplatingChange={…}`                     |
+| v4 JS surface                                | v5 JS surface                                      |
+|----------------------------------------------|----------------------------------------------------|
+| `evaluate(logic, data, preserve_structure)`  | `new Engine({ templating }).evalStr(logic, data)`  |
+| `new CompiledRule(logic, preserve_structure)`| `new Engine({ templating }).compile(logic)`        |
+| `<DataLogicEditor preserveStructure={…} />`  | `<DataLogicEditor templating={…} />`               |
+| `onPreserveStructureChange={…}`              | `onTemplatingChange={…}`                           |
+
+5.x also keeps `evaluate(logic, data, templating)` and
+`new CompiledRule(logic, templating)`, the v4 shapes with the flag
+renamed. They are deprecated since 5.8.0 and removed in 6.0, so migrate
+straight to the `Engine` forms. Build the engine once and reuse it.
 
 The flag's semantics are unchanged: `true` enables templating mode,
 where multi-key objects compile to output-shaping templates with
@@ -499,9 +591,12 @@ embedded JSONLogic.
 
 ## Things that did NOT change
 
-- Operator semantics (every JSONLogic operator behaves the same).
-- `EvaluationConfig` field set, defaults, presets (`safe_arithmetic`,
-  `strict`).
+- Operator semantics at the 5.0 cut (every JSONLogic operator behaved
+  the same). Later 5.x releases fixed edge cases; see the 5.6 and 5.8
+  sections above.
+- `EvaluationConfig`'s v4 fields, defaults and presets (`safe_arithmetic`,
+  `strict`). Fields added in 5.x (`ops_budget`, `missing_var`) default to
+  the v4 behaviour.
 - `DataValue` / `OwnedDataValue` shape and accessors.
 - `Error::kind` (a public field) and its `ErrorKind` variants,
   error-recovery behaviour, structured error metadata.

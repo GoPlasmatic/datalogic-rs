@@ -21,15 +21,15 @@ toolchain or node-gyp involved.
 
 ## A rule service: compile once, cache by version
 
-Compiling is the expensive step (still microseconds, but don't pay it
-per request). Cache compiled rules keyed by their identity, and let a
-rule update replace the cache entry:
+Compiling is the expensive step (microseconds, but you don't want to
+pay it per request). Cache compiled rules keyed by their identity, and
+let a rule update replace the cache entry:
 
 ```js
 // rules.js
 import { Engine } from '@goplasmatic/datalogic-node';
 
-const engine = new Engine();          // one per process
+export const engine = new Engine();   // one per process
 const cache = new Map();              // ruleId@version -> compiled Rule
 
 export function getRule(row) {
@@ -55,7 +55,7 @@ cache.)
 ```js
 // app.js
 import express from 'express';
-import { getRule } from './rules.js';
+import { engine, getRule } from './rules.js';
 import { loadActiveDiscountRule } from './db.js';
 
 const app = express();
@@ -73,7 +73,7 @@ app.post('/quote', async (req, res, next) => {
 });
 ```
 
-`rule.evaluate(data)` takes and returns plain JS objects: no manual
+`rule.evaluate(data)` takes and returns plain JS objects: no
 JSON stringify/parse on your side.
 
 ## Validating rules at ingestion, not at request time
@@ -85,12 +85,12 @@ any other untrusted input path:
 app.put('/rules/:id', express.json({ limit: '64kb' }), (req, res) => {
   let compiled;
   try {
-    compiled = engine.compile(req.body.logic); // JSON + structure check only
+    // JSON, structure, operator names and argument counts
+    compiled = engine.compileChecked(req.body.logic);
   } catch (err) {
-    return res.status(422).json({ error: `invalid rule: ${err.message}` });
+    return res.status(422).json({ error: 'invalid rule', diagnostics: err.diagnostics });
   }
-  // run the rule against golden cases before activating it; this is also
-  // where an unknown operator name surfaces (errorType 'InvalidOperator')
+  // run the rule against golden cases before activating it
   try {
     for (const [input, expected] of req.body.tests ?? []) {
       if (JSON.stringify(compiled.evaluate(input)) !== JSON.stringify(expected)) {
@@ -108,19 +108,28 @@ app.put('/rules/:id', express.json({ limit: '64kb' }), (req, res) => {
 `compile` rejects malformed JSON and structurally invalid rules (for
 example a multi-key object when templating is off), but it does **not**
 verify operator names: `{ "discuont": [...] }` compiles fine and throws
-`errorType: 'InvalidOperator'` only when you evaluate the rule. The
-golden-case loop catches this; if a rule ships without test cases,
-evaluate it once against a representative payload before persisting it.
+`errorType: 'InvalidOperator'` only when you evaluate the rule.
+`compileChecked` runs the engine's `check` first and refuses the rule
+with a `CompileError` whose `diagnostics` name each problem and its JSON
+Pointer (for the typo above, code `UnknownOperator` at pointer `""`), so
+an admin sees the typo when saving the rule.
+
+`compiled.facts().reads` lists the data paths the rule reads
+(`[['cart', 'total'], ['user', 'tier']]`), so ingestion can also refuse
+a rule that reads fields the endpoint never supplies. To make a typo in
+a path fail instead of reading `null`, build the engine with
+`config: { missing_var: 'error' }`; such a read then throws
+`errorType: 'VariableNotFound'`.
 
 Two things are doing security work here: the **size limit** on the body
 (a hostile 10 MB rule is safe to compile but not free), and the
-compile-then-test gate. Evaluation itself is sandboxed: rules have no
+check-then-test gate. Evaluation itself is sandboxed: rules have no
 I/O, no `eval`, and can only read the data document you pass.
 
 ## Keeping big evaluations off the event loop
 
-Evaluations are typically sub-microsecond, so the sync call is right
-for most endpoints. For large payloads or batch endpoints, use the
+A typical rule evaluates in under a microsecond, so the sync call is
+right for most endpoints. For large payloads or batch endpoints, use the
 async tier. It runs on the libuv thread pool:
 
 ```js
@@ -150,12 +159,16 @@ re-implemented, so what the UI shows matches what the API decides.
 
 `compile` and `evaluate` throw real `Error` objects with a stable
 `errorType` tag (`"ParseError"`, `"InvalidOperator"`, `"Thrown"`,
-`"InvalidArguments"`, ...). The typed session methods
-(`evaluateBool` / `evaluateNumber`) add `"TypeMismatch"` for a result of
-the wrong type. Map them in your Express error middleware:
+`"InvalidArguments"`, ...) and `operator`, the innermost operator that
+failed. `compileChecked` adds `"CompileError"`, and the typed session
+methods (`evaluateBool` / `evaluateInt` / `evaluateFloat`) add
+`"TypeMismatch"` for a result of the wrong type. A panic in the native
+engine arrives as `"InternalError"` instead of taking the process down;
+treat it as a server error. Map them in your Express error middleware:
 
 ```js
 app.use((err, req, res, next) => {
+  if (err.errorType === 'InternalError') return next(err); // an engine bug: 500
   if (err.errorType === 'ParseError') return res.status(422).json({ error: err.message });
   if (err.errorType) return res.status(400).json({ error: err.message });
   next(err);
@@ -164,4 +177,4 @@ app.use((err, req, res, next) => {
 
 See the [Node.js chapter](../nodejs/overview.md) for the full API
 surface (sessions, data handles, typed results, batch and async
-evaluation, tracing, operator names).
+evaluation, tracing, operator names, rule facts).

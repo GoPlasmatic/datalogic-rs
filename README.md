@@ -29,7 +29,7 @@ Write a [JSONLogic](https://jsonlogic.com) rule once and evaluate it with the ex
 ## Why datalogic-rs?
 
 - 🌐 **One rule, every runtime:** every binding runs the same compiled Rust core, so a rule evaluates with identical semantics on your backend, your edge workers, and your frontend. No cross-language drift, verified by a 2,128-case conformance battery in CI.
-- 🔒 **100% sandbox-safe:** evaluate user-submitted rules and formulas without arbitrary code execution. No `eval()`, no scripting runtime, no I/O; the core forbids unsafe code.
+- 🔒 **Sandboxed:** evaluate user-submitted rules and formulas without arbitrary code execution. No `eval()`, no scripting runtime, no I/O; the core forbids unsafe code.
 - ⚡ **Nanosecond evaluation:** rules compile to OpCode-dispatched programs that run in a reusable memory arena: 10.3 ns geomean, 7.0× the fastest JS engine, 83.6× the reference implementation.
 - 🛠️ **Ready-made rule builder:** ship a visual editor and step-through debugger to your product dashboard with the companion React component, instead of building rule UI from scratch.
 
@@ -37,7 +37,7 @@ Write a [JSONLogic](https://jsonlogic.com) rule once and evaluate it with the ex
 
 ## One rule, every runtime
 
-Rules are plain JSON, so you keep exactly one copy of each rule, however many languages you run:
+Rules are plain JSON, so you keep one copy of each rule, however many languages you run:
 
 ```yaml
 Rule:   {"and": [{">=": [{"var": "age"}, 18]}, {"==": [{"var": "status"}, "active"]}]}
@@ -51,7 +51,7 @@ The same evaluation, one line in each runtime:
 | :--- | :--- |
 | **Rust** | `datalogic_rs::eval_str(rule, data)?` |
 | **Node.js** | `apply(rule, data)` from `@goplasmatic/datalogic-node` |
-| **Browser / Edge (WASM)** | `evaluate(rule, data, false)` from `@goplasmatic/datalogic-wasm` |
+| **Browser / Edge (WASM)** | `new Engine().evalStr(rule, data)` from `@goplasmatic/datalogic-wasm` |
 | **Python** | `apply(rule, data)` from `datalogic_py` |
 | **Go** | `datalogic.Apply(rule, data)` |
 | **Java / Kotlin** | `engine.apply(rule, data)` |
@@ -74,7 +74,7 @@ Every binding wraps the same core and passes the same 66-suite conformance batte
 | **Java / JVM** (Kotlin, Scala) | [![Maven Central](https://img.shields.io/maven-central/v/io.github.goplasmatic/datalogic.svg)](https://central.sonatype.com/artifact/io.github.goplasmatic/datalogic) | `io.github.goplasmatic:datalogic` | Maven / Gradle dependency | [jvm README](./bindings/jvm/README.md) |
 | **.NET** (C#, F#) | [![NuGet](https://img.shields.io/nuget/v/Goplasmatic.Datalogic.svg)](https://www.nuget.org/packages/Goplasmatic.Datalogic) | `Goplasmatic.Datalogic` | `dotnet add package Goplasmatic.Datalogic` | [dotnet README](./bindings/dotnet/README.md) |
 | **PHP** | [![Packagist](https://img.shields.io/packagist/v/goplasmatic/datalogic.svg)](https://packagist.org/packages/goplasmatic/datalogic) | `goplasmatic/datalogic` | `composer require goplasmatic/datalogic` | [php README](./bindings/php/README.md) |
-| **C / FFI** (embed anywhere) | built in-tree | `datalogic-c` | built locally | [c README](./bindings/c/README.md) |
+| **C / FFI** (embed anywhere) | n/a | `datalogic-c` | GitHub release tarball, or `cargo build --release` | [c README](./bindings/c/README.md) |
 | **React** visual editor | [![npm](https://img.shields.io/npm/v/@goplasmatic/datalogic-ui)](https://www.npmjs.com/package/@goplasmatic/datalogic-ui) | `@goplasmatic/datalogic-ui` | `npm i @goplasmatic/datalogic-ui` | [ui README](./ui/README.md) |
 
 ---
@@ -106,7 +106,7 @@ Data:     {"name": "Jane", "age": 25}
 Output:   {"greeting": "Hello Jane", "isAdult": true}
 ```
 
-Templating is an engine option in every binding (in Rust: `Engine::builder().with_templating(true)`, behind the `templating` feature). In Rust you can also opt into an escape prefix, `.with_template_key_escape('$')`, so a key that names an operator can still be emitted: `{"$type": ...}` outputs `type` rather than running the `type` operator.
+Templating is an engine option in every binding (in Rust: `Engine::builder().with_templating(true)`, behind the `templating` feature). You can also pick the mode per compile (`compile_template` / `compile_strict` in Rust, `compileTemplate` / `compileStrict` in JavaScript), so one engine checks conditions strictly and compiles output templates. An optional escape prefix (`.with_template_key_escape('$')` in Rust, an engine option in every binding) lets a key that names an operator be emitted: `{"$type": ...}` outputs `type` rather than running the `type` operator.
 
 ### 3. Safe user expressions
 
@@ -124,7 +124,7 @@ Try any of these live in the [playground](https://goplasmatic.github.io/datalogi
 
 ## 🎨 Visual rule builder and debugger
 
-For admin portals and dashboards where non-engineers author rules, drop `@goplasmatic/datalogic-ui` into your React app. It runs the WASM core internally to compile and trace execution live, and it is the same component behind the online playground.
+For admin portals and dashboards where non-engineers author rules, drop `@goplasmatic/datalogic-ui` into your React app. It bundles the WASM engine to compile and trace rules live, and it is the same component behind the online playground.
 
 ```tsx
 import { DataLogicEditor } from '@goplasmatic/datalogic-ui';
@@ -140,7 +140,7 @@ import { DataLogicEditor } from '@goplasmatic/datalogic-ui';
 
 ## One API shape, every binding
 
-Every binding exposes the same seven patterns, so what you learn in one language carries over to the rest of your stack:
+Every binding exposes the same patterns, so what you learn in one language carries over to the rest of your stack:
 
 | Pattern | Shape | Use when |
 | :--- | :--- | :--- |
@@ -149,10 +149,12 @@ Every binding exposes the same seven patterns, so what you learn in one language
 | **Compile once** | `engine.compile(rule)` → evaluate many | one rule, many payloads |
 | **Session** | `engine.session()` | hot loops; reuses the internal arena across evaluations |
 | **Parse once** | `DataHandle(json)` → evaluate many rules against it | one payload, many rules or repeat evaluations; skips the dominant per-call parse cost |
-| **Typed** | `session.evaluateBool/Number/Truthy(rule, handle)` | predicates and scalar results; no JSON decode on the way out |
+| **Typed** | `session.evaluateBool/Int/Float/Truthy(rule, handle)` | predicates and scalar results; no JSON decode on the way out |
 | **Batch** | `session.evaluateBatch(rule, handles)` / `evaluateMany(rules, handle)` | many evaluations in one call, per-item errors that never fail the set |
+| **Check** | `engine.check(rule)` / `engine.compileChecked(rule)` | validating user-authored rules before you store or run them; each diagnostic carries a JSON Pointer into the rule |
+| **Inspect** | `rule.facts()` / `engine.operators()` | the data paths a rule reads and the operators it calls; the catalogue of built-ins for editors and allow-lists |
 
-Rust adds two more tiers: zero-copy evaluation into a caller-owned arena, and traced evaluation, which powers the visual debugger. See the [Rust crate deep-dive](./crates/datalogic-rs/README.md) for the full ladder.
+Every binding also has traced evaluation (`evaluateWithTrace`), which powers the visual debugger. Rust adds zero-copy evaluation into a caller-owned arena. See the [Rust crate deep-dive](./crates/datalogic-rs/README.md) for the full ladder.
 
 ---
 
@@ -182,12 +184,13 @@ Reproduce it yourself with `cargo run --release -p datalogic-bench --bin compare
 ## Engine guarantees
 
 - **Conformance, enforced in CI**: passes the official JSONLogic suite plus an extended cross-binding battery: 2,128 cases across 66 suites, run against the same core every binding ships.
-- **84 built-in operators**: comparison, arithmetic, logic, strings, arrays, objects, datetime (with IANA timezones), error handling; you can add custom operators written in each host language.
+- **84 built-in operators**: comparison, arithmetic, logic, strings, arrays, objects, datetime (with IANA timezones), error handling, tensor marshalling and the flagd operators; you can add custom operators written in each host language. `engine.operators()` lists them, generated from the same table that drives dispatch.
+- **Checks before evaluation**: `check` reports every problem it can see in a rule (an unknown operator, an argument count the operator rejects, a timezone that does not exist), each with an RFC 6901 pointer into the rule; `facts` reports the data paths a compiled rule reads.
 - **Thread-safe evaluation**: compiled `Logic` is `Send + Sync`; share it across threads via `Arc`.
 - **Zero `unsafe`**: the core engine forbids unsafe code (`#![forbid(unsafe_code)]`).
-- **Zero-copy variables**: `bumpalo`-backed evaluation; read-through operations like `var` borrow directly from the input.
+- **Zero-copy variables**: `bumpalo`-backed evaluation; read-through operations like `var` borrow from the input, and a rule whose reads are known brings in only those paths of an owned or `serde_json` input.
 - **Serde-optional**: the default build has no `serde_json` dependency; enable the feature only for typed interop.
-- **Configurable semantics**: division-by-zero behavior, NaN handling, truthiness rules, and numeric coercions are engine options.
+- **Configurable semantics**: division-by-zero behavior, NaN handling, truthiness rules, numeric coercions, and whether a missing variable reads as `null` or raises an error (`missing_var`) are engine options.
 - **Verifiable supply chain**: npm packages publish from GitHub Actions with provenance attestation; check with `npm audit signatures`.
 
 ### OpenFeature / flagd
@@ -198,7 +201,7 @@ The opt-in `flagd` cargo feature (enabled in every language binding) ships the `
 
 ## Migrating from v4
 
-v5 breaks the API: it renames `DataLogic` to `Engine`, `CompiledLogic` to `Logic`, and `Operator` to `CustomOperator`. One-shot evaluation now uses `eval_str` (returning a `String`) or `eval_into::<T>` (for typed values). The npm WASM package moved from `@goplasmatic/datalogic` to `@goplasmatic/datalogic-wasm`. See [MIGRATION.md](./MIGRATION.md) for the step-by-step guide.
+v5 breaks the API: it renames `DataLogic` to `Engine`, `CompiledLogic` to `Logic`, and `Operator` to `CustomOperator`. One-shot evaluation now uses `eval_str` (returning a `String`) or `eval_into::<T>` (for typed values). The npm WASM package moved from `@goplasmatic/datalogic` to `@goplasmatic/datalogic-wasm`. See [MIGRATION.md](./MIGRATION.md) for the step-by-step guide. If you are upgrading within 5.x, the same file lists the changed results and deprecations in 5.6 and 5.8.
 
 ---
 

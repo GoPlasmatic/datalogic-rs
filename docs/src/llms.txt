@@ -8,33 +8,41 @@
 > database, ship them over an API, change logic without a redeploy.
 > Apache-2.0.
 
-Key facts: rules compile once to opcode programs and evaluate in a
-reusable memory arena (10.3 ns geomean across the 51-suite benchmark
-matrix); the core is `#![forbid(unsafe_code)]` with no eval, no I/O,
-and no scripting runtime, so user-submitted rules are safe to evaluate;
-every binding runs the same 2,128-case conformance battery (66 suites)
-in CI, so semantics never drift between languages; 84 built-in
-operators including datetime, string/array/object extensions, error
-handling (try/throw), and flagd-compatible feature-flag operators
-(fractional, sem_ver) with murmur3 bucketing byte-compatible with
-OpenFeature flagd.
+Key facts (current release 5.8.1): rules compile once to opcode
+programs and evaluate in a reusable memory arena (10.3 ns geomean across
+the 51-suite benchmark matrix); the core is `#![forbid(unsafe_code)]`
+with no eval, no I/O, and no scripting runtime, so user-submitted rules
+cannot run host code; the same 2,128-case conformance battery (66 suites)
+runs in CI against the core and through the bindings, so every language
+gives the same result; 84 built-in operators including datetime,
+string/array/object extensions, error handling (try/throw), tensor
+marshalling, and flagd-compatible feature-flag operators (fractional,
+sem_ver) with murmur3 bucketing byte-compatible with OpenFeature flagd.
 
 Install per language: Rust `cargo add datalogic-rs` · Node.js
 `npm i @goplasmatic/datalogic-node` · Browser/Edge WASM
 `npm i @goplasmatic/datalogic-wasm` · Python `pip install datalogic-py`
-(fully typed, PEP 561) · Go
+(typed, PEP 561) · Go
 `go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5` · JVM
 `io.github.goplasmatic:datalogic` (JDK 22+) · .NET
 `dotnet add package Goplasmatic.Datalogic` · PHP
 `composer require goplasmatic/datalogic` (PHP 8.4+, ext-ffi) · React UI
-`npm i @goplasmatic/datalogic-ui`.
+`npm i @goplasmatic/datalogic-ui`. Cargo: `datalogic-rs = "5"`; Maven /
+Gradle: `io.github.goplasmatic:datalogic:5.8.1`.
 
-API shape (identical across languages): one-shot `apply(rule, data)`;
+API shape (the same in every language): one-shot `apply(rule, data)`;
 `Engine` → `compile(rule)` → `rule.evaluate(data)` for hot paths;
 `Session` for arena-reuse loops; `DataHandle` for parse-once payloads;
 typed results (bool/int/float) for predicates; batch evaluation;
-custom operators registered as host-language callbacks; optional
-templating mode and step-by-step trace output.
+custom operators registered as host-language callbacks; templating
+per engine or per rule (`compileTemplate`); step-by-step trace output.
+Rule analysis: `check(rule)` returns diagnostics (unknown operator with a
+"did you mean" suggestion, wrong argument count) located by JSON Pointer;
+`compileChecked(rule)` refuses a rule with errors (`CompileError`);
+`rule.facts()` lists the data paths and operators a rule uses;
+`engine.operators()` is the operator catalogue. Config
+`"missing_var": "error"` makes a missing data path raise
+`VariableNotFound` instead of reading `null`.
 
 ## Docs
 
@@ -46,8 +54,12 @@ templating mode and step-by-step trace output.
   all 84 built-in operators with examples
 - [Language guides](https://goplasmatic.github.io/datalogic-rs/rust/overview.html):
   per-binding chapters (Rust, Node, WASM, Python, Go, JVM, .NET, PHP, React UI)
+- [Configuration](https://goplasmatic.github.io/datalogic-rs/advanced/configuration.html):
+  NaN, division, truthiness, missing-variable and operator-family settings
 - [Security & sandboxing](https://goplasmatic.github.io/datalogic-rs/advanced/security.html):
   the sandbox guarantees and what remains the host's job
+- [Migration guide](https://goplasmatic.github.io/datalogic-rs/migration.html):
+  v4 to v5, and the behaviour changes in 5.8.0
 - [How it compares](https://goplasmatic.github.io/datalogic-rs/comparison.html):
   vs json-logic-js, json-logic-engine, GoRules ZEN, CEL
 - [Performance](https://goplasmatic.github.io/datalogic-rs/performance.html):
@@ -68,13 +80,21 @@ templating mode and step-by-step trace output.
 - Compile once and reuse the compiled rule; compiled rules are
   thread-safe in every binding. Sessions are single-threaded.
 - Errors carry a stable tag (`ParseError`, `InvalidOperator`,
-  `InvalidArguments`, `TypeError`, `Thrown`, ...) with the same taxonomy
-  in every language. Arithmetic on non-numeric input surfaces as
-  `Thrown` whose payload is `{"type": "NaN"}`; `NaN` itself is not a tag.
+  `InvalidArguments`, `VariableNotFound`, `TypeError`, `Thrown`, ...)
+  with the same taxonomy in every language, plus the innermost failing
+  operator. Arithmetic on non-numeric input surfaces as `Thrown` whose
+  payload is `{"type": "NaN"}`; `NaN` itself is not a tag.
+- An unknown operator compiles and fails only when evaluation reaches it;
+  call `check` or `compileChecked` to catch it up front.
 - `and` / `or` return the deciding operand, not a boolean, so the
   json-logic-js default-value idiom works unchanged:
   `{"or": [{"var": "nickname"}, "Anonymous"]}` yields the nickname when
   it is truthy and `"Anonymous"` otherwise.
+- WASM: build an `Engine` (`new Engine(options)`) and use
+  `engine.evalStr`, `engine.compile` and `rule.evaluate`. The free
+  `evaluate` / `evaluateWithTrace` functions and the `CompiledRule` class
+  are deprecated in 5.8.0 and removed in 6.0. In Node and WASM,
+  `evaluateNumber` is deprecated; use `evaluateFloat` or `evaluateInt`.
 - The old v4 npm package `@goplasmatic/datalogic` no longer exists on
   the registry; use `@goplasmatic/datalogic-node` (native Node) or
   `@goplasmatic/datalogic-wasm` (browser/edge).

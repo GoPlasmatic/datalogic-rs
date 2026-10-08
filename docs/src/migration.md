@@ -1,21 +1,101 @@
 # Migration Guide
 
-This page is a quick conceptual overview. The full v4 → v5 cookbook
-(every renamed call, every cargo-feature swap, every error-handling
-update) lives in [`MIGRATION.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md)
-at the repo root. Treat that file as authoritative.
+This page covers the behaviour changes in 5.8.0 and gives an overview of
+the move from v4 to v5. The full v4 to v5 cookbook (every renamed call,
+cargo-feature swap and error-handling update) and the notes for earlier
+5.x releases live in [`MIGRATION.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md)
+at the repo root, which is authoritative.
+
+## Upgrading to 5.8
+
+5.8.0 adds API (rule checking, rule facts, the operator catalogue,
+per-compile templating, `MissingVar`, `Roots`, `SharedSession` and more)
+without breaking source compatibility. A rule's result can change in the
+cases below, most of them bug fixes. The
+[CHANGELOG](https://github.com/GoPlasmatic/datalogic-rs/blob/main/CHANGELOG.md)
+has every item with examples.
+
+**Errors**
+
+- `Error::operator()`, and `"operator"` in a serialized error, name the
+  innermost failing operator, custom operators included. Before 5.8 it
+  was the root operator unless a deeper site set one, and traced runs
+  always reported the root.
+- `format_date` with a format specifier chrono does not know (`"%Q"`) or a
+  trailing `%` is an `InvalidArguments` error instead of a panic.
+
+**Data and comparison**
+
+- Only a single-key `{"datetime": ..}` or `{"timestamp": ..}` object is a
+  datetime. A record that has such a field next to others is ordinary data
+  for `==`, `===`, `in`, `distinct` and `type`.
+- Integers above 2^53 compare, divide and sort exactly in `==`, `===`,
+  `<` and the other comparisons, `/`, `%` and `sort`; they are no longer
+  rounded or judged equal.
+- `sort` by a field reads a missing field as `null`, so it ties with a
+  `null` field.
+- `filter` with `===` / `!==` against `null` treats a missing field as
+  `null`, as the other iterators did.
+
+**Arithmetic and strings**
+
+- The strings `"NaN"`, `"inf"` and `"infinity"`, and numeric literals that
+  overflow, no longer coerce to non-finite numbers: arithmetic applies NaN
+  handling to them, `==` and `<` raise an error, and `abs`, `ceil` and
+  `floor` raise `InvalidArguments`.
+- `NanHandling::CoerceToZero` substitutes 0 instead of skipping the value:
+  `{"*": [2, "x", 3]}` is `0`, not `6`.
+- Variadic `+` and `*` coerce numeric strings as the two-argument forms do.
+- `ceil` and `floor` return a float for a result outside the `i64` range
+  instead of saturating.
+- `lower` and `upper` apply context-sensitive Unicode case rules
+  (`"ΟΔΟΣ"` lowers to `"οδος"`).
+- `type` classifies strings with the datetime and duration parsers:
+  `"password1"` is `"string"` (it was `"duration"`).
+- A rule that passes an expression where an operator distinguishes a
+  literal argument (a single array for `+`, `*`, `max` and `min`, a `var`
+  path built with `cat`) gives the same result with or without constant
+  folding: `{"+": [{"if": [true, [1, 2], 0]}]}` is `3` with folding on
+  or off.
+- A rule compiled on one engine and evaluated on an engine with different
+  number coercion, NaN, division, loose-equality or truthiness settings
+  follows the evaluating engine's settings; before 5.8, values folded at
+  compile time kept the compiling engine's.
+- `Logic::to_json()` writes a rule that reads back as the same rule: a
+  single array argument stays wrapped (`{"max": [[1, 2]]}`), a dotted
+  `val` path stays in `val` form, and strings are escaped.
+
+**Limits**
+
+- A `reduce` accumulator may nest at most 1,024 levels; deeper is an
+  `InvalidArguments` error instead of a stack overflow.
+- Tensor constructors (`zeros`, `full`, `scatter`, `rle_expand`,
+  `one_hot`, `pad`) refuse more than 2^28 elements.
+- `fractional` clamps bucket weights to `i32::MAX`, as flagd does.
+- Operation counts from `evaluate_metered` rise for iterator shapes that
+  took a fast path, to match the general path.
+
+**Deprecations** (removed in 6.0)
+
+- WASM: the `CompiledRule` class and the free `evaluate` and
+  `evaluateWithTrace` functions. Build an `Engine` and use `compile`,
+  `evalStr` and `evaluateWithTrace` on it.
+- Node and WASM: `evaluateNumber`. Use `evaluateFloat` (or `evaluateInt`).
+
+If you install the Node package: 5.1.1 through 5.7.1 published
+`@goplasmatic/datalogic-node` without its `index.js` loader, so
+`require('@goplasmatic/datalogic-node')` failed. 5.8.0 ships it again.
 
 ## v4 to v5 Migration
 
 ### v5 is a hard cliff
 
 v5 has **no compatibility shim**. The pre-release `compat` feature and
-the `LegacyApi` trait are gone; there is no transitional crate
-configuration. Plan a single cutover: update Cargo.toml, run a
-find-and-replace pass, and re-run your test suite.
+the `LegacyApi` trait are gone. Plan a single cutover: update Cargo.toml,
+run a find-and-replace pass, and re-run your test suite.
 
-The on-the-wire JSONLogic spec is unchanged: your rules and data still
-look the same. Everything that changes is on the Rust side.
+Rules and data keep the same JSONLogic format; the changes are in the Rust
+API.
 
 ### What changed at a glance
 
@@ -24,7 +104,7 @@ look the same. Everything that changes is on the Rust side.
   [`DataValue`], `ArenaContextStack` →
   [`operator::EvalContext`](https://docs.rs/datalogic-rs/latest/datalogic_rs/operator/struct.EvalContext.html).
   `Evaluator` is gone (args arrive pre-evaluated).
-- **Method renames.** Every `evaluate_*` is now `eval_*`. `evaluate_str`
+- **Method renames.** The `evaluate_*` methods become `eval_*`. `evaluate_str`
   → `eval_str`, `evaluate_borrowed` → `eval_borrowed`. The
   `serde_json::Value`-shaped variants (`evaluate_json_value`,
   `evaluate_owned`, `evaluate_ref`, …) collapse into one typed entry
@@ -39,9 +119,9 @@ look the same. Everything that changes is on the Rust side.
   [`IntoLogic`]: `&str`, `&String`, `&OwnedDataValue`, `OwnedDataValue`,
   `&serde_json::Value` (gated on `serde_json`).
 - **Module-level helpers for one-shot calls.** `datalogic_rs::eval`,
-  `datalogic_rs::eval_str`, `datalogic_rs::eval_into`, and
-  `datalogic_rs::compile` use a shared default engine, so you don't need
-  to construct an `Engine` for the simple cases.
+  `datalogic_rs::eval_str`, `datalogic_rs::eval_into` and
+  `datalogic_rs::compile` use a shared default engine, so a one-shot
+  call needs no `Engine`.
 - **Sessions are explicit.** Reusable arenas live on
   [`Session`] (`engine.session()`); the session never auto-resets,
   so you call `session.reset()` between batches.
@@ -57,13 +137,15 @@ look the same. Everything that changes is on the Rust side.
   after `build()`. Register every custom operator on the
   `EngineBuilder` before calling `.build()`.
 - **Error is structured.** `Error` is a struct with `kind`,
-  `operator()`, `node_ids()`, `tag()`, plus a stable JSON wire format.
+  `operator()`, `node_ids()`, `tag()` and `code()`, plus a stable JSON
+  wire format.
   Construct via `Error::invalid_arguments(...)`, `Error::type_error(...)`,
   `Error::custom_message(...)`, `Error::wrap(...)`.
-- **`preserve` operator removed.** Literal scalars and arrays already
-  pass through inline; templated objects belong in templating mode
-  (rebuild with `Engine::builder().with_templating(true).build()`,
-  requires `feature = "templating"`).
+- **`preserve` operator removed.** Literal scalars and arrays pass
+  through inline; templated objects belong in templating mode
+  (`Engine::compile_template` for one rule, or
+  `Engine::builder().with_templating(true).build()` for the engine; both
+  need `feature = "templating"`).
 - **Edition 2024 + `#![forbid(unsafe_code)]`.**
 
 ### Feature-flag rename
@@ -135,9 +217,9 @@ let engine = Engine::builder()
 
 - The repo-root [`MIGRATION.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md)
   has the per-call cookbook.
-- [`rust/api-reference.md`](rust/api-reference.md) covers every v5 method.
-- [`getting-started/quick-start.md`](getting-started/quick-start.md)
-  walks through the new module-level helpers.
+- The [API Reference](rust/api-reference.md) covers the v5 methods.
+- The [Quick Start](getting-started/quick-start.md) shows the
+  module-level helpers.
 
 [`Engine`]: rust/api-reference.md
 [`Logic`]: rust/api-reference.md
@@ -152,14 +234,14 @@ let engine = Engine::builder()
 
 ## v3 to v4 Migration
 
-If you're stepping from v3 directly to v5, the v3 → v4 jump is a
-historical layer that no longer matches anything in this codebase. Read
-the [v4-to-v5 section](#v4-to-v5-migration) above and the repo-root
-`MIGRATION.md`; they cover everything you need to land on v5.
+If you are moving from v3 straight to v5, skip the v3 to v4 step: nothing
+in it applies to this codebase. Read the
+[v4 to v5 section](#v4-to-v5-migration) above and the repo-root
+`MIGRATION.md`.
 
 ### Getting Help
 
-If you encounter issues during migration:
+If you hit a problem during migration:
 
 1. Check the [API Reference](rust/api-reference.md)
 2. Review the [examples](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs/examples)

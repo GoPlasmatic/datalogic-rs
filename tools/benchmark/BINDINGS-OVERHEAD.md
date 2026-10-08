@@ -9,7 +9,8 @@ Link here from other docs rather than re-quoting numbers inline.
 Every number is reproducible in-tree with the boundary harness:
 [`boundary/README.md`](./boundary/README.md).
 
-> **Captured:** 2026-07-03 • Apple M2 Pro (arm64), macOS 26.5 • Rust
+> **Captured:** 2026-07-03 at datalogic-rs 5.0.1 (release tree, before
+> the tag) • Apple M2 Pro (arm64), macOS 26.5 • Rust
 > 1.96 release builds • Node v22 • CPython 3.13 (abi3 wheel) • Go 1.25
 > • OpenJDK 26 via FFM • .NET SDK 9 (net9.0 console over net8.0
 > binding) • PHP 8.5 with FFI • median of 5 samples, each sized to
@@ -35,7 +36,7 @@ session where the API offers one.
 
 ## 1. The shared floor: what each contract costs before any FFI
 
-Measured on the core crate directly (compile once, then per call):
+Measured on the core crate, with no binding (compile once, then per call):
 
 | Core tier                                            | simple | eligibility | array100 |
 |------------------------------------------------------|-------:|------------:|---------:|
@@ -59,9 +60,9 @@ Reading it:
   noise).
 - **Result serialization is comparatively cheap** here because these
   results are small. It scales with result size, not input size.
-- **A fresh arena per call costs 20-450 ns** versus arena reuse:
-  real, but an order of magnitude smaller than the parse, so session
-  tiers alone barely move the needle.
+- **A fresh arena per call costs 20-450 ns** versus arena reuse, an
+  order of magnitude less than the parse, so a session tier alone saves
+  little.
 
 The "parse-eval-serialize" row (140 / 1,013 / 12,017) is the
 **string-contract floor**: the tables below judge every binding's
@@ -113,14 +114,14 @@ Takeaways, per binding:
 
 - **C, .NET, and Go sit within ~65 ns of the floor**, and the raw C
   session path is *below* it, because the borrowed-result contract
-  skips the result-`String` allocation the floor row includes. What
-  remains is UTF-8 marshalling and call dispatch.
+  skips the result-`String` allocation the floor row includes. The
+  remaining cost is UTF-8 marshalling and call dispatch.
 - **JVM** runs on eager `java.lang.foreign` downcall handles at ~1.7x
-  the .NET boundary cost, with argument strings explicitly UTF-8.
+  the .NET boundary cost, and passes argument strings as UTF-8.
   JDK 22+ required; add `--enable-native-access=ALL-UNNAMED` on
   JDK 24+.
-- **Python and Node** bind the Rust core directly (napi-rs / pyo3),
-  not the C ABI. Their string tiers pay one host-string extraction in
+- **Python and Node** bind the Rust core through napi-rs / pyo3
+  instead of the C ABI. Their string tiers pay one host-string extraction in
   and one result copy out. Object inputs: see section 3.
 - **WASM's string tier scales with payload**: the JS→WASM copy plus
   the in-module parse make it 2.8x the floor at 8 KB. A resident
@@ -140,7 +141,10 @@ Takeaways, per binding:
 One-shot convenience tiers (compile per call: `apply`, `engine.eval`,
 free-function `evaluate`) cost 5 to 15x the hot path at small payloads
 (e.g. Node 4,912 ns vs 341 ns on `simple`). That is per-call rule
-compilation, by design; the docs steer users to compile-once.
+compilation, by design; the docs steer users to compile-once. The WASM
+free `evaluate` is deprecated in 5.8.0 (removed in 6.0); its
+replacement, `engine.evalStr`, is the same one-shot tier on an engine
+you build once.
 
 ## 3. The object paths (Node and Python)
 
@@ -157,9 +161,10 @@ the same object through the string path:
 
 - **Python's dict path converts via a direct Python↔arena walk** (no
   intermediate tree; `pythonize` retained only as the exotic-shape
-  fallback, with the semantics pinned by a 549-case equivalence
-  corpus). It beats the `json.dumps` round-trip at every payload size,
-  so dicts are the natural input shape in Python.
+  fallback, with the semantics pinned by the equivalence corpus in
+  `bindings/python/tests/test_equivalence.py`, 549 cases at capture).
+  It beats the `json.dumps` round-trip at every payload size, so dicts
+  are the natural input shape in Python.
 - **Node's object path remains the napi serde bridge**, and the JSON
   text round-trip beats it at every size (2.5-6x): V8's own
   `JSON.stringify` plus one string crossing plus the SWAR parser is
@@ -222,7 +227,7 @@ change-by-change record is in the repo
 
 ## Appendix: full result tables
 
-Current capture (2026-07-03), ns/op, median of 5. Reproduce with
+Current capture (2026-07-03, datalogic-rs 5.0.1), ns/op, median of 5. Reproduce with
 `tools/benchmark/boundary/run.sh all` (the
 `dumps-str-loads-roundtrip`/`array100` cell was re-measured once after
 a transient outlier in the batch run; every other cell is the single
@@ -283,6 +288,11 @@ wasm       compiledrule-evaluate-str             606.1      3,312.9    31,578.7
 wasm       oneshot-evaluate                    3,378.5     18,865.8    76,235.1
 ```
 
+The WASM `compiledrule-evaluate-str` and `oneshot-evaluate` rows time
+`CompiledRule` and the free `evaluate`, both deprecated in 5.8.0. Their
+replacements are `engine.compile` + `session.evaluate` (the
+`session-evaluate-str` row) and `engine.evalStr`.
+
 Historical baseline (pre-5.0.1, captured 2026-07-03 before the
 overhaul; JVM rows are the JNA binding, PHP rows are PHP 8.4, Python
 object rows are the pythonize bridge, and no data-handle/batch/typed
@@ -334,7 +344,7 @@ Methodology notes:
   to size N for ~250 ms per sample, median of 5 samples. Results consumed
   (`black_box`/sink) to prevent elision. Native calls are opaque to JITs,
   so dead-code elimination is not a concern on binding paths; it is for the
-  pure-JS row, which additionally benefits from perfectly warm inline
+  pure-JS row, which also benefits from perfectly warm inline
   caches (single hot object identity). Treat that row as a best case.
 - The Python wheel in the historical baseline was built without any
   release profile (no LTO), which is what wheels shipped before 5.0.1;

@@ -1,8 +1,10 @@
 # Error Handling Operators
 
-Operators for throwing and catching errors, providing exception-like error handling in JSONLogic.
+Operators for throwing and catching errors inside a rule.
 
 > **Feature flag (Rust crate).** `try` and `throw` require the `error-handling` feature. Every language binding enables it. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
+
+**Argument counts:** `try` takes one or more arguments (`{ "try": [] }` is `null`, and a single argument evaluates as itself with nothing caught). `throw` reads one argument; with none it throws `{ "type": "null" }`.
 
 ## try
 
@@ -27,9 +29,16 @@ Catch errors and provide fallback values.
 - Errors raised by the engine itself: an unknown operator, invalid arguments
   (for example `{ "max": ["a", 1] }`), an integer division by zero, a datetime
   that fails to parse, an unknown timezone, and so on.
-- A missing variable is **not** an error: `var` and `val` return `null` for an
-  absent path, so `try` never falls back on missing data. Use `??` or `var`'s
-  default argument for that (see [Control Flow](control-flow.md)).
+- A missing variable is **not** an error under the default configuration:
+  `var` and `val` return `null` for an absent path, so `try` does not fall
+  back on missing data. Use `??` or `var`'s default argument for that (see
+  [Control Flow](control-flow.md)). An engine configured with
+  `EvaluationConfig::missing_var` set to `MissingVar::Error` raises
+  `VariableNotFound` instead, and `try` catches it like any other error
+  (see [Missing Variables](../advanced/configuration.md#missing-variables)).
+- An exhausted [operation budget](../advanced/operation-budget.md)
+  (`BudgetExceeded`) is final: `try` passes it on without running a
+  fallback arm.
 
 **Context in Catch:**
 When `try` catches an error, the catch expression evaluates with the error
@@ -37,13 +46,16 @@ object as its context, so you read its fields via `var` / `val`:
 - A string `throw` produces the error object `{ "type": <string> }`, so you
   read the message with `{ "var": "type" }`.
 - An object `throw` (sourced from data) preserves its own keys, so fields such
-  as `{ "var": "code" }` or `{ "var": "message" }` read those keys directly.
+  as `{ "var": "code" }` or `{ "var": "message" }` read those keys.
+- Any other thrown value becomes `{ "type": <its type name> }`:
+  `{ "throw": 5 }` gives `{ "type": "number" }`.
 - Engine-raised errors arrive as `{ "type": <message> }`: an unknown operator
   gives `{ "type": "Unknown Operator" }`, bad operands give
   `{ "type": "Invalid Arguments" }`, an integer division by zero gives
   `{ "type": "NaN" }`, and other kinds carry their message text (for example
-  `{ "type": "Invalid datetime format" }` or
-  `{ "type": "Unknown timezone: Mars/Olympus" }`).
+  `{ "type": "Invalid datetime format" }`,
+  `{ "type": "Unknown timezone: Mars/Olympus" }`, or, under
+  `MissingVar::Error`, `{ "type": "Variable not found: user.name" }`).
 - `{ "var": "" }` returns the entire error object.
 
 **Examples:**
@@ -149,8 +161,8 @@ the `try` fallback; see [Arithmetic](arithmetic.md) for the full rule.
 // Result: "default-theme"
 ```
 
-`var` on a missing path returns `null` rather than raising, so wrapping it in
-`try` never produces the fallback. Use `??` or the `var` default form,
+Under the default configuration `var` on a missing path returns `null`
+rather than raising, so wrapping it in `try` never produces the fallback. Use `??` or the `var` default form,
 `{ "var": ["user.profile.settings.theme", "default-theme"] }`.
 
 **Error logging pattern:**
@@ -188,7 +200,7 @@ Throw an error with optional details.
 - `message` - Error message string. The string becomes the error object's `type` field, or
 - `error_object` - An error object value (sourced from data, or built in templating mode) with arbitrary keys such as `code` and `message`. A multi-key object written inline as a literal does NOT compile in the default engine, because the engine parses it as an operator map. A single-key literal such as `{ "throw": { "type": "X" } }` does not work either, even in templating mode: `type` is an operator name, so it runs the `type` operator on `"X"` and throws `{ "type": "string" }`. An error object carrying a `type` key must come from data (`{ "throw": { "var": "err" } }`).
 
-**Returns:** Never returns normally; throws an error that must be caught by `try`.
+**Returns:** Never returns normally. The error ends the evaluation unless a `try` catches it.
 
 **Examples:**
 
@@ -226,6 +238,22 @@ Throw an error with optional details.
 // Data: { "age": 25 }
 // Result: 25
 ```
+
+### Uncaught errors
+
+An error that no `try` catches reaches your code as an `Error`. A `throw`
+arrives with `ErrorCode::Thrown` (tag `"Thrown"`) and the error object as
+its payload (`Error::thrown_value()`). `Error::operator()` names the
+innermost operator that failed (since 5.8.0), here `throw`, on every
+evaluation path, traced or not. The serialized form of the error from
+`{ "+": [1, { "throw": "bad" }] }`:
+
+```json
+{"type": "Thrown", "message": "Thrown: {\"type\":\"bad\"}", "thrown": {"type": "bad"}, "operator": "throw", "node_ids": [3, 4]}
+```
+
+See [Error](../rust/api-reference.md#error) in the API reference for the
+other fields.
 
 ### Common Patterns
 
@@ -354,6 +382,6 @@ JSONLogic has no native way to collect multiple errors, but you can structure va
 
 This returns an array of error messages for all validation failures. To wrap
 it in an object such as `{ "errors": [...] }`, enable templating mode
-(`Engine::builder().with_templating(true)`, Cargo feature `templating`); in the
-default engine parses a top-level `errors` key as an operator, which fails with
-`InvalidOperator`.
+(`Engine::builder().with_templating(true)`, Cargo feature `templating`). The
+default engine parses a top-level `errors` key as an operator call, which fails
+with `InvalidOperator`.

@@ -1,6 +1,6 @@
 # Contributing to datalogic-rs
 
-Thanks for your interest in contributing! This file covers the
+Thanks for your interest in contributing. This file covers the
 contribution workflow. For the cross-package layout see
 [README.md](./README.md), for design and dependency flow see
 [ARCHITECTURE.md](./ARCHITECTURE.md), and for build / test / run commands
@@ -44,7 +44,7 @@ cargo test --workspace --all-features
 the C ABI, and the WASM tests when `wasm-pack` is installed).
 
 For the full Rust → WASM → UI flow (the UI vendors the locally built
-WASM package automatically), and per-binding build commands, see
+WASM package through its npm hooks), and per-binding build commands, see
 [DEVELOPMENT.md](./DEVELOPMENT.md).
 
 ---
@@ -70,15 +70,21 @@ WASM package automatically), and per-binding build commands, see
 
 ## Writing tests
 
-There are two complementary test systems in `crates/datalogic-rs/tests/`:
+Tests go in one of three places:
 
 - **Rust integration tests** in `crates/datalogic-rs/tests/*.rs` (e.g.
   `basic_test.rs`, `config_test.rs`, `trace_test.rs`). Use these for
   engine-level behaviour, configuration, tracing, custom operators, and
   anything that needs Rust-specific setup.
-- **JSONLogic suites** in `crates/datalogic-rs/tests/suites/*.json`. Use these
-  for any new JSONLogic operator or edge case. They double as the
-  canonical behaviour spec and are replayable in the playground.
+- **JSONLogic suites**: JSON files under `crates/datalogic-rs/tests/suites/`,
+  listed in its `index.json`. Use these for any new JSONLogic operator or
+  edge case. They double as the canonical behaviour spec and are
+  replayable in the playground. Several generated tests run every suite
+  case through another path too (the reference oracle, rule facts, input
+  projection, compile modes); see the
+  [tests README](./crates/datalogic-rs/tests/README.md).
+- **Binding scenarios** in `bindings/scenarios/api.json`, which all eight
+  bindings run. Add one when you add or change binding surface.
 
 A suite entry looks like:
 
@@ -101,15 +107,19 @@ for the full schema.
   step-by-step is in
   [DEVELOPMENT.md → Adding a built-in operator](./DEVELOPMENT.md#adding-a-built-in-operator).
 - **Custom operator** (your own application extends the engine): implement
-  `CustomOperator`, register on `Engine::builder().add_operator(...)`. See
+  `CustomOperator` and register it with `Engine::builder().add_operator(...)`,
+  or `try_add_operator(...)`, which refuses a name a built-in answers to. See
   the [`custom_operator` example](./crates/datalogic-rs/examples/custom_operator.rs)
   and the [Custom operators section in the crate README](./crates/datalogic-rs/README.md#custom-operators).
 
 ## Debugging rules
 
-Enable the `trace` feature on the Rust crate to record every evaluation
-step, then inspect the trace programmatically (Rust) or visually (the
-React debugger). See the [Tier 4 example in the crate README](./crates/datalogic-rs/README.md#tier-4-traced-evaluation-trace-feature)
+`Engine::check` lists the problems the engine can see in a rule before it
+runs (unknown operators, argument counts, unknown timezones), each with a
+JSON Pointer into the rule. To see what a rule does at runtime, enable the
+`trace` feature on the Rust crate to record every evaluation step, then
+inspect the trace programmatically (Rust) or visually (the React
+debugger). See the [Tier 4 example in the crate README](./crates/datalogic-rs/README.md#tier-4-traced-evaluation-trace-feature)
 for the Rust pattern, or drop into
 [`@goplasmatic/datalogic-ui`](./ui/README.md) for the visual debugger.
 

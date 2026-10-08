@@ -1,6 +1,7 @@
 # Performance
 
-This guide covers performance optimization, benchmarking, and best practices for datalogic-rs.
+This page covers where datalogic-rs spends time, how to benchmark it, and
+how to keep evaluation fast.
 
 ## The headline numbers
 
@@ -42,15 +43,18 @@ for data in datasets {
 
 ### OpCode Dispatch
 
-Built-in operators use direct OpCode dispatch instead of string lookups:
+The compiler resolves each operator name once, so evaluating on the
+compiling engine does not look an operator up by its string:
 
-- 84 built-in operators have direct dispatch
-- Custom operators use a single map lookup
-- No runtime reflection or dynamic dispatch
+- Each of the 84 built-in operators compiles to an `OpCode` that dispatch
+  matches on.
+- A custom operator call compiles to the operator's slot on the engine
+  that compiled the rule, and dispatch indexes that slot. A rule calling
+  eight custom operators measured 181 ns per evaluation with the earlier
+  name lookup and 75 ns with slot dispatch. Evaluated on a different
+  engine, the rule finds that engine's operator by name.
 
 ### Memory Efficiency
-
-v5 optimizations:
 
 - **Arena allocation**: `&DataValue<'a>` results live in a `bumpalo::Bump`
   for one evaluation. Read-through ops like `var` borrow zero-copy from the
@@ -59,15 +63,68 @@ v5 optimizations:
   `session.reset()` between batches so peak memory tracks the largest
   single evaluation rather than the sum.
 - **Pre-built literal singletons**: trivial literals (`Null`, `Bool`,
-  empty primitives) are static and incur no per-call allocation.
+  empty primitives) are static and need no per-call allocation.
 - **`Arc<Logic>`**: cheap clone for cross-thread sharing.
+
+### Input Projection
+
+Before a rule can read an owned or `serde_json` input, the engine builds
+an arena view of it. When a compiled rule's reads are all known
+(`Logic::facts()` reports `reads_complete()`) and none of them is the
+whole input, the view covers those paths and nothing else: on the way
+down each path, only the object keys it names, and the whole value at its
+end. Results are the same either way. Reading one field of an 8 MB
+context took 36 ns from an `OwnedDataValue` and 41 ns from a
+`serde_json::Value`, against 2.96 ms and 15.7 ms for a view of the whole
+input; on a 1 KB context projection was 3 to 12 times faster.
+
+Projection applies to `&OwnedDataValue`, `&serde_json::Value` and `Roots`
+input, through `Engine::evaluate`, a `Session`, the one-shot
+`Engine::eval*` methods and the top-level `eval*` functions. JSON text and
+`ParsedData` are parsed straight into the arena and see no change. The
+engine views the whole input when the rule:
+
+- reads a computed path (`{"var": {"cat": [..]}}`),
+- calls a custom operator that may read the context (the default unless
+  its `info()` declares otherwise; see
+  [Custom Operators](advanced/custom-operators.md)),
+- reads the whole input (`{"var": ""}`),
+- runs on an engine other than the one that compiled it, or
+- runs traced.
+
+[Rule Analysis](advanced/rule-analysis.md#what-a-rule-reads-logicfacts)
+covers `Logic::facts()`. `cargo run --release -p datalogic-bench --bin
+projection` reproduces the numbers.
+
+### Iterator Fast Paths
+
+Some iterator bodies run as a loop specialised to their shape, reading
+fields straight from each element instead of pushing a frame and
+dispatching the body per item:
+
+| Operator | Body shape |
+|----------|------------|
+| `filter`, `all`, `some`, `none` | a comparison of the element or one of its fields with a literal (`{">": [{"var": "score"}, 50]}`), `and` / `or` / `!` / `!!` trees of those, a bare field, or `in` against a list of strings; for `filter`, also `===` / `!==` of a field and a value that does not change per item |
+| `map` | a field, or `+` / `-` / `*` of a field and a literal or of two fields |
+| `reduce` | `+` / `-` / `*` of `current` (or `current.path`) and `accumulator`, including a `reduce` over such a `map` |
+| `sort` | a key that is a field of the element |
+
+The predicate shape is chosen once per call, not once per item: over 1,000
+items, `{"filter": [xs, {">": [{"var": ""}, 500]}]}` measured 1.17 µs.
+These paths give the results the general path gives, fall back to it when
+a value has the wrong type, and under an
+[operation budget](advanced/operation-budget.md) charge what it charges.
+They stand aside when the run is traced and on an engine configured with
+`MissingVar::Error`, where a missing field must raise an error that an
+inline read cannot.
 
 ## Benchmarking
 
 ### Running Benchmarks
 
 The benchmark harness lives in its own dev-only crate, `datalogic-bench`,
-under `tools/benchmark/`. Two binaries share a common harness:
+under `tools/benchmark/`. Its binaries share a common harness; these two
+cover most uses:
 
 ```bash
 # Single-engine benchmark (datalogic-rs alone, fast arena path)
@@ -79,7 +136,10 @@ cargo run --release -p datalogic-bench --bin self -- --all   # every suite + JSO
 cargo run --release -p datalogic-bench --bin compare -- --all
 ```
 
-Reports land in `tools/benchmark/output/` (gitignored).
+Reports land in `tools/benchmark/output/` (gitignored). The `projection`
+binary times a rule that reads a few fields of a large context, with and
+without [input projection](#input-projection); `tools/benchmark/README.md`
+lists the others.
 
 ### Creating Custom Benchmarks
 
@@ -105,9 +165,9 @@ fn main() {
 }
 ```
 
-For the absolute hot path, drop down to `Engine::evaluate` and manage the
-arena yourself. The result is a zero-copy `&DataValue<'a>` and avoids the
-deep-clone Session does at the boundary.
+For the hottest path, call `Engine::evaluate` and manage the arena
+yourself. The result is a zero-copy `&DataValue<'a>`, without the deep
+clone a `Session` makes at the boundary.
 
 ```rust
 use bumpalo::Bump;
@@ -128,11 +188,9 @@ for data in datasets {
     session.eval_str(&compiled, data)?;
 }
 
-// Bad: recompiles every iteration
+// Bad: compiles the rule again on every iteration
 for data in datasets {
-    let compiled = engine.compile(rule).unwrap();
     engine.eval_str(rule, data)?;
-    let _ = compiled;
 }
 ```
 
@@ -145,13 +203,15 @@ for data in datasets {
 | JSON strings (many runs) | `Session::eval_str(&compiled, data)` |
 | `OwnedDataValue` (many runs) | `Session::eval(&compiled, &owned)` → `OwnedDataValue` |
 | Typed `T` from `serde_json` (`feature = "serde_json"`) | `Session::eval_into::<T, _>(&compiled, data)` |
+| Several separate values the rule reads as one object | `Session::eval*(&compiled, &Roots::from([..]))` |
+| A session stored in a struct, moved across threads or held across `.await` | `SharedSession::new(Arc<Engine>)` |
 | Borrowed result, session-owned arena | `Session::eval_borrowed(&compiled, data)` |
 | Hot path, owns the `Bump` | `Engine::evaluate(&compiled, data, &arena)` |
 
 ### 3. Short-Circuit Evaluation
 
-`and`, `or`, `if`, `?:`, and `??` short-circuit. Order conditions so the
-cheapest / most-likely-to-decide check comes first:
+`and`, `or`, `if`, `?:`, and `??` short-circuit. Put the cheapest check,
+or the one most likely to decide the result, first:
 
 ```json
 {
@@ -171,29 +231,72 @@ materialising into owned values unless you need to mutate.
 let n = args[0].as_f64().unwrap_or(0.0); // cheap read
 ```
 
+Declare what the operator does through `CustomOperator::info`. A
+deterministic operator that does not read the context is folded at compile
+time when its arguments are constant, and it leaves the rule eligible for
+[input projection](#input-projection). See
+[Custom Operators](advanced/custom-operators.md).
+
 ### 5. Minimize Nested Variable Access
 
-Deep paths require multiple lookups:
+Each path segment is one lookup:
 
 ```json
-{"var": "user.profile.settings.theme.color"}   // slow
-{"var": "themeColor"}                           // fast
+{"var": "user.profile.settings.theme.color"}   // five lookups
+{"var": "themeColor"}                           // one lookup
 ```
+
+### 6. Pass Separate Values as `Roots`
+
+If a rule reads several values your host keeps apart (a payload, its
+metadata, the caller's claims), pass them as `Roots` instead of merging
+them into one object per evaluation. Each root is borrowed and viewed in
+place, and projection keeps only the roots the rule reads. Against a
+per-evaluation `json!` merge, `Roots` measured 7 to 10 times faster for
+payloads of 4 to 1,024 fields.
+
+```rust
+use datalogic_rs::{Engine, Roots};
+use serde_json::json;
+
+let engine = Engine::new();
+let rule = engine
+    .compile(r#"{"and": [{"==": [{"var": "metadata.channel"}, "web"]}, {">": [{"var": "data.total"}, 100]}]}"#)
+    .unwrap();
+
+let data = json!({"total": 120});
+let metadata = json!({"channel": "web"});
+
+let roots = Roots::from([("data", &data), ("metadata", &metadata)]);
+let mut session = engine.session();
+assert_eq!(session.eval_str(&rule, &roots).unwrap(), "true");
+```
+
+Each root may be a `&serde_json::Value`, `&OwnedDataValue`, `&ParsedData`
+or `&DataValue`, mixed freely.
 
 ## JavaScript / WASM Performance
 
-### CompiledRule Advantage
+### Compile Once
+
+`engine.evalStr(logic, data)` parses and compiles the rule on every call.
+Compile it once with `engine.compile(logic)` and evaluate the returned
+`Rule`:
 
 ```javascript
+import init, { Engine } from '@goplasmatic/datalogic-wasm';
+if (typeof init === 'function') await init();
+
+const engine = new Engine();
 const iterations = 10_000;
 
-console.time('evaluate');
+console.time('one-shot');
 for (let i = 0; i < iterations; i++) {
-  evaluate(logic, data, false);
+  engine.evalStr(logic, data);
 }
-console.timeEnd('evaluate');
+console.timeEnd('one-shot');
 
-const rule = new CompiledRule(logic, false);
+const rule = engine.compile(logic);
 console.time('compiled');
 for (let i = 0; i < iterations; i++) {
   rule.evaluate(data);
@@ -201,7 +304,10 @@ for (let i = 0; i < iterations; i++) {
 console.timeEnd('compiled');
 ```
 
-Typical improvement: 2–5× faster with `CompiledRule`.
+For a hot loop, `engine.session()` reuses one arena across calls, and
+`new DataHandle(json)` parses a payload once for many evaluations. The
+`CompiledRule` class and the free `evaluate` function are deprecated and
+removed in 6.0.
 
 ### React UI Performance
 
@@ -238,7 +344,7 @@ cargo instruments --release -t "CPU Profiler"
 ### Tracing for Bottlenecks
 
 Enable the `trace` feature and call `engine.trace().eval_str(...)`
-to inspect every executed node. Steps carry no timing data (use the
+to inspect each executed node. Steps carry no timing data (use the
 profilers above for that); they tell you which nodes ran, in what order,
 and with which context, result, and iteration counts.
 

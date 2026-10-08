@@ -15,7 +15,7 @@ picture (what depends on what, why the layout is shaped this way), see
 | Go          | 1.25+   | Builds `bindings/go` (`go.mod` declares `go 1.25`; also needs a C compiler for cgo) |
 | Java JDK    | 22+     | FFM (`java.lang.foreign`) downcalls; `--enable-native-access=ALL-UNNAMED` on 24+ |
 | Maven       | 3.8+    | Builds `bindings/jvm` (only for JVM changes)                   |
-| .NET SDK    | 8.0+    | Builds and tests `bindings/dotnet` (only for .NET changes)     |
+| .NET SDK    | 8.0+    | Builds and tests `bindings/dotnet` (only for .NET changes); SDK 10 also builds the `net10.0` target |
 | PHP         | 8.4+    | Runs PHP tests (requires `ext-ffi` enabled in `php.ini`)       |
 | Composer    | 2.0+    | Manages dependencies for `bindings/php` (only for PHP changes)  |
 | `mdbook`    | latest  | Builds the docs site under `docs/`                             |
@@ -30,11 +30,13 @@ cargo install mdbook   # only if you are editing docs/
 
 ## Repo-wide commands
 
-The repo holds six Cargo manifests, but the root workspace has only three
-members (`crates/datalogic-rs`, `crates/datalogic-bind`, `tools/benchmark`). The four bindings and the fuzz crate are `exclude`d from it (each
-declares its own `[workspace]` table; the `exclude` comment in the root
+The repo holds six Cargo workspaces. The root one has three members
+(`crates/datalogic-rs`, `crates/datalogic-bind`, `tools/benchmark`). The
+four bindings and the fuzz crate are `exclude`d from it and each declares
+its own `[workspace]` table (the `exclude` comment in the root
 `Cargo.toml` explains why per crate), so root-level `cargo fmt --all`,
-`cargo clippy --workspace` and `cargo clean` **silently skip them**.
+`cargo clippy --workspace` and `cargo clean` **skip them without a
+warning**.
 
 The root `Makefile` fans those commands out over every manifest:
 
@@ -59,12 +61,12 @@ cargo-semver-checks --locked`. Some targets need more than the stable
 host toolchain:
 
 - **`bindings/wasm`**: `rustup target add wasm32-unknown-unknown`. Its
-  `tests/web.rs` is `#![cfg(target_arch = "wasm32")]`, so a host-target lint
-  compiles it to an empty file and checks nothing. Without the target, `make
-  clippy` warns and falls back to a host lint (in CI, where `CI` is set, it
-  fails instead so lost coverage can't hide). `make test` runs that file
-  under `wasm-pack test --node`, and skips it without `wasm-pack` (again,
-  except in CI).
+  test files open with `#![cfg(target_arch = "wasm32")]`, so a host-target
+  lint compiles them to empty files and checks nothing. Without the target,
+  `make clippy` warns and falls back to a host lint (in CI, where `CI` is
+  set, it fails instead so lost coverage can't hide). `make test` runs the
+  tests under `wasm-pack test --node`, and skips them without `wasm-pack`
+  (again, except in CI).
 - **`crates/datalogic-rs/fuzz`**: lints on stable (its build script
   compiles libFuzzer's C++, so it needs a C++ compiler); only
   `cargo fuzz run` needs nightly.
@@ -78,7 +80,7 @@ The packages have a strict build order. From a fresh clone:
 ```bash
 # 1. Rust workspace: runs core unit/integration tests and the bench crate's checks.
 # Most integration tests are gated behind feature = "serde_json"; the JSONLogic
-# runner additionally needs feature = "templating". --all-features unlocks both.
+# runner also needs feature = "templating". --all-features unlocks both.
 cargo test --workspace --all-features
 
 # 2. WASM bindings: produces bindings/wasm/pkg/{web,bundler,nodejs}.
@@ -89,7 +91,7 @@ cd bindings/wasm && ./build.sh && cd ../..
 #    WASM or browser side.
 cd bindings/node && npm install && npx napi build --platform --release && cd ../..
 
-# 4. UI: picks up the WASM built in step 2 automatically.
+# 4. UI: its predev / prebuild hooks vendor the WASM built in step 2.
 cd ui && npm install
 npm run dev   # or: npm run build:lib for the publishable bundle
 ```
@@ -166,6 +168,28 @@ conformance suites, and uploads any crash as an artifact. The fuzz crate
 depends on `all-operators`, so a new operator family is fuzzed without an
 edit there.
 
+## `crates/datalogic-bind`: what the bindings share
+
+```bash
+cargo test -p datalogic-bind      # also part of `cargo test --workspace --all-features`
+```
+
+Not published; the WASM, Node, Python and C bindings build it from the
+tree. It defines the JSON documents every binding emits (the traced-run
+envelope, the operator catalogue, rule facts, check diagnostics, batch
+item errors) and the custom-operator bridge. Its tests validate real
+output against `schemas/*.v1.json` and reject a property a schema does
+not list, and check the Node TypeScript return types and the Python stub
+(`bindings/python/datalogic_py.pyi`) against the same schemas. A format
+change is a schema change; see [schemas/README.md](./schemas/README.md).
+
+Every binding also runs `bindings/scenarios/api.json` through its own
+API: one list of scenarios (templating modes, families, `check`, facts,
+budgets, traced pointers, ...), each with one expectation all eight
+bindings must meet. Add a scenario there when you add binding surface;
+the "Scenarios" section of [bindings/BINDINGS.md](./bindings/BINDINGS.md)
+has the conventions.
+
 ## `bindings/wasm`: WebAssembly bindings (browser / Deno / Bun / Workers)
 
 ```bash
@@ -174,11 +198,13 @@ cd bindings/wasm
 ```
 
 The crate is its own Cargo workspace (see ARCHITECTURE.md for why), so
-`cargo` commands inside `bindings/wasm/` operate on it standalone. Run
-`cargo test` from inside that directory if you need to test the FFI.
+`cargo` commands inside `bindings/wasm/` operate on it standalone. Its
+tests (`tests/web.rs`, `scenarios.rs`, `conformance.rs`,
+`invalid_arguments.rs`) compile only for wasm32: run them with
+`wasm-pack test --node` from that directory, or `make test-wasm`.
 End-user API and install instructions: [bindings/wasm/README.md](./bindings/wasm/README.md).
 
-The WASM build still ships a `nodejs` target, which suits a consumer
+The WASM build ships a `nodejs` target too, which suits a consumer
 that wants one artifact across Node + browser. **For production Node
 workloads, prefer the native binding below**; it's faster.
 
@@ -188,7 +214,7 @@ workloads, prefer the native binding below**; it's faster.
 cd bindings/node
 npm install                                   # one-time; pulls @napi-rs/cli
 npx napi build --platform --release           # emits datalogic-node.<triple>.node + index.js + index.d.ts
-npm test                                      # node --test '__test__/*.test.mjs'
+npm test                                      # node --test __test__/*.test.mjs
 ```
 
 This is the **primary Node target**, published as
@@ -220,12 +246,14 @@ API and install instructions: [bindings/python/README.md](./bindings/python/READ
 ```bash
 cd bindings/c
 cargo build --release             # produces libdatalogic_c.{so,dylib,a}
-cargo test                        # smoke-tests the extern "C" surface
+cargo test                        # smoke, scenarios, conformance, header sync
 ```
 
 cbindgen regenerates the C header `include/datalogic.h` on every
 build. Don't edit it by hand; edit `src/` and rebuild. Consumers can set
-`DATALOGIC_C_SKIP_CBINDGEN=1` to suppress regeneration.
+`DATALOGIC_C_SKIP_CBINDGEN=1` to suppress regeneration. The
+`header_sync` test fails when PHP's FFI header (`bindings/php/src/datalogic-ffi.h`)
+or the JVM and .NET native declarations drift from the generated header.
 
 This crate is **not user-facing**; it's the FFI boundary the Go, JVM,
 .NET, and PHP bindings consume. See
@@ -258,7 +286,8 @@ dotnet test
 ```
 
 P/Invoke stubs are hand-written with `LibraryImport` (source-generated,
-NativeAOT-ready). A `DllImportResolver` resolves the native library at
+NativeAOT-ready). The package targets `net8.0`, plus `net10.0` when the
+SDK is 10 or newer. A `DllImportResolver` resolves the native library at
 runtime, falling through:
 `DATALOGIC_NATIVE_LIB` env → NuGet's `runtimes/<rid>/native/` →
 `bindings/c/target/release/`. Publish target: NuGet `Goplasmatic.Datalogic`.
@@ -273,14 +302,16 @@ mvn test                           # JUnit 5
 mvn package                        # produces target/datalogic-*.jar + sources + javadoc
 ```
 
-The binding calls the C ABI directly through the `java.lang.foreign`
+The binding calls the C ABI through the `java.lang.foreign`
 (FFM) API (JDK 22+); `internal/DatalogicNative` mirrors
 `bindings/c/include/datalogic.h` as `MethodHandle` downcalls. The
 Surefire plugin sets the `datalogic.library.path` system property to
 `../c/target/release` (and passes `--enable-native-access=ALL-UNNAMED`)
 so local tests pick up the in-tree cdylib. Publishable JARs ship the
-native libs at the classpath root under `<os-arch>/`, which the loader
-extracts and links at runtime. Target: Maven
+native libs at the classpath root under `<os-arch>/`; the loader extracts
+the matching one once into a per-user cache named by its SHA-256
+(`~/.cache/datalogic/native/` or the platform equivalent, falling back to
+a temp directory) and links it. Target: Maven
 Central as `io.github.goplasmatic:datalogic`. End-user API:
 [bindings/jvm/README.md](./bindings/jvm/README.md).
 
@@ -294,9 +325,10 @@ vendor/bin/phpunit                  # PHPUnit
 ```
 
 Loads `libdatalogic_c.{so,dylib,dll}` at runtime via
-`FFI::cdef(<curated header>, <lib path>)`. The Native loader searches
+`FFI::cdef(<curated header>, <lib path>)`, with the curated header in
+`src/datalogic-ffi.h`. The Native loader searches
 `DATALOGIC_NATIVE_LIB` → `bindings/php/lib/<os>-<arch>/` → in-tree
-`bindings/c/target/release/`. PHP 8.4+ with `ext-ffi` required (tracks
+`bindings/c/target/release/` → the OS library path. PHP 8.4+ with `ext-ffi` required (tracks
 `composer.json`; PHPUnit 13 in the test suite requires PHP 8.4+). Publish
 target: Packagist `goplasmatic/datalogic`. End-user API:
 [bindings/php/README.md](./bindings/php/README.md).
@@ -320,11 +352,12 @@ when the UI's picture of the engine drifts:
 
 | Suite | Location | Guards |
 |-------|----------|--------|
-| Registry and help | `src/components/logic-editor/config/__tests__/` | Registry matches `builtinOperatorNames()`; every help example evaluates to its documented result |
+| Registry and help | `src/components/logic-editor/config/__tests__/` | Registry matches `builtinOperatorNames()`; every picker entry (aliases included) has an argument count the catalogue in `docs/src/operators/operators.json` allows; every help example evaluates to its documented result |
 | Round trips | `src/components/logic-editor/utils/__tests__/` | A corpus covering every operator plus the shipped samples survives `jsonLogicToNodes` → `nodesToJsonLogic` and evaluates identically; edge ids stay unique |
 | Editing | `src/components/logic-editor/services/__tests__/` | Argument add/remove, deletion reindexing, duplicate/paste/wrap, inline edits |
-| Trace | `src/components/logic-editor/utils/trace/__tests__/` | Real `evaluateWithTrace` envelopes map onto the diagram with no synthetic nodes |
-| App surface | `ui/tests/` | Samples evaluate to their stored results, share URLs round trip, every operator is reachable from the menus, evaluator/config helpers |
+| Trace | `src/components/logic-editor/utils/trace/__tests__/` | Real `evaluateWithTrace` envelopes map onto the diagram through the engine's node pointers, with no synthetic nodes |
+| App surface | `ui/tests/` | Samples evaluate to their stored results, share URLs round trip, every operator is reachable from the menus, evaluator/config helpers, the CommonJS build starts the engine (after `npm run build:lib`) |
+| Editor (jsdom) | `ui/tests/dom/` | The rendered editor: modes, editing round trips, undo history, keyboard shortcuts, properties panel |
 
 Adding an operator, a help example, or a sample means giving it the result the
 engine produces: the suites compare against a live evaluation.
@@ -337,20 +370,22 @@ Three Vite configs power the three build modes:
 
 The WASM dep is vendored under `ui/vendor/datalogic/` (gitignored),
 synced from `bindings/wasm/pkg/` by `sync-wasm`. The `predev` and `prebuild*`
-hooks run it automatically, so the typical loop is:
+hooks run it, so the typical loop is:
 
 ```bash
 cd bindings/wasm && ./build.sh    # rebuild after Rust changes
 cd ../../ui && npm run dev        # predev re-vendors the fresh pkg/
 ```
 
-`@goplasmatic/datalogic-wasm` is listed as a **devDependency** pinned to the
-last published release. Nothing in the build resolves it: `vite.config.ts`,
-`vite.lib.config.ts`, `vite.embed.config.ts`, `tsconfig.app.json` and
-`tsconfig.lib.json` all alias the package to `vendor/datalogic`. The pin
-exists so the package name resolves for editors and for a plain `npm install`;
-`release-build-ui.yml` rewrites it to the version being published. The library
-bundle embeds the WASM engine, so consumers install neither.
+`ui/package.json` does not depend on `@goplasmatic/datalogic-wasm`. Every
+import of it resolves to `vendor/datalogic`: through `vite.aliases.ts` for
+the three Vite configs and `vitest.config.ts`, and through `paths` in
+`tsconfig.app.json` and `tsconfig.lib.json`. `sync-wasm` refuses a `pkg/`
+whose version differs from the UI's (set
+`DATALOGIC_ALLOW_WASM_VERSION_MISMATCH=1` to accept one). After building
+the library, `release-build-ui.yml` adds the package as a devDependency
+pinned to the version being published, for provenance. The library bundle
+embeds the WASM engine, so consumers install neither.
 
 ## Releases
 
@@ -383,20 +418,28 @@ There are no local publish scripts; do not run `npm publish` or
    `build-*` job is a `release-build-*.yml` reusable workflow that builds
    one binding's publishable artifact with the pinned release toolchain
    and the committed lockfile: the WASM package and the UI bundle, Python
-   wheels and sdist, Node prebuilds, the C cdylib matrix, the Go
+   wheels and sdist, Node prebuilds plus the generated `index.js` /
+   `index.d.ts` loader (the `node-js-loader` artifact), the C cdylib matrix, the Go
    staticlib matrix, and from the cdylibs the NuGet package, the JAR and
    the PHP dist (staged by `scripts/stage-natives.sh`, which fails if a
    platform is missing). `smoke-hosts` then installs the JAR, .nupkg and
-   PHP dist on macOS and Windows; it reports but does not gate yet.
+   PHP dist on macOS and Windows and runs an evaluation and a custom
+   operator through each; it reports but is not a gate.
 3. **`publish-crate`**: runs only when `validate`, `ci` and every build
    passed. Once it succeeds the version is on crates.io for good.
 4. **Publish phase**, each job downloading its artifact and pushing it
    (no rebuild): npm (WASM, Node), PyPI, NuGet, Maven Central, Packagist
    (through the `GoPlasmatic/datalogic-php` split), and the
-   `bindings/go/vX.Y.Z` module tag. `publish-ui` waits for `publish-wasm`.
+   `bindings/go/vX.Y.Z` module tag. `publish-node` refuses to publish the
+   umbrella `@goplasmatic/datalogic-node` package unless `npm pack` lists
+   its `index.js` and `index.d.ts`. `publish-ui` waits for `publish-wasm`.
 5. **`github-release`**: runs alongside `publish-crate`, gated on `ci` and
    the builds only, so a registry outage cannot leave the release page
-   without its assets.
+   without its assets. It takes the notes from the version's CHANGELOG
+   section, opens an Announcements discussion, and attaches the WASM and
+   UI npm tarballs, Python wheels and sdist, Node prebuilds, Go staticlib
+   and C cdylib tarballs (each with `datalogic.h`), the .nupkg, the JARs
+   and the PHP zip.
 
 A failed registry leg is re-run with `gh workflow run release.yml --ref
 vX.Y.Z`; every publish step skips a version the registry already has.
@@ -457,7 +500,7 @@ grammar.
    ```rust
    family ExtString (feature = "ext-string") = STRING {
        Repeat ["repeat"] => eager(Str, Lenient<Int>) string::repeat;
-       Length ["length"] => eager(Any) array::length { cost: Cost::Node, on_extra: Extra::InvalidArgs };
+       Length ["length"] => eager(Any) array::length { cost: Cost::Bytes, on_extra: Extra::InvalidArgs };
    }
    ```
 
@@ -521,7 +564,9 @@ grammar.
    `operators/meta.rs`) says
    whether the operator reads the data context (`reads_context`), has an
    effect (`Clock`, `Throws`, `Catches`), runs an argument under a pushed
-   frame (`frames`), opts out of folding or CSE, and what its work is
+   frame (`frames`), reads an argument position as written
+   (`literal_args`: an expression there keeps its own node when the rest
+   folds), opts out of folding or CSE, and what its work is
    proportional to (`cost`). Constant folding, CSE and scope resolution
    derive their classification from these facts, so a pure operator
    declares nothing. If it pushes a frame and does not say so, variable
@@ -549,8 +594,10 @@ grammar.
 6. **Feature gating (new family only).** Declare the feature in
    `crates/datalogic-rs/Cargo.toml`, add it to the `all-operators` list
    there (the bindings and the benchmark depend on that one feature), add
-   a `family` block with its gate to the table, and add the feature to the
-   `feature-matrix` job in `.github/workflows/ci.yml`.
+   a `family` block with its gate to the table (the public `Family` enum
+   is generated from it), and add the feature to the `feature-matrix` job in
+   `.github/workflows/ci.yml` (and a `feature-combos` leg there, so its
+   suites run on a reduced build).
    `catalogue_gates_match_cargo_features` fails until the feature and the
    `all-operators` list agree with the table.
 7. **Editor and docs.** Add the operator's picker entry under
@@ -559,9 +606,9 @@ grammar.
    matching page under `docs/src/operators/`. The UI's
    `config/__tests__/catalogue.test.ts` reads `operators.json` and fails
    until the picker has the operator (and its aliases), with an argument
-   count the engine accepts. The WASM and Node bindings
-   need no change: they expose the engine as-is, so the operator is live
-   once you rebuild them.
+   count the engine accepts. No binding needs a change: each depends on
+   `all-operators` and exposes the engine as-is, so the operator is live
+   once you rebuild it.
 
 Generated guardrails cover every row without edits: name round-trips, the
 catalogue against the build and against `Cargo.toml`, the declared arity
@@ -586,6 +633,17 @@ mdbook build docs       # produces docs/book/
 ```
 
 `.github/workflows/docs.yml` builds the published site at
-https://goplasmatic.github.io/datalogic-rs/ on every push to `main` that touches docs,
-WASM, or UI. The workflow also bundles the UI playground and the embed
-widget into the rendered book.
+https://goplasmatic.github.io/datalogic-rs/ on every push to `main` that
+touches the docs, the UI, the WASM binding, `crates/datalogic-bind` or the
+core crate's source (the playground embeds the engine). The workflow also
+bundles the UI playground and the embed widget into the rendered book.
+
+`.github/workflows/docs-check.yml` runs on every PR, docs-only ones
+included: `scripts/check-stats.sh`, an mdBook build, and
+`scripts/check-book-links.py` over the built book. Run the same before
+you push a docs change:
+
+```bash
+bash scripts/check-stats.sh
+mdbook build docs && python3 scripts/check-book-links.py docs/book
+```

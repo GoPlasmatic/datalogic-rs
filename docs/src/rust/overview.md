@@ -8,11 +8,11 @@
 cargo add datalogic-rs
 ```
 
-The default build has **no dependency on `serde_json`** and ships the 33 baseline operators. Opt into features as needed:
+The default build has **no dependency on `serde_json`** and ships the 33 baseline operators. Opt into features as needed; `all-operators` turns on every operator family at once:
 
 ```toml
 [dependencies]
-datalogic-rs = { version = "5", features = ["serde_json", "datetime", "templating", "trace", "flagd"] }
+datalogic-rs = { version = "5", features = ["all-operators", "serde_json", "templating", "trace"] }
 ```
 
 See the [feature matrix](../getting-started/installation.md) for what each flag adds.
@@ -31,7 +31,7 @@ A default engine backs the module-level helpers (`eval`, `eval_str`, `eval_into`
 
 ## Five tiers, one engine
 
-The crate exposes a fine-grained API ladder; pick the tier matching your performance budget and trace requirements:
+Pick the tier that matches your performance budget and trace requirements:
 
 | Tier | API Entry Point | When to use |
 | :--- | :--- | :--- |
@@ -57,12 +57,16 @@ for payload in inputs {
 }
 ```
 
-Compiled `Logic` is `Send + Sync`: share it across threads via `Arc` (or `Engine::compile_arc`). Sessions are cheap but not `Sync`; open one per thread. See [Thread Safety](../advanced/threading.md) for Tokio and rayon patterns.
+Compiled `Logic` is `Send + Sync`: share it across threads via `Arc` (or `Engine::compile_arc`). A `Session` is `Send` but not `Sync`; open one per thread or task. To keep a session in a struct or hold it across an `.await`, use `SharedSession`, which holds the engine by `Arc`. See [Thread Safety](../advanced/threading.md) for Tokio and rayon patterns.
+
+## Inspecting rules
+
+Before a rule runs, `Engine::check` lists every problem the engine can see in it, and `Engine::compile_checked` refuses a rule with errors. After compiling, `Logic::facts` reports the data paths the rule reads and the operators it calls, and `Engine::operators` describes every built-in operator. See [Rule Analysis](../advanced/rule-analysis.md).
 
 ## Where everything else is documented
 
-- [API Reference](api-reference.md): every public type, method, and error variant
+- [API Reference](api-reference.md): the public types, methods, and error variants
 - [docs.rs/datalogic-rs](https://docs.rs/datalogic-rs): rustdoc with feature badges
 - [Crate README](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs#readme): the deep-dive with per-tier performance profiles
 - [Runnable examples](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs/examples): ten CI-built examples from getting started to zero-copy input
-- [Custom Operators](../advanced/custom-operators.md) · [Configuration](../advanced/configuration.md) · [Structured Objects](../advanced/structured-objects.md) · [Security & Sandboxing](../advanced/security.md)
+- [Custom Operators](../advanced/custom-operators.md) · [Configuration](../advanced/configuration.md) · [Rule Analysis](../advanced/rule-analysis.md) · [Structured Objects](../advanced/structured-objects.md) · [Security & Sandboxing](../advanced/security.md)

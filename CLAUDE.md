@@ -54,14 +54,14 @@ are authoritative; link to them.
 ## Project-specific conventions
 
 - **Use `make` for anything repo-wide.** Root-level `cargo fmt --all`,
-  `cargo clippy --workspace` and `cargo clean` silently skip the four
-  bindings and the fuzz crate (each is its own workspace root). `make help`
+  `cargo clippy --workspace` and `cargo clean` skip the four bindings and
+  the fuzz crate without a warning (each is its own workspace root). `make help`
   lists the fan-out targets; see
   [DEVELOPMENT.md](./DEVELOPMENT.md#repo-wide-commands).
 - **Always pass `--all-features` to `cargo test`.** Most integration tests
-  are gated behind `feature = "serde_json"` and the JSONLogic suite runner
-  also needs `feature = "templating"`. Without `--all-features`, tests
-  silently skip and you'll think they passed.
+  declare `required-features` (`serde_json` at least; the JSONLogic suite
+  runner also needs `templating`). Without `--all-features`, cargo skips
+  them and the run looks green while testing little.
 - **Run a single JSONLogic suite** via the env-var harness. The path is
   relative to `crates/datalogic-rs/` (the test binary's cwd):
   ```bash
@@ -70,9 +70,11 @@ are authoritative; link to them.
   ```
 - **Adding an operator?** One row in `operators/table.rs` (metadata in
   braces over the family's preset, `{ cost: Cost::Node }`), one function
-  under `operators/<category>/`, one JSON suite under `tests/suites/`.
-  OpCode, names, dispatch and the fold/CSE/scope classification are
-  generated from the row. See the canonical step-by-step in
+  under `operators/`, one JSON suite under `tests/suites/`. OpCode, names,
+  dispatch and the fold/CSE/scope classification are generated from the
+  row. Then regenerate the catalogue:
+  `UPDATE_OPERATORS_JSON=1 cargo test -p datalogic-rs --all-features --test operators_json_test`.
+  Step-by-step in
   [`DEVELOPMENT.md`](./DEVELOPMENT.md#adding-a-built-in-operator).
 - **Operator function signature:** an `eager(..)` row's body is typed,
   `fn op<'a>(cx: &mut Cx<'_, 'a>, a: &'a str, ...) -> Result<impl IntoValue>`.
@@ -83,8 +85,10 @@ are authoritative; link to them.
   written `@ Kind(payload)` passes `payload` last. Declare the argument
   count on the row (`raw[2..]`, `each[2]`), not in the body.
 - **Test-suite JSON format:** array of test-case objects with
-  `description`, `rule`, `data`, and either `result` or `error`. Strings
-  in the array are skipped (used as section headers). Full schema in
+  `description`, `rule`, optional `data` (default `{}`), and either
+  `result` or `error`. Strings in the array are section headers. Add a new
+  file to `tests/suites/index.json`
+  (`UPDATE_SUITE_INDEX=1 cargo test -p datalogic-rs --all-features --test test_jsonlogic suite_index`). Full schema in
   [`crates/datalogic-rs/tests/README.md`](./crates/datalogic-rs/tests/README.md).
 - **WASM is its own Cargo workspace** for release-profile isolation:
   `cargo` commands inside `bindings/wasm/` operate on it standalone and do
@@ -93,5 +97,5 @@ are authoritative; link to them.
 - **Node binding builds via napi-cli, not raw cargo.** Inside
   `bindings/node/`, use `npx napi build --platform --release` (which
   emits `datalogic-node.<triple>.node`, `index.js`, and `index.d.ts`) and
-  `npm test` (which runs `node --test '__test__/*.test.mjs'`). The
+  `npm test` (which runs `node --test __test__/*.test.mjs`). The
   generated `.node` / `index.js` / `index.d.ts` are gitignored.

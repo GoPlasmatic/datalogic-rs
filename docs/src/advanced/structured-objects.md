@@ -1,6 +1,8 @@
 # Structured Objects (Templating)
 
-Use JSONLogic as a templating engine with templating mode.
+Templating mode turns JSONLogic into a templating engine: an object with
+several keys becomes an output object, and a key that names no operator
+becomes an output field.
 
 > Requires `feature = "templating"`. The mode is off by default. Some
 > examples on this page also use operators behind other Rust features:
@@ -24,30 +26,46 @@ let engine = Engine::builder()
 
 ### Per compile
 
-Templating can also be chosen for one compile, on any engine:
+You can also choose the mode for one compile, on any engine:
 `engine.compile_template(rule)` compiles in templating mode and
 `engine.compile_strict(rule)` without it, whatever the engine was built
 with. The engine's custom operators, template key escape and folding
-setting still apply, so one engine can compile output templates and also
-reject a typo in a condition:
+setting still apply, so one engine with one set of operator registrations
+can compile output templates and strict conditions:
 
 ```rust
-let engine = Engine::builder().add_operator("secret", SecretOp).build();
+use datalogic_rs::Engine;
 
-let condition = engine.compile_strict(r#"{"==": [{"secret": "k"}, "x"]}"#)?;
-let template = engine.compile_template(r#"{"token": {"secret": "k"}, "v": 1}"#)?;
+let engine = Engine::new(); // built without templating
+
+let template = engine.compile_template(r#"{"user": {"var": "name"}, "source": "api"}"#)?;
+let out = engine.session().eval_str(&template, r#"{"name": "ana"}"#)?;
+assert_eq!(out, r#"{"user":"ana","source":"api"}"#);
+
+// A condition stays strict: an object with several keys is a compile
+// error, and an unknown key is an unknown operator, not an output field.
+let condition = engine.compile_strict(r#"{"==": [{"var": "tier"}, "gold"]}"#)?;
+assert!(engine.compile_strict(r#"{"tier": "gold", "active": true}"#).is_err());
 ```
+
+`compile_template` needs the `templating` feature; `compile_strict` is in
+every build. The bindings name the pair `compileTemplate` /
+`compileStrict` (Python `compile_template` / `compile_strict`, Go and .NET
+`CompileTemplate` / `CompileStrict`). `Engine::check` takes the same
+choice as `CheckMode::Template` or `CheckMode::Strict`; see
+[Rule Analysis](rule-analysis.md#check-modes).
 
 ## How It Works
 
-In normal mode, the engine treats unknown keys in a JSON object as errors
-(or as custom operators when one is registered). With structure preservation
-enabled, unknown keys become literal output fields.
+In normal mode, the engine treats an unknown key in a JSON object as an
+unknown operator (or as a custom operator when one is registered under
+that name), and an object with several keys as a compile error. With
+structure preservation enabled, unknown keys become literal output fields.
 
 **Normal mode:**
 ```json
 { "user": { "var": "name" } }
-// Error: "user" is not a known operator
+// Evaluating fails: Invalid operator: user
 ```
 
 **Structure preservation mode:**
@@ -58,18 +76,20 @@ enabled, unknown keys become literal output fields.
 
 ## Emitting Keys That Are Operator Names
 
-A single-key object is always an operator invocation, so a key that happens
-to name an operator is swallowed:
+In templating mode, a single-key object whose key names an operator is an
+operator call, so the key is swallowed:
 
 ```json
 { "type": { "var": "x" } }
 // Result: "number"  (the `type` operator ran; no key was emitted)
 ```
 
-That makes roughly 60 names unusable as output keys on their own: `type`,
+That makes every built-in operator name unusable as an output key on its
+own (87 names, aliases included, with every operator feature on): `type`,
 `map`, `filter`, `if`, `keys`, `values`, `entries`, `length`, `in`, `sort`,
 `now`, `try`, `cat`, `+`, `==`, and so on. Registered custom operators
-shadow keys the same way.
+shadow keys the same way. A key with siblings is always an output field:
+`{"type": X, "other": 1}` emits both keys.
 
 Opt into an escape prefix to get them back:
 
@@ -101,13 +121,13 @@ never resolves an escaped key as an operator:
 Stripping is uniform across arities, so a key means the same thing whether
 or not it has siblings. Three caveats:
 
-- **The setting is off by default and opt-in.** Without it, `$`-prefixed
-  keys pass through verbatim exactly as before. Turning it on does change
-  templates that currently emit literal `$` keys: write those as `$$key`.
-- **Nested keys can collide after stripping.** `{"$a": 1, "a": 2}` emits the
-  key `a` twice. The engine keeps duplicate pairs (as `keys` / `values` /
-  `entries` already do); converting the result to JSON collapses them
-  last-wins.
+- **The setting is off by default.** Without it, `$`-prefixed keys pass
+  through verbatim. Turning it on changes templates that emit literal `$`
+  keys: write those as `$$key`.
+- **Keys can collide after stripping.** `{"$a": 1, "a": 2}` emits the key
+  `a` twice. The engine keeps duplicate pairs (as `keys` / `values` /
+  `entries` do), and so does the JSON text `eval_str` returns; converting
+  the result to a `serde_json::Value` keeps the last.
 - **A bare sigil strips to the empty key.** `{"$": 1}` emits `{"": 1}`.
 
 ### Choosing the prefix
@@ -128,8 +148,10 @@ A custom operator whose name starts with the prefix becomes unreachable
 while the escape is on (the escape wins). Rename it, or choose a different
 prefix.
 
-The setting is inert without templating mode: outside it every single-key
-object is an operator invocation, so there is nothing to escape into.
+The escape applies to rules compiled in templating mode: on an engine
+built `with_templating(true)`, or through `compile_template` on any engine
+that has an escape set. A rule compiled strictly treats every single-key
+object as an operator call, so there is nothing to escape into.
 
 ## Basic Templating
 
@@ -228,11 +250,21 @@ let result = engine.eval_str(template, data).unwrap();
 ## The `preserve` Operator Was Removed
 
 v4 had an explicit `preserve` operator that wrapped a value to prevent
-further evaluation. **v5 removed it.** Wrap-as-output is what templating
-mode already does for objects, and literal scalars
-/ arrays already pass through inline. If you need to emit a JSON object
-verbatim from a rule, enable `with_templating(true)` and write the object
-directly.
+further evaluation. **v5 removed it.** Templating mode emits objects as
+output, and literal scalars and arrays pass through inline. To emit a
+JSON object verbatim from a rule, enable `with_templating(true)` (or use
+`compile_template`) and write the object.
+
+## Reading a Compiled Template Back
+
+`Logic::to_json()` writes a compiled rule or template back as JSON that
+compiles to the same rule. Keys, paths, custom operator names and `throw`
+types that hold quotes, backslashes or control characters come out
+escaped, escaped template keys keep their prefix (`{"$type": ..}`), and a
+`{"val": "a.b"}` read (the single key `"a.b"`) stays in the `val` form
+rather than turning into `{"var": "a.b"}`, which reads `a` then `b`. The
+output describes the rule after constant folding, so a folded
+subexpression appears as its value.
 
 ## Use Cases
 
@@ -319,7 +351,7 @@ let template = r#"{
 
 ## Mixing Operators and Structure
 
-You can mix operators and structure freely:
+Operators and literal structure mix at any level:
 
 ```rust
 let template = r#"{

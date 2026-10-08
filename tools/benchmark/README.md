@@ -4,20 +4,23 @@ Dev-only benchmark harness for `datalogic-rs`. **For the latest captured
 matrix and headline numbers, see [`BENCHMARK.md`](./BENCHMARK.md)**. Link
 to that file from other docs rather than re-quoting cells inline.
 
-Five binaries share a common suite loader and reporter (`src/lib.rs`).
-The loader is the core tests' own (`crates/datalogic-rs/tests/common/suite.rs`,
-included by path): a case that sets `templating` or
-`template_key_escape` compiles on an engine built that way, and a suite
-that fails to parse stops the run instead of dropping out of the
-geomean.
+The crate has five binaries over one library (`src/lib.rs`). `self` and
+`compare` share its suite loader and reporter, `boundary_core` and
+`projection` share its timer (`measure`: warmup, pilot, median of 5), and
+`self`, `compare` and `profile_macro` share the synthesized macro suites
+(`src/macro_suites.rs`). The suite loader is the core tests' own
+(`crates/datalogic-rs/tests/common/suite.rs`, included by path): a case
+that sets `templating` or `template_key_escape` compiles on an engine
+built that way, and a suite that fails to parse stops the run instead of
+dropping out of the geomean.
 
 | Binary          | Purpose                                                                                |
 |-----------------|----------------------------------------------------------------------------------------|
-| `self`          | Times datalogic-rs alone using the fast arena path (compile once, persistent input arena, eval-arena reset). Use this to track regressions in our own engine. |
-| `compare`       | Cross-library **matrix**: runs every suite against every available subject (datalogic-rs API tiers, gated Rust crates, JS/WASM via Node) and prints a markdown table of avg ns/op. |
+| `self`          | Times datalogic-rs alone on the fast arena path (compile once, persistent input arena, eval-arena reset). Use it to track regressions in the engine. |
+| `compare`       | Cross-library **matrix**: runs every suite against every available subject (native datalogic-rs, gated Rust crates, the WASM build and JS libraries via Node) and prints a markdown table of avg ns/op. |
 | `boundary_core` | The rust-core runner for the per-binding boundary benchmark under [`boundary/`](./boundary); emits the same JSON-lines schema as the other runtimes' runners. |
 | `profile_macro` | Sampling-profiler feeder (samply / Instruments): hammers one macro suite in a hot loop so the profile shows only that suite's evaluation path. |
-| `projection`    | Read projection: what one evaluation costs when a rule reads a few fields of a large owned or `serde_json` context, with and without projection. |
+| `projection`    | Read projection (5.8.0): what one evaluation costs when a rule reads a few fields of a large owned or `serde_json` context, with and without projection. |
 
 A separate area, [`boundary/`](./boundary), measures the opposite of the
 matrix: **per-binding boundary cost**, what a real caller pays per
@@ -28,20 +31,21 @@ runtime, one shared discipline (warmup, ~250 ms samples, median of 5),
 JSON-lines output, and a renderer for that document's tables:
 
 ```bash
-cd boundary && ./run.sh && python3 render.py
+cd tools/benchmark/boundary && ./run.sh && python3 render.py
 ```
 
-See [`boundary/README.md`](./boundary/README.md) for runner status:
-all nine runners are verified and produced the 2026-07-03 v2 capture;
-go / dotnet / jvm / php sit in the extended set only because they need
-their language toolchains installed. The `boundary_core` bin target in
-this crate is the rust-core runner.
+`./run.sh` runs the five runtimes that need no extra toolchain
+(rust-core, c-abi, node, python, wasm); `./run.sh all` adds go, dotnet,
+jvm and php. The `boundary_core` binary in this crate is the rust-core
+runner. See [`boundary/README.md`](./boundary/README.md) for each
+runner's prerequisites.
 
-Both read JSON suites from `crates/datalogic-rs/tests/suites/`, and both
-accept `--macro` to swap those for the synthesized macro suites instead.
-Both write JSON reports to `tools/benchmark/output/` (gitignored):
-`report-self-*.json` for `--all` runs of `self`, `report-compare-*.json`
-for `compare`, `report-compare-macro-*.json` for `compare --macro`.
+`self` and `compare` read JSON suites from
+`crates/datalogic-rs/tests/suites/`, and both accept `--macro` to swap
+those for the synthesized macro suites. They write JSON reports to
+`tools/benchmark/output/` (gitignored): `report-self-*.json` for `--all`
+runs of `self`, `report-compare-*.json` for `compare`,
+`report-compare-macro-*.json` for `compare --macro`.
 
 ## `self`: regression baseline
 
@@ -69,7 +73,7 @@ and the rest. The per-suite line shows the split
 overall / folded-only / non-folded-only geomeans, so constant-folded
 rules can't flatter the data-dependent number. The macro tier scales
 its per-suite iteration count from a pilot pass so one timed rep lands
-near ~250 ms; see [`BENCHMARK.md`](./BENCHMARK.md#macro-tier) for the
+near 250 ms; see [`BENCHMARK.md`](./BENCHMARK.md#macro-tier) for the
 suite list.
 
 ## `compare`: cross-library matrix
@@ -85,16 +89,19 @@ comparison, since one slow suite doesn't dominate it).
 The matrix shows one column per **library / API tier that takes a
 precompile-once approach**, so cells compare like with like. The matrix
 leaves out convenience-API tiers (`Engine::eval_str`,
-`Session::eval_borrowed`, raw `evaluate(ruleStr, dataStr, false)` on the
-WASM) because their numbers measure API-shape costs (parse cost,
-session reset cost, WASM string marshalling) rather than engine cost.
-For per-API-tier numbers on datalogic-rs alone, see `bin/self.rs`.
+`Session::eval_borrowed`, the WASM free function
+`evaluate(ruleStr, dataStr, false)`, deprecated in 5.8.0) because their
+numbers measure API-shape costs (parse cost, session reset cost, WASM
+string marshalling) rather than engine cost. For datalogic-rs's own API
+tiers, `self` times `Session::eval_borrowed`, and `boundary_core` times
+parse-per-call, serialize and `serde_json::Value` tiers (section 1 of
+[`BINDINGS-OVERHEAD.md`](./BINDINGS-OVERHEAD.md)).
 
 Always compiled in:
 
 | Column        | What it exercises                                                                                       |
 |---------------|---------------------------------------------------------------------------------------------------------|
-| `dlrs:engine` | Pre-compiled `Logic` + caller-owned `Bump`, batch-style reset between iterations. The native baseline.  |
+| `dlrs:engine` | Pre-compiled `Logic` + caller-owned `Bump`, batch-style reset between iterations. Each case compiles on an engine with the templating and key-escape settings its suite asks for. The native baseline. |
 
 Behind a Cargo feature:
 
@@ -108,7 +115,7 @@ Auto-detected at runtime (require Node + an `npm install` in `runners/`):
 
 | Column                       | API exercised                                                              |
 |------------------------------|----------------------------------------------------------------------------|
-| `dlrs:wasm:compiled`         | `@goplasmatic/datalogic-wasm` `new CompiledRule(ruleStr, false)` once per rule, then `.evaluate(dataStr)` per call. WASM analog of `dlrs:engine`; remaining per-call cost is data marshall + parse + result stringify across the V8↔WASM boundary. |
+| `dlrs:wasm:compiled`         | `@goplasmatic/datalogic-wasm` `new CompiledRule(ruleStr, templating)` once per rule (the case's `templating` flag), then `.evaluate(dataStr)` per call. WASM analog of `dlrs:engine`; the remaining per-call cost is data marshall + parse + result stringify across the V8↔WASM boundary. `CompiledRule` is deprecated in 5.8.0 and removed in 6.0; its replacement, `new Engine(options).compile(ruleStr)`, returns a `Rule` with the same `.evaluate(dataStr)` call. |
 | `json-logic-js`              | `json-logic-js` (jwadhams): `apply(rule, data)`, interpreted, no compile API. |
 | `json-logic-engine`          | `json-logic-engine` (TotalTechGeek): interpreted (`engine.run(rule, data)`). |
 | `json-logic-engine:compiled` | `json-logic-engine`: pre-compiled (`engine.build(rule)`, "12.5–20× hot path" per the library's README). |
@@ -118,19 +125,22 @@ package but exercise different APIs (interpreter vs build-then-call).
 
 ### One-time setup for Node subjects
 
-```bash
-# Build the WASM that the dlrs:wasm column points at:
-cd bindings/wasm && ./build.sh
+From the repo root:
 
-# Install the runner deps (json-logic-js + a file: link to the wasm pkg):
-cd tools/benchmark/runners && npm install
+```bash
+# Build the WASM package the dlrs:wasm column loads:
+(cd bindings/wasm && ./build.sh)
+
+# Install the runner deps (json-logic-js, json-logic-engine, and a
+# file: link to the wasm pkg):
+(cd tools/benchmark/runners && npm install)
 ```
 
-If `node` isn't on PATH or `runners/node_modules/` is missing, the
-matrix runner hard-fails by default (the surprise of "complete-looking
-matrix with silently-empty columns" is worse than an explicit error).
-Pass `--allow-missing-subjects` to render the matrix without the
-unavailable columns.
+If `node` isn't on PATH or a subject's package is missing from
+`runners/node_modules/`, `compare` exits with an error listing the
+unavailable subjects, because a matrix that looks complete with empty
+columns misleads more than a failed run. Pass
+`--allow-missing-subjects` to render the matrix without those columns.
 
 ### Run
 
@@ -180,7 +190,7 @@ cargo run --release -p datalogic-bench --bin compare -- --all --allow-missing-su
 - Compare runs filter out negative-test cases (entries with
   `error: {...}` instead of `result`): engines disagree on what "errors"
   and how expensive their error path is, so including them would
-  unfairly penalise verbose-error subjects.
+  penalise verbose-error subjects.
 
 After the matrix, the runner prints a pairwise ratio table:
 
@@ -214,6 +224,41 @@ Numbers from a native build are not portable across machines: keep them as
 a relative baseline, not an absolute publishable figure. Builds invoked
 from the repo root remain portable.
 
+## `projection`: read projection
+
+5.8.0 evaluates an owned, `serde_json` or `Roots` input by viewing only
+the paths a rule reads (see the 5.8.0 Performance notes in
+[`CHANGELOG.md`](../../CHANGELOG.md)). This binary measures that against
+viewing the whole input:
+
+```bash
+cargo run --release -p datalogic-bench --bin projection
+```
+
+It builds contexts of about 1 KB, 100 KB and 8 MB, and times three rules
+(one field, three fields, a `reduce` over a small array) on each context
+as an `OwnedDataValue` and as a `serde_json::Value`. The `projected`
+column evaluates on the engine that compiled the rule; `whole` evaluates
+the same rule on a second, identically built engine, which views the
+whole input because it did not compile the rule. The binary asserts both
+give the same result, prints a table with the speedup, and writes no
+report.
+
+## `profile_macro`: profiler feeder
+
+`profile_macro <suite-substring> [seconds]` runs the first macro suite
+whose name contains the substring (default `checkout`) in a loop for the
+given time (default 10 s) and prints a rough ns/op. Point a sampling
+profiler at it:
+
+```bash
+cargo build --release -p datalogic-bench --bin profile_macro
+samply record target/release/profile_macro checkout 10
+```
+
+The root release profile keeps line tables (`debug = "line-tables-only"`),
+so frames resolve to source lines.
+
 ## Adding more subjects
 
 ### Native Rust crate
@@ -237,17 +282,18 @@ from the repo root remain portable.
 1. `cd tools/benchmark/runners && npm install <pkg>`.
 2. Add a `LIBS` entry in `runners/node-runner.js`: one async `setup`
    that returns a callable `apply(case)`.
-3. In `build_subjects()` inside `bin/compare.rs`, push a new
-   `NodeSubject::new("display-name", "<npm-pkg>")` (gated on
-   `node_dep_installed("<npm-pkg>")`).
+3. In `build_subjects()` inside `bin/compare.rs`, add a
+   `("display-name", "<LIBS key>", "<npm-pkg>")` tuple to
+   `node_subjects`. The column appears when `node` is on PATH and
+   `runners/node_modules/<npm-pkg>` exists.
 
-Each recipe touches three files and needs no harness changes.
+Neither recipe changes the shared harness in `src/lib.rs`.
 
 ## Platform support
 
 Linux and macOS. The Node runner uses POSIX path conventions in
 `file:../../../bindings/wasm/pkg` and the `runners/` setup is
-shell-coded; Windows isn't tested.
+shell-coded; the harness is untested on Windows.
 
 ## CI
 

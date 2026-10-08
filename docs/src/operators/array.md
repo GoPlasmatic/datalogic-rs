@@ -2,7 +2,13 @@
 
 Operations for working with arrays, including iteration and transformation.
 
-> **Feature flags (Rust crate).** All array operators are baseline except `sort`, `slice`, `group_by`, and `distinct`, which require the `ext-array` feature. Every language binding enables all operator features. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
+> **Feature flags (Rust crate).** All array operators are baseline except `sort`, `slice`, `group_by`, and `distinct`, which require the `ext-array` feature. Every language binding enables all operator features. An engine built with [`EngineBuilder::with_families`](../advanced/configuration.md#operator-families) has those four only if it names `Family::ExtArray`. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
+
+The JSONLogic iterators (`filter`, `map`, `reduce`, `all`, `some`, `none`)
+reject extra arguments with an Invalid Arguments error; `sort`, `group_by` and
+`distinct` ignore them. Inside an iterator, `{"var": ""}` is the current
+element; [Scope levels](variable-access.md#scope-levels) reach enclosing
+elements and the element's index or key.
 
 ## merge
 
@@ -120,8 +126,8 @@ Filter array elements based on a condition.
 </div>
 
 **Notes:**
-- Inside the condition, `{"var": ""}` refers to the current element
 - `filter` does not modify the original array
+- A field an element lacks reads as `null`, so `{ "filter": [{ "var": "rows" }, { "===": [{ "var": "v" }, null] }] }` keeps the elements without `v` as well as those whose `v` is `null`
 - `filter` filters an object input by its values and returns an object of the kept pairs: `{ "filter": [{ "var": "x" }, { ">": [{ "var": "" }, 3] }] }` with `{ "x": { "a": 1, "b": 5 } }` is `{ "b": 5 }`
 - A `null` or missing input yields `[]`; a scalar input is an Invalid Arguments error
 
@@ -212,6 +218,7 @@ Reduce an array to a single value.
 **Context Variables:**
 - `{"var": "current"}` - Current element
 - `{"var": "accumulator"}` - Current accumulated value
+- Dotted paths read inside them: `{"var": "current.price"}`, `{"var": "accumulator.total"}`
 
 **Examples:**
 
@@ -286,6 +293,7 @@ Reduce an array to a single value.
 **Notes:**
 - An object input reduces over its values
 - A `null`, missing, or scalar input returns `initial` unchanged (`null` when `initial` is omitted)
+- The accumulator may nest at most 1,024 levels of arrays and objects. A reducer that wraps the accumulator once per element (`[{ "var": "accumulator" }]`) fails with an Invalid Arguments error once it passes that depth
 
 ---
 
@@ -340,6 +348,7 @@ Check if all elements satisfy a condition.
 </div>
 
 **Notes (all, some, none):**
+- Each stops at the first element that decides the result and does not evaluate the condition for the rest
 - An object input checks the object's values
 - A `null`, missing, or scalar input counts as an empty collection: `all` is `false`, `some` is `false`, `none` is `true`
 
@@ -509,9 +518,11 @@ Sort an array.
 </div>
 
 **Notes:**
-- The second argument is a direction boolean, not a comparator: `true` (or omitted) sorts ascending, `false` descending. A non-boolean direction falls back to ascending.
-- The optional third argument is a per-element key extractor (evaluated with each element as its context), not an `a`/`b` binary comparator. There is no `a`/`b` comparator form.
-- A `null` or missing input yields `null` (a literal `null` argument is Invalid Arguments). This differs from `group_by` and `distinct`, which yield `[]` for `null` input.
+- The second argument is a direction boolean: `true` (or omitted) sorts ascending, `false` descending. A non-boolean direction falls back to ascending.
+- The optional third argument is a per-element key extractor, evaluated with each element as its context. `sort` has no `a`/`b` comparator form.
+- Numbers sort by exact value, so integers above 2^53 keep their order. Values of different types sort by type: `null`, booleans, numbers, strings, arrays, then objects. Two arrays, or two objects, tie.
+- The sort is stable: elements that tie keep their input order. A key field an element lacks reads as `null`, so that element ties with one whose field is `null`.
+- A `null` or missing input yields `null` (a literal `null` argument is Invalid Arguments). This differs from `group_by` and `distinct`, which yield `[]` for `null` input. An object or scalar input is Invalid Arguments.
 
 ---
 
@@ -584,8 +595,9 @@ Extract a portion of an array or string.
 </div>
 
 **Notes:**
-- A `null` or missing collection yields `null`
-- `step` of `0` is an Invalid Arguments error; a non-numeric index (`{ "slice": [[1, 2, 3], "1"] }`) throws `NaN`
+- A `null` or missing collection yields `null`, without evaluating the bounds
+- `start`, `end` and `step` must be integers or `null`. A whole float (`2.0`) counts as an integer; a fractional bound (`1.5`, written or computed), a string (`"1"`) or a boolean is a `NaN` error
+- `step` of `0` is an Invalid Arguments error, as is a collection that is neither an array nor a string
 
 ---
 
@@ -602,7 +614,7 @@ Collapse an array into groups on a computed key.
 - `array` - Array to group (a value that resolves to an array)
 - `key_expression` - Per-element expression that produces each element's group key (evaluated with the element as its context, like `sort`'s key extractor)
 
-**Returns:** Array of `{"key": ..., "items": [...]}` rows, an *array* of groups rather than an object, so the result composes directly with `map`, `filter`, and `sort`. Groups appear in order of first key occurrence, so output is deterministic for a given input.
+**Returns:** An array of `{"key": ..., "items": [...]}` rows, which `map`, `filter` and `sort` take as input. Groups appear in order of first key occurrence, so the output is deterministic for a given input.
 
 **Examples:**
 
@@ -694,5 +706,5 @@ Drop duplicate elements, by value or by a computed key.
 </div>
 
 **Notes:**
-- Equality is strict deep equality (the same predicate `in` uses): mixed types never merge, arrays and objects compare structurally.
+- Equality is strict deep equality (the same predicate `in` uses): mixed types never merge, arrays and objects compare structurally. An object counts as a datetime only in the single-key form `{ "datetime": "..." }`, so records that share a `datetime` field but differ elsewhere stay distinct.
 - `null` or empty input yields `[]`. Non-array input is an error.

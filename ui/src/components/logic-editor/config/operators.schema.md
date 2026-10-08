@@ -28,21 +28,32 @@ ui/src/components/logic-editor/config/
 │   ├── validation.ts       # missing, missing_some
 │   ├── error.ts            # try, throw
 │   ├── utility.ts          # type
-│   └── flagd.ts            # fractional, sem_ver
+│   ├── flagd.ts            # fractional, sem_ver
+│   └── tensor.ts           # tensor, zeros, full, scatter, rle_expand, one_hot, stack, concat,
+│                           #   unstack, reshape, transpose, pad, crop, cast, normalize,
+│                           #   argmax, gather, to_list, shape, dtype
 ├── categories.ts           # CategoryMeta per category (colour, icon, docs page)
 ├── docs.ts                 # Per-operator documentation URL (page + mdBook anchor)
 ├── arity.ts                # formatArity(): the "Args: ..." badge text
 ├── literalPanel.ts         # Panel config for literal nodes (and the structure-node variant)
 └── __tests__/
+    ├── catalogue.test.ts   # Registry vs docs/src/operators/operators.json: names, argument counts, families
     ├── examples.test.ts    # Every help example is evaluated by the WASM engine
     └── registry.test.ts    # Registry == engine builtin names, docs links, arity text
 ```
 
-The registry covers exactly the engine's `builtinOperatorNames()`: 64
+The registry covers exactly the engine's `builtinOperatorNames()`: 84
 canonical operators plus the aliases `var` (val), `?:` (if) and `match`
-(switch). Each alias has its own entry so the picker and help panel work
-for either spelling; alias entries say so in their notes and list the
-canonical operator in `seeAlso`.
+(switch), 87 entries in all. Each alias has its own entry so the picker and
+help panel work for either spelling; alias entries say so in their notes and
+list the canonical operator in `seeAlso`.
+
+`catalogue.test.ts` also checks the registry against the engine's operator
+catalogue, `docs/src/operators/operators.json` (generated from the engine's
+operator table): the same names and aliases, no argument count the engine
+does not read, and the `DateTime`, `ExtObject`, `Tensor` and `Flagd` families
+filed under `datetime`, `object`, `tensor` and `flagd`. It needs no vendored
+WASM build.
 
 ## Root structure
 
@@ -53,8 +64,8 @@ interface OperatorConfig {
 }
 ```
 
-`operators/index.ts` exports the flat `operators` map directly (there is no
-versioned wrapper object in use today) together with these helpers:
+`operators/index.ts` exports the flat `operators` map (nothing uses
+the `OperatorConfig` wrapper) together with these helpers:
 
 ```typescript
 getOperator(name): Operator | undefined
@@ -97,7 +108,8 @@ type OperatorCategory =
   | 'validation'   // missing, missing_some
   | 'error'        // try, throw
   | 'utility'      // type
-  | 'flagd';       // fractional, sem_ver
+  | 'flagd'        // fractional, sem_ver
+  | 'tensor';      // the 20 tensor operators in tensor.ts
 ```
 
 `types/jsonlogic.ts` derives `NodeCategory = OperatorCategory | 'literal'`
@@ -110,8 +122,8 @@ interface CategoryMeta {
   name: OperatorCategory;
   label: string;
   description: string;
-  color: string;      // Hex colour used for nodes and badges
-  icon: IconName;     // Must be registered in utils/Icon.tsx (no runtime fallback)
+  color: string;      // Hex colour from CATEGORY_COLORS (help-panel icon, edge picker)
+  icon: IconName;     // A name from utils/icons.ts, mapped to a component in utils/Icon.tsx
   docsPage: string;   // Slug under https://goplasmatic.github.io/datalogic-rs/operators/
 }
 ```
@@ -122,12 +134,12 @@ interface CategoryMeta {
 type ArityType =
   | 'nullary'    // 0 args (now)
   | 'unary'      // 1 arg (!, upper)
-  | 'binary'     // 2 args (in, starts_with)
+  | 'binary'     // 2 args (in, starts_with, !=, !==)
   | 'ternary'    // 3 args (date_diff, sem_ver)
   | 'nary'       // min+ args, min defaults to 1 (+, cat, ??)
   | 'variadic'   // min+ args, min defaults to 2
   | 'chainable'  // 2+ args compared pairwise (<, ==)
-  | 'range'      // min..max args (substr 1-3, sort 1-3, slice 1-4, throw 0-1)
+  | 'range'      // min..max args (substr 1-3, sort 1-3, slice 1-4, reduce 2-3, throw 0-1)
   | 'special';   // Structured argument list (if, val, switch, fractional)
 
 interface AritySpec {
@@ -153,11 +165,21 @@ type ArgType =
   | 'datetime' | 'duration';
 ```
 
-The properties panel derives its behaviour from `arity`: `nary`, `variadic`,
-`chainable`, `range` and `special` allow adding/removing arguments (bounded by
-`min` / `max`); the fixed types do not. `formatArity()` in `arity.ts` renders
-the badge text and always honours explicit `min` / `max`, so `throw`
-(`unary`, 0-1) reads "Args: 0-1".
+The editor derives argument editing from `arity`: `nary`, `variadic`,
+`chainable`, `range` and `special` allow adding and removing arguments; the
+fixed types and `exists` do not. Every add action (context menu, properties
+panel, toolbar Insert, duplicate) asks `canAddArgument()` in
+`services/argument-service.ts`, which compares `max` with the node's argument
+cells. The structured editors (an else-if on `if` / `?:`, a case on `switch` /
+`match`, a path segment on `val`) grow one argument rather than adding one, so
+`max` does not bound them. `formatArity()` in `arity.ts` renders the badge
+text and honours explicit `min` / `max`, so `{ type: 'unary', min: 0, max: 1 }`
+reads "Args: 0-1".
+
+Keep `min` / `max` within what the engine reads: `catalogue.test.ts` fails
+when the registry offers more arguments than the catalogue's `max_args`
+(this is why `!=` and `!==` are `binary`, and `switch` / `match` stop at a
+value, the case list and a default).
 
 ## Help content
 
@@ -214,10 +236,10 @@ reads them:
 - Iteration metadata is only reachable through the scope form
   `{"val": [[1], "index"]}` / `{"val": [[1], "key"]}`. The string form
   `{"val": "index"}` is a plain key lookup and returns null.
-- Missing variables return null; they are not errors, so `try` does not
-  catch them.
+- The test engine uses the default config, so a missing variable returns
+  null rather than raising an error, and `try` has nothing to catch.
 - `sort` is `[array, ascending?, keyExpression?]`; `slice` is
-  `[value, start?, end?, step?]`; `??` is variadic.
+  `[value, start?, end?, step?]`; `??` takes one or more arguments.
 
 ## UI hints
 
@@ -246,7 +268,9 @@ interface OperatorUIHints {
 ```
 
 `icon` is an `IconName` (see `utils/icons.ts`), so a name that has no
-registered component is a compile error rather than a canvas crash.
+registered component is a compile error. A name that reaches `Icon` at
+runtime without a component (from older node data, say) renders the `list`
+glyph.
 
 ## Panel configuration
 
@@ -430,9 +454,8 @@ map: {
 
 1. Add the entry to the matching `operators/<category>.ts` module (or a new
    module spread into `operators/index.ts`).
-2. Verify every example against the engine (`cargo run` the CLI or rely on
-   `examples.test.ts`) and write the results exactly as the engine returns
-   them.
+2. Write each example's result exactly as the engine returns it;
+   `examples.test.ts` evaluates every example and fails on a mismatch.
 3. Run `npx vitest run src/components/logic-editor/config` and `npx tsc -b`.
-   The registry test fails until the UI set equals the engine's
-   `builtinOperatorNames()`.
+   The registry and catalogue tests fail until the UI set equals the engine's
+   `builtinOperatorNames()` and the names in `operators.json`.

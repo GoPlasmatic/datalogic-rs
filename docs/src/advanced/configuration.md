@@ -1,6 +1,7 @@
 # Configuration
 
-Customize evaluation behavior with `EvaluationConfig` and the
+You configure evaluation behaviour with `EvaluationConfig`, and the engine
+itself (templating mode, operator families, custom operators) with
 `EngineBuilder`.
 
 ## Creating a Configured Engine
@@ -17,10 +18,9 @@ let config = EvaluationConfig::default()
 let engine = Engine::builder().with_config(config).build();
 ```
 
-> v5 dropped the inherent `Engine::with_config` /
-> `with_preserve_structure` / `with_config_and_structure` constructors;
-> use the builder. There is no compatibility shim. See the
-> [Migration Guide](../migration.md) for the v4 → v5 mapping.
+The builder is the only way to configure an engine. The
+[Migration Guide](../migration.md) maps the 4.x constructors
+(`Engine::with_config` and friends) onto it.
 
 ## Configuration Options
 
@@ -39,7 +39,8 @@ let config = EvaluationConfig::default()
 
 ### NaN Handling
 
-Control how arithmetic operations handle non-numeric values.
+Controls what arithmetic does with an argument it cannot coerce to a
+number.
 
 ```rust
 use datalogic_rs::{EvaluationConfig, NanHandling};
@@ -49,14 +50,18 @@ let config = EvaluationConfig::default()
     .with_arithmetic_nan_handling(NanHandling::IgnoreValue);
 ```
 
-**Behavior comparison** for `{"+": [1, "text", 2]}`:
+**Behavior comparison:**
 
-| Setting | Result |
-|---------|--------|
-| `ThrowError` (default) | `Err(Thrown { type: "NaN" })` |
-| `IgnoreValue` | `3` (skips `"text"`) |
-| `CoerceToZero` | `3` (`"text"` → `0`) |
-| `ReturnNull` | `null` |
+| Setting | `{"+": [1, "text", 2]}` | `{"*": [2, "x", 3]}` |
+|---------|-------------------------|----------------------|
+| `ThrowError` (default) | `Err(Thrown { type: "NaN" })` | `Err(Thrown { type: "NaN" })` |
+| `IgnoreValue` | `3` (skips `"text"`) | `6` (skips `"x"`) |
+| `CoerceToZero` | `3` (`"text"` becomes `0`) | `0` (`"x"` becomes `0`) |
+| `ReturnNull` | `null` | `null` |
+
+The strings `"NaN"`, `"inf"` and `"infinity"`, and numeric strings that
+overflow `f64` (`"1e400"`), count as non-numbers here: arithmetic applies
+this setting to them instead of producing a non-finite number.
 
 ### Division by Zero
 
@@ -77,14 +82,13 @@ let config = EvaluationConfig::default()
 | `ReturnNull` | `null` |
 | `ReturnInfinity` | `f64::INFINITY` (sign of dividend) as an `OwnedDataValue` / `DataValue`; `null` on the JSON-string paths |
 
-The setting only governs the float path. An integer dividend over an
-integer zero (`{"/": [10, 0]}`, and likewise `{"%": [10, 0]}`) always
-raises `Err(Thrown { type: "NaN" })`, whatever the setting, because there
-is no in-range integer sentinel to return; only a genuinely fractional
-dividend such as `10.5` takes the configurable path. `ReturnInfinity`
-yields the infinite `f64` from `Engine::eval` / `Session::eval`, but
-`eval_str` (and every language binding) renders it as `null` because JSON
-cannot encode infinity.
+The setting governs the float path only. An integer dividend over an
+integer zero (`{"/": [10, 0]}`, and likewise `{"%": [10, 0]}`) raises
+`Err(Thrown { type: "NaN" })` under every setting, because no in-range
+integer sentinel exists; a fractional dividend such as `10.5` takes the
+configured path. `ReturnInfinity` yields the infinite `f64` from
+`Engine::eval` / `Session::eval`, but `eval_str` (and every language
+binding) renders it as `null` because JSON cannot encode infinity.
 
 ### Truthiness Evaluation
 
@@ -105,9 +109,7 @@ let config = EvaluationConfig::default()
     .with_truthy_evaluator(TruthyEvaluator::Custom(custom));
 ```
 
-> **v5 change:** `TruthyEvaluator::Custom` now takes
-> `Arc<dyn Fn(&OwnedDataValue) -> bool + Send + Sync>` (the canonical owned
-> value type). v4 used `&serde_json::Value`.
+`TruthyEvaluator::custom(f)` wraps a closure in the `Arc` for you.
 
 **Truthiness comparison:**
 
@@ -126,13 +128,18 @@ let config = EvaluationConfig::default()
 
 `StrictBoolean` treats only `null` and `false` as falsy; every other
 value, including `0`, `""`, and empty collections, is truthy. `Python`
-differs from `JavaScript` on exactly one value: `NaN` (which only arises
-from arithmetic, never from a JSON literal) is falsy in JavaScript and
-truthy in Python.
+differs from `JavaScript` on one value: `NaN` (which only arithmetic
+produces, never a JSON literal) is falsy in JavaScript and truthy in
+Python.
+
+To apply the configured rules to a value you already hold, such as an
+evaluated result, call `engine.truthy_of(&value)` (see the
+[API Reference](../rust/api-reference.md#truthy_of)) instead of writing
+your own check.
 
 ### Loose Equality Errors
 
-Control whether loose equality (`==`) raises errors for incompatible types.
+Controls whether loose equality (`==`) raises errors for incompatible types.
 
 ```rust
 let config = EvaluationConfig::default()
@@ -158,13 +165,52 @@ let config = EvaluationConfig::default()
     );
 ```
 
+### Missing Variables
+
+`missing_var` chooses what a `var` / `val` read that finds nothing
+evaluates to. The default, `MissingVar::Null`, is the JSONLogic rule.
+`MissingVar::Error` raises `VariableNotFound` naming the path, so a typo
+in a path fails instead of flowing on as `null`:
+
+```rust
+use datalogic_rs::{Engine, ErrorCode, EvaluationConfig, MissingVar};
+
+let engine = Engine::builder()
+    .with_config(EvaluationConfig::default().with_missing_var(MissingVar::Error))
+    .build();
+
+let err = engine.eval_str(r#"{"var": "user.nmae"}"#, r#"{"user": {"name": "ana"}}"#).unwrap_err();
+assert_eq!(err.code(), ErrorCode::VariableNotFound);
+
+// Not misses: a default, a present null, and the existence operators.
+assert_eq!(engine.eval_str(r#"{"var": ["x", 0]}"#, "{}").unwrap(), "0");
+assert_eq!(engine.eval_str(r#"{"var": "a"}"#, r#"{"a": null}"#).unwrap(), "null");
+assert_eq!(engine.eval_str(r#"{"missing": ["x"]}"#, "{}").unwrap(), r#"["x"]"#);
+```
+
+Only reads count. A `var` with a default takes the default, a field that
+is present and `null` is `null`, `missing`, `missing_some` and `exists`
+still answer whether paths exist, and iteration metadata
+(`{"val": [[1], "index"]}`) is `null` outside an iterator. `try` catches
+the error like any other. Under `MissingVar::Error` the iterator fast
+paths that read fields inline step aside, so `map`, `filter` and `reduce`
+over a field run slower; with the `budget` feature they charge the same
+operation count either way.
+
 ### Max Recursion Depth
 
-Cap the number of nested evaluation-boundary calls before the engine
-bails with a `ConfigurationError`. The limit is tracked per thread and
-guards against custom operators that hold an `Arc<Engine>` and re-enter
-via `engine.evaluate(...)`. Pure built-in workloads skip the check
-entirely, so they pay nothing.
+`max_recursion_depth` caps how many evaluations may run at once on one
+thread, the outermost included. It exists for custom operators that hold
+an `Arc<Engine>` and re-enter it (`engine.evaluate(...)`, a session or a
+traced run) from inside their own `evaluate`. An evaluation that would
+pass the cap fails with a `ConfigurationError` before it starts.
+
+It does not bound how deeply a rule nests (the compiler caps that at 256
+levels on every engine), how deep a value gets, or how much work an
+evaluation does (see [Operation Budget](#operation-budget)). The count is
+kept per thread across every engine on it; each engine compares it with
+its own setting. An engine with no custom operators skips the check,
+since built-ins cannot re-enter the engine.
 
 ```rust
 use datalogic_rs::EvaluationConfig;
@@ -175,9 +221,14 @@ let config = EvaluationConfig::default()
     .with_max_recursion_depth(256);
 ```
 
+The value must be at least 1. `EvaluationConfig::from_json_str` and
+`EngineBuilder::try_build` refuse 0 with a `ConfigurationError`;
+`EngineBuilder::build`, which cannot fail, keeps it, and no evaluation on
+that engine with custom operators can then start.
+
 ### Operation Budget
 
-Cap the work one evaluation may do (requires `feature = "budget"`).
+Caps the work one evaluation may do (requires `feature = "budget"`).
 Where the recursion depth above bounds *boundary re-entry*, this bounds
 the work itself: a `map` over a large input nested inside another `map`
 is unbounded under the depth cap and bounded under this one.
@@ -192,21 +243,24 @@ let config = EvaluationConfig::default().with_ops_budget(Some(100_000));
 
 Crossing the ceiling raises `ErrorKind::BudgetExceeded { budget, spent }`
 **before** the work is done, and a `try` in the rule cannot recover from
-it. See [Operation Budget](operation-budget.md) for what one operation
-is, how to pick a number, and the per-call
-`Engine::evaluate_metered` entry point that reports what a rule spent.
+it. The variant exists in every build, so a `match` on it compiles with or
+without the feature; only a `budget` build raises it. See
+[Operation Budget](operation-budget.md) for what one operation is, how to
+pick a number, and the per-call `Engine::evaluate_metered` entry point
+that reports what a rule spent.
 
 ## Configuration Presets
 
 ```rust
 use datalogic_rs::{Engine, EvaluationConfig};
 
-// Lenient arithmetic: IgnoreValue + ReturnNull divide-by-zero
+// Lenient: IgnoreValue arithmetic, ReturnNull division by zero,
+// loose equality errors off
 let engine = Engine::builder()
     .with_config(EvaluationConfig::safe_arithmetic())
     .build();
 
-// Strict: errors for any type mismatch and no numeric coercion
+// Strict: ThrowError for NaN and division by zero, and no numeric coercion
 let engine = Engine::builder()
     .with_config(EvaluationConfig::strict())
     .build();
@@ -215,15 +269,15 @@ let engine = Engine::builder()
 ## Configuring from JSON
 
 `EvaluationConfig::from_json_str` (requires `feature = "serde_json"`)
-builds a configuration from a JSON object. This is the wire format the
-language bindings use to pass engine configuration across FFI
-boundaries through one shared parser; Rust callers normally use the
-typed `with_*` setters above.
+builds a configuration from a JSON object. The language bindings pass
+engine configuration across their FFI boundaries in this format, through
+one shared parser; in Rust code, the typed `with_*` setters above do the
+same job.
 
 All keys are optional. The parser applies the `"preset"` key first, then
 the remaining keys override individual fields on top of it. It rejects
-unknown keys and unknown enum strings with a `ConfigurationError`, so
-typos fail loudly instead of being silently ignored.
+unknown keys and unknown enum strings with a `ConfigurationError`, so a
+typo fails instead of being ignored.
 
 | Key | Value |
 |-----|-------|
@@ -235,9 +289,10 @@ typos fail loudly instead of being silently ignored.
 | `numeric_coercion` | object of bools: `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
 | `max_recursion_depth` | integer >= 1 |
 | `ops_budget` | integer >= 1, or `null` for unbounded (`budget` feature) |
+| `missing_var` | `"null"` or `"error"` |
 
 Custom truthiness closures (`TruthyEvaluator::Custom`) cannot be
-expressed in JSON; they are available through the Rust API only.
+expressed in JSON; only the Rust API offers them.
 
 From Rust:
 
@@ -256,12 +311,13 @@ let engine = Engine::builder().with_config(config).build();
 
 The same JSON object is what you hand to a binding's engine
 constructor. For example, to start from the lenient preset but use
-strict-boolean truthiness:
+strict-boolean truthiness and fail on missing variables:
 
 ```json
 {
   "preset": "safe_arithmetic",
   "truthy_evaluator": "strict_boolean",
+  "missing_var": "error",
   "max_recursion_depth": 128
 }
 ```
@@ -281,13 +337,20 @@ let engine = Engine::builder()
     .build();
 ```
 
+`with_templating` sets the mode `compile` uses. To choose the mode for
+one rule instead, call `engine.compile_template(rule)` or
+`engine.compile_strict(rule)`: one engine, with one set of custom
+operators, can then check conditions strictly and compile output
+templates. See
+[Structured Objects](./structured-objects.md#per-compile).
+
 Templating mode carries one option of its own,
 `with_template_key_escape(prefix)`, unset by default. Without it a
 single-key object is always an operator invocation, so a key that names a
-built-in (`type`, `map`, `if`, `length`, …) or a registered custom
+built-in (`type`, `map`, `if`, `length`, ...) or a registered custom
 operator can never be emitted as an output field. With it, the engine
-strips exactly one leading `prefix` from every template key and never
-resolves an escaped key as an operator:
+strips one leading `prefix` from every template key and never resolves an
+escaped key as an operator:
 
 ```rust
 let engine = Engine::builder()
@@ -300,9 +363,70 @@ let engine = Engine::builder()
 ```
 
 The prefix is a `char` rather than a fixed `$`, so payloads that already
-use `$` keys can choose `~` or `#` instead. Full rules, including the
-duplicate-key and bare-sigil cases, are in
+use `$` keys can choose `~` or `#` instead. The escape applies to
+`compile_template` too, and `try_add_operator` refuses a custom operator
+whose name begins with it, since such a key is an output field in a
+template. Full rules, including the duplicate-key and bare-sigil cases,
+are in
 [Structured Objects](./structured-objects.md#emitting-keys-that-are-operator-names).
+
+## Operator Families
+
+By default an engine has every operator family the build compiled in.
+`EngineBuilder::with_families` keeps it to the JSONLogic core plus the
+families you name:
+
+```rust
+use datalogic_rs::{Engine, Family};
+
+// The JSONLogic core and the string extensions, nothing else.
+let engine = Engine::builder().with_families([Family::ExtString]).build();
+
+assert_eq!(engine.eval_str(r#"{"upper": "a"}"#, "null").unwrap(), r#""A""#);
+assert!(engine.eval_str(r#"{"sort": [[2, 1]]}"#, "null").is_err()); // ExtArray left out
+```
+
+`Family` names every family in every build: `Core`, `DateTime`,
+`ExtString`, `ExtArray`, `ExtObject`, `ExtControl`, `ErrorHandling`,
+`ExtMath`, `Tensor` and `Flagd`. `Family::ALL` lists them,
+`name()` gives the name `Engine::operators()` reports, and
+`is_compiled()` says whether the Cargo feature behind it is on. `Core` is
+always there, named or not, and a family the build did not compile is
+absent whatever you pass. The `all-operators` feature compiles every
+family.
+
+A family left out is not there for that engine. Its operator names
+compile as unknown operators (an error at evaluation, or up front from
+`compile_checked` and `check`), as output fields in templating mode, or
+as a custom operator registered under that name. `Engine::operators()`,
+`builtin_operator_names()`, `check`'s suggestions and `try_add_operator`
+all follow the engine's families. The set applies when a rule is
+compiled: a rule compiled on another engine keeps its operators wherever
+it runs.
+
+The bindings take the same family names: `families` (Node, WASM,
+Python), `Families` (Go), `withFamilies` (JVM, PHP) and `WithFamilies`
+(.NET). An unknown name is a `ConfigurationError`.
+
+## Changing a Running Engine's Configuration
+
+`Engine::to_builder()` returns a builder holding the engine's custom
+operators, config, templating mode, template key escape, folding setting
+and families. Change what differs and build a new engine; the running one
+is untouched:
+
+```rust
+use datalogic_rs::{Engine, EvaluationConfig, MissingVar};
+
+let running = Engine::new();
+let reloaded = running
+    .to_builder()
+    .with_config(EvaluationConfig::default().with_missing_var(MissingVar::Error))
+    .build();
+```
+
+See [Custom Operators](custom-operators.md#rebuilding-an-engine) for how
+the two engines share operator instances.
 
 ## Configuration Examples
 

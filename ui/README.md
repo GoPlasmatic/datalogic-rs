@@ -8,15 +8,16 @@ JSONLogic expressions as interactive node-based flow diagrams.
 
 This is the **React surface** of the
 [`datalogic-rs`](https://github.com/GoPlasmatic/datalogic-rs) monorepo.
-It consumes the WASM binding
-([`@goplasmatic/datalogic-wasm`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/wasm/README.md)) for evaluation
-and tracing. For the engine itself and the cross-runtime overview,
-see the [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
+It bundles the WASM binding
+([`@goplasmatic/datalogic-wasm`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/wasm/README.md)),
+built from the same release, for evaluation and tracing; you do not install
+it separately. For the engine itself and the cross-runtime overview, see the
+[repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 
 ## Features
 
 - Visual representation of JSONLogic expressions as flow diagrams
-- Every built-in operator the bundled engine accepts (84 canonical operators plus the `var`, `?:` and `match` aliases), across variables, comparison, logical, arithmetic, string, array, object, control flow, datetime, validation, error handling and the flagd feature-flag operators (`fractional`, `sem_ver`)
+- Every built-in operator the bundled engine accepts (84 canonical operators plus the `var`, `?:` and `match` aliases), across variables, comparison, logical, arithmetic, string, array, object, control flow, datetime, validation, error handling, tensor and the flagd feature-flag operators (`fractional`, `sem_ver`)
 - Per-operator help with engine-verified examples and a link to that operator's documentation page
 - Tree-based automatic layout using @dagrejs/dagre, in data-flow or JSON-hierarchy direction
 - Prop-based modes: read-only visualization, debugging with step-through trace, and full visual editing
@@ -32,7 +33,15 @@ see the [repo README](https://github.com/GoPlasmatic/datalogic-rs#readme).
 npm install @goplasmatic/datalogic-ui @xyflow/react
 ```
 
-**Peer dependencies:** React 18+ or 19+, @xyflow/react 12+
+**Peer dependencies:** `react` and `react-dom` `^18.0.0 || ^19.0.0`,
+`@xyflow/react` `^12.0.0`. The package has no other runtime dependencies: the
+WASM engine (its `.wasm` inlined), `@dagrejs/dagre`, `lucide-react` and `uuid`
+are bundled into `dist`.
+
+Both entry points start the engine: `import` (`dist/index.js`) and `require`
+(`dist/index.cjs`, for Jest, CommonJS server rendering and older bundlers). If
+the engine fails to load, an editor with `data` shows a banner with the load
+error above a static diagram.
 
 ## Quick Start
 
@@ -87,9 +96,14 @@ results at rest; step through the trace to see values:
 
 Enable full visual editing with node selection, properties panel, context menus, and undo/redo.
 Keyboard shortcuts (the debugger's Space, arrows, Home and End; the editor's
-Cmd/Ctrl+Z, C, V, D, A, K, Backspace and Escape) apply only while focus is
-inside that editor, so they never take keys from the host page or from
-another editor on it. Clicking anywhere in the editor gives it focus.
+Cmd/Ctrl+Z, Y, C, V, D, A, K, Backspace, Delete and Escape) listen on the
+editor's root element, so they apply only while focus is inside that editor
+and leave the host page and other editors their keys. Clicking anywhere in the
+editor gives it focus.
+
+`onChange` fires about 300 ms after an edit with the rebuilt expression.
+Passing that value back as `value` keeps the selection, the open properties
+panel, and the pan and zoom.
 
 ```tsx
 <DataLogicEditor
@@ -117,17 +131,17 @@ Combine editing with live debugging:
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
 | `value` | `JsonLogicValue \| null` | required | JSONLogic expression to render |
-| `onChange` | `(expr: JsonLogicValue \| null) => void` | - | Callback when expression changes (only when `editable` is true) |
-| `data` | `unknown` | - | Data context for evaluation. When provided, debugger controls become available |
+| `onChange` | `(expr: JsonLogicValue \| null) => void` | none | Callback when expression changes (only when `editable` is true) |
+| `data` | `unknown` | none | Data context for evaluation. When provided, debugger controls become available |
 | `theme` | `'light' \| 'dark'` | system | Theme override. If not provided, uses system preference |
-| `className` | `string` | - | Additional CSS class |
+| `className` | `string` | none | Additional CSS class |
 | `templating` | `boolean` | `false` | Enable templating mode: multi-key objects and arrays compile to output-shaping templates with embedded JSONLogic |
-| `onTemplatingChange` | `(value: boolean) => void` | - | Callback when templating mode changes. The toolbar's Templating checkbox renders only when this is provided |
-| `config` | `DataLogicEvaluationConfig` | - | Engine evaluation settings (preset, NaN and division-by-zero handling, truthiness, numeric coercion, recursion cap). Applied to both the result and the trace |
-| `customOperators` | `Record<string, (args: unknown[]) => unknown>` | - | Custom operators registered on the engine. Rules using them evaluate and trace normally; their nodes render with the generic "utility" styling |
+| `onTemplatingChange` | `(value: boolean) => void` | none | Callback when templating mode changes. The toolbar's Templating checkbox renders only when this is provided |
+| `config` | `DataLogicEvaluationConfig` | none | Engine evaluation settings (preset, NaN and division-by-zero handling, truthiness, numeric coercion, recursion cap, operation budget). Applied to both the result and the trace |
+| `customOperators` | `Record<string, (args: unknown[]) => unknown>` | none | Custom operators registered on the engine. Rules using them evaluate and trace like any other; their nodes render with the generic "utility" styling |
 | `editable` | `boolean` | `false` | Enable editing: node selection, properties panel, context menus, Insert menu, undo/redo |
-| `exampleSuggestions` | `string[]` | - | Example names shown as quick-action chips in the empty state. Chips render only when `onSelectExample` is also provided |
-| `onSelectExample` | `(name: string) => void` | - | Called with the example name when a user clicks an empty-state chip |
+| `exampleSuggestions` | `string[]` | none | Example names shown as quick-action chips in the empty state. Chips render only when `onSelectExample` is also provided |
+| `onSelectExample` | `(name: string) => void` | none | Called with the example name when a user clicks an empty-state chip |
 
 ## Exports
 
@@ -200,7 +214,11 @@ import {
   evaluate, evaluateMetered, evaluateWithTrace }`.
 - `DataLogicEvaluationError` carries the engine's structured error on
   `.structured` (`type`, `message`, and, where the engine provides them,
-  `operator`, `node_ids`, `thrown`, `variable`, `index`, `length`, `stage`).
+  `operator`, `node_ids`, `thrown`, `variable`, `level`, `index`, `length`,
+  `stage`, `budget`, `spent`).
+- `evaluateWithTrace` returns the engine's trace: `result`, `steps`,
+  `expression_tree`, and `pointers`, the JSON Pointer into the rule for each
+  node id. The debugger places each step on the diagram by these pointers.
 
 ### Engine settings and custom operators
 
@@ -218,14 +236,18 @@ import {
 `division_by_zero`, `loose_equality_errors`, `truthy_evaluator`,
 `numeric_coercion` (`empty_string_to_zero`, `null_to_zero`, `bool_to_number`,
 `reject_non_numeric`), `max_recursion_depth` and `ops_budget`. Every key is
-optional and omitted keys keep the engine default. Changing `config`, or
-the set of `customOperators` names, rebuilds the engine, so selection and undo
-history reset. Swapping in new implementations under the same names does not.
+optional and omitted keys keep the engine default. The editor compares the
+settings and the operator names, not the objects, so inline literals are
+fine. A changed setting, or an added or removed `customOperators` name,
+rebuilds the engine, and selection, undo history and the debugger position
+reset. New implementations under the same names do not rebuild it.
 
 `ops_budget` caps the work one evaluation may do: one operation per node
-the engine dispatches, one per item an iterator walks, plus what tensor
-operators charge per element. Crossing it raises a `BudgetExceeded` error
-carrying `budget` and `spent`, which `try` cannot catch. The
+the engine dispatches, one per item an iterator walks, plus what operators
+charge for the data they copy, compare or read (see
+[Operation Budget](https://goplasmatic.github.io/datalogic-rs/advanced/operation-budget.html)).
+Crossing it raises a `BudgetExceeded` error carrying `budget` and `spent`,
+which `try` cannot catch. The
 `useWasmEvaluator` hook's `evaluateMetered(logic, data)` returns
 `{ value, ops }` so a host can show what a rule costs whether or not a
 budget is set; the Studio renders that as an *N ops* badge on the Result
@@ -249,8 +271,11 @@ The component sets `data-theme` on its own `.logic-editor` root from the
 `theme` prop, falling back to the system preference. It does not read
 `data-theme` from ancestor elements: pass the `theme` prop to force a theme.
 
-Every design decision is a CSS custom property scoped to `.logic-editor`, so
-overrides never leak into the host app. The primary axis is the signal
+The theme is a set of CSS custom properties scoped to `.logic-editor`, so
+overrides stay inside the editor. The bundled React Flow styles and the
+editor's handle and edge overrides are scoped the same way and leave other
+React Flow canvases on the page alone; a canvas of your own still needs
+`@xyflow/react/dist/style.css`. The primary axis is the signal
 palette (`--sig-bool-true`, `--sig-bool-false`, `--sig-bool-rest`,
 `--sig-number`, `--sig-string`, `--sig-collection`, `--sig-data`,
 `--sig-temporal`, `--sig-null`, each with a `-bg` variant): a node is
@@ -303,9 +328,10 @@ npm run build:embed # build the docs-site embed bundle
 `@goplasmatic/datalogic-wasm` is not declared in `package.json`: nothing in the
 build resolves it (Vite, Vitest and the tsconfigs alias the package to
 `vendor/datalogic`, see `vite.aliases.ts`), and the engine is bundled into the
-output. The release workflow adds it, pinned to the version being published,
-for provenance. `@dagrejs/dagre`, `lucide-react` and `uuid` are bundled too,
-so they are devDependencies and consumers do not install them. See
+output. The release workflow adds it as a devDependency, pinned to the
+version being published, for provenance. `@dagrejs/dagre`, `lucide-react`
+and `uuid` are bundled too, so they are devDependencies; consumers install
+none of the four. See
 [DEVELOPMENT.md](https://github.com/GoPlasmatic/datalogic-rs/blob/main/DEVELOPMENT.md)
 for the repo-wide pipeline.
 
@@ -315,13 +341,16 @@ for the repo-wide pipeline.
 evaluations rather than fixtures:
 
 - **Operator registry and help** (`config/__tests__`): every registry entry
-  matches `builtinOperatorNames()` from the engine, and every help example is
-  evaluated and compared to its documented result.
+  matches `builtinOperatorNames()` from the engine and the operator catalogue
+  (`docs/src/operators/operators.json`), no entry offers more arguments than
+  the engine reads, and every help example is evaluated and compared to its
+  documented result.
 - **Round trips** (`utils/__tests__`): a corpus covering every operator plus
   the shipped samples must survive `jsonLogicToNodes` to `nodesToJsonLogic`
   unchanged and evaluate identically.
 - **Trace** (`utils/trace/__tests__`): real `evaluateWithTrace` envelopes must
-  map onto the diagram with no synthetic nodes.
+  map onto the diagram with no synthetic nodes, each step placed by the
+  engine's node pointers.
 - **Samples, sharing, menus, evaluator** (`tests/`): each sample evaluates to
   its stored expected result, share URLs round trip, and every operator is
   reachable from the menus.
@@ -344,13 +373,13 @@ The main component is `DataLogicEditor` which:
 
 1. Accepts a `value` prop (JSONLogic expression) and renders it as a flow diagram
 2. Uses React Flow (`@xyflow/react`) for the node canvas
-3. Internally loads WASM module for JSONLogic evaluation and execution tracing
+3. Loads the bundled WASM engine for JSONLogic evaluation and execution tracing
 4. Supports read-only, debugger, and editable modes via props
 
 ### Data Flow
 
 1. **JSONLogic Input** → `useLogicEditor` hook parses the expression
-2. **Conversion** → `jsonLogicToNodes()` transforms JSONLogic to visual nodes/edges
+2. **Conversion** → with `data`, the engine's trace becomes the nodes and edges; without it, `jsonLogicToNodes()` transforms JSONLogic to visual nodes/edges
 3. **Layout** → `applyTreeLayout()` positions nodes in a tree structure
 4. **Rendering** → React Flow renders with custom node types
 
@@ -369,7 +398,7 @@ The main component is `DataLogicEditor` which:
 - @dagrejs/dagre (graph layout), lucide-react (icons), uuid: bundled into the library output
 - @goplasmatic/datalogic-wasm (bundled into the library output)
 
-The dev playground additionally uses @msgpack/msgpack and fflate for share
+The dev playground also uses @msgpack/msgpack and fflate for share
 links and @fontsource for its fonts; those are devDependencies, so consumers
 do not install them.
 
@@ -380,7 +409,7 @@ For complete documentation including all props, customization options, and advan
 ## Learn more
 
 - [Repo README](https://github.com/GoPlasmatic/datalogic-rs#readme): cross-runtime overview, all binding READMEs
-- [WASM binding README](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/wasm/README.md): `@goplasmatic/datalogic-wasm`, the JS/TS engine this UI consumes
+- [WASM binding README](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/wasm/README.md): `@goplasmatic/datalogic-wasm`, the JS/TS engine this UI bundles
 - [Rust crate README](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/README.md): engine design, the 5-tier API model
 - [Full documentation](https://goplasmatic.github.io/datalogic-rs/)
 - [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/)

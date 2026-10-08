@@ -2,17 +2,19 @@
 
 Extend datalogic-rs with your own operators to implement domain-specific logic.
 
-> **v5 changes:** Custom operators receive **pre-evaluated** `&DataValue<'a>`
-> arguments and return arena-allocated values. The old "args are unevaluated;
-> call `evaluator.evaluate()`" model is gone, and so is the `Evaluator` trait.
-> The trait is named `CustomOperator`, and registration is **builder-only**.
+A custom operator receives its arguments **already evaluated**, as
+`&DataValue<'a>` borrows, and returns a value allocated in the arena. You
+register it on the `EngineBuilder`; a built engine's operator set is
+fixed. Porting a 4.x operator? See
+[Migration Guide: custom operators](../migration.md#custom-operators).
 
 ## The CustomOperator Trait
 
 ```rust
 use bumpalo::Bump;
+use datalogic_rs::datavalue::OwnedDataValue;
 use datalogic_rs::operator::EvalContext;
-use datalogic_rs::{CustomOperator, DataValue, Result};
+use datalogic_rs::{CustomOperatorInfo, DataValue, Diagnostic, Result};
 
 pub trait CustomOperator: Send + Sync {
     fn evaluate<'a>(
@@ -21,14 +23,24 @@ pub trait CustomOperator: Send + Sync {
         ctx: &mut EvalContext<'_, 'a>,
         arena: &'a Bump,
     ) -> Result<&'a DataValue<'a>>;
+
+    // Default: `CustomOperatorInfo::opaque()`. See "Declaring what the engine may assume".
+    fn info(&self) -> CustomOperatorInfo { /* ... */ }
+
+    // Default: accepts every call. See "Validating calls before they run".
+    fn check(&self, args: &[OwnedDataValue]) -> std::result::Result<(), Diagnostic> { /* ... */ }
 }
 ```
+
+Only `evaluate` is required. Within 5.x the trait gains default methods
+only, so an operator written against 5.0 compiles against every 5.x
+release.
 
 | Parameter | What it is |
 |-----------|------------|
 | `args` | The operator's arguments **already evaluated** by the engine. Each `&'a DataValue<'a>` borrows from caller input or from earlier arena allocations. |
-| `ctx` | Opaque view into the engine's evaluation context. Most operators ignore it; the read-only observations [`EvalContext::root_input`] and [`EvalContext::depth`] cover the rare cases where behaviour depends on the surrounding context. |
-| `arena` | The `bumpalo::Bump` allocator for the current call. Use `arena.alloc(...)` for `DataValue`s and `arena.alloc_str(...)` for strings. |
+| `ctx` | Opaque view into the engine's evaluation context. Most operators ignore it. `root_input()` and `depth()` are read-only observations for the cases where behaviour depends on the surrounding context, and `charge(n)` prices work against the [operation budget](operation-budget.md#pricing-a-custom-operator). |
+| `arena` | The `bumpalo::Bump` allocator for the current call. Use `arena.alloc(...)` for `DataValue`s and `arena.alloc_str(...)` for strings, or the one-call helpers on [`ArenaExt`](../rust/api-reference.md#arenaext). |
 
 The return value must live in the arena (or be a preallocated singleton like
 `DataValue::Null`). Never return a stack reference.
@@ -168,9 +180,9 @@ echo $engine->apply('{"double": [21]}', '{}'); // "42"
 
 ### Names a built-in already answers to
 
-Built-ins always win: an operator registered as `if`, `var` or any other
-built-in name (aliases included) is accepted by `add_operator` and never
-runs. In Rust, `try_add_operator` refuses such a name instead, with a
+Built-ins win: `add_operator` accepts an operator registered as `if`,
+`var` or any other built-in name (aliases included), and that operator
+never runs. `try_add_operator` refuses such a name instead, with a
 `ConfigurationError` naming the built-in that would win:
 
 ```rust
@@ -181,16 +193,31 @@ let engine = Engine::builder()
 assert!(Engine::builder().try_add_operator("if", DoubleOperator).is_err());
 ```
 
-Only operators compiled into the build count, so without the `datetime`
-feature `now` is a free name. `Engine::builtin_operator_names()` lists the
-names that are taken.
+The check follows the builder's [operator families](configuration.md#operator-families):
+only operators of the families the engine has count, so `now` is a free
+name without the `datetime` feature or with `DateTime` left out of
+`with_families`. It also refuses a name that begins with the
+[template key escape](configuration.md#combining-with-templating-mode),
+which a template reads as an output field.
+
+The check reads the builder's settings when you call it. If you set
+`with_families` or `with_template_key_escape` after `try_add_operator`,
+build with `try_build`, which checks every name `try_add_operator` took
+against the final settings (and refuses a `max_recursion_depth` of 0).
+`build` does neither. `check_operator_name(name)` gives the same refusal
+without registering anything or consuming the builder.
+
+In the bindings the same refusal is an option: `strictOperatorNames`
+(Node, WASM), `strict_operator_names` (Python), `StrictOperatorNames`
+(Go), `withStrictOperatorNames` (JVM, PHP) and `WithStrictOperatorNames`
+(.NET).
 
 ### One operator on several engines
 
-`Arc<T>` implements `CustomOperator`, so a host that rebuilds its engine
-(on hot reload, or one engine per tenant) can keep each operator in an
-`Arc` and register a clone on every builder. The engines share the one
-instance and its state:
+`Arc<T>` implements `CustomOperator` for any `T: CustomOperator + ?Sized`,
+`Arc<dyn CustomOperator>` included, so a host that builds several engines
+(one per tenant, say) can keep each operator in an `Arc` and register a
+clone on every builder. The engines share the one instance and its state:
 
 ```rust
 let registry: Vec<(&str, Arc<dyn CustomOperator>)> = vec![
@@ -205,6 +232,142 @@ let build = || {
 };
 let engine = build();
 ```
+
+`Box<dyn CustomOperator>` implements the trait as well, for registries
+that hold boxed operators.
+
+### Rebuilding an engine
+
+`Engine::to_builder()` starts a builder from a running engine: the same
+custom operators, config, templating mode, template key escape, folding
+setting and families. Add or replace what differs and build; the running
+engine is untouched. Both engines hold the same operator instances, so a
+host that rebuilds on every configuration reload does not register its
+operators again:
+
+```rust
+let running = Engine::builder()
+    .add_operator("double", DoubleOperator)
+    .build();
+
+let reloaded = running
+    .to_builder()
+    .add_operator("avg", AverageOperator)
+    .build();
+
+assert!(reloaded.has_custom_operator("double"));
+```
+
+A rule compiled on one engine still evaluates on another: it finds a
+custom operator by name there. On the engine that compiled it, the call
+goes straight to the operator's slot.
+
+## Declaring what the engine may assume
+
+By default the engine assumes nothing about a custom operator: it may
+return a different result on each call, read the whole data context, and
+take any number of arguments. Override `info` to declare more, as a
+`CustomOperatorInfo`:
+
+```rust
+use datalogic_rs::CustomOperatorInfo;
+
+impl CustomOperator for DoubleOperator {
+    fn evaluate<'a>(
+        &self,
+        args: &[&'a DataValue<'a>],
+        _ctx: &mut EvalContext<'_, 'a>,
+        arena: &'a Bump,
+    ) -> Result<&'a DataValue<'a>> {
+        let n = args.first().and_then(|v| v.as_f64()).unwrap_or(0.0);
+        Ok(arena.alloc(DataValue::from_f64(n * 2.0)))
+    }
+
+    // A function of its one argument alone.
+    fn info(&self) -> CustomOperatorInfo {
+        CustomOperatorInfo::pure().with_args(1, Some(1))
+    }
+}
+
+let engine = Engine::builder().add_operator("double", DoubleOperator).build();
+
+// Deterministic, reads no context, constant argument: folded at compile time.
+assert!(engine.compile(r#"{"double": 21}"#).unwrap().is_constant());
+// Outside the declared count: InvalidArguments before any argument runs.
+assert!(engine.eval_str(r#"{"double": [1, 2]}"#, "{}").is_err());
+```
+
+`CustomOperatorInfo::opaque()` is the default; `pure()` is deterministic
+and reads no context. Chain `reading_context()` and `with_args(min, max)`
+(`max` of `None` for no limit) onto either. The struct is
+`#[non_exhaustive]`, so build it through these methods.
+
+What the declaration changes:
+
+- **Constant folding.** A deterministic operator that does not read the
+  context, called with constant arguments, is evaluated once when the
+  rule compiles and replaced by its result, like a built-in.
+- **Rule facts.** [`Logic::facts()`](rule-analysis.md#what-a-rule-reads-logicfacts)
+  trusts it: `is_deterministic()` holds for a deterministic operator, and
+  `reads_complete()` for one that does not read the context.
+- **Argument count.** A call outside the declared count fails with
+  `InvalidArguments` before any argument is evaluated, and `Engine::check`
+  reports it as an `ArgumentCount` error.
+
+The engine reads the declaration when it compiles a call, so keep it
+fixed for the operator's lifetime. A wrong declaration gives wrong
+results: an operator that declares itself deterministic but is not gets
+folded to whatever it returned at compile time.
+`engine.custom_operator_info(name)` returns what a registered operator
+declares.
+
+## Validating calls before they run
+
+Override `check` to reject a call from its arguments as written.
+`Engine::check` and `Engine::compile_checked` call it for each call whose
+argument count fits `info`; `compile` and evaluation do not.
+
+`args` is the call's argument list as JSON: `{"op": [a, b]}` gives
+`[a, b]`, and a lone non-array argument `{"op": a}` gives `[a]`. An
+argument that is an expression arrives as written (`{"var": "x"}`), so
+only a literal can be checked as a value. Return `Diagnostic::error` for
+a call that will fail or `Diagnostic::warning` for one that runs but
+probably not as meant, optionally narrowed with `at_argument(i)`; the
+checker fills in the JSON Pointer and the operator name.
+
+```rust
+use datalogic_rs::datavalue::OwnedDataValue;
+use datalogic_rs::{CheckMode, Diagnostic};
+
+struct Table;
+
+impl CustomOperator for Table {
+    fn evaluate<'a>(
+        &self,
+        args: &[&'a DataValue<'a>],
+        _ctx: &mut EvalContext<'_, 'a>,
+        _arena: &'a Bump,
+    ) -> Result<&'a DataValue<'a>> {
+        Ok(args[0])
+    }
+
+    fn check(&self, args: &[OwnedDataValue]) -> std::result::Result<(), Diagnostic> {
+        match args.first() {
+            Some(OwnedDataValue::String(name)) if name != "users" => {
+                Err(Diagnostic::error(format!("no table {name:?}")).at_argument(0))
+            }
+            _ => Ok(()),
+        }
+    }
+}
+
+let engine = Engine::builder().add_operator("table", Table).build();
+let diags = engine.check(r#"{"table": ["orders"]}"#, CheckMode::Engine);
+assert_eq!(diags[0].pointer, "/table/0");
+```
+
+The diagnostic carries the code `DiagnosticCode::OperatorCheck`. See
+[Rule Analysis](rule-analysis.md) for the rest of the checker.
 
 ## Reading Argument Types
 
@@ -426,10 +589,11 @@ fn value_type_name(v: &DataValue<'_>) -> &'static str {
 }
 ```
 
-The `Error` type is structured: `tag()` returns a stable variant tag,
-and when a custom operator returns an error, the engine populates the
-`operator()` / `node_ids()` metadata (resolvable to a source path with
-`resolve_path(&compiled)`) automatically.
+`Error` is structured: `code()` returns its `ErrorCode` and `tag()` the
+stable name of that code. When a custom operator returns an error, the
+engine fills in `operator()` with the custom operator's name, even when it
+sits inside built-ins, and `node_ids()` with the breadcrumb, which
+`resolve_path(&compiled)` turns into a source path.
 
 To wrap a foreign error type into `Error`, use `Error::wrap`:
 
@@ -440,7 +604,9 @@ To wrap a foreign error type into `Error`, use `Error::wrap`:
 
 ## Best Practices
 
-1. **Validate argument count and types early.**
+1. **Declare the argument count in `info`**, so a bad call fails before
+   its arguments run and `check` reports it; validate types early in
+   `evaluate`.
 2. **Allocate results in the arena** (`arena.alloc(...)` / `arena.alloc_str(...)`).
 3. **Return meaningful errors**: `Error::invalid_arguments`, `Error::type_error`, `Error::custom_message`, `Error::wrap`.
 4. **Keep operators focused**: one responsibility per operator.

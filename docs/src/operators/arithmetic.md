@@ -1,9 +1,15 @@
 # Arithmetic Operators
 
-Mathematical operations. `+`, `-`, `*`, `/`, `%`, `abs`, `ceil`, and `floor`
-coerce numeric strings to numbers; `max` and `min` accept numbers only.
+Mathematical operations. `+`, `-`, `*`, `/` and `%` read numeric strings,
+booleans and `null` as numbers (see [Non-numeric operands](#non-numeric-operands));
+`abs`, `ceil` and `floor` accept numbers and numeric strings; `max` and `min`
+accept numbers only. Integer arithmetic stays exact, also above 2^53, until a
+result overflows `i64`, where it continues as a float.
 
-> **Feature flags (Rust crate).** `+`, `-`, `*`, `/`, `%`, `min`, and `max` are baseline; `abs`, `ceil`, and `floor` require the `ext-math` feature. Every language binding enables all operator features. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
+With the `datetime` feature, `+`, `-`, `*` and `/` also take datetimes and
+durations; see [Duration Arithmetic](datetime.md#duration-arithmetic).
+
+> **Feature flags (Rust crate).** `+`, `-`, `*`, `/`, `%`, `min`, and `max` are baseline; `abs`, `ceil`, and `floor` require the `ext-math` feature. Every language binding enables all operator features. An engine built with [`EngineBuilder::with_families`](../advanced/configuration.md#operator-families) has `abs`, `ceil` and `floor` only if it names `Family::ExtMath`. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
 
 ## + (Add)
 
@@ -17,7 +23,7 @@ Add numbers together (numeric strings are coerced).
 
 **Arguments:**
 - `a`, `b`, ... - Values to add (variadic)
-- Single value is cast to number
+- `value` - A single operand is converted to a number. If it evaluates to an array (from `var`, for example), `+` sums the elements; a literal array written in the rule is a [non-numeric operand](#non-numeric-operands) (a `NaN` error by default)
 
 **Returns:** Sum of all arguments.
 
@@ -36,6 +42,9 @@ Add numbers together (numeric strings are coerced).
 { "+": ["5", 3] }
 // Result: 8 (string "5" converted to number)
 
+{ "+": ["1", "2", "3"] }
+// Result: 6
+
 // Unary plus (convert to number)
 { "+": "42" }
 // Result: 42
@@ -47,6 +56,11 @@ Add numbers together (numeric strings are coerced).
 { "+": [{ "var": "price" }, { "var": "tax" }] }
 // Data: { "price": 100, "tax": 8.5 }
 // Result: 108.5
+
+// Sum an array from the data
+{ "+": { "var": "items" } }
+// Data: { "items": [1, 2, 3] }
+// Result: 6
 ```
 
 **Try it:**
@@ -55,10 +69,9 @@ Add numbers together (numeric strings are coerced).
 </div>
 
 **Notes:**
-- `+` converts numeric strings to numbers
-- `+` never concatenates: a non-numeric string throws a `NaN` error under the default `EvaluationConfig::arithmetic_nan_handling`, so `{ "+": ["hello", " world"] }` is an error. Use `cat` to join strings
-- Single argument converts value to number
+- `+` never concatenates: `{ "+": ["hello", " world"] }` is a `NaN` error under the default `EvaluationConfig::arithmetic_nan_handling`. Use `cat` to join strings
 - `{ "+": [] }` returns `0`
+- An integer sum that overflows `i64` continues as a float: `{ "+": [9223372036854775807, 1] }` is `9.223372036854776e18`
 
 ---
 
@@ -76,9 +89,9 @@ Subtract numbers.
 **Arguments:**
 - `a` - Value to subtract from
 - `b`, `c`, ... - Values to subtract, folded left to right (`a - b - c ...`)
-- Single value negates it
+- `value` - A single operand is negated. If it evaluates to an array, `-` folds over the elements (`{ "-": [[10, 3]] }` is `7`)
 
-**Returns:** Difference, or negated value. An empty argument list is an Invalid Arguments error.
+**Returns:** Difference, or negated value. An empty argument list, or a single operand that is an empty array, is an Invalid Arguments error.
 
 **Examples:**
 
@@ -122,12 +135,14 @@ Multiply numbers.
 **Syntax:**
 ```json
 { "*": [a, b, ...] }
+{ "*": value }
 ```
 
 **Arguments:**
 - `a`, `b`, ... - Values to multiply (variadic)
+- `value` - A single operand is converted to a number. If it evaluates to an array, `*` multiplies the elements; a literal array written in the rule is a [non-numeric operand](#non-numeric-operands) (a `NaN` error by default)
 
-**Returns:** Product of all arguments.
+**Returns:** Product of all arguments. `{ "*": [] }` returns `1`.
 
 **Examples:**
 
@@ -143,6 +158,9 @@ Multiply numbers.
 // With coercion
 { "*": ["5", 2] }
 // Result: 10
+
+{ "*": ["2", "3", "4"] }
+// Result: 24
 
 // Calculate total
 { "*": [{ "var": "quantity" }, { "var": "price" }] }
@@ -176,9 +194,9 @@ Divide numbers.
 **Arguments:**
 - `a` - Dividend
 - `b`, `c`, ... - Divisors, folded left to right (`a / b / c ...`)
-- Single value returns its reciprocal (`1 / value`)
+- `value` - A single operand returns its reciprocal (`1 / value`). If it evaluates to an array, `/` folds over the elements (`{ "/": [[100, 2, 5]] }` is `10`)
 
-**Returns:** Quotient, or the reciprocal for the single-value form.
+**Returns:** Quotient, or the reciprocal for the single-value form. Integer operands divide exactly: a whole quotient stays an integer, also above 2^53 (`{ "/": [18014398509481988, 2] }` is `9007199254740994`).
 
 **Examples:**
 
@@ -218,9 +236,9 @@ Divide numbers.
 </div>
 
 **Notes:**
-- If both operands are integral-valued numbers and the divisor is zero (`{ "/": [10, 0] }`, and also `{ "/": [10, 0.0] }`, since `0.0` is integral-valued), the engine always throws an error (error type "NaN"), regardless of config
-- Otherwise a zero divisor follows `EvaluationConfig::division_by_zero`: a non-integral dividend (`{ "/": [10.5, 0] }`) or a divisor coerced from `null`, a boolean, or a string (`{ "/": [10, null] }`, `{ "/": [10, "0"] }`). The default is `DivisionByZeroHandling::ReturnSaturated`, which returns `f64::MAX` (or `f64::MIN` for a negative dividend), not `Infinity`
-- You can select the other modes (`ReturnInfinity`, `ReturnNull`, `ThrowError`) through `EvaluationConfig`. Choose `ThrowError` if a `try` fallback should cover every zero-like divisor
+- If both operands are integral-valued numbers and the divisor is zero (`{ "/": [10, 0] }`, and also `{ "/": [10, 0.0] }`, since `0.0` is integral-valued), the engine throws a `NaN` error under every configuration. A single zero operand (`{ "/": 0 }`) is a `NaN` error too
+- Any other zero divisor follows `EvaluationConfig::division_by_zero`: a non-integral dividend (`{ "/": [10.5, 0] }`) or a divisor coerced from `null`, a boolean, or a string (`{ "/": [10, null] }`, `{ "/": [10, "0"] }`). The default, `DivisionByZeroHandling::ReturnSaturated`, returns `f64::MAX` (`f64::MIN` for a negative dividend) instead of `Infinity`
+- The other modes are `ReturnInfinity`, `ReturnNull` and `ThrowError` (see [Division by Zero](../advanced/configuration.md#division-by-zero)). Choose `ThrowError` if a `try` fallback should cover every zero-like divisor
 
 ---
 
@@ -238,7 +256,7 @@ Calculate remainder of division.
 - `a` - Dividend
 - `b`, `c`, ... - Divisors, folded left to right (`(a % b) % c ...`)
 
-**Returns:** Remainder after division. A single operand is an Invalid Arguments error.
+**Returns:** Remainder after division, with the sign of the dividend. Integers stay exact above 2^53. A single operand must evaluate to an array of at least two numbers, which `%` folds (`{ "%": [[10, 4]] }` is `2`); any other single operand is an Invalid Arguments error.
 
 **Examples:**
 
@@ -266,7 +284,7 @@ Calculate remainder of division.
 </div>
 
 **Notes:**
-- A zero divisor follows the same rule as `/`: when both operands are integral-valued numbers (`{ "%": [10, 0] }`) the engine throws an error (error type "NaN"); otherwise (`{ "%": [10.5, 0] }`, `{ "%": [10, null] }`) the result follows `EvaluationConfig::division_by_zero`, default `ReturnSaturated`
+- A zero divisor follows the same rule as `/`: when both operands are integral-valued numbers (`{ "%": [10, 0] }`) the engine throws a `NaN` error; otherwise (`{ "%": [10.5, 0] }`, `{ "%": [10, null] }`) the result follows `EvaluationConfig::division_by_zero`, default `ReturnSaturated`
 
 ---
 
@@ -409,9 +427,10 @@ Get the absolute value.
 </div>
 
 **Notes (abs, ceil, floor):**
-- Numeric strings are coerced; `null`, booleans, and non-numeric strings throw Invalid Arguments
+- Numeric strings are coerced; `null`, booleans, non-numeric strings and the strings `"NaN"`, `"inf"` and `"infinity"` throw Invalid Arguments. `arithmetic_nan_handling` does not apply
 - Two or more arguments return an array of per-element results
 - Unlike `max`/`min`, a single value that resolves to an array throws Invalid Arguments: `{ "abs": { "var": "a" } }` with `{ "a": [-1] }` is an error. Use `map` to apply these to a data-driven array
+- `ceil` and `floor` return an integer when the result fits in `i64`, and a float otherwise (`{ "ceil": 1e20 }` is `1e20`)
 
 ---
 
@@ -508,3 +527,30 @@ Round down to the nearest integer.
 
 <div class="playground-widget" data-logic='{"floor": {"var":"amount"}}' data-data='{"amount": 99.99}'>
 </div>
+
+---
+
+## Non-numeric operands
+
+`+`, `-`, `*`, `/` and `%` read numeric strings (`"5"`, `"-3.14"`, `"1e3"`),
+booleans (`true` is `1`, `false` is `0`), `null` and `""` (both `0`) as
+numbers. `EvaluationConfig::numeric_coercion` turns the last three off (see
+[Numeric Coercion](../advanced/configuration.md#numeric-coercion)). The strings
+`"NaN"`, `"inf"` and `"infinity"`, and numeric strings that overflow `f64`
+(`"1e400"`), are not numbers.
+
+Any other operand, such as `"abc"`, an array or an object, raises a `NaN`
+error by default. `EvaluationConfig::arithmetic_nan_handling` changes that for
+`+` and `*`, and for the operands after the first in a `-` call with three or
+more operands:
+
+| Setting | `{ "+": [2, "x", 3] }` | `{ "*": [2, "x", 3] }` |
+|---------|------------------------|------------------------|
+| `ThrowError` (default) | `NaN` error | `NaN` error |
+| `IgnoreValue` | `5` (skips `"x"`) | `6` (skips `"x"`) |
+| `CoerceToZero` | `5` (`"x"` is `0`) | `0` (`"x"` is `0`) |
+| `ReturnNull` | `null` | `null` |
+
+`/` and `%` raise a `NaN` error for a non-numeric operand under every
+setting, and so does `-`, except for the operands after the first in a call
+with three or more. See [NaN Handling](../advanced/configuration.md#nan-handling).

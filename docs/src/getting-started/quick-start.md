@@ -1,10 +1,10 @@
 # Quick Start
 
-This guide covers evaluating JSONLogic rules, from the one-shot helpers to a reusable `Engine`.
+This page takes you from a one-shot evaluation to a reusable `Engine`.
 
 ## The simplest path: one-shot helpers
 
-For one-off evaluations with no custom operators or custom configurations, you can evaluate rules directly without manually initializing an engine. 
+For a one-off evaluation with default settings, call the module-level helper; you don't build an engine first.
 
 <div class="codetabs">
 
@@ -81,11 +81,11 @@ echo $result; // "true"
 
 </div>
 
-The module-level helpers delegate to a lazily-constructed default engine (in Java, C#, and PHP, where there is no module-level helper, a default `Engine` plus `apply` is the same one-shot). They are the right starting point for tutorials, scripts, and code that doesn't need custom operators or non-default configurations.
+The module-level helpers (`eval_str` in Rust, `apply` in Node.js, Python and Go) run on a default engine. Java, C# and PHP have no module-level function, so a default `Engine` and its `apply` method give the same one-shot. Use them for scripts, tutorials and code that needs no custom operators or configuration.
 
 ## When you need an Engine
 
-Construct an `Engine` when you need any of: custom operators, custom configurations, templating mode, or a long-lived `Session` to recycle memory in hot loops.
+Build an `Engine` when you need custom operators, a non-default configuration, templating mode, or a long-lived `Session` that reuses memory in a hot loop.
 
 <div class="codetabs">
 
@@ -102,7 +102,7 @@ let compiled = engine.compile(r#"{">": [{"var": "score"}, 50]}"#).unwrap();
 let mut session = engine.session();
 let result = session.eval_str(&compiled, r#"{"score": 75}"#).unwrap();
 assert_eq!(result, "true");
-session.reset(); // Reset between evaluations to prevent memory growth
+session.reset(); // Reset between evaluations to keep memory flat
 ```
 
 ```javascript
@@ -154,6 +154,8 @@ fmt.Println(result) // "true"
 
 ```java
 import com.goplasmatic.datalogic.Engine;
+import com.goplasmatic.datalogic.Rule;
+import com.goplasmatic.datalogic.Session;
 
 // 1. Create an engine, 2. compile once, 3. evaluate via a session;
 // try-with-resources frees the native handles
@@ -197,7 +199,7 @@ echo $result; // "true"
 
 </div>
 
-The [Rust chapter](../rust/overview.md) and each language's chapter cover engine configuration, sessions, and the full Rust API ladder.
+The [Rust chapter](../rust/overview.md) and each language's chapter cover engine configuration and sessions in depth.
 
 ## Working with Variables
 
@@ -294,17 +296,17 @@ Filter, map, and reduce arrays:
 
 ## Error Handling
 
-Evaluation failures are structured values: a failing rule produces an error object with a stable `type` tag, and the engine also reports the offending operator and a path breadcrumb to the failing node:
+A failed evaluation is a structured error: a stable `type` tag, a message, the innermost operator that failed, and a breadcrumb of compiled-node ids leading to it:
 
 ```json
 { "+": ["text", 1] }
 // Data: {}
-// Error: { "type": "Thrown", "thrown": { "type": "NaN" }, "operator": "+", "node_ids": [3] }
+// Error: { "type": "Thrown", "message": "Thrown: {\"type\":\"NaN\"}", "thrown": { "type": "NaN" }, "operator": "+", "node_ids": [3] }
 ```
 
-The stable tag here is `Thrown`; the `thrown` payload carries the JSONLogic-style `{"type": "NaN"}` value raised by arithmetic on a non-numeric string.
+The tag here is `Thrown`; its `thrown` payload is the JSONLogic-style `{"type": "NaN"}` value that arithmetic raises on a non-numeric string.
 
-To catch a runtime error inside the rule itself, wrap it in `try` (Rust crate: enable the `error-handling` feature; every language binding ships with it enabled):
+To recover from a runtime error inside the rule, wrap the expression in `try` (in the Rust crate, enable the `error-handling` feature; every language binding has it):
 
 ```json
 { "try": [{ "/": [10, { "var": "divisor" }] }, 0] }
@@ -317,11 +319,13 @@ To catch a runtime error inside the rule itself, wrap it in `try` (Rust crate: e
 <div class="playground-widget" data-logic='{"try": [{"/": [10, {"var": "divisor"}]}, 0]}' data-data='{"divisor": 0}'>
 </div>
 
-Each binding's chapter covers how uncaught errors surface in your host language (Rust `Result`, JavaScript exceptions, Python exceptions, Go `error` values, Java/C#/PHP exceptions): [Node.js](../nodejs/overview.md), [browser WASM](../javascript/api-reference.md), [Python](../python/api-gil.md), [Go](../go/quick-start.md), [Java](../jvm.md), [.NET](../dotnet.md), [PHP](../php.md).
+Each binding's chapter covers how an uncaught error reaches your code (Rust `Result`, JavaScript and Python exceptions, Go `error` values, Java, C# and PHP exceptions): [Node.js](../nodejs/overview.md), [browser WASM](../javascript/api-reference.md), [Python](../python/api-gil.md), [Go](../go/quick-start.md), [Java](../jvm.md), [.NET](../dotnet.md), [PHP](../php.md).
+
+`compile` accepts an unknown operator and leaves it to fail when evaluation reaches it. To catch such mistakes first, run `check` on the rule (`Engine::check` in Rust): it lists unknown operators with a "did you mean" suggestion and wrong argument counts, each located by a JSON Pointer ([Rule Analysis](../advanced/rule-analysis.md#checking-a-rule-enginecheck)). To make a misspelled data path fail instead of reading as `null`, set `MissingVar::Error` (`"missing_var": "error"` in a binding's config; see [Configuration](../advanced/configuration.md#missing-variables)).
 
 ## Next Steps
 
-- [Basic Concepts](basic-concepts.md): how rules, compilation, and evaluation fit together
+- [Basic Concepts](basic-concepts.md): how rules, compilation and evaluation fit together
 - [Operators](../operators/overview.md): every operator with runnable examples
 - [Use Cases & Examples](../use-cases/examples.md): complete rule patterns for real workloads
 - Language chapters: [Rust](../rust/overview.md), [Node.js](../nodejs/overview.md), [JavaScript in the browser (WASM)](../javascript/installation.md), [Python](../python/installation.md), [Go](../go/installation.md), [Java / Kotlin](../jvm.md), [.NET](../dotnet.md), [PHP](../php.md)

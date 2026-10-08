@@ -10,7 +10,7 @@ The DataLogicEditor has no `mode` enum. The props you pass determine its behavio
 | Debugger | `data` | Step-through execution trace with a step timeline and failure highlighting | Yes |
 | Editing | `editable` | Visual builder: node selection, properties panel, context menus, undo/redo | No |
 | Templating | `templating` | Multi-key objects and arrays become output-shaping templates | No |
-| Engine settings | `config` | Evaluation semantics: presets, NaN and division-by-zero handling, truthiness, coercion, recursion cap | No |
+| Engine settings | `config` | Evaluation semantics: presets, NaN and division-by-zero handling, truthiness, coercion, recursion cap, operation budget | No |
 | Custom operators | `customOperators` | Extra operators registered on the engine | No |
 
 You can combine these. Setting `editable` and providing `data` at the same time gives you live debugging while you edit.
@@ -55,14 +55,15 @@ Provide a `data` prop and the editor evaluates the expression with the engine's 
 **Features:**
 - All read-only features, plus:
 - Play/pause, step forward and back, and jump to first/last (Space, arrow keys, Home/End)
-- A step timeline listing every recorded step with its node, iteration index, context and result, with click-to-jump
+- A step timeline listing every recorded step with its node, iteration index and result (or error); click a row to jump to that step
 - A bubble on the current node showing the context it evaluated against and the value it produced
 - A highlighted execution path, so you can see which branch ran
 - Failure reporting: the editor marks the node on the engine's failure breadcrumb (`node_ids` in the structured error) with the error, and a rule that fails to compile reports the error in a banner above the diagram
+- An engine banner: if the WASM engine fails to load, a banner above the diagram gives the load error and the diagram stays static
 
-Values appear as you step. No node shows a result at rest.
+Nodes show values only on the current step, not at rest.
 
-Internally, when you provide `data` the component uses the WASM `evaluateWithTrace` API to capture the result of each sub-expression, the order of evaluation, context values at each step, and the final computed result.
+With `data`, the component calls the engine's `evaluateWithTrace`, which records the result of each sub-expression, the order of evaluation, the context at each step, and the final result. The engine also returns, for each node, the JSON Pointer into the rule that the node was compiled from, and the debugger uses those pointers to place each step on the node you wrote, aliases such as `?:` included.
 
 ## Editing
 
@@ -81,7 +82,7 @@ Set `editable` to turn on the full visual builder.
 - Properties panel for the selected node, with per-operator help and a link to that operator's documentation page
 - Context menus (right-click a node or the canvas)
 - An **Insert** toolbar button (Cmd/Ctrl+K) that adds an argument to the selection, wraps it, or targets the root
-- Undo/redo, from the toolbar or the keyboard
+- Undo/redo (up to 50 steps), from the toolbar or the keyboard
 - Keyboard shortcuts: copy/paste (Cmd/Ctrl+C / V), duplicate (Cmd/Ctrl+D), select all (Cmd/Ctrl+A), undo/redo (Cmd/Ctrl+Z, Shift+Cmd/Ctrl+Z or Cmd/Ctrl+Y), delete (Backspace/Delete), deselect (Escape)
 
 Shortcuts, the debugger's included, apply only while focus is inside the
@@ -89,7 +90,7 @@ editor; clicking anywhere in it gives it focus. A page with several editors,
 or with shortcuts of its own, keeps its keys. Text fields keep their editing
 keys, and buttons and links keep Space and Enter.
 
-When `editable` is set, `onChange` is active: the editor debounces edits (about 300ms) and passes back the rebuilt JSONLogic expression so you can keep your own state in sync. Feeding that value back through `value` keeps the selection, the open properties panel and the canvas position.
+When `editable` is set, `onChange` is active: the editor debounces edits (about 300ms) and passes back the rebuilt JSONLogic expression so you can keep your own state in sync. Feeding that value back through `value` keeps the selection, the open properties panel, and the pan and zoom. Any other new `value` object from your code counts as a new rule: the canvas remounts and fits the view to it.
 
 ## Editing with Live Debugging
 
@@ -131,9 +132,10 @@ Set `templating` so that multi-key objects and arrays in the compiled rule becom
 ```
 
 The toolbar shows a summary whenever settings differ from the engine defaults.
-Both props rebuild the engine when they change, which resets selection and
-undo history, so keep them referentially stable (for example with `useMemo`)
-if the surrounding component re-renders often. See
+The editor rebuilds the engine, resetting selection, undo history and the
+debugger position, only when the settings in `config` or the set of
+`customOperators` names change. Inline object literals are fine: an equal
+`config` or a new function under an existing name keeps the engine. See
 [Props & API](props-api.md#config) for every key.
 
 ## Behavior Comparison
@@ -148,10 +150,10 @@ if the surrounding component re-renders often. See
 ### Performance Considerations
 
 - **Read-only** is fastest: no evaluation overhead.
-- **Debugger** runs evaluation on every `data` change.
+- **Debugger** re-runs the trace when the content of `data` changes. A new object with the same content does not re-run it.
 - **Editing** rebuilds the expression on each change (debounced before `onChange` fires).
 
-For large expressions or frequent data updates, consider debouncing the `data` you pass in:
+For large expressions or frequent data updates, defer the `data` you pass in:
 
 ```tsx
 import { useDeferredValue } from 'react';
@@ -193,5 +195,5 @@ function DebugToggle() {
 
 ## Next Steps
 
-- [Props & API](props-api.md) - Complete props reference
-- [Customization](customization.md) - Theming and styling
+- [Props & API](props-api.md): complete props reference
+- [Customization](customization.md): theming and styling

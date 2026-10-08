@@ -1,9 +1,10 @@
 # Playground (inline)
 
-> The [Full-Page Visual Editor](playground/) adds examples and resizable panels.
-> This page embeds the same widget inline for quick checks.
+> The [Full-Page Visual Editor](playground/) adds visual editing, engine
+> settings and resizable panels. This page embeds the same editor inline,
+> with a read-only diagram, for quick checks.
 
-Try JSONLogic expressions in your browser. This playground runs the visual debugger component on WebAssembly.
+Try JSONLogic expressions in your browser. This playground runs the `@goplasmatic/datalogic-ui` debugger on the datalogic-rs 5.8.1 engine, compiled to WebAssembly.
 
 <div id="datalogic-playground" data-datalogic-playground></div>
 
@@ -12,8 +13,9 @@ Try JSONLogic expressions in your browser. This playground runs the visual debug
 1. **Logic**: Enter your JSONLogic expression in the Logic panel
 2. **Data**: Enter the JSON data to evaluate against in the Data panel
 3. **Result**: Read the evaluated output, or the engine's error with its type and failing operator
-4. **Diagram**: View the visual diagram of your logic expression
-5. **Examples**: Use the dropdown to load pre-built examples
+4. **Diagram**: View the diagram of your logic expression and step through the evaluation with the debugger controls (Space, arrow keys, Home/End once you click the diagram)
+5. **Examples**: Use the **Load Example...** dropdown to load pre-built examples
+6. **Templating**: Tick the checkbox to compile multi-key objects as output templates with embedded JSONLogic
 
 ## Quick Reference
 

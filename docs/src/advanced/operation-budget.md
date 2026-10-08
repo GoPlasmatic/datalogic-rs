@@ -3,14 +3,14 @@
 *Requires the `budget` feature. Off by default; enabled in every
 published binding.*
 
-The engine has no built-in timeout, and a wall-clock one would not help
-much: it is not deterministic, it fires after the work is done rather
-than before, and it cannot tell you *which* rule was expensive. The
-operation budget is the alternative: a counter the engine increments as
-it works, and a ceiling it refuses to cross.
+The engine has no built-in timeout. A wall-clock one would not be
+deterministic, would fire after the work is done rather than before, and
+could not tell you *which* rule was expensive. The operation budget is a
+counter the engine increments as it works, and a ceiling it refuses to
+cross.
 
 ```rust,ignore
-use datalogic_rs::{Engine, ErrorKind, EvaluationConfig};
+use datalogic_rs::{Engine, ErrorCode, EvaluationConfig};
 
 let engine = Engine::builder()
     .with_config(EvaluationConfig::default().with_ops_budget(Some(100_000)))
@@ -20,15 +20,17 @@ let engine = Engine::builder()
 // not run.
 match engine.eval_str(tenant_rule, payload) {
     Ok(result) => serve(result),
-    Err(e) if matches!(e.kind, ErrorKind::BudgetExceeded { .. }) => reject_as_too_expensive(e),
+    Err(e) if e.code() == ErrorCode::BudgetExceeded => reject_as_too_expensive(e),
     Err(e) => report(e),
 }
 ```
 
-`ErrorKind::BudgetExceeded` is present in every build, with or without
-the `budget` feature, so a library can match on it without mirroring the
-feature set of whoever builds the engine. Only the `budget` feature
-raises it.
+`ErrorKind::BudgetExceeded` and `ErrorCode::BudgetExceeded` are present
+in every build, with or without the `budget` feature, so a library can
+match on them without mirroring the feature set of whoever builds the
+engine. Only the `budget` feature raises the error. The variant carries
+`budget` (the ceiling) and `spent` (what the rule had asked for when it
+crossed it).
 
 ## Why a count and not a timeout
 
@@ -47,16 +49,15 @@ And the failure is **attributable**: `BudgetExceeded` carries the node
 breadcrumb like every other engine error, so you can point at the part of
 the rule that went over.
 
-A budget does *not* bound wall-clock time directly. It bounds
-work, and work correlates with time; for a hard time guarantee you still
-need process-level isolation (see
-[Security and Sandboxing](security.md)).
+A budget bounds work, and work correlates with wall-clock time without
+bounding it. For a hard time guarantee you still need process-level
+isolation (see [Security and Sandboxing](security.md)).
 
 ## What one operation is
 
 > "Nodes dispatched at runtime, plus whatever operators charge."
 
-Concretely:
+In detail:
 
 | Charged | Amount |
 |---------|--------|
@@ -98,7 +99,7 @@ Without these, an accumulator does quadratic work for a linear count:
 ```
 
 copies the whole accumulator on every step, n(n+1)/2 items over n
-inputs, and is now charged for each of them.
+inputs, and is charged for each of them.
 
 String operators charge 1 per whole 64 bytes of string they read, so a
 string shorter than 64 bytes, which is nearly every string a rule
@@ -123,13 +124,21 @@ on wide objects, which may scan the object's keys; the datetime and
 copy of each value it tests; and a traced run's per-step context
 snapshots.
 
-The per-item charge keeps the number honest. Several operators
-recognise predicate and body shapes at compile time and evaluate them
-inline without dispatching the body. Under a naive scheme those would
-cost nothing per item, and whether a rule fitted its budget would depend
-on which shape the compiler happened to recognise. Charging when the
-source resolves means an iteration costs at least its input length
-whichever path runs.
+`filter`, `all`, `some`, `none`, `map`, `reduce` and `sort` recognise
+some predicate and body shapes (a comparison on a field, `+` on a field
+and a literal) and evaluate them inline without dispatching the body. Those fast paths charge what the general path charges for the same
+data, so a count does not depend on which shape the compiler recognised,
+on the data's types, on whether the run is traced, or on
+`EvaluationConfig::missing_var`.
+
+**Behaviour change in 5.8.0:** the fast paths used to charge less, and
+counts for those shapes rose to match the general path. Re-meter a budget
+you calibrated on 5.7 or earlier.
+
+Each built-in's cost class, what its charge grows with, is in the
+operator catalogue: `Engine::operators()` reports `cost` as `"node"`
+(constant), `"bytes"`, `"per_item"`, `"n_log_n"`, `"quadratic"` or
+`"elements"`. See [Rule Analysis](rule-analysis.md#the-operator-catalogue-engineoperators).
 
 ## Picking a number
 
@@ -137,7 +146,8 @@ The count is deterministic for a **pinned crate version**, not across
 versions: a new fast path or fold changes what gets dispatched. Budget
 for the work you want to allow, not for a number you measured.
 
-To calibrate, meter your real rules against your real payloads, take the worst case, and leave generous headroom.
+To calibrate, meter your real rules against your real payloads, take the
+worst case, and leave generous headroom.
 
 ```rust,ignore
 use bumpalo::Bump;
@@ -167,11 +177,11 @@ instead of moving to its next arm:
 ```
 
 Under an exhausted budget this raises rather than returning
-`"fallback"`. That is deliberate: a rule that could catch its own budget
-failure could spend the budget in a loop.
+`"fallback"`, so a rule cannot catch its own budget failure and spend the
+budget again in a loop.
 
-Every other error stays catchable exactly as before: a budget changes
-nothing about `throw`, `try`, or any other failure mode.
+A budget changes nothing about `throw`, `try` or any other error: they
+stay catchable.
 
 ## Reaching it from a binding
 
@@ -204,27 +214,34 @@ using var engine = Engine.Builder().SetConfigJson("""{"ops_budget":100000}""").B
 $engine = Engine::builder()->setConfigJson('{"ops_budget":100000}')->build();
 ```
 
-The JS and Python bindings additionally expose **per-call metering**,
-which reports the cost alongside the result:
+Every binding also has **per-call metering**, which reports the cost
+alongside the result:
 
 ```js
 const { result, ops } = engine.evalMetered(rule, data);       // Node
 const { result, ops } = JSON.parse(engine.evalMetered(rule, data)); // WASM
 ```
 
-```python
-result_json, ops = engine.eval_metered(rule, data)
-```
+| Binding | Per-call metering | Returns |
+|---------|-------------------|---------|
+| Node | `engine.evalMetered(rule, data, budget?)`, `rule.evaluateMetered(data, budget?)` | `{ result, ops }`, `result` as JSON text |
+| WASM | `engine.evalMetered(..)`, `rule.evaluateMetered(..)`, `session.evaluateMetered(rule, data, budget?)` | JSON text `{"result": .., "ops": ..}` |
+| Python | `engine.eval_metered(rule, data, budget=None)`, `rule.evaluate_metered(data, budget=None)` | `(result_json, ops)` |
+| Go | `session.EvaluateMetered(rule, dataJSON, budget)` | `(string, uint64, error)` |
+| JVM | `session.evaluateMetered(rule, dataJson, budget)` | `Metered(value, ops)` |
+| .NET | `session.EvaluateMetered(rule, dataJson, budget = 0)` | `MeteredResult(Value, Ops)` |
+| PHP | `$session->evaluateMetered($rule, $dataJson, $budget = 0)` | `['value' => .., 'ops' => ..]` |
+| C | `datalogic_session_evaluate_metered(..., budget, ..., &ops, &err)` | status, result and `ops` |
 
-Both take an optional third argument that overrides the configured
-budget for one call. The C ABI (and the Go, JVM, .NET and PHP bindings
-built on it) carry the engine-wide config key only; build a second
-engine when you want two budgets.
+The budget argument overrides the configured budget for that call. In
+JavaScript and Python you leave it out to use the engine's budget, and a
+budget below 1 is refused. Across the C ABI (Go, JVM, .NET, PHP), `0`
+means the engine's configured budget, or unbounded when it has none.
 
 ## In the Studio
 
 The [playground](../playground.md) exposes the budget under **Engine
-settings → Operation budget**, and reports what every evaluation spent
+settings → Operation budget**, and reports what each evaluation spent
 as an *N ops* badge on the Result panel, so you can see the cost of a
 rule while editing it, not only when it trips a ceiling. Setting a budget
 that a rule crosses shows the `BudgetExceeded` error with its `budget`
@@ -232,10 +249,9 @@ and `spent` figures and highlights the node that went over.
 
 ## Pricing a custom operator
 
-The dispatcher already charges 1 for the operator node itself, so an
-operator whose work is bounded by a constant needs no charge at all. One
-that walks a large input or builds a large result should price it
-before allocating:
+The dispatcher charges 1 for the operator node itself, so an operator
+whose work is bounded by a constant needs no charge. One that walks a
+large input or builds a large result should price it before allocating:
 
 ```rust,ignore
 use datalogic_rs::{CustomOperator, DataValue, Result, operator::EvalContext};
@@ -258,9 +274,9 @@ impl CustomOperator for Repeat {
 }
 ```
 
-`charge` is always available: with the `budget` feature off it compiles
-to `Ok(())`, so an operator can call it unconditionally rather than
-carrying a `cfg` of its own.
+`charge` exists in every build: with the `budget` feature off it
+compiles to `Ok(())`, so an operator can call it without a `cfg` of its
+own.
 
 Pick a unit that makes the operator's cost **proportional to its data**.
 Elements touched is the usual choice. An operator whose work is *not*
@@ -274,7 +290,7 @@ moved would make the budget stop measuring anything.
 The feature is a Cargo flag rather than an always-on `Option<u64>`
 because the add-and-compare per dispatched node is measurable. On the
 self benchmark's full suite, with the feature compiled in and no budget
-set, the geomean moves from 22.75 to 23.56 ns/op (+3.6%), measured as
-paired runs on one machine, with the feature-off number unchanged from
-before the feature existed. Builds that do not want a counter compile it out entirely: the
-counter, the compare and the error variant all disappear.
+set, the geomean moved from 22.75 to 23.56 ns/op (+3.6%) when the feature
+was introduced, measured as paired runs on one machine. Builds without the
+feature have no counter and no compare; `ErrorKind::BudgetExceeded` stays
+in the enum but nothing raises it.

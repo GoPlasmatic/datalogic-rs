@@ -6,12 +6,12 @@ This site is the reference documentation. For the project pitch, benchmarks, and
 
 ## What is JSONLogic?
 
-[JSONLogic](http://jsonlogic.com) is a standard for expressing logic rules as JSON. This makes it:
+[JSONLogic](http://jsonlogic.com) is a standard for expressing logic rules as JSON. A rule is:
 
-- **Portable**: You can store rules in databases, send them over APIs, or embed them in configuration
-- **Language-agnostic**: The same rules work across different implementations
-- **Human-readable**: Rules are easier to understand than arbitrary code
-- **Safe**: Evaluating a rule executes no arbitrary code
+- **Portable**: you store it in a database, send it over an API, or embed it in configuration
+- **Language-agnostic**: the same rule runs on any conforming implementation
+- **Readable**: a reviewer reads the rule itself, with no host code around it
+- **Safe**: evaluating a rule runs no code the rule supplies
 
 A JSONLogic rule is a JSON object where the key is the operator name and the value is an array of arguments:
 
@@ -28,27 +28,29 @@ For example:
 ]}
 ```
 
-This rule checks if `age > 18` AND `country == "US"`.
+This rule checks that `age > 18` and `country == "US"`.
 
 ## How the engine works
 
-datalogic-rs uses a two-phase approach:
+datalogic-rs works in two phases:
 
-1. **Compilation**: The engine parses your JSON logic and compiles it into a reusable `Logic`. This phase:
-   - Assigns OpCodes to built-in operators for fast dispatch
-   - Pre-evaluates constant expressions
-   - Analyzes structure for templating mode
+1. **Compilation**: the engine parses the rule and compiles it into a reusable `Logic`. This phase:
+   - assigns each built-in operator an OpCode, and each custom operator a slot on the engine
+   - evaluates constant subexpressions once
+   - builds output templates in templating mode
 
-2. **Evaluation**: The engine evaluates the compiled logic against your data with:
-   - Direct OpCode dispatch (no string lookups at runtime)
-   - Arena-allocated results that can borrow zero-copy from the input
-   - A context stack for nested operations (`map`, `filter`, `reduce`)
+2. **Evaluation**: the engine runs the compiled logic against your data with:
+   - OpCode dispatch, with no operator-name lookup at runtime
+   - arena-allocated results that can borrow from the input without copying
+   - a context stack for iterator bodies (`map`, `filter`, `reduce`)
 
-Every binding exposes this compile-once, evaluate-many pattern, and it keeps evaluation in the nanosecond range.
+Every binding exposes this compile-once, evaluate-many pattern; [Performance](performance.md) has the numbers.
+
+Before a rule runs, you can check it: `Engine::check` (`check` in every binding) reports unknown operators with a "did you mean" suggestion, wrong argument counts and other mistakes, each with a JSON Pointer into the rule ([Rule Analysis](advanced/rule-analysis.md#checking-a-rule-enginecheck)). The `MissingVar::Error` setting turns a read of a misspelled data path into a `VariableNotFound` error instead of `null` ([Configuration](advanced/configuration.md#missing-variables)), and `Engine::operators()` lists every operator your build has ([API Reference](rust/api-reference.md)).
 
 ## Find your language
 
-Every language has its own chapter with install, quickstart, and the API surface:
+Each language has its own chapter with install steps, a quick start and the API surface:
 
 | Your stack | Start here |
 | :--- | :--- |
@@ -60,15 +62,15 @@ Every language has its own chapter with install, quickstart, and the API surface
 | Java, Kotlin, Scala | [Java / Kotlin (JVM)](jvm.md) |
 | .NET (C#, F#) | [.NET](dotnet.md) |
 | PHP | [PHP](php.md) |
-| Another language entirely | [C ABI](c-abi.md) |
+| Any other language | [C ABI](c-abi.md) |
 | React rule-builder UI | [React Visual Debugger](react-ui/installation.md) |
 
 ## How these docs are organized
 
-- **[Getting Started](getting-started/installation.md)**: install, first evaluation, core concepts, starter microservice templates
-- **[Operators](operators/overview.md)**: reference for all 84 built-in operators, with runnable examples on every page
+- **[Getting Started](getting-started/installation.md)**: install, first evaluation, core concepts, starter service code
+- **[Operators](operators/overview.md)**: reference for the 84 built-in operators, with runnable examples on every page
 - **Languages**: one chapter per binding (see the table above)
-- **Guides**: [custom operators](advanced/custom-operators.md), [configuration](advanced/configuration.md), [structured objects / templating](advanced/structured-objects.md), [thread safety](advanced/threading.md), and [security & sandboxing](advanced/security.md)
+- **Guides**: [custom operators](advanced/custom-operators.md), [configuration](advanced/configuration.md), [rule analysis](advanced/rule-analysis.md), [operation budget](advanced/operation-budget.md), [structured objects / templating](advanced/structured-objects.md), [thread safety](advanced/threading.md), and [security & sandboxing](advanced/security.md)
 - **Reference**: [use-case cookbook](use-cases/examples.md), [performance](performance.md), [comparisons](comparison.md), [migration](migration.md), [FAQ](faq.md), and [troubleshooting](troubleshooting.md)
 
 ## Next steps
@@ -77,4 +79,4 @@ Every language has its own chapter with install, quickstart, and the API surface
 - [Quick Start](getting-started/quick-start.md): your first evaluation
 - [Use Cases & Examples](use-cases/examples.md): feature flags, pricing, validation, fraud scoring
 - [Coming from json-logic-js?](coming-from-json-logic-js.md): your rules run unchanged
-- [Migrating from v4](migration.md)
+- [Migration Guide](migration.md): from v4, and the behaviour changes in 5.8

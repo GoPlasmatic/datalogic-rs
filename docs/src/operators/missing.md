@@ -2,6 +2,8 @@
 
 Operators for checking whether data fields are absent.
 
+> **Feature flags (Rust crate).** `missing` and `missing_some` are baseline: every build has them. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
+
 ## missing
 
 Check for missing fields in the data.
@@ -13,7 +15,7 @@ Check for missing fields in the data.
 ```
 
 **Arguments:**
-- `key1`, `key2`, ... - Field names to check
+- `key1`, `key2`, ... - Field names to check. An argument that is an array of names, or an expression that evaluates to one, adds each of them: `{ "missing": [["a", "b"], "c"] }` checks `a`, `b` and `c`
 
 **Returns:** Array of missing field names.
 
@@ -53,7 +55,8 @@ Check for missing fields in the data.
 
 **Notes:**
 - `missing` reports only absent paths. A key that exists with a `null` or empty-string value counts as present, so `{ "missing": ["x"] }` with `{ "x": null }` or `{ "x": "" }` returns `[]`. This differs from json-logic-js, which also reports keys whose value is `null` or `""`
-- Dot-separated names walk nested objects (`"user.email"`)
+- Dot-separated names walk nested objects (`"user.email"`), and numeric segments index arrays (`"items.0"`)
+- Under `MissingVar::Error` (see [Missing Variables](../advanced/configuration.md#missing-variables)), `missing` and `missing_some` still return the absent paths; they never raise `VariableNotFound`
 
 ### Common Patterns
 
@@ -125,7 +128,8 @@ Require that at least N of a set of fields are present; returns the missing ones
 
 **Notes:**
 - Presence follows the same rule as `missing`: a key holding `null` or `""` counts as present
-- `minimum` must be an integer; a non-integer minimum (for example `2.5` or `"1"`) falls back to `1`
+- A fractional `minimum` rounds up: `2.5` needs 3 present fields. A minimum of `0` or less is always met. A `minimum` that is not a number (`"2"`, `null`, `true`) counts as `1`
+- A minimum larger than the number of listed fields cannot be met, so the result lists every absent field
 - With fewer than two arguments (`{ "missing_some": [1] }`) the result is `[]`
 
 ### Common Patterns
@@ -162,10 +166,9 @@ Require that at least N of a set of fields are present; returns the missing ones
 
 | Scenario | missing | missing_some |
 |----------|---------|--------------|
-| All fields required | `{ "!": { "missing": [...] } }` | N/A |
-| At least N required | Complex logic needed | `{ "!": { "missing_some": [N, [...]] } }` |
-| Check which are missing | Returns missing list | Returns missing list if < N present |
-| No minimum | Appropriate | Use with minimum=1 |
+| All fields required | `{ "!": { "missing": [...] } }` | n/a |
+| At least N required | n/a | `{ "!": { "missing_some": [N, [...]] } }` |
+| Result | Every absent field | The absent fields while fewer than N are present, otherwise `[]` |
 
 ---
 

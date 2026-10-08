@@ -9,9 +9,18 @@ contiguous byte payload), plus twenty operators that make, reshape, and
 read one back.
 
 > **Feature flags (Rust crate).** All tensor operators require the
-> `tensor` feature. `tensor-half` additionally enables `f16` / `bf16`
-> elements. Every language binding enables `tensor`. See the
+> `tensor` feature. `tensor-half` also enables `f16` / `bf16`
+> elements. Every language binding enables `tensor` but not
+> `tensor-half`. See the
 > [feature table](overview.md#which-operators-need-which-cargo-feature).
+
+**Argument counts:** each section's syntax lists every argument an
+operator reads, optional ones included. `to_list`, `shape` and `dtype`
+take one; `zeros`, `stack`, `concat`, `unstack`, `reshape`, `cast` and
+`argmax` two; `full`, `rle_expand`, `one_hot` and `crop` three; `tensor`
+and `transpose` one or two; `normalize` and `gather` two or three;
+`scatter` and `pad` three or four. See [Errors and limits](#errors-and-limits)
+for a call with the wrong count.
 
 ## What this is not
 
@@ -31,9 +40,9 @@ A tensor crosses the JSON boundary as a single-key tagged object:
 { "tensor": { "dtype": "f32", "shape": [2, 2], "data": "AACAPwAAAEAAAEBAAACAQA==" } }
 ```
 
-`data` is the raw little-endian payload in standard base64. This is
-simultaneously the operator call, the form the engine emits, and the form
-the decoder accepts, so a serialized tensor pasted back into a rule
+`data` is the raw little-endian payload in standard base64. This one form
+is the operator call, the form the engine emits, and the form the decoder
+accepts, so a serialized tensor pasted back into a rule
 evaluates to the tensor it came from, and a tensor stored in your input
 data decodes with `{"tensor": [{"val": "..."}]}`.
 
@@ -74,8 +83,8 @@ Build a tensor, or pass one through. The family's entry point.
 
 **Returns:** A tensor.
 
-An element that does not fit the declared dtype is an error, never a
-truncation and never a manufactured infinity.
+An element that does not fit the declared dtype (`300` as `u8`) is an
+error; the operator does not truncate it or replace it with an infinity.
 
 **Examples:**
 
@@ -125,9 +134,9 @@ Sparse writes into an otherwise-zero tensor.
   (1 by default); `[i, j, v]` writes `v`
 - `value`: optional default written value
 
-Out-of-range points are **dropped**, not rejected: the usual producer is a
-detector emitting boxes in source coordinates that may fall outside the
-target grid.
+`scatter` drops an out-of-range point without an error: the usual
+producer is a detector emitting boxes in source coordinates that may fall
+outside the target grid.
 
 **Examples:**
 
@@ -267,15 +276,15 @@ resamples.
 ```
 
 `axis` defaults to 0. Negative indices count from the end. Every index
-must be in range: unlike `scatter`, dropping one would silently change the
-output shape.
+must be in range: unlike `scatter`, dropping one would change the output
+shape without an error.
 
 ---
 
 ## cast
 
-Convert to another dtype. The family's one cross-dtype conversion, and
-deliberately lossy.
+Convert to another dtype. `cast` is the family's only cross-dtype
+conversion, and it is lossy.
 
 **Syntax:**
 ```json
@@ -283,9 +292,10 @@ deliberately lossy.
 ```
 
 Narrowing **saturates** rather than wrapping (`300` to `u8` is `255`, not
-`44`), and `NaN` becomes 0. `cast` widens values through `f64` internally,
-so `i64` / `u64` elements above 2^53 lose their low bits; casting to the
-dtype a tensor already has is a no-op and does not round-trip.
+`44`), and `NaN` becomes 0. `cast` converts each value through `f64`, so
+`i64` / `u64` elements above 2^53 lose their low bits. Casting to the
+dtype a tensor already has returns it unchanged, with no trip through
+`f64`.
 
 ---
 
@@ -367,13 +377,29 @@ is exactly what `tensor`, `zeros`, `full` and `cast` accept back.
 
 ---
 
+## Errors and limits
+
+- **Argument count.** Every tensor operator checks its argument count
+  before it evaluates any argument: too few raises `missing argument`,
+  too many raises `too many arguments` (both `InvalidArguments`).
+- **Size cap.** `zeros`, `full`, `scatter`, `rle_expand`, `one_hot` and
+  `pad` size a new buffer from dimensions in the rule. Past 2^28
+  (268,435,456) elements, 2 GiB of `f64`, they raise
+  `InvalidArguments("tensor would hold more than 268435456 elements")`
+  before allocating, so `{"zeros": [[1000000, 1000000], "f64"]}` fails
+  fast on an engine without an [operation budget](../advanced/operation-budget.md).
+- **Two problems in one call.** The arguments are evaluated in order, and
+  an error raised while evaluating a later argument wins over a coercion
+  error on an earlier one: `{"zeros": ["bad", {"throw": "x"}]}` throws
+  `x`.
+
 ## How a tensor behaves as a value
 
 | Context | Behavior |
 |---|---|
 | `type` | `"tensor"` |
 | Truthiness | `true` unless the element count is 0, matching the empty-array rule. A 0-d tensor holds one element, so it is truthy |
-| `==` / `!=` | Structural between two tensors: dtype, shape, and payload. Against any other type it is incompatible, which follows the `loose_equality_errors` config exactly as an object does |
+| `==` / `!=` | Structural between two tensors: dtype, shape, and payload. Against any other type it is incompatible, which follows the `loose_equality_errors` config as an object does |
 | `===` | Structural, with no coercion at all |
 | Numeric coercion | None. A one-element tensor does **not** coerce the way a one-element array does; `to_list` is the explicit way out |
 | `sort` | Tensors rank after objects; two tensors order by dtype, then shape, then payload bytes |

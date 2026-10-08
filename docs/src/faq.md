@@ -1,7 +1,5 @@
 # FAQ
 
-Frequently asked questions about datalogic-rs.
-
 ## General
 
 ### What is JSONLogic?
@@ -13,16 +11,21 @@ specification is available at [jsonlogic.com](https://jsonlogic.com).
 
 - **Performance**: about 84x faster than json-logic-js across the shared
   benchmark suites (see [Performance](performance.md))
-- **Thread Safety**: `Logic` is `Send + Sync`; wrap in `Arc` to share
-- **Extended Operators**: datetime, string operations, error handling, more
-- **Type Safety**: full Rust type system benefits
-- **WASM Support**: same engine in browsers and Node.js
-- **Zero `unsafe`**: the crate is built with `#![forbid(unsafe_code)]`
+- **One engine in eight runtimes**: Rust, Node.js, browser WASM, Python,
+  Go, JVM, .NET and PHP all run the same core
+- **Thread safety**: `Logic` is `Send + Sync`; wrap it in `Arc` to share it
+- **Extended operators**: datetime, string, array and object helpers,
+  `try` / `throw`, flagd feature-flag operators
+- **Rule checking**: `check` reports unknown operators and wrong argument
+  counts before a rule runs
+- **No `unsafe`**: the crate is built with `#![forbid(unsafe_code)]`
 
 ### Is datalogic-rs fully compatible with JSONLogic?
 
-Yes. datalogic-rs passes the complete official JSONLogic test suite. It
-also includes additional operators that extend the specification.
+It passes the official JSONLogic test suite and adds operators beyond
+the specification. A few defaults differ from json-logic-js (an empty
+object is falsy, cross-type `==` raises an error); see
+[Coming from json-logic-js](coming-from-json-logic-js.md#behavioral-differences-to-know).
 
 ---
 
@@ -30,13 +33,11 @@ also includes additional operators that extend the specification.
 
 ### Should I use v4 or v5?
 
-**Use v5** for new projects. The API is cleaner, the default build does
-not pull in `serde_json`, and the arena evaluation path is exposed
-directly. See the [Migration Guide](migration.md) for the move from v4.
-
-v5 is a hard cliff: there is no compatibility shim, so plan a single
-cutover when upgrading from v4. The repo-root `MIGRATION.md` has the
-per-call cookbook.
+**Use v5** (5.8.1 is current) for new projects. The default build does
+not pull in `serde_json`, and you can evaluate into your own arena. v5
+has no compatibility shim for v4 code, so plan a single cutover; the
+[Migration Guide](migration.md) and the repo-root `MIGRATION.md` have the
+details.
 
 ### How do I share compiled rules across threads?
 
@@ -56,26 +57,49 @@ std::thread::spawn(move || {
 });
 ```
 
+A `Session` borrows its engine. To store a session in a struct, send it
+to another thread, or hold it across an `.await`, use `SharedSession`,
+which holds the engine by `Arc`.
+
+### How do I find out which data fields a rule reads?
+
+Ask the compiled rule for its facts (`facts()` in every binding):
+
+```rust
+use datalogic_rs::Engine;
+
+let engine = Engine::new();
+let logic = engine
+    .compile(r#"{"and": [{">": [{"var": "age"}, 18]}, {"==": [{"var": "country"}, "US"]}]}"#)
+    .unwrap();
+let facts = logic.facts();
+let reads: Vec<String> = facts.reads().iter().map(|p| p.segments().join(".")).collect();
+assert_eq!(reads, ["age", "country"]);
+assert!(facts.reads_complete()); // no computed path, no custom operator
+```
+
+The facts also list the operators the rule uses and whether its result
+depends only on its data. See [Rule Analysis](advanced/rule-analysis.md#what-a-rule-reads-logicfacts).
+
 ### Why are custom operator arguments pre-evaluated in v5?
 
-The pre-evaluated, arena-based design makes custom operators behave like
-built-ins: the engine recurses, hands you `&DataValue<'a>` borrows, and you
-return another arena allocation. This avoids the boundary conversion that
-the v4 `Operator` trait paid on every call and removes the need for a
-separate `Evaluator` trait.
+With pre-evaluated arguments, a custom operator works like a built-in:
+the engine evaluates the arguments, hands you `&DataValue<'a>` borrows,
+and you return another arena allocation. This drops the boundary
+conversion the v4 `Operator` trait paid on every call and the separate
+`Evaluator` trait.
 
-If you need lazy / short-circuit semantics like `and` / `or`, that lives in
-built-in operators today (none of the v5 short-circuit operators are
-exposed through the public custom-operator surface).
+A custom operator therefore cannot short-circuit. Lazy evaluation belongs
+to built-ins such as `and`, `or`, `if` and `??`.
 
 ### What's the difference between `eval`, `eval_str`, `eval_into`, and `evaluate`?
 
 | Method | Input | Output | Notes |
 |--------|-------|--------|-------|
-| `datalogic_rs::eval_str` (and `eval` / `eval_into`) | `R: IntoLogic`, `D: OwnedInput` | `String` (or `OwnedDataValue` / `T`) | Module-level helper backed by a default engine. Use when you don't need custom operators or non-default config. |
-| `Engine::eval_str` (and `eval` / `eval_into`) | `R: IntoLogic`, `D: OwnedInput` | `String` (or `OwnedDataValue` / `T`) | One-shot through a configured engine. Allocates a fresh arena internally. |
-| `Engine::evaluate` | `&Logic`, any `EvalInput`, `&Bump` | `&'a DataValue<'a>` | Hot path. Caller owns the arena, result borrows from it. |
-| `Session::eval_str` (and `eval` / `eval_into`) | `&Logic`, `D: EvalInput` | `String` (or `OwnedDataValue` / `T`) | Reuses the session's arena across calls. Caller calls `session.reset()` between batches. |
+| `datalogic_rs::eval_str` (and `eval` / `eval_into`) | `R: IntoLogic`, `D: OwnedInput` | `String` (or `OwnedDataValue` / `T`) | Module-level helper backed by a default engine. Use it when you need no custom operators or configuration. |
+| `Engine::eval_str` (and `eval` / `eval_into` / `eval_as`) | `R: IntoLogic`, `D: OwnedInput` | `String` (or `OwnedDataValue` / `T`) | One-shot through a configured engine, with a fresh arena per call. |
+| `Engine::evaluate` | `&Logic`, any `EvalInput`, `&Bump` | `&'a DataValue<'a>` | Hot path. You own the arena; the result borrows from it. |
+| `Session::eval_str` (and `eval` / `eval_into` / `eval_as`) | `&Logic`, `D: EvalInput` | `String` (or `OwnedDataValue` / `T`) | Reuses the session's arena across calls. You call `session.reset()` between batches. |
 | `Session::eval_borrowed` | `&Logic`, `D: EvalInput` | `&'a DataValue<'a>` | Zero-copy result; valid until the next `&mut self` call. |
 
 The typed `eval_into::<T>` paths (and the `serde_json::Value` boundary
@@ -87,36 +111,42 @@ on `EvalInput` / `IntoLogic`) require `feature = "serde_json"`.
 
 ### Do I need to call `init()` in Node.js?
 
-No. The Node.js target does not require initialization:
+No. Under Node.js the package resolves to its `nodejs` build, which
+instantiates the module on load:
 
 ```javascript
-const { evaluate } = require('@goplasmatic/datalogic-wasm');
-evaluate('{"==": [1, 1]}', '{}', false);
+const { Engine } = require('@goplasmatic/datalogic-wasm');
+new Engine().evalStr('{"==": [1, 1]}', '{}'); // "true"
 ```
+
+On a Node.js server, the native `@goplasmatic/datalogic-node` package is
+faster and takes JS objects.
 
 ### Why do I need to JSON.stringify my data?
 
-The WASM interface uses string-based communication for maximum compatibility:
+The WASM binding takes and returns JSON text, so rules, data and results
+cross the JS/WASM boundary as strings:
 
 ```javascript
-const result = evaluate(
-  JSON.stringify(logic),
-  JSON.stringify(data),
-  false
-);
-const value = JSON.parse(result);
+const engine = new Engine();
+const rule = engine.compile(JSON.stringify(logic));
+const value = JSON.parse(rule.evaluate(JSON.stringify(data)));
 ```
 
 ### How do I use this with TypeScript?
 
-The package includes types:
+The package includes type definitions:
 
 ```typescript
-import init, { evaluate, CompiledRule } from '@goplasmatic/datalogic-wasm';
+import init, { Engine } from '@goplasmatic/datalogic-wasm';
 
 await init();
-const result: string = evaluate('{"==": [1, 1]}', '{}', false);
+const engine = new Engine();
+const result: string = engine.evalStr('{"==": [1, 1]}', '{}');
 ```
+
+The free `evaluate` function and the `CompiledRule` class are deprecated
+in 5.8.0 and removed in 6.0; use `Engine`.
 
 ---
 
@@ -124,8 +154,8 @@ const result: string = evaluate('{"==": [1, 1]}', '{}', false);
 
 ### Why does the editor need explicit dimensions?
 
-React Flow (the underlying library) requires a container with defined
-dimensions to calculate node positions and viewport.
+The editor draws with React Flow, which needs a container with a defined
+height to lay out nodes and the viewport.
 
 ```tsx
 <div style={{ height: '500px' }}>
@@ -135,7 +165,7 @@ dimensions to calculate node positions and viewport.
 
 ### Can I use this with Next.js?
 
-Yes. For the App Router, wrap in a client component:
+Yes. With the App Router, render it from a client component:
 
 ```tsx
 'use client';
@@ -172,7 +202,7 @@ Use the `var` operator with numeric path segments:
 
 ### How do I handle missing data?
 
-Use the `missing` or `missing_some` operators:
+Test for it with `missing` or `missing_some`:
 
 ```json
 {"if": [
@@ -182,7 +212,7 @@ Use the `missing` or `missing_some` operators:
 ]}
 ```
 
-Or use default values with `var`:
+Or give `var` a default:
 
 ```json
 {"var": ["user.email", "no-email@example.com"]}
@@ -199,10 +229,10 @@ rather than a boolean:
 
 ### What happened to the `preserve` operator?
 
-v5 removed it. Literal scalars and arrays already pass through
-inline, and templated objects belong in templating mode
-(`Engine::builder().with_templating(true).build()`, requires
-`feature = "templating"`).
+v5 removed it. Literal scalars and arrays pass through inline, and
+templated objects belong in templating mode: `Engine::compile_template`
+for one rule, or `Engine::builder().with_templating(true).build()` for the
+engine (both need `feature = "templating"`).
 
 ---
 
@@ -210,7 +240,7 @@ inline, and templated objects belong in templating mode
 
 ### How do I handle NaN in arithmetic?
 
-Use the `NanHandling` configuration:
+Set `NanHandling` on the configuration:
 
 ```rust
 use datalogic_rs::{Engine, EvaluationConfig, NanHandling};
@@ -220,7 +250,28 @@ let config = EvaluationConfig::default()
 let engine = Engine::builder().with_config(config).build();
 ```
 
-Options: `ThrowError` (default), `CoerceToZero`, `IgnoreValue`, `ReturnNull`.
+Options: `ThrowError` (default), `CoerceToZero` (substitutes 0), `IgnoreValue` (skips the value), `ReturnNull`.
+
+### How do I make a misspelled data path fail instead of returning `null`?
+
+Set `MissingVar::Error` (`"missing_var": "error"` in a binding's config).
+A `var` / `val` read that finds nothing then raises `VariableNotFound`
+naming the path:
+
+```rust
+use datalogic_rs::{Engine, EvaluationConfig, MissingVar};
+
+let config = EvaluationConfig::default().with_missing_var(MissingVar::Error);
+let engine = Engine::builder().with_config(config).build();
+let err = engine
+    .eval_str(r#"{">": [{"var": "user.agee"}, 18]}"#, r#"{"user": {"age": 30}}"#)
+    .unwrap_err();
+assert_eq!(err.tag(), "VariableNotFound");
+```
+
+A `var` with a default, a field that is present and `null`, `missing`,
+`missing_some` and `exists` behave as before, and `try` catches the error.
+See [Missing Variables](advanced/configuration.md#missing-variables).
 
 ### How do I change division by zero behavior?
 
@@ -235,10 +286,10 @@ Options: `ReturnSaturated` (default, `f64::MAX/MIN` with the dividend's
 sign), `ThrowError`, `ReturnNull`, `ReturnInfinity`.
 
 The setting applies to the float path only: an integer dividend over an
-integer zero (`{"/": [10, 0]}`) always raises `Thrown { type: "NaN" }`,
-whatever the setting. `{"/": [10.5, 0]}` takes the configured path. See
+integer zero (`{"/": [10, 0]}`) raises `Thrown { type: "NaN" }` under
+every setting. `{"/": [10.5, 0]}` takes the configured path. See
 [Division by Zero](advanced/configuration.md#division-by-zero) for the
-full comparison table.
+comparison table.
 
 ---
 
@@ -246,45 +297,50 @@ full comparison table.
 
 ### "Invalid operator" error
 
-In standard mode, the engine treats unrecognized keys as errors. Either:
+Outside templating mode, an unknown operator key compiles and raises
+`InvalidOperator` when evaluation reaches it. `check` finds it before
+the rule runs and suggests the operator one edit away (see
+[Rule Analysis](advanced/rule-analysis.md)). Then either:
 
 1. Fix the operator name (operators are case-sensitive)
 2. Register a custom operator on the builder
-3. Enable templating mode (`feature = "templating"`): `Engine::builder().with_templating(true).build()`
+3. Compile the rule as a template (`Engine::compile_template`, `feature = "templating"`) if the key is meant as an output field
 
 ### My template key runs as an operator instead of being emitted
 
-This is the inverse problem, and quieter: no error, only the wrong result. In
-templating mode a single-key object is always an operator invocation, so
-`{"type": {"var": "x"}}` runs the `type` operator rather than emitting a
-`type` field. Around 60 built-in names are affected, plus any custom
-operator you registered.
+This is the inverse problem, and it raises no error, only a wrong result.
+In templating mode a single-key object whose key names an operator is an
+operator call, so `{"type": {"var": "x"}}` runs the `type` operator rather
+than emitting a `type` field. Every built-in name is affected (87 names,
+counting the aliases `var`, `?:` and `match`, in a build with every
+operator family), plus any custom operator you registered.
 
 Turn on the key escape and prefix the key:
 `Engine::builder().with_templating(true).with_template_key_escape('$')`,
 then write `{"$type": ...}` to emit `type` and `{"$$type": ...}` to emit
-a literal `$type`. It is off by default, so existing templates are
-unaffected. Details in
+a literal `$type`. It is off by default, so existing templates keep their
+meaning. `check` in template mode also warns about an output key one edit
+away from an operator name. Details in
 [Structured Objects](./advanced/structured-objects.md#emitting-keys-that-are-operator-names)
 and [Troubleshooting](./troubleshooting.md#a-template-key-runs-as-an-operator-instead-of-being-emitted).
 
 ### Performance issues with large expressions
 
-1. Use `Session` for repeated calls (arena reuse)
-2. Drop to `Engine::evaluate` with a caller-managed `bumpalo::Bump` for the
-   absolute hot path
+1. Use a `Session` for repeated calls, so they reuse one arena
+2. For the hottest path, call `Engine::evaluate` with a `bumpalo::Bump`
+   you manage
 3. Use `feature = "trace"` to see which sub-expressions run and how often
-   (iteration counts; the trace records no timings), and a sampling
+   (the trace records iteration counts, not timings), and a sampling
    profiler such as perf or Instruments for timing (see
    [Performance](performance.md#profiling))
 
 ### WASM initialization fails
 
-Ensure you `await init()` before calling other functions:
+With the web build, `await init()` before you construct an `Engine`:
 
 ```javascript
 await init();
-const result = evaluate(...);
+const engine = new Engine();
 ```
 
 For more troubleshooting, see the [Troubleshooting Guide](troubleshooting.md).

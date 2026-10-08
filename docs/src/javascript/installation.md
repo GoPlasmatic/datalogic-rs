@@ -1,6 +1,6 @@
 # Installation
 
-> **Two npm packages, one engine.** This chapter covers `@goplasmatic/datalogic-wasm`, the WASM build: pick it for browsers, edge runtimes, Deno, and anywhere portability matters. For Node.js servers, prefer the native [`@goplasmatic/datalogic-node`](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/node) package (napi), which calls the Rust core directly and runs at native speed.
+> **Two npm packages, one engine.** This chapter covers `@goplasmatic/datalogic-wasm`, the WASM build: pick it for browsers, edge runtimes, Deno, and anywhere portability matters. For Node.js servers, prefer the native [`@goplasmatic/datalogic-node`](../nodejs/overview.md) package (napi), which calls the Rust core without a WebAssembly layer.
 
 The `@goplasmatic/datalogic-wasm` package provides WebAssembly bindings for the datalogic-rs engine, so you can evaluate JSONLogic from JavaScript and TypeScript.
 
@@ -17,6 +17,8 @@ yarn add @goplasmatic/datalogic-wasm
 pnpm add @goplasmatic/datalogic-wasm
 ```
 
+The package declares Node 18 or newer (`engines.node`) for the Node.js target.
+
 ## Build Targets
 
 The package includes three build targets, one per environment:
@@ -29,14 +31,14 @@ The package includes three build targets, one per environment:
 
 ### Automatic Target Selection
 
-The package's `exports` field automatically selects the appropriate target:
+The package's `exports` field selects a target by export condition:
 
 ```javascript
 // Browser/Bundler - the `import` condition resolves to the web target
-import init, { evaluate } from '@goplasmatic/datalogic-wasm';
+import init, { Engine } from '@goplasmatic/datalogic-wasm';
 
 // Node.js - the `node` condition resolves to the nodejs target
-const { evaluate } = require('@goplasmatic/datalogic-wasm');
+const { Engine } = require('@goplasmatic/datalogic-wasm');
 ```
 
 ### Explicit Target Import
@@ -45,54 +47,59 @@ If you need a specific target:
 
 ```javascript
 // Web target (ES modules with init)
-import init, { evaluate } from '@goplasmatic/datalogic-wasm/web';
+import init, { Engine } from '@goplasmatic/datalogic-wasm/web';
 
 // Bundler target (no init; the module instantiates on import)
-import { evaluate } from '@goplasmatic/datalogic-wasm/bundler';
+import { Engine } from '@goplasmatic/datalogic-wasm/bundler';
 
 // Node.js target
-import { evaluate } from '@goplasmatic/datalogic-wasm/nodejs';
+import { Engine } from '@goplasmatic/datalogic-wasm/nodejs';
 ```
 
 The bundler target imports `datalogic_wasm_bg.wasm` as an ES module, so it needs Webpack's `experiments.asyncWebAssembly` (or the equivalent in your bundler); see [Bundler Configuration](frameworks.md#bundler-configuration).
 
 ## WASM Initialization
 
-For browser and bundler environments, you must initialize the WASM module before using any functions:
+For browser and bundler environments, initialize the WASM module before you use any export:
 
 ```javascript
-import init, { evaluate } from '@goplasmatic/datalogic-wasm';
+import init, { Engine } from '@goplasmatic/datalogic-wasm';
 
 // Initialize once at application startup
 await init();
 
-// Now you can use evaluate, CompiledRule, etc.
-const result = evaluate('{"==": [1, 1]}', '{}', false);
+// Then build an engine and evaluate
+const engine = new Engine();
+const result = engine.evalStr('{"==": [1, 1]}', '{}'); // "true"
 ```
 
-> **Note:** Node.js does not require initialization; you can use functions immediately after import. Do not call `init()` there: with the bare specifier, Node resolves to the CommonJS `nodejs` target, so a default import binds `init` to the module namespace object and `await init()` throws `TypeError: init is not a function`. Code that has to run in both places should guard the call:
+> On Node.js, use the exports right after import, with no initialization. Do not call `init()` there: with the bare specifier, Node resolves to the CommonJS `nodejs` target, so a default import binds `init` to the module namespace object and `await init()` throws `TypeError: init is not a function`. Code that has to run in both places should guard the call:
 >
 > ```javascript
-> import init, { evaluate } from '@goplasmatic/datalogic-wasm';
+> import init, { Engine } from '@goplasmatic/datalogic-wasm';
 > if (typeof init === 'function') await init(); // browser: loads the module; Node: no-op
 > ```
 >
-> Or import from `@goplasmatic/datalogic-wasm/nodejs` explicitly and skip `init` altogether.
+> Or import from `@goplasmatic/datalogic-wasm/nodejs` and skip `init`.
 
 ## TypeScript Support
 
 The package includes TypeScript declarations. No additional `@types` package is needed.
 
 ```typescript
-import init, { evaluate, CompiledRule, evaluateWithTrace } from '@goplasmatic/datalogic-wasm';
+import init, { Engine, Rule } from '@goplasmatic/datalogic-wasm';
 
-// Full type inference for all exports
-const result: string = evaluate('{"==": [1, 1]}', '{}', false);
+await init();
+const engine = new Engine();
+const rule: Rule = engine.compile('{"==": [1, 1]}');
+const result: string = rule.evaluate('{}'); // "true"
 ```
+
+The declarations mark the deprecated exports (`evaluate`, `evaluateWithTrace`, `CompiledRule`, `Session.evaluateNumber`) with `@deprecated`, so your editor flags them; see [Deprecated APIs](api-reference.md#deprecated-apis).
 
 ## Bundle Size
 
-The WASM binary is a single self-contained module: approximately 5.2 MB uncompressed, around 1.0 MB gzipped (measured on the 5.8.0 release build). It compiles in the IANA timezone database that the `datetime` feature's `format_date` / `parse_date` timezone arguments use (since 5.2.0). Size-sensitive embedders building from source can shrink it by setting `CHRONO_TZ_TIMEZONE_FILTER` to the zones they need; see [Building from source](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/wasm#building-from-source).
+The WASM binary is a single self-contained module: 5,197,441 bytes (about 5.2 MB) uncompressed and 1,002,235 bytes (about 1.0 MB) gzipped in the 5.8.0 release build. It compiles in the IANA timezone database that the `datetime` feature's `format_date` / `parse_date` timezone arguments use. Size-sensitive embedders building from source can shrink it by setting `CHRONO_TZ_TIMEZONE_FILTER` to the zones they need; see [Building from source](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/wasm#building-from-source).
 
 ## CDN Usage
 
@@ -100,11 +107,12 @@ For prototypes or simple pages, you can load the module from a CDN:
 
 ```html
 <script type="module">
-  import init, { evaluate } from 'https://unpkg.com/@goplasmatic/datalogic-wasm@latest/web/datalogic_wasm.js';
+  import init, { Engine } from 'https://unpkg.com/@goplasmatic/datalogic-wasm@latest/web/datalogic_wasm.js';
 
   async function run() {
     await init();
-    console.log(evaluate('{"==": [1, 1]}', '{}', false)); // "true"
+    const engine = new Engine();
+    console.log(engine.evalStr('{"==": [1, 1]}', '{}')); // "true"
   }
 
   run();

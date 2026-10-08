@@ -2,7 +2,19 @@
 
 Operations for working with dates, times, and durations.
 
-> **Feature flag (Rust crate).** All datetime operators require the `datetime` feature (which pulls in `chrono`). Every language binding enables it. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
+> **Feature flag (Rust crate).** All datetime operators require the `datetime` feature (which pulls in `chrono` and `chrono-tz`). Every language binding enables it. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
+
+**Argument counts:** `datetime` and `timestamp` take one argument, `parse_date` and `format_date` two or three, `date_diff` three, and `now` none. A call with too few arguments raises `InvalidArguments` naming what is missing (for example `"date_diff requires two dates and a unit"`). The operators ignore arguments past the last one they read.
+
+## Datetime and duration values
+
+The engine treats these values as datetimes and durations wherever an operator looks for one (comparisons, `+` / `-`, `format_date`, `date_diff`, `type`):
+
+- A string that parses as an ISO 8601 / RFC 3339 datetime, such as `"2024-01-15T10:30:00Z"`, `"2024-01-15T10:30:00-05:00"` or the naive `"2024-01-15T10:30:00"` (read as UTC), whether it is written in the rule, read from data or returned by another operator.
+- A string that parses as a duration, such as `"1d:2h:3m:4s"`, `"2h30m"` or `"36h"`.
+- The boundary forms `{"datetime": "..."}` and `{"timestamp": "..."}` in data. (In a rule, the same object is a call to the operator of that name.) Only an object with that single key counts: a record such as `{"datetime": "2024-01-01T00:00:00Z", "user": "alice"}` is ordinary data, so `==`, `===`, `in` and `distinct` compare every field and `type` reports `"object"`.
+
+The operators on this page and datetime arithmetic return datetimes as ISO 8601 strings and durations as `"Xd:Xh:Xm:Xs"` strings, so a result feeds straight into the next operator.
 
 ## now
 
@@ -15,7 +27,7 @@ Get the current UTC datetime.
 
 **Arguments:** None
 
-**Returns:** The current UTC datetime as a datetime value (rendered as an ISO 8601 string in JSON output).
+**Returns:** The current UTC time as an ISO 8601 datetime string.
 
 **Examples:**
 
@@ -41,9 +53,9 @@ Get the current UTC datetime.
 </div>
 
 **Notes:**
-- Produces a datetime value, rendered as an ISO 8601 string (e.g., "2024-01-15T14:30:00Z"); its `type` is "datetime", not "string"
-- Always uses UTC time
-- Useful for time-based conditions and comparisons
+- `{ "type": { "now": [] } }` is `"datetime"`
+- The result is in UTC (`Z`)
+- The engine reads the clock at evaluation time and never constant-folds `now`, so a compiled rule sees a fresh time on every evaluation
 
 ---
 
@@ -59,7 +71,7 @@ Parse or validate a datetime value.
 **Arguments:**
 - `value` - An RFC 3339 datetime string (`2024-01-01T00:00:00Z`, or with a `+HH:MM`/`-HH:MM` offset; fractional seconds and a space instead of `T` are accepted), or a naive `YYYY-MM-DDTHH:MM:SS` string, which the engine reads as UTC. Date-only strings (`2024-01-01`) and colon-less offsets (`-0500`, `+05`) fail with `Invalid datetime format`; use `parse_date` for those and for custom formats
 
-**Returns:** A datetime value (rendered as an ISO 8601 string, preserving the parsed offset); its `type` is "datetime", not "string".
+**Returns:** The argument unchanged once it parses, so the offset and spelling you passed are kept (`"2024-01-01 00:00:00Z"` comes back with its space). Any other value raises `Invalid datetime format`. `{ "type": { "datetime": "2024-01-01T00:00:00Z" } }` is `"datetime"`.
 
 **Examples:**
 
@@ -106,7 +118,7 @@ Create or parse a duration value. Durations represent time periods (not points i
 **Arguments:**
 - `duration_string` - Duration in format like "1d:2h:3m:4s", partial like "1d", "2h", "30m", "45s", or compact like "1d2h3m4s"
 
-**Returns:** A duration value (its `type` is "duration", like `now`/`datetime` produce "datetime"), rendered as a normalized "Xd:Xh:Xm:Xs" string in JSON output.
+**Returns:** The duration as a normalized `"Xd:Xh:Xm:Xs"` string.
 
 **Duration Format:**
 - `d` - Days
@@ -151,8 +163,8 @@ Create or parse a duration value. Durations represent time periods (not points i
 ```
 
 **Notes:**
-- Produces a duration value; `{ "type": { "timestamp": "1d" } }` is `"duration"`
-- Units overflow-normalise (`"1d:25h"` becomes `"2d:1h:0m:0s"`)
+- `{ "type": { "timestamp": "1d" } }` is `"duration"`
+- Units overflow into the next larger unit (`"1d:25h"` becomes `"2d:1h:0m:0s"`)
 - Negative (`"-1d"`), fractional (`"1.5h"`), week (`"1w"`), and numeric (`3600`) inputs fail with `Invalid duration format`
 
 **Try it:**
@@ -162,7 +174,7 @@ Create or parse a duration value. Durations represent time periods (not points i
 
 ### Duration Arithmetic
 
-The arithmetic operators accept durations:
+`+` and `-` accept datetimes and durations, `*` scales a duration by a number in either order, and `/` divides a duration by a number:
 
 ```json
 // Multiply duration
@@ -208,13 +220,28 @@ The arithmetic operators accept durations:
     { "timestamp": "1d" }
 ]}
 // Result: "2024-01-02T04:30:00Z"
+
+// Any number of operands, durations on either side of the datetime
+{ "+": ["1d", { "var": "d" }, "12h"] }
+// Data: { "d": "2024-01-01T00:00:00Z" }
+// Result: "2024-01-02T12:00:00Z"
+
+{ "-": [{ "var": "d" }, "1d", "1d"] }
+// Data: { "d": "2024-01-08T00:00:00Z" }
+// Result: "2024-01-06T00:00:00Z"
 ```
 
-**Note:** duration arithmetic on a datetime that carries an offset drops that
-offset: the result renders as `...Z`, and `format_date` with the bare `"z"`
-format reports `+0000` for it. To render such a result in a local zone, pass
-the zone argument to `format_date` (for example `"Asia/Kolkata"`, which gives
-`"10:00"` for the example above with format `"HH:mm"`).
+`+` and `-` fold left to right. Datetime plus duration (in either order) is a
+datetime, datetime minus datetime is a duration, and two durations add or
+subtract to a duration. A step with no meaning is a `NaN` error under the
+default configuration: two datetimes added, a duration minus a datetime,
+or a plain number among datetime operands.
+
+Arithmetic on a datetime that carries an offset drops that offset: the
+result renders as `...Z`, and `format_date` with the bare `"z"` format
+reports `+0000` for it. To render such a result in a local zone, pass the
+zone argument to `format_date` (for example `"Asia/Kolkata"`, which gives
+`"10:00"` for the offset example above with format `"HH:mm"`).
 
 ---
 
@@ -233,7 +260,7 @@ Parse a date string with a custom format into a datetime value.
 - `format` - Format string using simplified tokens
 - `timezone` - Optional IANA zone name (e.g. `"Asia/Kolkata"`). Without it, the engine reads naive input as UTC; with it, the engine reads the input as wall-clock time *in that zone* and resolves it to the corresponding UTC instant.
 
-**Returns:** A datetime value (rendered as an ISO 8601 string in JSON output); its `type` is "datetime", not "string".
+**Returns:** The parsed instant as an ISO 8601 datetime string in UTC. Input that does not match the format raises `Failed to parse date`.
 
 **Format Tokens:**
 | Token | Description | Example |
@@ -277,9 +304,9 @@ Raw [chrono `%` specifiers](https://docs.rs/chrono/latest/chrono/format/strftime
 ```
 
 **Timezone notes:**
-- Zone offsets (including DST) come from the compiled-in IANA table: no fixed-offset arithmetic, no tzdata I/O.
-- An ambiguous local time (clocks rolled back, the wall-clock occurs twice) resolves to the **earlier** instant; a nonexistent one (spring-forward gap) is an error.
-- The compiler rejects an unknown zone name that appears as a *literal* in the rule, but `Engine::compile` itself still succeeds: it replaces the call with a marker that raises `Invalid Arguments` (naming the operator, not the zone) when the rule is evaluated. A zone arriving through data fails at evaluation with `Unknown timezone: <name>`.
+- Zone offsets, DST included, come from the IANA table compiled into the crate (`chrono-tz`); the engine reads no tzdata files at runtime.
+- An ambiguous local time (clocks rolled back, the wall-clock occurs twice) resolves to the **earlier** instant; a nonexistent one (spring-forward gap) raises `Nonexistent local time for timezone`.
+- An unknown zone name written as a literal in the rule does not stop `Engine::compile`: the call raises `Invalid Arguments` (naming the operator, not the zone) when the rule is evaluated, and `Engine::check` / `Engine::compile_checked` report the zone before the rule runs. A zone computed at evaluation time, from data or from another operator such as `cat`, fails with `Unknown timezone: <name>`.
 
 **Try it:**
 
@@ -303,7 +330,7 @@ Format a datetime as a string with a custom format.
 - `format` - Format string using simplified tokens (same as parse_date)
 - `timezone` - Optional IANA zone name (e.g. `"Asia/Kolkata"`). When present, `format_date` renders the instant as wall-clock time in that zone (DST-correct via the IANA table) instead of UTC.
 
-**Returns:** Formatted date string.
+**Returns:** Formatted date string. A first argument that is not a datetime raises `Failed to format date`. A raw `%` specifier that chrono does not know (`"%Q"`) or a trailing lone `%` raises `Invalid date format`, whether the format is written in the rule or read from data.
 
 **Special Format:**
 - `z` - Returns the timezone offset (e.g., "+0500"). Without a zone argument this is the *source* offset the datetime was parsed with; with a zone argument it is the target zone's offset at that instant.
@@ -349,6 +376,10 @@ Format a datetime as a string with a custom format.
 { "format_date": [{ "var": "date" }, "dd/MM/yyyy"] }
 // Data: { "date": "2024-12-25T00:00:00Z" }
 // Result: "25/12/2024"
+
+// An unknown chrono specifier is an error (catchable with try)
+{ "format_date": [{ "datetime": "2024-01-01T00:00:00Z" }, "%Q"] }
+// Result: error (Invalid date format)
 ```
 
 **Try it:**

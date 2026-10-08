@@ -1,12 +1,12 @@
 # Starter Boilerplates
 
-Ready-to-run microservice integration templates for Express, FastAPI, and Axum. They show route protection, dynamic calculations, and in-memory feature-flag evaluation with `datalogic`.
+Starting points for three services: route authorization in Express, a pricing endpoint in FastAPI, and a feature-flag endpoint in Axum. Each compiles its rules once at startup and evaluates them per request. For a fuller Express walkthrough see [Integration: Express](../integrations/express.md).
 
 ---
 
-## 🟢 Node.js + Express (`node-express-rules`)
+## Node.js + Express
 
-Protect routes with `@goplasmatic/datalogic-node` middleware. The middleware compiles your rule sets and matches incoming request properties (path, headers, user roles) against them.
+Authorize routes with `@goplasmatic/datalogic-node` middleware. The middleware compiles one rule per route and evaluates it against request properties (here, a role header).
 
 ### Middleware Implementation
 
@@ -17,7 +17,7 @@ import { Engine } from '@goplasmatic/datalogic-node';
 const app = express();
 const engine = new Engine();
 
-// Example authorization rules stored in database
+// Authorization rules, as you might load them from a database
 const rules = {
   "/admin": { "==": [{ "var": "user.role" }, "admin"] },
   "/billing": { "in": [{ "var": "user.role" }, ["admin", "billing_manager"]] }
@@ -26,15 +26,15 @@ const rules = {
 // Compile each rule once at startup, keyed by route
 const compiledRules = {};
 for (const [route, rule] of Object.entries(rules)) {
-  compiledRules[route] = engine.compile(JSON.stringify(rule));
+  compiledRules[route] = engine.compile(rule);
 }
 
 // Authorization middleware
 const authorize = (req, res, next) => {
   const routeRule = compiledRules[req.path];
-  if (!routeRule) return next(); // No rules defined for this route
+  if (!routeRule) return next(); // No rule for this route
 
-  // Mock user session context
+  // Request context the rule reads
   const context = {
     user: {
       role: req.headers['x-user-role'] || 'guest'
@@ -42,7 +42,7 @@ const authorize = (req, res, next) => {
   };
 
   try {
-    const isAllowed = JSON.parse(routeRule.evaluate(JSON.stringify(context)));
+    const isAllowed = routeRule.evaluate(context); // a JS value: true / false
     if (isAllowed) {
       next();
     } else {
@@ -61,9 +61,9 @@ app.get('/billing', (req, res) => res.send('Billing dashboard'));
 
 ---
 
-## 🐍 Python + FastAPI (`python-fastapi-pricing`)
+## Python + FastAPI
 
-Calculate dynamic discounts, sales tax, or shipping fees at the API boundary with `datalogic-py`.
+Compute a discount at the API boundary with `datalogic-py`. The same shape works for tax or shipping rules.
 
 ### Pricing Endpoint
 
@@ -105,13 +105,10 @@ async def get_discount(context: CartContext):
 
 ---
 
-## 🦀 Rust + Axum (`rust-axum-feature-flags`)
+## Rust + Axum
 
-A feature-flag evaluator that recycles a transient session per request to keep rule evaluation at sub-microsecond latency.
-
-> **Cargo note:** `session.eval_into::<T, _>(...)` is gated behind the
-> `serde_json` feature. Add it in `Cargo.toml`:
-> `datalogic-rs = { version = "5", features = ["serde_json"] }`.
+A feature-flag endpoint that compiles its rule at startup and opens a session per request. `session.eval_into::<T, _>(...)` needs the `serde_json` feature:
+`datalogic-rs = { version = "5", features = ["serde_json"] }`.
 
 ```rust
 use axum::{routing::post, Json, Router};
@@ -124,7 +121,7 @@ struct AppState {
     rule: Logic,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct UserContext {
     user_id: String,
     country: String,
@@ -140,17 +137,14 @@ async fn check_flag(
     axum::extract::State(state): axum::extract::State<Arc<AppState>>,
     Json(payload): Json<UserContext>,
 ) -> Json<FlagResponse> {
-    // 1. Create a session for thread-local arena allocation
+    // A session owns the arena for this request's evaluation
     let mut session = state.engine.session();
-    
-    // 2. Evaluate
+
+    // An evaluation error counts as "flag off"
     let result = session.eval_into::<bool, _>(
         &state.rule,
         &serde_json::to_value(payload).unwrap()
     ).unwrap_or(false);
-    
-    // 3. Reset the arena buffer for reuse on the next request
-    session.reset();
 
     Json(FlagResponse { enabled: result })
 }
@@ -158,7 +152,7 @@ async fn check_flag(
 #[tokio::main]
 async fn main() {
     let engine = Engine::new();
-    // Rule: Enable beta feature if user is beta_user OR resides in CA
+    // Rule: enable the beta feature for beta users or users in CA
     let rule = engine.compile(r#"{
         "or": [
             {"==": [{"var": "beta_user"}, true]},

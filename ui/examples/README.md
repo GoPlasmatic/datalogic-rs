@@ -1,22 +1,22 @@
 # Examples
 
 Minimal copy-paste starting points for `@goplasmatic/datalogic-ui`. Each
-file is a single React component that shows one mode of `DataLogicEditor`
-in roughly 30–40 lines. The full `src/App.tsx` playground in this
-package is a more comprehensive demo; these examples are the small,
-focused shapes you can lift straight into your own app.
+file is a single React component of about 30 lines that shows one mode of
+`DataLogicEditor`. The `src/App.tsx` playground in this package is the full
+demo; these examples are small shapes you can lift into your own app.
 
 | Example                       | Mode                  | What it shows                                                |
 |-------------------------------|-----------------------|--------------------------------------------------------------|
 | `01-readonly-viewer.tsx`      | Read-only             | Render an expression as a flow diagram (no `data`, no edits) |
 | `02-debugger.tsx`             | Debugger              | Add a `data` prop to enable step-through trace inspection    |
-| `03-editable.tsx`             | Editable + onChange   | Full visual editing with controlled state and persistence    |
+| `03-editable.tsx`             | Editable + onChange   | Visual editing with controlled state, the JSON shown below   |
 
 ## Running
 
-These files are reference snippets and no build target includes
-them. Drop one into a Vite/Next/CRA project that has the peer
-dependencies installed:
+These files are reference snippets: no bundle includes them, and
+`npx tsc -b` type-checks them against the library entry
+(`tsconfig.examples.json`). Drop one into a Vite, Next.js or CRA project
+that has the peer dependencies installed:
 
 ```bash
 npm install @goplasmatic/datalogic-ui @xyflow/react react react-dom

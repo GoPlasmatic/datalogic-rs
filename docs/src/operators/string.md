@@ -4,6 +4,10 @@ String manipulation and searching operations.
 
 > **Feature flags (Rust crate).** `cat`, `substr`, and `in` are baseline. `length`, `starts_with`, `ends_with`, `upper`, `lower`, `trim`, and `split` require the `ext-string` feature. Every language binding enables all operator features, so this only affects the Rust crate. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
 
+**Argument counts:** `cat` takes any number of arguments; `substr` one to three; `in`, `starts_with`, `ends_with` and `split` two; `length`, `upper`, `lower` and `trim` one. With too few arguments, `substr` returns `""`, `in` returns `false`, and the others raise `Invalid Arguments`. Extra arguments are ignored, except by `length`, which raises `Invalid Arguments`.
+
+`substr`, `starts_with`, `ends_with`, `upper`, `lower`, `trim` and `split` convert a non-string argument to its string form first: `12` becomes `"12"` and `null` becomes `""`.
+
 ## cat
 
 Concatenate strings together.
@@ -16,7 +20,7 @@ Concatenate strings together.
 **Arguments:**
 - `a`, `b`, ... - Values to concatenate (variadic)
 
-**Returns:** Concatenated string.
+**Returns:** Concatenated string. Numbers and booleans add their text, `null` adds nothing, and an array argument adds each of its items.
 
 **Examples:**
 
@@ -64,6 +68,8 @@ Extract a substring.
 - `string` - Source string
 - `start` - Starting index (0-based, negative counts from end)
 - `length` - Number of characters (optional, negative counts from end)
+
+A `start` or `length` that is not an integer counts as absent: `{ "substr": ["abcdef", 1.5] }` is `"abcdef"`.
 
 **Returns:** Extracted substring.
 
@@ -205,7 +211,7 @@ Get the length of a string or array.
 ```
 
 **Notes:**
-- `length` takes exactly one argument. The engine parses a literal array such as `{ "length": [1, 2, 3] }` as a multi-argument call, which throws Invalid Arguments. Pass a single value that resolves to an array (for example `{ "length": { "var": "items" } }`).
+- `length` takes exactly one argument. The engine parses a literal array such as `{ "length": [1, 2, 3] }` as a multi-argument call, which throws Invalid Arguments. Pass a single value that resolves to an array (for example `{ "length": { "var": "items" } }`), or wrap the literal in one more array: `{ "length": [[1, 2, 3]] }` is `3`.
 - `length` accepts only strings and arrays: `null` (including a missing `var`), numbers, booleans, and objects throw Invalid Arguments. Guard optional fields with `??`, for example `{ "length": { "??": [{ "var": "items" }, []] } }`, which is `0` when `items` is absent.
 - String length counts Unicode characters, not bytes (`{ "length": "héllo" }` is `5`).
 
@@ -325,6 +331,10 @@ Convert string to uppercase.
 { "upper": { "var": "name" } }
 // Data: { "name": "alice" }
 // Result: "ALICE"
+
+// Unicode case mapping can change the length
+{ "upper": "straße" }
+// Result: "STRASSE"
 ```
 
 **Try it:**
@@ -364,12 +374,19 @@ Convert string to lowercase.
 ]}
 // Data: { "input": "YES" }
 // Result: true
+
+// Context-sensitive rules: a final Greek capital sigma becomes ς
+{ "lower": "ΟΔΟΣ" }
+// Result: "οδος"
 ```
 
 **Try it:**
 
 <div class="playground-widget" data-logic='{"==": [{"lower": {"var":"input"}}, "yes"]}' data-data='{"input": "YES"}'>
 </div>
+
+**Notes:**
+- `upper` and `lower` apply Unicode's full case mappings (Rust's `str::to_uppercase` / `str::to_lowercase`), context-sensitive rules such as the Greek final sigma included
 
 ---
 
@@ -444,13 +461,9 @@ Split a string into an array.
 // Data: { "tags": "rust,json,logic" }
 // Result: ["rust", "json", "logic"]
 
-// The split result is an array you can index into.
+// Split an email address
 { "split": ["user@example.com", "@"] }
 // Result: ["user", "example.com"]
-// To select a specific element, index into that array in a later step (for
-// example bind the result in your data, or use it inside an array operator).
-// The snippet { "var": "0" } is illustrative of selecting the first element
-// ("user") from the split result; it is not a standalone rule.
 ```
 
 **Try it:**
@@ -459,5 +472,5 @@ Split a string into an array.
 </div>
 
 **Notes:**
-- `split` uses exactly two arguments. There is no limit argument: `{ "split": ["a,b,c,d", ",", 2] }` still returns all four parts, and a single argument is Invalid Arguments
-- `split` converts non-string input to a string first (`{ "split": [123, ","] }` is `["123"]`)
+- `split` reads exactly two arguments. There is no limit argument: `{ "split": ["a,b,c,d", ",", 2] }` still returns all four parts, and a single argument is Invalid Arguments
+- An empty input string gives `[""]`

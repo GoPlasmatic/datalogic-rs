@@ -4,7 +4,7 @@ In-tree reproduction of the per-binding boundary measurements in
 [`BINDINGS-OVERHEAD.md`](../BINDINGS-OVERHEAD.md): the full cost a real
 caller pays per evaluation through each language binding, as opposed to
 the engine-only numbers in [`BENCHMARK.md`](../BENCHMARK.md). The 5.0.1
-boundary overhaul used this harness for its measurements too (see
+boundary overhaul took its measurements with this harness (see
 BINDINGS-OVERHEAD.md's "History" section).
 
 ## Quick start
@@ -80,22 +80,21 @@ Output line schema, one per (runtime, mode, workload):
 Every runner accepts `<workloads-dir> [--modes=a,b] [--workloads=x,y]`.
 All nine produced the 2026-07-03 v2 capture in BINDINGS-OVERHEAD.md.
 The go/dotnet/jvm/php four are in the "extended" set only because they
-need their language toolchains installed; the jvm runner additionally
+need their language toolchains installed; the jvm runner also
 needs a real JDK on PATH/JAVA_HOME (the macOS system `java` stub has no
 runtime) and gets the binding's Jackson dependency on the classpath
 from `run.sh`.
 
 ## Modes
 
-Per-runtime mode lists mirror the tier tables in BINDINGS-OVERHEAD.md;
-new v2 tiers are additive:
+Per-runtime mode lists mirror the tier tables in BINDINGS-OVERHEAD.md:
 
-- **rust-core**: `eval-preparsed`, `parseddata-eval` (new: core
-  `ParsedData` handle, eval only), `parse-eval`, `parse-eval-serialize`
-  (the string-contract floor), `parse-eval-serialize-fresharena`,
+- **rust-core**: `eval-preparsed`, `parseddata-eval` (core `ParsedData`
+  handle, eval only), `parse-eval`, `parse-eval-serialize` (the
+  string-contract floor), `parse-eval-serialize-fresharena`,
   `serde-value-in-out`.
-- **c-abi**: `session-evaluate`, `session-evaluate-data` (new: parsed
-  data handle), `session-evaluate-many-100` (new: batch), `rule-evaluate`,
+- **c-abi**: `session-evaluate`, `session-evaluate-data` (parsed data
+  handle), `session-evaluate-many-100` (batch), `rule-evaluate`,
   `engine-apply-oneshot`.
 - **node**: `session-evaluateStr-str`, `session-evaluate-data`,
   `session-evaluate-many-100`, `rule-evaluateStr-str`,
@@ -108,7 +107,8 @@ new v2 tiers are additive:
   `engine-eval-oneshot` (dict rule + dict data).
 - **wasm**: `session-evaluate-str`, `session-evaluate-data`,
   `session-evaluate-many-100`, `compiledrule-evaluate-str`,
-  `oneshot-evaluate`.
+  `oneshot-evaluate`. The last two time `CompiledRule` and the free
+  `evaluate`, both deprecated in 5.8.0 and removed in 6.0.
 - **go / dotnet / jvm / php**: `session-evaluate`,
   `session-evaluate-data`, `session-evaluate-many-100`,
   `rule-evaluate`, `engine-apply-oneshot` (+ php
@@ -121,7 +121,11 @@ new v2 tiers are additive:
   computes that column.
 - Cross-process run-to-run variance is roughly ±5%; single-digit-percent
   differences between adjacent rows are noise.
-- Builds are portable (run.sh invokes cargo from the repo root, so the
-  benchmark crate's cwd-scoped `-C target-cpu=native` config does not
-  apply). Numbers are still machine-specific, so compare runs from the
+- `run.sh` builds are portable: it invokes cargo from the repo root, so
+  the benchmark crate's cwd-scoped `-C target-cpu=native` config does
+  not apply. The manual rust-core invocation in the runners table runs
+  from inside `tools/benchmark/` and picks that config up; for portable
+  numbers, run it from the repo root as
+  `cargo run --release -p datalogic-bench --bin boundary_core -- tools/benchmark/boundary/workloads`.
+  Numbers are machine-specific either way, so compare runs from the
   same machine.

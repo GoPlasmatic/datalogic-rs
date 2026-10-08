@@ -40,7 +40,7 @@ assert_eq!(result, "6");
 
 `eval_str` parses the rule, parses the data, evaluates, and hands you
 back a JSON string. The free functions on the crate root wrap a shared
-default `Engine`; construct one explicitly to add custom operators,
+default `Engine`; build your own to add custom operators,
 change config, or amortise compilation. The rest of this README covers
 **when to use which API**.
 
@@ -56,7 +56,7 @@ Pick by use case: most callers want **Tier 0** for ad-hoc work or
 | **1** | `Engine::eval_str` / `eval` / `eval_into`                 | per-call `Bump`         | `String` / `OwnedDataValue` / `T`    | You need custom operators, config, or templating mode |
 | **2** | `Engine::session()` → `Session::eval*`                    | session-owned `Bump`    | owned **or** `&DataValue<'a>` borrow | Hot loops, services, batch jobs                       |
 | **3** | `Engine::evaluate(&Logic, data, &Bump)`                   | caller-owned `Bump`     | `&'a DataValue<'a>`                  | Zero-copy result pipelines, custom pool strategies    |
-| **4** | `Engine::trace()` → `TracedSession::*`                    | session-owned + buffer  | `TracedRun<R>` (result + steps)      | Debugging, visualisation, instrumentation             |
+| **4** | `Engine::trace()` → `TracedSession::*`                    | per-call `Bump` + trace buffer | `TracedRun<R>` (result + steps) | Debugging, visualisation, instrumentation             |
 
 ### Tier 0: Module-level one-shot
 
@@ -143,15 +143,28 @@ a warm-up pass, use `session.allocated_bytes()` +
 `session.reset_with_capacity(bytes)`.
 
 **Tokio idiom:** `Arc<Engine>` shared across worker threads (it's
-`Send + Sync`), one `Session` per task (it's `Send` but `!Sync`, moves
-with the task across `.await` points).
+`Send + Sync`), one session per task (`Send` but `!Sync`). A
+`SharedSession` holds the engine by `Arc` instead of borrowing it, so it
+is `'static + Send`: store it in a struct, move it into a spawned task,
+or hold it across `.await` points.
+
+```rust
+use std::sync::Arc;
+use datalogic_rs::{Engine, SharedSession};
+
+let engine = Arc::new(Engine::new());
+let logic = engine.compile(r#"{"var": "x"}"#).unwrap();
+let mut session = SharedSession::new(engine);
+let handle = std::thread::spawn(move || session.eval_str(&logic, r#"{"x": 1}"#).unwrap());
+assert_eq!(handle.join().unwrap(), "1");
+```
 
 Full pattern: [`examples/compile_once_evaluate_many.rs`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/examples/compile_once_evaluate_many.rs).
 
 ### Tier 3: Zero-copy `evaluate(&Bump)`
 
 When the result borrow can stay scoped to a caller-managed arena,
-skip the owned deep-clone and use `Engine::evaluate` directly. The
+call `Engine::evaluate` and skip the owned deep-clone. The
 caller owns the `Bump`; the library never resets it.
 
 ```rust
@@ -199,12 +212,13 @@ Per-call cost differs:
 
 | Shape                                     | Cost per call                       |
 |-------------------------------------------|-------------------------------------|
-| `&str` (JSON literal)                     | parse + arena alloc                 |
-| `&serde_json::Value` (`serde_json` feature) | deep-convert into the arena       |
-| `&OwnedDataValue`                         | deep-borrow into the arena          |
+| `&str` (JSON literal)                     | parse into the arena; unescaped strings borrowed |
+| `&serde_json::Value` (`serde_json` feature) | spines built in the arena, strings and keys borrowed |
+| `&OwnedDataValue`                         | spines built in the arena, leaves borrowed |
 | `DataValue<'a>` (by value)                | one arena alloc for the top node    |
 | `&'a DataValue<'a>` (by reference)        | **zero**: pass-through              |
 | `&ParsedData` (parse once via `ParsedData::from_json`) | **zero**: same as the pre-parsed row |
+| `Roots` / `&Roots` (several values as one object) | one object node, plus each root's own cost |
 
 For the same-input-many-rules case, or when upstream stages already
 produced an arena value, prefer the `&'a DataValue<'a>` path, which
@@ -213,9 +227,32 @@ parses a JSON payload once into its own arena and hands out
 `&DataValue` borrows for as long as the handle lives. The bindings
 expose it as their `DataHandle` tier.
 
+On the engine that compiled the rule, an owned, `serde_json` or `Roots`
+input is brought in only along the paths the rule reads, when
+`Logic::facts()` reports those reads complete.
+
+`Roots` evaluates separate values as the fields of one top-level
+object, without copying them into a combined value:
+
+```rust
+use datalogic_rs::{Engine, Roots};
+use serde_json::json;
+
+let data = json!({"user": {"name": "ana"}});
+let metadata = json!({"channel": "web"});
+
+let engine = Engine::new();
+let rule = engine
+    .compile(r#"{"cat": [{"var": "data.user.name"}, "@", {"var": "metadata.channel"}]}"#)
+    .unwrap();
+let roots = Roots::from([("data", &data), ("metadata", &metadata)]);
+assert_eq!(engine.session().eval_str(&rule, &roots).unwrap(), r#""ana@web""#);
+```
+
 The Tier 0 / Tier 1 one-shot methods (`eval`, `eval_str`,
 `eval_into`) accept a similar set via the [`OwnedInput`] trait, which
-omits the `DataValue<'a>` shapes (no caller arena to borrow from).
+omits `ParsedData` and the `DataValue<'a>` shapes (there is no caller
+arena to borrow from).
 
 Runnable example: [`examples/zero_copy_input.rs`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/examples/zero_copy_input.rs).
 
@@ -262,19 +299,33 @@ Conversion to other shapes:
 | [`EngineBuilder`]              | Builder for engines with custom config, operators, modes    |
 | [`Logic`]                      | Compiled, thread-safe rule snapshot                         |
 | [`Session`]                    | Arena-reusing handle for hot loops; caller resets           |
+| [`SharedSession`]              | `Session` that holds the engine by `Arc`; `'static + Send`  |
+| [`Roots`]                      | Several values evaluated as one top-level object            |
 | [`ParsedData`]                 | Self-contained parsed payload; evaluate many rules against one parse |
 | [`DataValue`]                  | Arena-borrowed JSON-shaped value (returned from `evaluate`) |
 | `OwnedDataValue`               | Heap-owned counterpart of `DataValue` (via `datavalue`)     |
 | [`EvaluationConfig`]           | Behaviour knobs: NaN, division by zero, truthiness, coercion |
 | [`CustomOperator`]             | Trait you implement to extend the engine                    |
+| `CustomOperatorInfo`           | What a custom operator declares about itself (`CustomOperator::info`) |
 | `operator::EvalContext`        | Opaque engine context passed to `CustomOperator::evaluate`  |
+| [`Family`]                     | An operator family, for `EngineBuilder::with_families`      |
 | [`Error`] / [`ErrorKind`]      | Unified error type with operator + node-id breadcrumbs      |
+| [`ErrorCode`]                  | An error's kind without its payload, for matching           |
+| `Diagnostic` / `CompileError`  | Problems `Engine::check` finds; what `compile_checked` returns |
+| [`Facts`] / `DataPath`         | What a compiled rule reads and calls (`Logic::facts`)       |
+| [`OperatorInfo`]               | One built-in operator, as `Engine::operators()` describes it |
 | [`TracedRun`] / [`TracedSession`] | Tracing types (`trace` feature)                          |
 
 [`Engine`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.Engine.html
 [`EngineBuilder`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.EngineBuilder.html
 [`Logic`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.Logic.html
 [`Session`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.Session.html
+[`SharedSession`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/type.SharedSession.html
+[`Roots`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.Roots.html
+[`Family`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/enum.Family.html
+[`ErrorCode`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/enum.ErrorCode.html
+[`Facts`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.Facts.html
+[`OperatorInfo`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.OperatorInfo.html
 [`ParsedData`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.ParsedData.html
 [`DataValue`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/enum.DataValue.html
 [`EvaluationConfig`]: https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.EvaluationConfig.html
@@ -318,19 +369,31 @@ Full guide: [Custom Operators](https://goplasmatic.github.io/datalogic-rs/advanc
 
 The `CustomOperator` trait is the main extension point and is
 **stable for the 5.x series**: no required-method additions, no
-signature changes.
+signature changes. Two default methods let an operator say more:
+`info()` declares whether it is deterministic, whether it reads the data
+context and how many arguments it takes (so the engine can fold it,
+trust it in `Logic::facts()`, and reject a bad call before its arguments
+run), and `check()` validates a call's arguments for `Engine::check`.
+
+Register with `try_add_operator` instead of `add_operator` to refuse a
+name a built-in already answers to (`if`, `var`, `?:`), where the custom
+operator would never run. `Arc<T>` implements `CustomOperator`, so one
+instance can serve several engines, and `Engine::to_builder()` starts a
+new builder from a running engine with its operators and settings.
 
 ### Introspection
 
 `engine.builtin_operator_names()` iterates every built-in key this
-build resolves (canonical name first, then its aliases such as `var`,
-`?:`, and `match`), reflecting the compiled feature set;
-`engine.custom_operator_names()` lists the registered custom operators
-and `engine.has_custom_operator(name)` checks a single name. The union
-of the two is the engine's full vocabulary, which authoring tools need
-under templating mode, where an unknown key is data rather than an
-error. A custom operator registered under a built-in name is never
-reached: built-in resolution wins at compile time.
+engine resolves (canonical name first, then its aliases such as `var`,
+`?:`, and `match`), reflecting the compiled feature set and the engine's
+operator families. `engine.custom_operator_names()` lists the registered
+custom operators and `engine.has_custom_operator(name)` checks a single
+name. Together, the built-in and custom names are the engine's full
+vocabulary, which authoring tools need under templating mode, where an
+unknown key is data rather than an error. A custom operator registered
+under a built-in name is never reached: built-in resolution wins at
+compile time. `engine.operators()` describes each built-in operator
+(family, argument counts, effect, cost).
 
 ```rust
 use datalogic_rs::Engine;
@@ -340,7 +403,36 @@ let names: Vec<&str> = engine.builtin_operator_names().collect();
 assert!(names.contains(&"val"));
 assert!(names.contains(&"var")); // alias of `val`
 assert_eq!(engine.custom_operator_names().count(), 0);
+
+let map = engine.operators().find(|op| op.name == "map").unwrap();
+assert_eq!((map.min_args, map.max_args), (2, Some(2)));
 ```
+
+## Rule analysis
+
+`Engine::check` reports every problem the engine can see in a rule
+before it runs, each with a JSON Pointer into the rule, and
+`Engine::compile_checked` refuses a rule with any error. `Logic::facts()`
+reports the data paths a compiled rule reads and the operators it calls:
+
+```rust
+use datalogic_rs::{CheckMode, DiagnosticCode, Engine};
+
+let engine = Engine::new();
+
+let diags = engine.check(r#"{"if": [{"vr": "age"}, "adult", "minor"]}"#, CheckMode::Engine);
+assert_eq!(diags[0].code, DiagnosticCode::UnknownOperator);
+assert_eq!(diags[0].pointer, "/if/0");
+assert!(diags[0].message.contains("did you mean `var`"));
+
+let rule = engine.compile(r#"{">=": [{"var": "user.age"}, 18]}"#).unwrap();
+let facts = rule.facts();
+let reads: Vec<String> = facts.reads().iter().map(|p| p.to_string()).collect();
+assert_eq!(reads, ["user.age"]);
+assert!(facts.reads_complete() && facts.is_deterministic());
+```
+
+Full guide: [Rule Analysis](https://goplasmatic.github.io/datalogic-rs/advanced/rule-analysis.html).
 
 ## Configuration
 
@@ -353,10 +445,15 @@ assert_eq!(engine.custom_operator_names().count(), 0);
   boolean, or a custom closure
 - **Numeric coercion** (`NumericCoercionConfig`): null-to-zero,
   bool-to-number, empty-string-to-zero, etc.
-- **Recursion depth**: guards against pathological inputs
+- **Missing variables** (`MissingVar`): a `var` that finds nothing is
+  `null` (the default) or a `VariableNotFound` error
+- **Recursion depth**: caps how many evaluations run at once on one
+  thread, which bounds custom operators that re-enter the engine
 
 Presets like `EvaluationConfig::safe_arithmetic()` and
-`EvaluationConfig::strict()` cover common postures. See the
+`EvaluationConfig::strict()` cover common postures. On the builder,
+`with_families([Family::ExtString, ...])` keeps an engine to the
+JSONLogic core plus the operator families you name. See the
 [Configuration guide](https://goplasmatic.github.io/datalogic-rs/advanced/configuration.html)
 and the runnable [`examples/configuration.rs`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/examples/configuration.rs).
 
@@ -382,8 +479,7 @@ let result = engine.eval_str(
 
 A single-key object is an operator invocation, so a key that names a
 built-in (`type`, `map`, `if`, `length`, …) or a registered custom
-operator is normally unreachable as an output field. Opt into an escape
-prefix to recover it:
+operator cannot be an output field. An escape prefix recovers it:
 
 ```rust
 use datalogic_rs::Engine;
@@ -401,9 +497,11 @@ It is unset by default, so `$`-prefixed keys otherwise pass through
 verbatim. The prefix is a `char`, so payloads that already use `$` keys
 can pick `~` or `#`.
 
-The 4.x JSONLogic `preserve` *operator* was removed in v5: literal
-scalars / arrays work inline already; templated objects belong in
-templating mode. Runnable example:
+`engine.compile_template(rule)` and `engine.compile_strict(rule)` choose
+the mode for one compile, so one engine with one set of custom operators
+can compile both conditions and output templates. There is no
+`preserve` operator: literal scalars and arrays work inline, and
+templated objects belong in templating mode. Runnable example:
 [`examples/structured_objects.rs`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/examples/structured_objects.rs).
 
 ## Error model
@@ -415,7 +513,10 @@ through accessors:
 - `kind: ErrorKind`: the discriminant (`ParseError`, `Thrown`,
   `InvalidArguments`, `TypeError`, `ArithmeticError`, `Custom`, …),
   public for pattern matching
-- `operator() -> Option<&str>`: the innermost failing operator
+- `code() -> ErrorCode`: the kind without its payload (`Copy`, `Eq`,
+  `Hash`), every variant present in every build; `tag()` is its name
+- `operator() -> Option<&str>`: the innermost failing operator, custom
+  operators included
 - `node_ids() -> &[u32]`: breadcrumbs from the compiled tree
   (leaf to root); resolve to a JSON path via
   `Error::resolve_path(&logic)`, which returns a `Vec<PathStep>` you
@@ -425,16 +526,18 @@ through accessors:
   under the default config throws `{"type": "NaN"}`)
 
 ```rust
-use datalogic_rs::{Engine, ErrorKind};
+use datalogic_rs::{Engine, ErrorCode, ErrorKind};
 
 let engine = Engine::new();
 let err = engine.eval_str(r#"{"/": [1, 0]}"#, r#"{}"#).unwrap_err();
 assert!(matches!(err.kind, ErrorKind::Thrown(_)));
+assert_eq!(err.code(), ErrorCode::Thrown);
 assert_eq!(err.operator(), Some("/"));
 assert_eq!(err.thrown_value().map(|v| v.to_string()), Some(r#"{"type":"NaN"}"#.to_string()));
 
-// Missing variables are not errors in any config: `{"var": "missing"}`
-// evaluates to null. Use `exists`, `missing`, or `??` to detect them.
+// By default a missing variable is not an error: `{"var": "missing"}`
+// evaluates to null. Use `exists`, `missing`, or `??` to detect it, or
+// configure `MissingVar::Error` to make it a `VariableNotFound` error.
 ```
 
 Runnable example: [`examples/error_handling.rs`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/examples/error_handling.rs).
@@ -455,6 +558,7 @@ enforces this at compile time, so there's no runtime hazard.
 | `Logic`                        | Compile once; share via `Arc` (or use `Engine::compile_arc`)                   |
 | `CustomOperator` implementors  | Register on the builder; live inside the shared `Engine` (`Send + Sync` bound) |
 | `Session`                      | One per task / per thread (the per-task workhorse)                             |
+| `SharedSession`                | A `Session` holding `Arc<Engine>`: store it in a struct or move it to a task   |
 
 Runnable example: [`examples/thread_safety.rs`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/crates/datalogic-rs/examples/thread_safety.rs).
 
@@ -472,7 +576,7 @@ Runnable example: [`examples/thread_safety.rs`](https://github.com/GoPlasmatic/d
 | `wasm-clock`      | JS-host clock for `now` on `wasm32-unknown-unknown` (`chrono/wasmbind`). Enable only when a JS host runs the module; never for wasmtime / wazero / Chicory (issue #47). Without it `now` traps on that target |
 | `tensor`          | The `Tensor` value plus 20 marshalling-only operators over it (JSON to a model's inputs and back). No new dependency |
 | `tensor-half`     | Lifts the `f16` / `bf16` restriction on the element-wise tensor operators; pulls in `half` through datavalue |
-| `budget`          | Per-evaluation operation counter with a hard abort: `EvaluationConfig::ops_budget`, `Engine::evaluate_metered`, `EvalContext::charge`, `ErrorKind::BudgetExceeded` |
+| `budget`          | Per-evaluation operation counter with a hard abort: `EvaluationConfig::ops_budget`, `Engine::evaluate_metered`, `Session::eval_metered`; makes `EvalContext::charge` count and raises `ErrorKind::BudgetExceeded` (the variant exists in every build) |
 | `all-operators`   | Every operator family at once: `datetime`, `error-handling`, the five `ext-*` families, `flagd` and `tensor`. A family added in a later release joins it, so depending on it keeps the full operator set. Not included: `serde_json`, `templating`, `trace`, `budget`, `tensor-half`, `wasm-clock` |
 
 The default build is `serde_json`-free; opt in via
@@ -586,8 +690,8 @@ on Apple M2 Pro; see the cross-library comparison in
 
 ## Migrating from v4
 
-v5 is a breaking release with a hard cliff: no `compat` feature, no
-deprecated method shims. Headline renames: `DataLogic` → `Engine`,
+v5 broke the 4.x API with no `compat` feature and no deprecated method
+shims. Headline renames: `DataLogic` → `Engine`,
 `evaluate_json` → `eval_str` / `eval_into::<T>`, `Operator` →
 `CustomOperator`, `with_config(...)` →
 `Engine::builder().with_config(...).build()`. See

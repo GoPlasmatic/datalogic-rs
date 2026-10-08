@@ -16,8 +16,10 @@ pipenv install datalogic-py
 ## Supported Python Versions
 
 `datalogic-py` supports **Python 3.10 and newer**. It builds with pyo3 against the PEP 384 Stable ABI (`abi3`), so:
-* The same prebuilt wheel works across multiple minor Python versions (3.10, 3.11, 3.12, 3.13, etc.).
+* One prebuilt wheel per platform works on every CPython release from 3.10 on; the package metadata lists 3.10 through 3.14.
 * Installing the wheel needs no local C compiler or Rust toolchain.
+
+PyPI carries wheels for Linux (manylinux and musllinux) on x86_64 and aarch64, macOS on x86_64 and arm64, and Windows on x86_64 and arm64. Every wheel ships type stubs and a `py.typed` marker, so mypy, pyright and IDE autocomplete see the whole API.
 
 ## Importing in Python
 
@@ -27,4 +29,6 @@ The distribution name and the import name differ:
 
 ```python
 import datalogic_py
+
+print(datalogic_py.__version__)  # "5.8.1"
 ```

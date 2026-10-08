@@ -14,7 +14,16 @@ The JSONLogic expression to render.
 value: JsonLogicValue | null
 ```
 
-Accepts any valid JSONLogic expression or `null` for an empty state.
+Accepts any valid JSONLogic expression or `null` for an empty state. An
+expression nested deeper than 100 levels renders an error instead of a
+diagram.
+
+The editor compares `value` by reference. When you pass back the value
+`onChange` handed you (or an equal copy), the canvas keeps its selection, open
+properties panel, pan and zoom. Any other new object counts as a new rule: the
+canvas remounts and fits the view to it. In a parent that re-renders often,
+keep `value` in state or `useMemo` rather than writing a fresh literal on each
+render.
 
 ```tsx
 // Simple expression
@@ -36,7 +45,7 @@ Accepts any valid JSONLogic expression or `null` for an empty state.
 
 #### `data`
 
-Data context for evaluation. When provided, the editor evaluates the expression through the WASM trace API and the debugger controls become available. Any JSON value is a valid root context: object, array or scalar. Values appear on nodes as you step, not at rest (see [Modes](modes.md#debugging)).
+Data context for evaluation. When provided, the editor evaluates the expression through the WASM trace API and the debugger controls become available. Any JSON value is a valid root context: object, array or scalar. Values appear on nodes as you step, not at rest (see [Modes](modes.md#debugging)). The editor re-runs the trace when the content of `data` changes, so an inline object is fine. If the WASM engine fails to load, a banner above the diagram gives the load error.
 
 ```tsx
 data?: unknown
@@ -51,7 +60,7 @@ data?: unknown
 
 #### `onChange`
 
-Callback fired when the expression changes. It is active whenever `editable` is set: the editor debounces canvas edits (about 300ms) and passes back the rebuilt JSONLogic expression.
+Callback fired when the expression changes. It is active whenever `editable` is set: the editor debounces canvas edits (about 300ms) and passes back the rebuilt JSONLogic expression. Passing that value back as `value` keeps the selection, the open properties panel, and the pan and zoom.
 
 ```tsx
 onChange?: (expr: JsonLogicValue | null) => void
@@ -67,7 +76,7 @@ onChange?: (expr: JsonLogicValue | null) => void
 
 #### `editable`
 
-Enable editing: node selection, properties panel, context menus, the Insert menu (Cmd/Ctrl+K), keyboard shortcuts, and undo/redo.
+Enable editing: node selection, properties panel, context menus, the Insert menu (Cmd/Ctrl+K), keyboard shortcuts, and undo/redo. Keyboard shortcuts apply only while focus is inside this editor, so two editors on one page, or a page with its own shortcuts, do not take each other's keys.
 
 ```tsx
 editable?: boolean
@@ -155,6 +164,7 @@ interface DataLogicEvaluationConfig {
     reject_non_numeric?: boolean;
   };
   max_recursion_depth?: number;
+  ops_budget?: number;
 }
 ```
 
@@ -167,11 +177,15 @@ interface DataLogicEvaluationConfig {
 ```
 
 The toolbar shows a compact summary whenever the settings differ from the
-engine defaults. Changing `config` rebuilds the engine, which resets selection
-and undo history, so keep the object referentially stable (`useMemo`) if the
-parent re-renders often. The engine rejects an unknown key or value with a
-`ConfigurationError`. See
+engine defaults. The editor keys the engine on the settings, not on the object:
+an inline literal is fine, and only a change of setting rebuilds the engine,
+which resets selection, undo history and the debugger position. The engine
+rejects an unknown key or value with a `ConfigurationError`. See
 [Configuration](../advanced/configuration.md) for what each setting does.
+
+`ops_budget` caps the operations one evaluation may charge (see
+[Operation Budget](../advanced/operation-budget.md)). Crossing it raises a
+`BudgetExceeded` error that `try` cannot catch.
 
 #### `customOperators`
 
@@ -191,12 +205,13 @@ customOperators?: Record<string, (args: unknown[]) => unknown>
 
 Arguments arrive already evaluated; the return value may be any
 JSON-serializable value (`undefined` becomes `null`), and a thrown exception
-becomes a runtime evaluation error. Rules using them evaluate and trace
-normally, but the palette and help panel only know built-in operators, so
+becomes a runtime evaluation error. Rules using them evaluate and trace like
+any other, but the palette and help panel only know built-in operators, so
 custom nodes render with the generic "utility" styling. Built-ins win a name
-collision: registering `"+"` has no effect. Like `config`, changing the set
-of names rebuilds the engine; passing new implementations under the same
-names (an inline object on every render, say) does not.
+collision: registering `"+"` has no effect. Adding or removing a name
+rebuilds the engine; passing new implementations under the same names (an
+inline object on every render, say) does not, because the engine calls the
+latest function for each name.
 
 #### `theme`
 
@@ -235,14 +250,20 @@ className?: string
 The type for JSONLogic expressions:
 
 ```tsx
+type JsonLogicPrimitive = string | number | boolean | null;
+
+type JsonLogicExpression = {
+  [operator: string]: JsonLogicValue | JsonLogicValue[];
+};
+
 type JsonLogicValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonLogicValue[]
-  | { [operator: string]: JsonLogicValue };
+  | JsonLogicPrimitive
+  | JsonLogicPrimitive[]
+  | JsonLogicExpression
+  | JsonLogicValue[];
 ```
+
+Only `JsonLogicValue` is exported.
 
 Annotate expression literals whose arrays hold more than one operator key.
 Without the annotation TypeScript widens the array into a union of
@@ -344,7 +365,8 @@ type OperatorCategory =
   | 'validation'
   | 'error'
   | 'utility'
-  | 'flagd';
+  | 'flagd'
+  | 'tensor';
 ```
 
 `CATEGORY_COLORS` is keyed by `NodeCategory`, which is `OperatorCategory` plus
@@ -397,7 +419,8 @@ import { OPERATORS, CATEGORY_COLORS } from '@goplasmatic/datalogic-ui';
 label, category, arity, properties-panel configuration, and help (summary,
 return type, notes, and examples). The registry covers every operator the
 bundled engine accepts, and the package's test suite evaluates every help
-example against the engine, so the metadata cannot drift from the runtime.
+example against the engine, so an example that disagrees with the engine
+fails the tests.
 
 **CATEGORY_COLORS:** a per-category palette for consumer-side legends,
 pickers and custom node renderers. The shipped nodes are not coloured by
@@ -417,21 +440,13 @@ import {
 } from '@goplasmatic/datalogic-ui';
 ```
 
-**jsonLogicToNodes:** Convert JSONLogic expression to React Flow nodes/edges
+`jsonLogicToNodes` and `applyTreeLayout` are described under
+[Utility Functions](#utility-functions).
 
-```tsx
-const { nodes, edges, rootId } = jsonLogicToNodes(expression, { templating });
-```
-
-**applyTreeLayout:** Apply dagre tree layout to nodes
-
-```tsx
-const layoutedNodes = applyTreeLayout(nodes, edges, 'flow');
-```
-
-**useWasmEvaluator:** the engine hook the component uses internally. It loads
-the bundled WASM engine and builds one `Engine` per
-(`templating`, `config`, `customOperators`) combination:
+**useWasmEvaluator:** the engine hook the component itself uses. It loads
+the bundled WASM engine and builds one `Engine` per combination of the
+`templating` flag, the `config` settings and the set of `customOperators`
+names:
 
 ```tsx
 const { ready, loading, error, evaluate, evaluateMetered, evaluateWithTrace } = useWasmEvaluator({
@@ -442,7 +457,7 @@ const { ready, loading, error, evaluate, evaluateMetered, evaluateWithTrace } = 
 
 if (ready) {
   const result = evaluate({ '+': [1, 2] }, {});           // 3
-  const trace = evaluateWithTrace({ '+': [1, 2] }, {});   // { result, steps, expression_tree, ... }
+  const trace = evaluateWithTrace({ '+': [1, 2] }, {});   // { result, steps, expression_tree, pointers, ... }
   const { value, ops } = evaluateMetered({ '+': [1, 2] }, {}); // 3, plus the operations charged
 }
 ```
@@ -450,10 +465,17 @@ if (ready) {
 `error` holds the message when the engine fails to load. The component shows
 the same message in a banner when `data` asks for evaluation.
 
-**DataLogicEvaluationError:** thrown by `evaluate` when the engine fails. Its
-`.structured` field is a `StructuredError` carrying `type` and `message`, plus
-`operator`, `node_ids`, `thrown`, `variable`, `index`, `length` or `stage`
-where the engine provides them.
+The traced result (`TracedResult`) carries `result`, `expression_tree` and
+`steps`; `error` and `structured_error` when evaluation fails; and `pointers`:
+for each node id, the RFC 6901 JSON Pointer into the rule of the value that
+node was compiled from (absent when the rule does not compile).
+
+**DataLogicEvaluationError:** thrown by `evaluate`, `evaluateMetered` and
+`evaluateWithTrace` when the engine fails, and when the engine rejects
+`config`. Its `.structured` field is a `StructuredError` carrying `type` and
+`message`, plus `operator`, `node_ids`, `thrown`, `variable`, `level`,
+`index`, `length`, `stage`, `budget` or `spent` where the engine provides
+them.
 
 **summarizeEvaluationConfig / isDefaultEvaluationConfig:** format a
 `DataLogicEvaluationConfig` as the one-line summary the toolbar shows, and
@@ -481,8 +503,8 @@ interface ConversionResult {
 ```
 
 **Parameters:**
-- `expr` - JSONLogic expression to convert (`null` yields an empty result)
-- `options.templating` - When `true`, multi-key objects compile to output-shaping templates with embedded JSONLogic
+- `expr`: JSONLogic expression to convert (`null` yields an empty result)
+- `options.templating`: when `true`, multi-key objects compile to output-shaping templates with embedded JSONLogic
 
 **Returns:** A `ConversionResult` with `nodes`, `edges`, and `rootId` (the id of the root node, or `null` for an empty expression)
 
@@ -515,9 +537,9 @@ function applyTreeLayout(
 ```
 
 **Parameters:**
-- `nodes` - Array of nodes
-- `edges` - Optional array of edges. When omitted, the function derives edges from the node relationships
-- `direction` - `'flow'` (default) lays the graph out left-to-right in data-flow order: leaf operands on the left, the root's result on the right. `'hierarchy'` also runs left-to-right but ranks the root first, matching JSON nesting order. The component's toolbar toggles between the two and reflects the choice as `data-direction` on the `.logic-editor` root.
+- `nodes`: array of nodes
+- `edges`: optional array of edges. When omitted, the function derives edges from the node relationships
+- `direction`: `'flow'` (default) lays the graph out left-to-right in data-flow order: leaf operands on the left, the root's result on the right. `'hierarchy'` also runs left-to-right but ranks the root first, matching JSON nesting order. The component's toolbar toggles between the two and reflects the choice as `data-direction` on the `.logic-editor` root.
 
 **Returns:** Nodes with updated positions and dimensions.
 
@@ -527,7 +549,7 @@ function applyTreeLayout(
 
 ### Custom Node Rendering
 
-For advanced customization, use the utilities to render with your own React Flow setup:
+For advanced customization, use the utilities to render with your own React Flow setup. The editor's bundled React Flow styles apply only inside `.logic-editor`, so import `@xyflow/react/dist/style.css` for your own canvas (see [Customization](customization.md#custom-flow-rendering)):
 
 ```tsx
 import { ReactFlow } from '@xyflow/react';
@@ -562,4 +584,4 @@ To re-theme the shipped nodes, override the `--sig-*` tokens instead: see
 
 ## Next Steps
 
-- [Customization](customization.md) - Theming and styling options
+- [Customization](customization.md): theming and styling options

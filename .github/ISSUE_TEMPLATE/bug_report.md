@@ -24,14 +24,15 @@ labels: bug
 ## Versions
 
 - Package + version:
+- Cargo features (Rust) or engine options / config (other bindings):
 - Rust toolchain (`rustc --version`) / Node version, if applicable:
 - JDK / .NET SDK / PHP / Go / Python version, if applicable:
 - OS + architecture:
 
 ## Repro
 
-A minimal JSONLogic rule + data + the actual / expected result. The
-smaller, the better. Paste both as JSON so we can drop them into a test
+A minimal JSONLogic rule + data + the actual / expected result, as small
+as you can make it. Paste both as JSON so we can drop them into a test
 suite.
 
 ```json

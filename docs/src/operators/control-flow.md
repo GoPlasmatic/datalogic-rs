@@ -4,6 +4,8 @@ Conditional branching and value selection operators.
 
 > **Feature flags (Rust crate).** `if` and `?:` are baseline; `??`, `switch`/`match`, and `type` require the `ext-control` feature. Every language binding enables all operator features. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
 
+**Argument counts:** `if` / `?:` take one or more arguments, `??` any number, `switch` / `match` two or three (value, case table, default), and `type` one. With no arguments, `if` and `??` return `null` and `type` returns `"null"`; `switch` with fewer than two arguments returns `null`. Extra arguments to `switch` and `type` are never evaluated.
+
 ## if
 
 Conditional branching with if/then/else chains.
@@ -74,6 +76,7 @@ Conditional branching with if/then/else chains.
 - Only evaluates the matching branch (lazy evaluation)
 - Empty condition list returns `null`
 - Odd number of arguments uses last as else value
+- `if` takes its arguments as an array only: `{ "if": true }` raises Invalid Arguments
 
 ---
 
@@ -144,8 +147,7 @@ of `if`: it compiles to the same operator, so it accepts every argument shape
 </div>
 
 **Notes:**
-- An alias of `if`, not a separate three-operand operator: `{ "?:": [c, a, b] }` is exactly `{ "if": [c, a, b] }`, and the argument rules on the `if` section apply unchanged
-- More concise for simple conditions
+- `{ "?:": [c, a, b] }` is exactly `{ "if": [c, a, b] }`, and the argument rules in the `if` section apply unchanged
 - Only evaluates the matching branch
 
 ---
@@ -266,6 +268,8 @@ whose key strictly equals the value, or a default. `match` is an alias of
 - `switch` evaluates the discriminant once and compares it against each case in order.
 - `switch` evaluates only the matching case's result (or the default).
 - Case keys may be expressions: `{ "switch": [{ "var": "x" }, [[{ "var": "y" }, "dyn"]], "d"] }` returns `"dyn"` when `x` equals `y`.
+- Write the case table in the rule. A case table computed at evaluation time (`{ "switch": [{ "var": "x" }, { "var": "cases" }, "d"] }`) matches nothing, so the call returns the default.
+- `switch` reads at most three arguments; a fourth is never evaluated.
 
 ---
 
@@ -281,7 +285,7 @@ Return the runtime type of a value as a string.
 **Arguments:**
 - `value` - Any value to inspect
 
-**Returns:** One of `"null"`, `"boolean"`, `"number"`, `"string"`, `"array"`, `"object"`, `"datetime"`, or `"duration"`.
+**Returns:** One of `"null"`, `"boolean"`, `"number"`, `"string"`, `"array"`, `"object"`, `"datetime"`, `"duration"`, or (with the `tensor` feature) `"tensor"`.
 
 **Examples:**
 
@@ -299,11 +303,22 @@ Return the runtime type of a value as a string.
 
 { "type": { "now": [] } }
 // Result: "datetime"
+
+// Strings are classified with the datetime and duration parsers
+{ "type": "2024-01-15T10:30:00-05:00" }
+// Result: "datetime"
+
+{ "type": "2h30m" }
+// Result: "duration"
+
+{ "type": "password1" }
+// Result: "string"
 ```
 
 **Notes:**
-- `type` reads exactly one argument. The engine parses a literal array such as `{ "type": [1, 2, 3] }` as a multi-argument call, so `type` inspects the first element (here, `"number"`). Pass a single value that resolves to an array, e.g. `{ "type": { "var": "items" } }`.
-- Datetime and duration values (from `now`, `datetime`, `timestamp`) report `"datetime"` / `"duration"`, even though they render as strings in JSON output.
+- `type` reads exactly one argument. The engine parses a literal array such as `{ "type": [1, 2, 3] }` as a multi-argument call, so `type` inspects the first element (here, `"number"`). Pass a single value that resolves to an array, such as `{ "type": { "var": "items" } }`, or wrap the literal: `{ "type": [[1, 2, 3]] }` is `"array"`.
+- With the `datetime` feature, `type` classifies a string the way the comparisons decide to compare it: a string that parses as an ISO 8601 datetime, with an offset or naive, is `"datetime"`; one that parses as a duration is `"duration"`; anything else is `"string"`. The results of `now`, `datetime` and `timestamp` are such strings.
+- A single-key `{ "datetime": "..." }` or `{ "timestamp": "..." }` object in data is `"datetime"` or `"duration"`. An object with any other key beside it is `"object"`.
 
 ---
 

@@ -1,6 +1,6 @@
 # Node.js (Native Binding)
 
-`@goplasmatic/datalogic-node` is the **native** Node.js binding: the Rust core compiled per platform and loaded through [napi-rs](https://napi.rs/), with no WebAssembly in between. On Node servers it is the fast path, running close to native Rust throughput.
+`@goplasmatic/datalogic-node` is the **native** Node.js binding: the Rust core compiled per platform and loaded through [napi-rs](https://napi.rs/), with no WebAssembly in between. On Node servers it is the fast path.
 
 > **Two npm packages, one engine.** This package is for Node services that want maximum throughput. [`@goplasmatic/datalogic-wasm`](../javascript/installation.md) is the WebAssembly build: it also runs under Node, but its home turf is browsers, edge runtimes, Deno, and Bun. Both run the same core and pass the same conformance battery.
 
@@ -21,6 +21,8 @@ The prebuilt platform binaries ship as `optionalDependencies`, so npm pulls only
 
 Requires Node 18 or newer. There is no build step and no WASM initialization: import and call.
 
+If `require('@goplasmatic/datalogic-node')` or `import` fails with `MODULE_NOT_FOUND`, upgrade to 5.8.0. Versions 5.1.1 through 5.7.1 were published without the package's `index.js` loader and `index.d.ts` typings; the per-platform packages were complete.
+
 ## Quick start
 
 Rules and data are plain JavaScript objects; results come back as JavaScript values:
@@ -36,6 +38,8 @@ const result = apply(
 ```
 
 Both arguments also accept JSON text: the binding parses a JS string passed as `rule` or `data` as JSON instead of treating it as a string value. To evaluate against a data document that *is* a JSON string, pass it encoded (`rule.evaluate(JSON.stringify('hello'))`), or hand the JSON text to the string-in methods (`evaluateStr`) or a `DataHandle`.
+
+An object that crosses the boundary as a JS value, in either direction, comes back with its keys sorted. To keep key order, pass JSON text and call a string-out method (`evalStr`, `evaluateStr`, `evaluateDataStr`).
 
 ## Compile once, evaluate many
 
@@ -59,15 +63,45 @@ The constructor takes an options bag and, separately, a map of custom operators:
 ```js
 const strict = new Engine({ config: { preset: 'strict' } });
 const templated = new Engine({ templating: true });
-const custom = new Engine({}, {
+const stringsOnly = new Engine({ families: ['ExtString'] });
+const custom = new Engine({ strictOperatorNames: true }, {
   double: (argsJson) => String(JSON.parse(argsJson)[0] * 2),
 });
 custom.compile({ double: [21] }).evaluate({}); // 42
 ```
 
-`preset` and the other evaluation options nest under `config`, not at the top level. The options bag only reads `templating`, `templateKeyEscape` and `config`; other top-level keys are ignored, so `new Engine({ preset: 'strict' })` silently builds a default engine.
+`preset` and the other evaluation options nest under `config`, not at the top level. The options bag reads only `templating`, `templateKeyEscape`, `config`, `strictOperatorNames` and `families`; it ignores other top-level keys, so `new Engine({ preset: 'strict' })` builds a default engine.
 
-`templateKeyEscape` is a single-character prefix, unset by default, that lets a template emit a key which would otherwise be swallowed as an operator: with `new Engine({ templating: true, templateKeyEscape: '$' })`, `{ $type: { var: 'x' } }` yields `{ type: 1 }` rather than running the `type` operator, and `{ $$type: 1 }` yields `{ $type: 1 }`. Anything other than a one-character string throws `errorType: 'InvalidArguments'`. See [Structured Objects](../advanced/structured-objects.md#emitting-keys-that-are-operator-names). Unknown keys *inside* `config` throw `errorType: 'ConfigurationError'`. [Configuration](../advanced/configuration.md) covers what each option means.
+- `templateKeyEscape` is a single-character prefix, unset by default, that lets a template emit a key which would otherwise run as an operator: with `new Engine({ templating: true, templateKeyEscape: '$' })`, `{ $type: { var: 'x' } }` yields `{ type: 1 }` rather than running the `type` operator, and `{ $$type: 1 }` yields `{ $type: 1 }`. Anything other than a one-character string throws `errorType: 'InvalidArguments'`. See [Structured Objects](../advanced/structured-objects.md#emitting-keys-that-are-operator-names).
+- `families` keeps the engine to the JSONLogic core plus the operator families you name (`'DateTime'`, `'ExtString'`, `'ExtArray'`, `'ExtObject'`, `'ExtControl'`, `'ErrorHandling'`, `'ExtMath'`, `'Tensor'`, `'Flagd'`). Unset, the engine has every family. A family left out compiles its names as unknown operators, and a custom operator may take them.
+- `strictOperatorNames: true` makes a custom operator named like a built-in (`length`, `var`, an alias such as `?:`) throw at construction instead of registering one that never runs.
+
+Unknown keys *inside* `config`, an unknown family name and a refused operator name throw `errorType: 'ConfigurationError'`. [Configuration](../advanced/configuration.md) covers what each `config` option means, including `missing_var: 'error'`, which makes a read of a missing variable throw `VariableNotFound` instead of returning `null`.
+
+### Templating mode per compile
+
+`engine.compileTemplate(rule)` compiles in templating mode and `engine.compileStrict(rule)` outside it, whatever the engine was built with. Both use the engine's custom operators and config, so one engine can check a condition strictly and build an output template:
+
+```js
+engine.compileTemplate({ name: { var: 'user' }, active: true }).evaluate({ user: 'Alice' });
+// { active: true, name: 'Alice' }
+```
+
+### Checking a rule before it runs
+
+`compile` rejects malformed JSON and structurally invalid rules (a multi-key object when templating is off), but it does not verify operator names: an unknown operator compiles and throws `errorType: 'InvalidOperator'` when you evaluate the rule. `engine.check(rule, mode?)` reports every problem the engine can see before the rule runs, each with a JSON Pointer into the rule; `mode` is `'engine'` (the default), `'strict'` or `'template'`:
+
+```js
+engine.check({ if: [true, { vr: 'x' }, { map: [1] }] });
+// [
+//   { code: 'UnknownOperator', severity: 'error', pointer: '/if/1', operator: 'vr',
+//     message: 'unknown operator `vr`; did you mean `var`?' },
+//   { code: 'ArgumentCount', severity: 'error', pointer: '/if/2', operator: 'map',
+//     message: '`map` takes exactly 2 arguments, not 1' }
+// ]
+```
+
+An `'error'` will fail; a `'warning'` runs but is probably a mistake. `engine.compileChecked(rule)` compiles only a rule with no error diagnostic and otherwise throws an `Error` named `CompileError` whose `diagnostics` holds the same objects. [Rule Analysis](../advanced/rule-analysis.md) covers the diagnostic codes and check modes.
 
 ## Sessions: hot-loop arena reuse
 
@@ -84,7 +118,7 @@ Sessions hold non-`Sync` state and must not be shared between worker threads.
 
 ## Data handles and typed results
 
-A `DataHandle` is an immutable, pre-parsed JSON document. Parse a payload once and every evaluation against it skips JSON parsing entirely; the typed session methods also skip the result round trip:
+A `DataHandle` is an immutable, pre-parsed JSON document. Parse a payload once and every evaluation against it skips JSON parsing; the typed session methods also skip the result round trip:
 
 ```js
 import { DataHandle } from '@goplasmatic/datalogic-node';
@@ -97,11 +131,12 @@ nextAge.evaluateData(handle);         // 26   (JS value out, no parse per call)
 nextAge.evaluateDataStr(handle);      // "26" (JSON string out)
 sess.evaluateData(isAdult, handle);   // true (hot path: session arena + no parse)
 sess.evaluateBool(isAdult, handle);   // true (strict JSON boolean, else TypeMismatch)
-sess.evaluateNumber(nextAge, handle); // 26   (any JSON number, else TypeMismatch)
+sess.evaluateInt(nextAge, handle);    // 26   (a whole number a JS number holds exactly, else TypeMismatch)
+sess.evaluateFloat(nextAge, handle);  // 26   (any JSON number, else TypeMismatch)
 sess.evaluateTruthy(isAdult, handle); // true (JSONLogic truthiness, never mismatches)
 ```
 
-`evaluateBool` and `evaluateNumber` throw an `EvaluateError` with `errorType: 'TypeMismatch'` when the rule evaluated fine but the result has another type. Handles are per-thread like sessions: parse one per worker.
+`evaluateBool`, `evaluateInt` and `evaluateFloat` throw an `EvaluateError` with `errorType: 'TypeMismatch'` when the rule evaluated fine but the result has another type. `evaluateNumber` is the deprecated name of `evaluateFloat` and is removed in 6.0. Handles are per-thread like sessions: parse one per worker.
 
 ## Batch evaluation
 
@@ -132,15 +167,16 @@ String input only (a `DataHandle` is pinned to the JS thread). Rejections carry 
 
 ## Tracing
 
-`engine.evaluateWithTrace(logic, data)` returns a JSON string with the same `{ result, expression_tree, steps, error?, structured_error? }` envelope the WASM package produces, so the [React debugger](../react-ui/installation.md) accepts output from either package:
+`engine.evaluateWithTrace(logic, data, mode?)` takes JSON strings and returns a JSON string with the same `{ result, expression_tree, steps, pointers, error?, structured_error? }` envelope the WASM package produces, so the [React debugger](../react-ui/installation.md) accepts output from either package:
 
 ```js
 const run = JSON.parse(engine.evaluateWithTrace('{"+": [1, 2, 3]}', 'null'));
 run.result;       // 6
 run.steps.length; // 1 (one step per operator node; literals record no step)
+run.pointers;     // { "1": "/+/0", "2": "/+/1", "3": "/+/2", "4": "" }
 ```
 
-Failures do not throw: `result` is `null`, `error` carries the message, and `structured_error` the structured form. It compiles the rule with optimization disabled so every operator surfaces a step; use it for debugging, not hot paths.
+`pointers` maps each node id to the JSON Pointer of the rule value it was compiled from, so a debugger places each step in the rule as written. `mode` is `'engine'` (the default), `'strict'` or `'template'`, so a rule you compile with `compileTemplate` can be traced as one. Failures do not throw: `result` is `null`, `error` carries the message, and `structured_error` the structured form. The binding compiles the rule with optimization disabled so every operator surfaces a step; use it for debugging, not hot paths.
 
 ## Operator names
 
@@ -157,7 +193,24 @@ const engine = new Engine({}, { double: (a) => String(JSON.parse(a)[0] * 2) });
 engine.customOperatorNames(); // ['double']
 ```
 
-`builtinOperatorNames()` is derived from the compiler's own lookup table, so it cannot drift from dispatch; `engine.customOperatorNames()` lists the operators registered on that engine. The union is the engine's full vocabulary.
+`builtinOperatorNames()` is derived from the compiler's own lookup table, so it cannot drift from dispatch; `engine.customOperatorNames()` lists the operators registered on that engine. For an engine with every operator family, the union is the engine's full vocabulary; `engine.operators()` follows an engine's `families`.
+
+Three more calls describe the engine and a rule without running anything:
+
+```js
+engine.operators().find((op) => op.name === 'reduce');
+// { name: 'reduce', aliases: [], family: 'Core', feature: null, min_args: 2, max_args: 3,
+//   reads_context: false, effect: 'pure', cost: 'per_item', scoped_arg: 1 }
+
+engine.compile({ '+': [{ var: 'a.b' }, { var: 'c' }] }).facts();
+// { reads: [['a', 'b'], ['c']], computed_reads: false, reads_complete: true,
+//   reads_data: true, operators: ['+', 'val'], custom_operators: [], deterministic: true }
+
+engine.truthy({});   // false: an empty object is falsy, like an empty array
+engine.truthy('[]'); // false: a string is JSON text
+```
+
+`operators()` is the [operator catalogue](../operators/operators.json): one row per built-in operator the engine evaluates, following its `families`. `facts()` lists the data paths a compiled rule reads (as segment lists) and the operators it calls; `reads_complete` is `false` when a path is computed at runtime or a custom operator runs, and `deterministic` is `false` for `now` and any custom operator. `truthy()` applies the engine's configured truthiness.
 
 ## Error handling
 
@@ -171,14 +224,16 @@ try {
     // Malformed rule or data JSON
   } else if (e.name === 'EvaluateError') {
     console.log(e.errorType);  // stable tag (e.g. "InvalidOperator", "Thrown")
-    console.log(e.operator);   // outermost failing operator
+    console.log(e.operator);   // innermost failing operator
     console.log(e.nodeIds);    // leaf-to-root breadcrumb
     console.log(e.path);       // resolved root-to-leaf step list
   }
 }
 ```
 
-`compile` rejects malformed JSON and structurally invalid rules (a multi-key object when templating is off), but it does not verify operator names: an unknown operator compiles and surfaces as `errorType: 'InvalidOperator'` when the rule is evaluated. Missing data is not an error: `{ var: 'missing' }` evaluates to `null`.
+`e.name` is `'ParseError'`, `'EvaluateError'`, `'CompileError'` (from `compileChecked`, with a `diagnostics` array) or `'InternalError'`. An `InternalError` is a panic inside the native engine, caught at the binding boundary and thrown (or, for `evaluateStrAsync`, rejected) instead of aborting the process; the engine, rule and session stay usable, and it always means a bug worth reporting. A `BudgetExceeded` error carries `budget` and `spent`.
+
+Missing data is not an error by default: `{ var: 'missing' }` evaluates to `null`. An engine built with `config: { missing_var: 'error' }` throws `errorType: 'VariableNotFound'` instead.
 
 ## API surface
 
@@ -186,21 +241,27 @@ try {
 |---|---|
 | `apply(rule, data)` | One-shot compile + evaluate |
 | `builtinOperatorNames()` | Every built-in operator name this build accepts (includes aliases) |
-| `new Engine({ templating?, templateKeyEscape?, config? }, customOperators?)` | Engine with optional templating, template-key escape, evaluation config, and custom operators |
+| `new Engine({ templating?, templateKeyEscape?, config?, strictOperatorNames?, families? }, customOperators?)` | Engine with optional templating, template-key escape, evaluation config, operator-name check, operator families, and custom operators |
 | `engine.compile(rule)` | Compile to a reusable `Rule` |
+| `engine.compileTemplate(rule)` / `engine.compileStrict(rule)` | Compile in or outside templating mode, whatever the engine's default |
+| `engine.compileChecked(rule)` / `engine.check(rule, mode?)` | Compile only a rule with no error diagnostic / list every diagnostic |
 | `engine.eval(rule, data)` / `engine.evalStr(rule, data)` | One-shot, JS value / JSON string out |
-| `engine.evaluateWithTrace(logic, data)` | One-shot with execution trace (JSON strings in and out) |
+| `engine.evalMetered(rule, data, budget?)` | One-shot with an operation count: `{ result, ops }` |
+| `engine.evaluateWithTrace(logic, data, mode?)` | One-shot with execution trace (JSON strings in and out) |
 | `engine.session()` | Arena-reusing `Session` for hot loops |
+| `engine.operators()` / `engine.truthy(value)` | Operator catalogue / the engine's truthiness |
 | `engine.customOperatorNames()` | Names of the custom operators registered on this engine |
-| `new DataHandle(json)` / `handle.allocatedBytes` | Parse a payload once; arena bytes held by the handle |
+| `new DataHandle(json)` / `DataHandle.fromValue(value)` / `handle.allocatedBytes` | Parse a payload once (from JSON text or a JS value); arena bytes held by the handle |
 | `rule.evaluate(data)` / `rule.evaluateStr(data)` | Evaluate against one payload, JS value / JSON string out |
 | `rule.evaluateData(handle)` / `rule.evaluateDataStr(handle)` | Evaluate a pre-parsed handle |
+| `rule.evaluateMetered(data, budget?)` | Evaluate with an operation count |
 | `rule.evaluateStrAsync(dataJson)` | Evaluate on the libuv pool, returns `Promise<string>` |
+| `rule.facts()` | What the rule reads and calls |
 | `sess.evaluate(rule, data)` / `sess.evaluateStr(rule, data)` | Evaluate with arena reuse |
 | `sess.evaluateData(rule, handle)` / `sess.evaluateDataStr(rule, handle)` | Handle in, arena reuse; the `Str` form is the fastest path |
-| `sess.evaluateBool` / `evaluateNumber` / `evaluateTruthy` `(rule, handle)` | Typed results (`TypeMismatch` for the strict two) |
+| `sess.evaluateBool` / `evaluateInt` / `evaluateFloat` / `evaluateTruthy` `(rule, handle)` | Typed results (`TypeMismatch` for the strict three); `evaluateNumber` is the deprecated name of `evaluateFloat` |
 | `sess.evaluateBatch(rule, handles)` / `sess.evaluateMany(rules, handle)` | Batch evaluation, allSettled-style items |
-| `sess.reset()` / `sess.allocatedBytes()` | Explicit arena reset (optional); bytes currently held by the arena's chunks |
+| `sess.reset()` / `sess.allocatedBytes()` | Explicit arena reset (optional); bytes held by the arena's chunks |
 
 The [package README](https://www.npmjs.com/package/@goplasmatic/datalogic-node) carries the same surface with the configuration key table; [Configuration](../advanced/configuration.md) covers what each option means.
 

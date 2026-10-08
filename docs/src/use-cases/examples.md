@@ -1,10 +1,10 @@
 # Use Cases & Examples
 
-Real-world JSONLogic recipes for common scenarios. Every rule on this page is plain JSON: author it once, store it where you store data (a database row, a config file, an API payload), and evaluate it unchanged from any language datalogic-rs ships bindings for. Each recipe below is the rule, a sample data payload, and the result; standard-mode recipes also embed a live widget so you can run them on the page. A few recipes use the engine's templating mode to build output objects; a note under each one flags it. This page shows their results in authoring order for readability; the engine emits object keys in sorted order (for example `{"errors": [...], "valid": false}`), which is the same JSON value.
+JSONLogic recipes for common scenarios. Every rule on this page is plain JSON: you write it once, store it where you store data (a database row, a config file, an API payload), and evaluate it unchanged from any language datalogic-rs has a binding for. Each recipe gives the rule, a sample payload and the result; standard-mode recipes also embed a live widget that runs them on the page. A few recipes build output objects in templating mode, and a note under each one says so. Their results appear in the order the template writes its keys, which is the order the engine emits them for JSON text input. Node.js and Python sort an object's keys when they convert a native object (rule, data or result), which gives the same JSON value.
 
 ## Run any of these in your language
 
-The pattern is identical everywhere: compile the rule once, then evaluate it against as many data payloads as you like.
+The pattern is the same in every language: compile the rule once, then evaluate it against as many payloads as you need.
 
 <div class="codetabs">
 
@@ -132,7 +132,7 @@ Result: `true`
 
 ### Percentage Rollout
 
-Enable for 20% of users, bucketing on a hash of the user ID:
+Enable for 20% of users, bucketing on the numeric user ID modulo 100:
 
 ```json
 {
@@ -151,6 +151,8 @@ Data:
 
 Result: `false` (12345 % 100 = 45, and 45 is not below the 20 cutoff)
 
+For IDs that are strings, or buckets that must match OpenFeature flagd, use the [`fractional`](../operators/flagd.md) operator, which hashes the key with MurmurHash3.
+
 **Try it:**
 
 <div class="playground-widget" data-logic='{"<":[{"%":[{"var":"user.id"},100]},20]}' data-data='{"user":{"id":12345}}'>
@@ -158,7 +160,7 @@ Result: `false` (12345 % 100 = 45, and 45 is not below the 20 cutoff)
 
 ### Beta Access
 
-Enable for beta testers OR employees OR users who signed up before a date. The `ends_with` operator requires the `ext-string` feature in Rust; every binding enables it by default.
+Enable for beta testers, employees, or users who signed up before a date. `ends_with` needs the `ext-string` feature in Rust; every binding has it.
 
 ```json
 {
@@ -189,7 +191,7 @@ Result: `true` (the email marks this user as an employee)
 
 ## Dynamic Pricing
 
-Calculate prices based on rules.
+Compute a price from quantity, tiers or membership.
 
 ### Discount by Quantity
 
@@ -292,11 +294,11 @@ Result: `170` (15% member discount)
 
 ## Form Validation
 
-Validate user input with complex rules.
+Validate user input and report what failed.
 
 ### Required Fields
 
-Report which required fields are absent; the `missing` operator inside the template evaluates to exactly that list:
+Report which required fields are absent; the `missing` call inside the template returns that list:
 
 ```json
 {
@@ -319,11 +321,11 @@ Data:
 
 Result: `{"valid": false, "errors": ["email", "password"]}`
 
-> **Templating recipe.** Multi-key objects like the `valid`/`errors` branch need templating mode: in Rust, the `templating` Cargo feature plus `Engine::builder().with_templating(true)`; in every binding, the `templating` flag when constructing the engine. The inline widgets on this page run in standard mode, so paste this pair into the [playground](https://goplasmatic.github.io/datalogic-rs/playground/) and switch on **Templating** to run it.
+> **Templating recipe.** Multi-key objects such as the `valid` / `errors` branch need templating mode. Compile the rule as a template: in Rust, `Engine::compile_template` (with the `templating` Cargo feature) or an engine built with `with_templating(true)`; in the bindings, `compileTemplate` (`compile_template` in Python, `CompileTemplate` in Go and .NET) or the `templating` engine option. The inline widgets on this page run in standard mode, so paste this pair into the [playground](https://goplasmatic.github.io/datalogic-rs/playground/) and switch on **Templating** to run it.
 
 ### Field Constraints
 
-Check email shape, password length, and age range, and collect a message for each failed check. `length` requires the `ext-string` feature in Rust; every binding enables it by default.
+Check email shape, password length and age range, and collect a message for each failed check. `length` needs the `ext-string` feature in Rust; every binding has it.
 
 ```json
 {
@@ -369,7 +371,7 @@ Data:
 
 Result: `{"valid": false, "errors": ["Password must be at least 8 characters"]}`
 
-> **Templating recipe.** Needs the engine's templating mode (`templating` feature + `Engine::builder().with_templating(true)` in Rust, the `templating` constructor flag in every binding); run it in the [playground](https://goplasmatic.github.io/datalogic-rs/playground/) with **Templating** switched on.
+> **Templating recipe.** Compile it as a template (see [Required Fields](#required-fields)), or run it in the [playground](https://goplasmatic.github.io/datalogic-rs/playground/) with **Templating** switched on.
 
 ### Conditional Validation
 
@@ -396,7 +398,7 @@ Data:
 
 Result: `{"error": "Company name required for business accounts"}`
 
-> **Templating recipe.** The `error` and `valid` branches are literal output fields, so they need templating mode (see [Required Fields](#required-fields) above); run it in the [playground](https://goplasmatic.github.io/datalogic-rs/playground/) with **Templating** switched on.
+> **Templating recipe.** The `error` and `valid` branches are output objects, so compile the rule as a template (see [Required Fields](#required-fields)), or run it in the [playground](https://goplasmatic.github.io/datalogic-rs/playground/) with **Templating** switched on.
 
 ---
 
@@ -509,7 +511,7 @@ Score and flag potentially fraudulent transactions.
 
 ### Risk Scoring
 
-Sum weighted signals: high amount (+30), new account (+25), billing/shipping country mismatch (+20), repeated attempts (+25), unusual hour (+15). A score above 50 flags the transaction for review:
+Sum weighted signals: high amount (+30), new account (+25), billing/shipping country mismatch (+20), repeated attempts (+25), night-time hour, before 6 or from 22 (+15). A score above 50 flags the transaction for review:
 
 ```json
 {
@@ -525,7 +527,7 @@ Sum weighted signals: high amount (+30), new account (+25), billing/shipping cou
         { "if": [
             { "or": [
                 { "<": [{ "var": "hour" }, 6] },
-                { ">": [{ "var": "hour" }, 23] }
+                { ">=": [{ "var": "hour" }, 22] }
             ]},
             15,
             0
@@ -551,7 +553,7 @@ Result: `75` (high amount + new account + different country)
 
 **Try it:**
 
-<div class="playground-widget" data-logic='{"+":[{"if":[{">":[{"var":"amount"},1000]},30,0]},{"if":[{"<":[{"var":"account_age_days"},7]},25,0]},{"if":[{"!=":[{"var":"billing_country"},{"var":"shipping_country"}]},20,0]},{"if":[{">":[{"var":"attempts_last_hour"},3]},25,0]},{"if":[{"or":[{"<":[{"var":"hour"},6]},{">":[{"var":"hour"},23]}]},15,0]}]}' data-data='{"amount":1500,"account_age_days":3,"billing_country":"US","shipping_country":"CA","attempts_last_hour":1,"hour":14}'>
+<div class="playground-widget" data-logic='{"+":[{"if":[{">":[{"var":"amount"},1000]},30,0]},{"if":[{"<":[{"var":"account_age_days"},7]},25,0]},{"if":[{"!=":[{"var":"billing_country"},{"var":"shipping_country"}]},20,0]},{"if":[{">":[{"var":"attempts_last_hour"},3]},25,0]},{"if":[{"or":[{"<":[{"var":"hour"},6]},{">=":[{"var":"hour"},22]}]},15,0]}]}' data-data='{"amount":1500,"account_age_days":3,"billing_country":"US","shipping_country":"CA","attempts_last_hour":1,"hour":14}'>
 </div>
 
 ### Velocity Checks
@@ -593,7 +595,7 @@ Transform and reshape data.
 
 ### API Response Mapping
 
-Reshape raw records into an API response: rename fields, derive a full name, normalize email case, and compute counts. `lower` and `length` require the `ext-string` feature in Rust; every binding enables them by default.
+Reshape raw records into an API response: rename fields, derive a full name, normalize email case, and compute counts. `lower` and `length` need the `ext-string` feature in Rust; every binding has it.
 
 ```json
 {
@@ -631,11 +633,11 @@ Data:
 
 Result: `{"users": [{"id": 101, "fullName": "Ada Lovelace", "email": "ada@example.com", "isActive": true}, {"id": 102, "fullName": "Alan Turing", "email": "alan.turing@example.com", "isActive": false}], "total": 2, "activeCount": 1}`
 
-> **Templating recipe.** Needs the engine's templating mode (`templating` feature + `Engine::builder().with_templating(true)` in Rust, the `templating` constructor flag in every binding); run it in the [playground](https://goplasmatic.github.io/datalogic-rs/playground/) with **Templating** switched on.
+> **Templating recipe.** Compile it as a template (see [Required Fields](#required-fields)), or run it in the [playground](https://goplasmatic.github.io/datalogic-rs/playground/) with **Templating** switched on.
 
 ### Report Generation
 
-Build a report object with a computed title, a generation timestamp, and reduced summary stats. `format_date` and `now` require the `datetime` feature and `length` the `ext-string` feature in Rust; every binding enables both by default.
+Build a report object with a computed title, a generation timestamp and summary stats. `format_date` and `now` need the `datetime` feature and `length` the `ext-string` feature in Rust; every binding has both.
 
 ```json
 {
@@ -678,7 +680,7 @@ Data:
 
 Result: `{"report": {"title": "Sales Report - Q2 2026", "generated": "2026-07-03 09:41", "summary": {"totalSales": 2550, "avgTransaction": 850, "topCategory": "Electronics"}}}` (`generated` reflects the evaluation timestamp, so it varies run to run)
 
-> **Templating recipe.** Needs the engine's templating mode (`templating` feature + `Engine::builder().with_templating(true)` in Rust, the `templating` constructor flag in every binding); run it in the [playground](https://goplasmatic.github.io/datalogic-rs/playground/) with **Templating** switched on.
+> **Templating recipe.** Compile it as a template (see [Required Fields](#required-fields)), or run it in the [playground](https://goplasmatic.github.io/datalogic-rs/playground/) with **Templating** switched on.
 
 ---
 
@@ -716,11 +718,11 @@ Data:
 
 Result: `{"channel": "slack", "priority": "warning"}`
 
-> **Templating recipe.** The channel/priority branches are output templates, so they need templating mode (`templating` feature + `Engine::builder().with_templating(true)` in Rust, the `templating` constructor flag in every binding); run it in the [playground](https://goplasmatic.github.io/datalogic-rs/playground/) with **Templating** switched on.
+> **Templating recipe.** The `channel` / `priority` branches are output objects, so compile the rule as a template (see [Required Fields](#required-fields)), or run it in the [playground](https://goplasmatic.github.io/datalogic-rs/playground/) with **Templating** switched on.
 
 ### User Preferences
 
-Send only if the user has notifications enabled, subscribes to this notification type, and is not inside their quiet hours:
+Send only if the user has notifications enabled, subscribes to this notification type, and is outside their quiet hours. Quiet hours can wrap past midnight (22 to 8), so the rule tests one range when the start comes first and two ranges otherwise:
 
 ```json
 {
@@ -730,9 +732,16 @@ Send only if the user has notifications enabled, subscribes to this notification
             { "var": "notification.type" },
             { "var": "user.enabled_types" }
         ]},
-        { "!": { "and": [
-            { ">=": [{ "var": "current_hour" }, { "var": "user.quiet_start" }] },
-            { "<": [{ "var": "current_hour" }, { "var": "user.quiet_end" }] }
+        { "!": { "if": [
+            { "<=": [{ "var": "user.quiet_start" }, { "var": "user.quiet_end" }] },
+            { "and": [
+                { ">=": [{ "var": "current_hour" }, { "var": "user.quiet_start" }] },
+                { "<": [{ "var": "current_hour" }, { "var": "user.quiet_end" }] }
+            ]},
+            { "or": [
+                { ">=": [{ "var": "current_hour" }, { "var": "user.quiet_start" }] },
+                { "<": [{ "var": "current_hour" }, { "var": "user.quiet_end" }] }
+            ]}
         ]}}
     ]
 }
@@ -753,17 +762,17 @@ Data:
 }
 ```
 
-Result: `true`
+Result: `true` (14:00 is outside 22:00 to 08:00; at `current_hour` 23 or 3 the result is `false`)
 
 **Try it:**
 
-<div class="playground-widget" data-logic='{"and":[{"var":"user.notifications_enabled"},{"in":[{"var":"notification.type"},{"var":"user.enabled_types"}]},{"!":{"and":[{">=":[{"var":"current_hour"},{"var":"user.quiet_start"}]},{"<":[{"var":"current_hour"},{"var":"user.quiet_end"}]}]}}]}' data-data='{"user":{"notifications_enabled":true,"enabled_types":["security","billing"],"quiet_start":22,"quiet_end":8},"notification":{"type":"security"},"current_hour":14}'>
+<div class="playground-widget" data-logic='{"and":[{"var":"user.notifications_enabled"},{"in":[{"var":"notification.type"},{"var":"user.enabled_types"}]},{"!":{"if":[{"<=":[{"var":"user.quiet_start"},{"var":"user.quiet_end"}]},{"and":[{">=":[{"var":"current_hour"},{"var":"user.quiet_start"}]},{"<":[{"var":"current_hour"},{"var":"user.quiet_end"}]}]},{"or":[{">=":[{"var":"current_hour"},{"var":"user.quiet_start"}]},{"<":[{"var":"current_hour"},{"var":"user.quiet_end"}]}]}]}}]}' data-data='{"user":{"notifications_enabled":true,"enabled_types":["security","billing"],"quiet_start":22,"quiet_end":8},"notification":{"type":"security"},"current_hour":14}'>
 </div>
 
 ---
 
 ## Where next
 
-- Open the [interactive playground](https://goplasmatic.github.io/datalogic-rs/playground/) to edit any of these rules live (switch on **Templating** for the templating recipes).
+- Open the [interactive playground](https://goplasmatic.github.io/datalogic-rs/playground/) to edit any of these rules (switch on **Templating** for the templating recipes).
 - Browse the full [operators overview](../operators/overview.md) for everything these recipes are built from.
 - See [how datalogic-rs compares](../comparison.md) to other JSONLogic engines.

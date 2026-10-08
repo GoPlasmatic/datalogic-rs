@@ -29,18 +29,18 @@ implements, see the
 <dependency>
     <groupId>io.github.goplasmatic</groupId>
     <artifactId>datalogic</artifactId>
-    <version>5.8.0</version>
+    <version>5.8.1</version>
 </dependency>
 ```
 
-Gradle: `implementation("io.github.goplasmatic:datalogic:5.8.0")`
+Gradle: `implementation("io.github.goplasmatic:datalogic:5.8.1")`
 
-The binding speaks to the engine's C ABI directly through the Java FFM
-API (`java.lang.foreign`), with no JNA, no JNI glue, and no runtime
-dependencies beyond Jackson. The JAR ships the native library for every
+The binding calls the engine's C ABI through the Java FFM API
+(`java.lang.foreign`): no JNA, no JNI glue, and no runtime dependency
+besides `jackson-databind`. The JAR ships the native library for every
 supported platform at the classpath root under `<os-arch>/`
-(`darwin-aarch64/`, `linux-x86-64/`, …); the binding extracts and loads
-the right one for the host OS/arch. No Rust toolchain needed.
+(`darwin-aarch64/`, `linux-x86-64/`, ...), and the binding loads the one
+for the host OS and architecture. You need no Rust toolchain.
 
 | Platform | Architectures   |
 |----------|-----------------|
@@ -50,40 +50,46 @@ the right one for the host OS/arch. No Rust toolchain needed.
 
 **JDK 22 or newer is required** (the FFM API is final since 22).
 
-On JDK 24+ the JVM prints a restricted-method warning the first time a
-library uses FFM (and future JDKs will refuse by default). Grant native
-access explicitly when starting your application:
+On JDK 24 and newer the JVM prints a restricted-method warning the
+first time a library calls FFM, and a later JDK will deny the call by
+default. Grant native access when you start the application:
 
 ```
 java --enable-native-access=ALL-UNNAMED ...
 ```
 
-(That flag covers classpath applications, which is how this JAR is
-consumed; if you place it on the module path instead, grant native
-access to its automatic module name:
-`--enable-native-access=com.goplasmatic.datalogic`.)
+That flag covers classpath applications. The JAR declares
+`Automatic-Module-Name: com.goplasmatic.datalogic`, so on the module
+path you write `requires com.goplasmatic.datalogic;` and grant access
+with `--enable-native-access=com.goplasmatic.datalogic`.
 
 The binding resolves the native library in this order:
 
-1. `-Ddatalogic.library.path=<dir>`: a directory containing
-   `libdatalogic_c.dylib` / `libdatalogic_c.so` / `datalogic_c.dll`
-   (useful for in-tree builds and overrides),
-2. the JAR's bundled `<os-arch>/` classpath resource, which is the
-   default path for the published artifact. It is extracted once per
-   build into a per-user cache directory named by the library's SHA-256
-   (`$XDG_CACHE_HOME/datalogic/native/`, by default under `~/.cache`, on Linux;
-   `~/Library/Caches/datalogic/native/` on macOS;
-   `%LOCALAPPDATA%\datalogic\native\` on Windows) and reused on later
-   starts; when that directory is not writable, a fresh temp directory
-   is used instead,
-3. `System.loadLibrary("datalogic_c")`: `java.library.path` and the
-   OS loader paths.
+1. `-Ddatalogic.library.path=<dir>`: a directory holding
+   `libdatalogic_c.dylib` / `libdatalogic_c.so` / `datalogic_c.dll`,
+   for in-tree builds and overrides.
+2. The JAR's bundled `<os-arch>/` resource, the default for the
+   published artifact. The first start extracts it to a per-user cache,
+   in a directory named by the library's SHA-256 under
+   `$XDG_CACHE_HOME/datalogic/native/` (default
+   `~/.cache/datalogic/native/`) on Linux,
+   `~/Library/Caches/datalogic/native/` on macOS, and
+   `%LOCALAPPDATA%\datalogic\native\` on Windows. Later starts load
+   that file once its hash matches. If the cache is not writable, the
+   binding extracts to a fresh temp directory instead.
+3. `System.loadLibrary("datalogic_c")`: `java.library.path` and the OS
+   loader paths.
+
+If none of them works, the binding throws `UnsatisfiedLinkError`
+listing every attempt. It throws the same error when the loaded library
+does not implement C ABI v2.1 or a later v2 minor
+(`datalogic_abi_version() == 2`, `datalogic_abi_minor() >= 1`).
 
 > **Naming:** the Maven `groupId` is `io.github.goplasmatic` (the
-> auto-verified Sonatype namespace tied to the GitHub org), but the Java
-> *package* is `com.goplasmatic.datalogic`, matching the npm
-> `@goplasmatic/` and Composer `goplasmatic/` scopes. Maven permits
-> groupId / package divergence; consumers need both lines correct.
+> Sonatype namespace verified through the GitHub org), and the Java
+> package is `com.goplasmatic.datalogic`, matching the npm
+> `@goplasmatic/` and Composer `goplasmatic/` scopes. Your build file
+> uses the first, your imports the second.
 
 ## Quick start
 
@@ -115,6 +121,66 @@ try (Engine engine = new Engine();
 `Engine` and compiled `Rule` objects are thread-safe: build and compile
 once, share them across threads. Sessions (below) are not.
 
+### Compile modes and checked compiles
+
+`compile` reads a rule in the engine's own mode. `compileTemplate` and
+`compileStrict` choose templating for one compile, so one engine (with
+one set of custom operators) can compile both conditions and output
+templates. `compileMode(rule, mode)` takes the mode as a `CompileMode`
+(`ENGINE`, `STRICT`, `TEMPLATE`).
+
+```java
+try (Rule shape = engine.compileTemplate("{\"user\": {\"var\": \"name\"}, \"n\": 1}")) {
+    shape.evaluate("{\"name\": \"ana\"}");  // {"user":"ana","n":1}
+}
+```
+
+`check(rule, mode)` reports every problem the engine can see before the
+rule runs, as a JSON array of `{code, severity, message, pointer,
+operator}`, where `pointer` is an RFC 6901 JSON Pointer into the rule.
+Errors are what will fail (an unknown operator, with a suggestion one
+edit away; an argument count the operator rejects; a timezone that does
+not exist); warnings run but are probably mistakes. A bad rule does not
+make `check` throw. `compileChecked(rule)` compiles only a rule with no
+error and otherwise throws `ParseException` with error type
+`"CompileError"`, whose `diagnosticsJson()` holds the same array:
+
+```java
+engine.check("{\"if\": [{\">\": [{\"var\": \"age\"}, 17]}, \"adult\", {\"vr\": \"x\"}]}",
+        CompileMode.ENGINE);
+// [{"code":"UnknownOperator","severity":"error","message":"unknown operator `vr`; did you mean `var`?",
+//   "pointer":"/if/2","operator":"vr"}]
+
+try (Rule rule = engine.compileChecked(ruleJson)) {
+    // use the rule
+} catch (ParseException e) {
+    e.errorType();        // "CompileError"
+    e.diagnosticsJson();  // every diagnostic, errors and warnings
+}
+```
+
+### What a rule reads
+
+`rule.facts()` returns, as JSON, the data paths the rule reads (each as
+its segments), the operators it calls, and whether its result depends
+only on its data:
+
+```java
+try (Rule rule = engine.compile(
+        "{\"and\": [{\">=\": [{\"var\": \"user.age\"}, 18]},"
+        + " {\"in\": [{\"var\": \"user.plan\"}, [\"pro\", \"team\"]]}]}")) {
+    rule.facts();
+    // {"reads":[["user","age"],["user","plan"]],"computed_reads":false,"reads_complete":true,
+    //  "reads_data":true,"operators":[">=","and","in","val"],"custom_operators":[],
+    //  "deterministic":true}
+}
+```
+
+`reads_complete` is `false` when the rule builds a path at runtime or
+calls a custom operator, and `deterministic` is `false` for `now` and
+for any custom operator. The facts describe the compiled rule, so a
+branch the optimizer removed is neither read nor listed.
+
 ## Sessions (hot loops)
 
 A `Session` reuses one arena across evaluations and resets it at the
@@ -129,14 +195,15 @@ try (Session session = engine.openSession()) {
 ```
 
 Open one session per thread; a `Session` is not thread-safe. Every
-handle type implements `AutoCloseable`; use try-with-resources to free
-native memory promptly. A handle that is never closed is freed by a
-`java.lang.ref.Cleaner` once it becomes unreachable.
+handle type (`Engine`, `Rule`, `Session`, `TracedSession`,
+`DataHandle`) implements `AutoCloseable`; use try-with-resources to
+free native memory when the block ends. A shared `java.lang.ref.Cleaner` frees a
+handle you never close once it becomes unreachable.
 
 ## Data handles (parse once, evaluate many)
 
 When the same payload feeds many evaluations, parse it once into a
-`DataHandle` and skip the per-call JSON parse entirely:
+`DataHandle` and skip the per-call JSON parse:
 
 ```java
 import com.goplasmatic.datalogic.DataHandle;
@@ -165,14 +232,20 @@ boolean ok    = session.evaluateTruthy(rule, data);  // engine truthiness, never
 ```
 
 A result of the wrong type throws `EvaluateException` with error type
-`"TypeMismatch"` (e.g. `evaluateBool` on a rule that returned `3`);
-`evaluateTruthy` coerces any result the same way `if`/`and`/`or` do.
+`"TypeMismatch"` (for example `evaluateBool` on a rule that returned
+`3`); `evaluateTruthy` coerces any result the same way `if`/`and`/`or`
+do.
+
+`engine.truthy(valueJson)` applies the same truthiness to a value you
+already hold, so a host check agrees with the engine. The argument is
+JSON text: `engine.truthy("[]")` and `engine.truthy("{}")` are `false`
+under the default rules, and a configured `truthy_evaluator` applies.
 
 ## Batch evaluation
 
 Cross the native boundary once for a whole workload. Item failures
 never throw: each item of the returned list carries either the result
-JSON or its own error info:
+JSON or its own error:
 
 ```java
 import com.goplasmatic.datalogic.EvalResult;
@@ -187,10 +260,16 @@ for (EvalResult r : perPayload) {
     if (r.isSuccess()) {
         use(r.value());                          // result JSON string
     } else {
-        log(r.errorTag(), r.errorMessage());     // e.g. "Thrown", "boom"
+        log(r.errorTag(), r.errorMessage());     // e.g. "Thrown" and its message
     }
 }
 ```
+
+A failed item also carries `errorOperator()`, the innermost failing
+operator. An item whose error the binding cannot decode reads as tag
+`"InternalError"` with the raw item JSON as its message, as in the Go,
+.NET and PHP bindings. A `null` element in either list throws
+`NullPointerException` for the whole call.
 
 ## API surface
 
@@ -208,13 +287,18 @@ Methods take and return JSON strings unless noted.
 | Typed           | `session.evaluateBool/Long/Double/Truthy(rule, dataHandle)` | Predicates and scores without JSON result parsing     |
 | Batch           | `session.evaluateBatch(rule, datas)` / `session.evaluateMany(rules, data)` | Whole workloads in one native call     |
 | Traced          | `engine.openTracedSession()` → `session.evaluate(rule, data)` | Step-by-step debugging; feeds the React debugger    |
+| Metered         | `session.evaluateMetered(rule, data, budget)` → `Metered(value, ops)` | What an evaluation costs, under an optional cap |
+| Checked         | `engine.check(rule, mode)` / `engine.compileChecked(rule)`  | Reject a bad rule before it runs                      |
+| Introspection   | `engine.operators()` / `rule.facts()` / `engine.truthy(json)` | Tooling: operator catalogue, what a rule reads      |
 
 ## Custom operators
 
 Register Java-implemented operators through the builder. Each callback
 receives the operator's pre-evaluated arguments as a JSON-array string
-and returns a JSON-value string; throwing signals an evaluation error
-whose message bubbles back to the caller.
+and returns a JSON-value string. If the callback throws, the evaluation
+fails with error type `"Custom"` and a message that names the operator
+and carries yours. The callback runs on whichever thread evaluates the
+rule, so make it thread-safe if you share the engine.
 
 ```java
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -235,16 +319,31 @@ try (Engine engine = Engine.builder()
 `jackson-databind` is already on the classpath: the binding depends on
 it for trace parsing.
 
-**Built-ins win**: a custom registration of a built-in name (`+`, `if`,
-`var`, ...) never dispatches at evaluation time; the built-in always
-runs.
+**Built-ins win**: registering a name that one of the engine's built-in
+operators answers to (`+`, `if`, `var`, an alias such as `?:`) has no
+effect at evaluation time; the built-in runs. Call
+`withStrictOperatorNames(true)` before `addOperator` to make such a
+registration throw `EvaluateException` (error type
+`"ConfigurationError"`) instead:
+
+```java
+Engine.builder()
+        .withStrictOperatorNames(true)
+        .addOperator("length", argsJson -> "0");  // throws: `length` is a built-in
+```
+
+A name from an operator family the engine leaves out (see
+[Operator families](#operator-families)) is free for a custom operator.
+Rules and sessions hold the engine that made them, so its custom
+operators keep working after `engine.close()`.
 
 ## Engine configuration
 
 `Engine.builder().setConfigJson(json)` sets the evaluation semantics
 from a JSON object string: an optional `preset` plus per-field
-overrides. Unknown keys or values throw `EvaluateException` (error type
-`ConfigurationError`), so typos fail loudly:
+overrides. An unknown key or value makes `setConfigJson` throw
+`EvaluateException` (error type `ConfigurationError`), so a typo fails
+before the engine exists:
 
 ```java
 try (Engine lenient = Engine.builder()
@@ -266,6 +365,7 @@ try (Engine strict = Engine.builder()
 | `arithmetic_nan_handling` | `"throw_error"`, `"ignore_value"`, `"coerce_to_zero"`, `"return_null"` |
 | `division_by_zero` | `"return_saturated"`, `"throw_error"`, `"return_null"`, `"return_infinity"` |
 | `loose_equality_errors` | `bool` |
+| `missing_var` | `"null"` (default: a missing variable reads as `null`), `"error"` (raises `VariableNotFound`) |
 | `truthy_evaluator` | `"javascript"`, `"python"`, `"strict_boolean"` |
 | `numeric_coercion` | object of bools: `empty_string_to_zero`, `null_to_zero`, `bool_to_number`, `reject_non_numeric` |
 | `max_recursion_depth` | integer >= 1 |
@@ -278,24 +378,91 @@ Python, Node, and WASM bindings too. The Rust crate's
 [`EvaluationConfig`](https://docs.rs/datalogic-rs/latest/datalogic_rs/struct.EvaluationConfig.html)
 documents the full semantics of each knob.
 
+With `"missing_var": "error"`, a `var` / `val` read that finds nothing
+throws `EvaluateException` with error type `"VariableNotFound"` naming
+the path, so a typo in a path fails instead of evaluating as `null`. A
+default (`{"var": ["x", 0]}`), a present `null`, `missing`,
+`missing_some` and `exists` are not misses, and `try` in the rule
+catches the error.
+
+The builder also takes `withTemplating(boolean)`,
+`withTemplateKeyEscape(int codePoint)` (a prefix that marks a template
+key as an output field: with `'$'`, `{"$type": ...}` emits the key
+`type`), `withStrictOperatorNames(boolean)` (see
+[Custom operators](#custom-operators)) and `withFamilies(String...)`
+(below).
+
+### Metering: what a rule costs
+
+`session.evaluateMetered(rule, dataJson, budget)` returns a `Metered`
+record: the result JSON and the operations the evaluation charged. A
+`budget` of `0` uses the engine's `ops_budget` (unbounded if it has
+none); any other value caps that one call.
+
+```java
+try (Session session = engine.openSession()) {
+    Metered m = session.evaluateMetered(rule, "{\"xs\": [1, 2, 3]}", 0);
+    m.value();  // the result JSON
+    m.ops();    // operations charged
+}
+```
+
+One operation is one node the engine dispatches, one item an iterator
+walks, or what an operator charges for the data it moves. Crossing the
+budget throws `EvaluateException` with error type `"BudgetExceeded"`
+before the work is done, and a `try` in the rule cannot catch it.
+
+### Operator families
+
+`engine.operators()` returns the operator catalogue as a JSON array,
+one object per built-in operator the engine evaluates (`name`,
+`aliases`, `family`, `feature`, `min_args`, `max_args`,
+`reads_context`, `effect`, `cost`, `scoped_arg`), in the schema of
+[`operators.json`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/docs/src/operators/operators.json).
+
+`withFamilies(...)` keeps an engine to the JSONLogic core plus the
+families you name: `ExtString`, `ExtArray`, `ExtObject`, `ExtControl`,
+`ExtMath`, `ErrorHandling`, `DateTime`, `Tensor`, `Flagd`. By default an
+engine has every family. A name from a family left out compiles as an
+unknown operator, which `check` reports and evaluation rejects with
+error type `"InvalidOperator"`:
+
+```java
+try (Engine strings = Engine.builder().withFamilies("ExtString").build()) {
+    strings.apply("{\"length\": \"abc\"}", "null");  // "3"
+    strings.apply("{\"now\": []}", "null");            // throws: InvalidOperator
+}
+```
+
+An unknown family name throws `EvaluateException` with error type
+`"ConfigurationError"`. With strict operator names on, call
+`withFamilies` before `addOperator`.
+
 ## Error handling
 
-Everything the binding throws extends `DatalogicException` (unchecked):
+Engine errors are thrown as subclasses of the unchecked
+`DatalogicException`:
 
 | Exception           | When                                                          |
 |---------------------|---------------------------------------------------------------|
-| `ParseException`    | Malformed rule or data JSON, or an unsupported operator       |
-| `EvaluateException` | Operator failure at runtime, a rejected engine config, or a typed-result type mismatch (`errorType() == "TypeMismatch"`) |
-| `DatalogicException` (base) | Invalid arguments at the boundary (e.g. a rule compiled by a different engine) or an internal engine error |
+| `ParseException`    | Malformed rule or data JSON (`"ParseError"`), or a rule `compileChecked` refused (`"CompileError"`) |
+| `EvaluateException` | A failure while evaluating, an unknown operator (`"InvalidOperator"`, also raised at compile for a multi-key object outside templating), a rejected config or builder option (`"ConfigurationError"`), or a typed-result mismatch (`"TypeMismatch"`) |
+| `DatalogicException` (base) | A rule compiled by a different engine than the session's (`"InvalidArgument"`), or an internal error |
+
+Misuse of the Java API throws the standard exceptions:
+`IllegalStateException` for a closed handle or a builder that already
+built, `NullPointerException` for a `null` argument.
 
 The structured fields ride on the base class: `errorType()` is the
-stable engine tag (e.g. `"ParseError"`, `"Thrown"`, `"TypeError"`,
-`"InvalidOperator"`, or the binding-level `"TypeMismatch"` /
-`"InvalidArgument"`), `operatorName()` the innermost failing operator
-(e.g. `"+"`), and `pathJson()` the root-to-leaf error path as a JSON
-array; each is `null` when not applicable. Arithmetic NaN surfaces as
-`errorType()` `"Thrown"` with a message carrying `{"type":"NaN"}`;
-there is no `"NaN"` tag.
+stable engine tag (for example `"Thrown"`, `"TypeError"`,
+`"VariableNotFound"`, `"BudgetExceeded"`, or the binding-level
+`"TypeMismatch"` / `"InvalidArgument"`), `operatorName()` the innermost
+failing operator (custom operators included), `pathJson()` the
+root-to-leaf error path as a JSON array, and `nodeIdsJson()` the
+compiled-node ids from leaf to root; each is `null` when not
+applicable. `diagnosticsJson()` is set only for `"CompileError"`.
+Arithmetic NaN surfaces as `errorType()` `"Thrown"` with a message
+carrying `{"type":"NaN"}`; there is no `"NaN"` tag.
 
 ```java
 import com.goplasmatic.datalogic.EvaluateException;
@@ -320,8 +487,10 @@ try (Engine engine = new Engine()) {
 
 `TracedSession` is thread-safe as well. `close()` is idempotent and safe
 to call from several threads at once: exactly one call frees the native
-handle. Closing a handle while another thread is still using it is not
-supported; finish that work first.
+handle. The shared `Cleaner` frees a handle you never close, including
+an `EngineBuilder` dropped before `build()`. Closing a handle while
+another thread is still using it is not supported; finish that work
+first.
 
 ## Tracing
 
@@ -329,18 +498,24 @@ supported; finish that work first.
 try (TracedSession session = engine.openTracedSession()) {
     TracedRun run = session.evaluate("{\"+\":[{\"var\":\"x\"},1]}", "{\"x\":41}");
     System.out.println(run.result());        // 42
-    System.out.println(run.steps().size());  // executed node count
+    System.out.println(run.steps().size());  // number of execution steps
+    System.out.println(run.pointers());      // {"1":"/+/0/var","2":"/+/0","3":"/+/1","4":""}
 }
 ```
 
 Same trace envelope as every other binding; the
 [React debugger](https://github.com/GoPlasmatic/datalogic-rs/tree/main/ui)
-consumes it directly. `TracedRun` exposes `result()`,
-`expressionTree()`, `steps()`, and `structuredError()` as Jackson
-`JsonNode`s, plus `error()` as the message `String` (`null` on
+reads it as is. `TracedRun` exposes `result()`,
+`expressionTree()`, `steps()`, `structuredError()` and `pointers()` as
+Jackson `JsonNode`s, plus `error()` as the message `String` (`null` on
 success); runtime failures surface inside the run rather than as
-exceptions. Tracing disables the optimizer so every operator appears
-in the trace: use it for debugging, not hot paths.
+exceptions. `pointers()` maps each node id to the RFC 6901 JSON Pointer
+of the rule value that node was compiled from, so a debugger can place
+each step in the rule as written; it is a missing node when the rule
+does not compile. `session.evaluate(rule, data, mode)` compiles the rule
+in a `CompileMode`, so a template traces as one. Tracing disables the
+optimizer so every operator appears in the trace: use it for
+debugging, not hot paths.
 
 ## Performance
 
@@ -365,7 +540,7 @@ git clone https://github.com/GoPlasmatic/datalogic-rs
 cd datalogic-rs/bindings/c && cargo build --release
 cd ../jvm      # needs JDK 22+
 mvn test
-mvn package    # target/datalogic-5.8.0.jar + sources + javadoc
+mvn package    # target/datalogic-5.8.1.jar + sources + javadoc
 ```
 
 ## Learn more

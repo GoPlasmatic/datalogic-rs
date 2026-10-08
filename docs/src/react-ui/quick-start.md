@@ -58,7 +58,7 @@ function DebugExample() {
 }
 ```
 
-As you step, the current node shows its context and result in a bubble, and executed nodes stay highlighted so the taken path is visible. If evaluation fails, the editor marks the node on the engine's failure breadcrumb with the error (and a rule that does not compile at all reports the error in a banner above the diagram). Nodes do not display results at rest, so step through the trace to read values.
+As you step, the current node shows its context and result in a bubble, and executed nodes stay highlighted so the taken path is visible. If evaluation fails, the editor marks the node on the engine's failure breadcrumb with the error (and a rule that does not compile at all reports the error in a banner above the diagram). Nodes do not display results at rest, so step through the trace to read values. If the WASM engine fails to load, a banner above the diagram gives the load error and the diagram stays static.
 
 ## Dynamic Data
 
@@ -200,11 +200,16 @@ function EditableExample() {
 }
 ```
 
+Feeding the value from `onChange` back through `value` keeps the selection,
+the open properties panel, and the pan and zoom.
+
 Add `data` to combine editing with live debugging in the same view. In edit
 mode the toolbar also gains an **Insert** button (Cmd/Ctrl+K) that adds an
 argument to the selection or wraps the root, and the canvas supports
 copy/paste (Cmd/Ctrl+C / V), duplicate (Cmd/Ctrl+D), select-all (Cmd/Ctrl+A),
-undo/redo (Cmd/Ctrl+Z, Shift+Cmd/Ctrl+Z) and delete (Backspace/Delete).
+undo/redo (Cmd/Ctrl+Z, Shift+Cmd/Ctrl+Z or Cmd/Ctrl+Y) and delete
+(Backspace/Delete). These shortcuts work only while focus is inside the
+editor; click it first.
 
 ## Engine Settings
 
@@ -224,8 +229,10 @@ trace. Every key is optional and omitted keys keep the engine default:
 ```
 
 When the settings differ from the defaults, the toolbar shows a compact
-summary so you can trace a surprising result to the configuration. Changing
-`config` rebuilds the engine, which resets selection and undo history.
+summary so you can trace a surprising result to the configuration. A `config`
+with different settings rebuilds the engine, which resets selection, undo
+history and the debugger position. An inline object literal that carries the
+same settings on every render does not.
 
 ## Custom Operators
 
@@ -249,7 +256,7 @@ render with the generic "utility" styling.
 
 ## Theme Support
 
-The editor supports light and dark themes:
+The editor has light and dark themes:
 
 ```tsx
 // Explicit theme
@@ -266,7 +273,7 @@ The component sets `data-theme` on its own `.logic-editor` root and does not rea
 
 ## Handling Null/Empty Expressions
 
-The editor handles null or undefined expressions:
+Pass `null` and the editor renders an empty state ("No expression"):
 
 ```tsx
 function ConditionalEditor({ expression }) {
@@ -299,6 +306,6 @@ Add custom styling to the container:
 
 ## Next Steps
 
-- [Modes](modes.md) - Detailed mode documentation
-- [Props & API](props-api.md) - Complete props reference
-- [Customization](customization.md) - Theming and styling
+- [Modes](modes.md): detailed mode documentation
+- [Props & API](props-api.md): complete props reference
+- [Customization](customization.md): theming and styling

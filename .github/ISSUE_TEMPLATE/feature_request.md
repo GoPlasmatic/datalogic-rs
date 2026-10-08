@@ -7,7 +7,7 @@ labels: enhancement
 
 ## Use case
 
-<!-- What problem does this solve? Concrete scenario, not "would be nice". -->
+<!-- What problem does this solve? Describe a concrete scenario. -->
 
 ## Proposal
 
@@ -18,7 +18,8 @@ labels: enhancement
 ```
 
 For a Rust API change, sketch the signature and how it slots into
-`Engine` / `Logic` / `Session`.
+`Engine` / `Logic` / `Session`. For a binding change, name the bindings
+it affects.
 
 ## Alternatives considered
 

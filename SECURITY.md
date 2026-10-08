@@ -2,16 +2,21 @@
 
 ## Supported versions
 
-We provide security fixes for the latest release line. The project
-ships a single coordinated version across the Rust core and every
-language binding (see [CHANGELOG.md](./CHANGELOG.md)).
+The project ships one coordinated version across the Rust core and every
+language binding, released from `main` under a single `vX.Y.Z` tag (see
+[CHANGELOG.md](./CHANGELOG.md)). A security fix ships in the next release
+from `main`: a patch on the current minor, or the next minor. Fixes are
+not backported to earlier 5.x minors. 5.x follows semver, so code
+written against an earlier 5.x compiles against the current one;
+[MIGRATION.md](./MIGRATION.md) lists the behaviour changes between minors.
 
 | Version         | Status                                                            |
 |-----------------|-------------------------------------------------------------------|
-| 5.x             | Supported: receives fixes                                         |
-| 4.x and earlier | End-of-life: please migrate ([MIGRATION.md](./MIGRATION.md))      |
+| 5.8.x           | Current: receives security fixes                                  |
+| 5.0 to 5.7      | Upgrade to 5.8.x to get fixes                                     |
+| 4.x and earlier | End-of-life: migrate to 5.x ([MIGRATION.md](./MIGRATION.md))      |
 
-This applies uniformly to every package shipped from this repository:
+This applies to every package shipped from this repository:
 
 - `datalogic-rs` (crates.io)
 - `@goplasmatic/datalogic-node`, `@goplasmatic/datalogic-wasm`,
@@ -21,12 +26,13 @@ This applies uniformly to every package shipped from this repository:
 - `io.github.goplasmatic:datalogic` (Maven Central)
 - `Goplasmatic.Datalogic` (NuGet)
 - `goplasmatic/datalogic` (Packagist)
-- `datalogic-c` (in-tree C ABI, consumed by the Go/JVM/.NET/PHP bindings)
+- `datalogic-c` (the C ABI: GitHub release tarballs, and the library the
+  Go/JVM/.NET/PHP bindings load)
 
 ## Reporting a vulnerability
 
-Please report suspected vulnerabilities **privately**, not in a public
-issue or pull request.
+Report suspected vulnerabilities **privately**, not in a public issue or
+pull request.
 
 - Preferred: open a private report via GitHub's
   [security advisories](https://github.com/GoPlasmatic/datalogic-rs/security/advisories/new)
@@ -35,14 +41,14 @@ issue or pull request.
 - If that isn't available to you, email `nharishankar@gmail.com` with
   `[datalogic-rs security]` in the subject.
 
-Please include enough to reproduce: the affected package and version (or
+Include enough to reproduce: the affected package and version (or
 commit SHA), a minimal rule + data that triggers the issue, and the
 impact you observed (for example a panic, a stack overflow, or an
 unexpectedly unbounded run).
 
-You should expect an initial acknowledgement within **5 business days**.
+You should get an initial acknowledgement within **5 business days**.
 We'll keep you updated as we triage the report, develop a fix, and
-prepare a coordinated release. We don't currently run a bug bounty.
+prepare a coordinated release. There is no bug bounty.
 
 ## Scope
 

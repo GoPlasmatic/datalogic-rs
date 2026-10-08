@@ -1,10 +1,13 @@
 # Logical Operators
 
-Boolean logic operators with short-circuit evaluation.
+Boolean logic operators. `and` and `or` short-circuit: they stop at the first
+operand that decides the result and leave the rest unevaluated.
+
+> **Feature flags (Rust crate).** All logical operators are baseline: every build has them. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
 
 ## ! (Not)
 
-Logical NOT - negates a boolean value.
+Logical NOT: negates the truthiness of a value.
 
 **Syntax:**
 ```json
@@ -59,9 +62,7 @@ Logical NOT - negates a boolean value.
 </div>
 
 **Notes:**
-- Uses configurable truthiness rules (default: JavaScript-style)
-- Falsy values: `false`, `0`, `""`, `null`, `[]`, `{}`
-- Truthy values: everything else
+- Uses the engine's truthiness rules (default: JavaScript-style; see [Truthiness Reference](#truthiness-reference))
 - An array argument is read as the argument list, and `!` uses only its first element. To negate a literal array, wrap it: `{ "!": [[1, 2]] }`
 
 ---
@@ -123,8 +124,7 @@ Convert a value to its boolean equivalent.
 </div>
 
 **Notes:**
-- Equivalent to `{ "!": { "!": value } }`
-- Useful for ensuring a boolean result from any value
+- Equivalent to `{ "!": { "!": value } }`; use it to turn any value into a boolean
 - Like `!`, an array argument is the argument list and only its first element is inspected; wrap a literal array (`{ "!!": [[]] }` is `false`, `{ "!!": [{}] }` is `false`)
 
 ---
@@ -178,9 +178,8 @@ Logical AND with short-circuit evaluation.
 </div>
 
 **Notes:**
-- Short-circuits: stops at first falsy value
-- Returns the actual value, not necessarily a boolean
-- Empty `and` returns `null`
+- Short-circuits: stops at the first falsy value
+- Returns the operand itself, which need not be a boolean
 
 ---
 
@@ -237,10 +236,8 @@ Logical OR with short-circuit evaluation.
 </div>
 
 **Notes:**
-- Short-circuits: stops at first truthy value
-- Returns the actual value, not necessarily a boolean
-- Useful for default value patterns
-- Empty `or` returns `null`
+- Short-circuits: stops at the first truthy value
+- Returns the operand itself, which need not be a boolean, so `or` can supply a default value
 
 ---
 
@@ -261,4 +258,4 @@ The default JavaScript-style truthiness:
 | `{}` | No |
 | `null` | No |
 
-You can customize this via `EvaluationConfig`. See [Configuration](../advanced/configuration.md).
+`EvaluationConfig::truthy_evaluator` replaces these rules wherever an operator tests truthiness (`!`, `!!`, `and`, `or`, `if`, and the conditions of `filter`, `all`, `some` and `none`); see [Truthiness Evaluation](../advanced/configuration.md#truthiness-evaluation). To apply the engine's rules to a value in host code, such as an evaluated result, call [`Engine::truthy_of`](../rust/api-reference.md#truthy_of).

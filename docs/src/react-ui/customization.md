@@ -26,7 +26,7 @@ Override with the `theme` prop:
 
 ### Theme Resolution
 
-The component sets `data-theme` on its own `.logic-editor` root element based on the `theme` prop (or system preference when the prop is omitted). It does **not** read `data-theme` from a parent or ancestor element, so wrapping the editor in `<div data-theme="dark">` has no effect. To force a theme, use the `theme` prop:
+The component sets `data-theme` on its own `.logic-editor` root element based on the `theme` prop (or system preference when the prop is omitted). It ignores `data-theme` on a parent or ancestor element, so wrapping the editor in `<div data-theme="dark">` has no effect. To force a theme, use the `theme` prop:
 
 ```tsx
 <DataLogicEditor value={expression} theme="dark" />
@@ -111,8 +111,10 @@ focus. These are the token names with their light-theme values:
   --accent-hover: #3a44c0;
 
   /* Type */
-  --font-ui: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+  --font-ui: 'Space Grotesk', ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Code',
+    'Consolas', monospace;
 
   /* Shape, elevation, motion */
   --radius-sm: 7px;  --radius-md: 10px; --radius-lg: 14px;
@@ -131,8 +133,7 @@ The stylesheet keeps older token names (`--bg-primary`, `--bg-secondary`,
 `--text-primary`, `--border-primary`, `--accent-blue`, `--node-bg`,
 `--syntax-*`, `--debug-*`, and the `--success-*` / `--error-*` / `--warning-*`
 families) as aliases mapped onto the tokens above, so existing overrides keep
-working.
-Prefer the tokens above for new work.
+working. Prefer the tokens above for new work.
 
 ### Fonts
 
@@ -161,43 +162,49 @@ Without either step the stacks fall back to the system UI and monospace fonts.
 
 ### Node Styling
 
-Target specific node types:
+Target specific node types. Prefix each selector with `.logic-editor`: the
+editor scopes its own React Flow rules the same way, so your overrides reach
+only the editor and leave other React Flow canvases on the page alone:
 
 ```css
 /* All nodes */
-.react-flow__node {
+.logic-editor .react-flow__node {
   font-family: 'Inter', sans-serif;
 }
 
 /* Operator nodes (and, or, if, var, val, ==, +, etc.) */
-.react-flow__node-operator {
+.logic-editor .react-flow__node-operator {
   border-width: 2px;
 }
 
 /* Literal nodes (strings, numbers, booleans, null) */
-.react-flow__node-literal {
+.logic-editor .react-flow__node-literal {
   font-weight: bold;
 }
 
 /* Structure nodes (JSON objects/arrays in templating mode) */
-.react-flow__node-structure {
+.logic-editor .react-flow__node-structure {
   font-style: italic;
 }
 ```
 
-> **Note:** There are three node types: `operator`, `literal`, and `structure`. There is no `variable` node type: variables (`var` / `val`) render as operator nodes, so a `.react-flow__node-variable` selector matches nothing.
+There are three node types: `operator`, `literal`, and `structure`. Variables
+(`var` / `val`) render as operator nodes, so a `.react-flow__node-variable`
+selector matches nothing.
 
 ### Edge Styling
 
-Customize connection lines:
+Customize connection lines. The editor's own edge rule is
+`.logic-editor .react-flow__edge-path`, so use the same selector and load your
+stylesheet after `@goplasmatic/datalogic-ui/styles.css`:
 
 ```css
-.react-flow__edge-path {
+.logic-editor .react-flow__edge-path {
   stroke: #6b7280;
   stroke-width: 2px;
 }
 
-.react-flow__edge.selected .react-flow__edge-path {
+.logic-editor .react-flow__edge.selected .react-flow__edge-path {
   stroke: #3b82f6;
 }
 ```
@@ -206,7 +213,7 @@ Customize connection lines:
 
 ### Container Dimensions
 
-The editor requires explicit dimensions:
+The editor fills its parent, so give the parent a height:
 
 ```tsx
 // Fixed height
@@ -232,11 +239,14 @@ The editor requires explicit dimensions:
 
 ### Custom Flow Rendering
 
-For complete control, use the utility functions with your own React Flow instance:
+For complete control, use the utility functions with your own React Flow
+instance. The package's `styles.css` styles React Flow only inside
+`.logic-editor`, so a canvas of your own needs React Flow's stylesheet:
 
 ```tsx
+import '@xyflow/react/dist/style.css';
 import { ReactFlow, Background, Controls } from '@xyflow/react';
-import { jsonLogicToNodes, applyTreeLayout, CATEGORY_COLORS } from '@goplasmatic/datalogic-ui';
+import { jsonLogicToNodes, applyTreeLayout } from '@goplasmatic/datalogic-ui';
 
 function CustomEditor({ expression }) {
   const { nodes: rawNodes, edges } = jsonLogicToNodes(expression);
@@ -256,6 +266,10 @@ function CustomEditor({ expression }) {
   );
 }
 ```
+
+The nodes carry the types `operator`, `literal` and `structure`. Without a
+`nodeTypes` map for them, React Flow draws its default node and logs a
+warning; the next section shows a custom node component.
 
 ### Custom Node Types
 
@@ -293,8 +307,10 @@ const customNodeTypes = {
 
 Node data describes the expression, not its value: there is no `result` field
 on any node shape. Evaluated values live in the trace steps
-(`evaluateWithTrace`), so a custom renderer that wants to show results should
-keep its own map keyed by node id and look values up from there.
+(`evaluateWithTrace`), keyed by the engine's node ids, and the trace's
+`pointers` map each of those ids to a JSON Pointer into the rule. A custom
+renderer that shows results keeps its own map from those pointers to its
+nodes.
 
 ### Category Colors
 
@@ -322,6 +338,7 @@ console.log(CATEGORY_COLORS);
 //   utility: '#64748b',
 //   error: '#ef4444',
 //   flagd: '#f97316',
+//   tensor: '#db2777',
 //   literal: '#64748b'
 // }
 
@@ -342,7 +359,7 @@ function Legend() {
 
 ## Responsive Design
 
-Make the editor responsive:
+Size the container per breakpoint:
 
 ```tsx
 function ResponsiveEditor({ expression }) {
@@ -377,7 +394,10 @@ function ResponsiveEditor({ expression }) {
 
 ### Memoization
 
-Memoize expression objects to prevent unnecessary re-renders:
+The editor treats each new `value` object as a new rule (unless it is the
+echo of its own `onChange`): the canvas remounts and refits the view. Keep the
+expression in state or memoize it so a parent re-render does not pass a fresh
+literal:
 
 ```tsx
 import { useMemo } from 'react';
@@ -396,7 +416,8 @@ function OptimizedEditor({ config }) {
 
 ### Debounced Data Updates
 
-For frequently changing data in debug mode:
+The trace re-runs when the content of `data` changes. For data that changes
+on every keystroke or animation frame, defer it:
 
 ```tsx
 import { useDeferredValue } from 'react';

@@ -5,15 +5,15 @@ Baselines captured 2026-07-03; update them when you snapshot metrics.
 
 Drafted launch content (blog posts, channel posts, listing PR texts) and
 the external-action runbook live in `.github/launch/`, which is
-deliberately untracked (gitignored): maintainer-local reference only.
+untracked (gitignored): maintainer-local reference only.
 
 ## Gates: do not promote before these are true
 
 1. ✅ (2026-07-15) Maven Central and Packagist serve the packages.
    Verified: `io.github.goplasmatic:datalogic` 5.0.1 on
    Central since 2026-07-07, `goplasmatic/datalogic` resolving on
-   Packagist. Two of eight advertised install commands failing is a
-   launch-killing HN comment.
+   Packagist. An advertised install command that fails would be the first
+   comment on a launch post.
 2. ✅ (2026-07-15) The stale `@goplasmatic/datalogic` v4 npm package is
    gone: deprecated and removed from the registry (`npm view` returns
    404).
@@ -47,7 +47,7 @@ deliberately untracked (gitignored): maintainer-local reference only.
     awesome-react-components (`datalogic-ui`), awesome-wasm.
   - After traction: awesome-nodejs (strict bar), awesome-go (wants Go
     Report Card; monorepo-subdir module may face pushback),
-    awesome-python (very selective; wait for download curve).
+    awesome-python (selective; wait for download curve).
   - Skip: awesome-selfhosted (libraries excluded).
 - [ ] **lib.rs** already lists the crate (automatic from crates.io).
 
@@ -77,7 +77,7 @@ Week 2 (Show HN, the anchor):
   DoS/resource bounding; who uses it in production (point to Who's-using
   section); license/monetization (Apache-2.0, Plasmatic uses it in its
   own products).
-- [ ] Tue–Thu, 8–10 AM ET; maintainer available 6+ hours.
+- [ ] Tue to Thu, 8 to 10 AM ET; maintainer available 6+ hours.
 
 Week 3+ (per-ecosystem):
 - [ ] r/node post + blog (e): the safe-eval / json-logic-js-perf angle.
@@ -103,19 +103,21 @@ Week 3+ (per-ecosystem):
 
 ## Ongoing
 
-- Release syndication: every GitHub release auto-creates an Announcements
-  discussion (wire `--discussion-category` into release.yml's release
-  step); condensed notes cross-posted to dev.to. Standard footer:
-  conformance stat + playground link + "Running datalogic-rs in
-  production? Add yourself: <who's-using issue link>".
+- Release syndication: `release.yml`'s `github-release` job creates each
+  GitHub release with `--discussion-category "Announcements"`, so every
+  release opens an Announcements discussion, and appends the standard
+  footer: the conformance stat from `scripts/conformance-count.sh`, the
+  playground link, and "Running datalogic-rs in production? Add your
+  project" linking the Show and tell category. Cross-post condensed notes
+  to dev.to by hand.
 - Refresh BENCHMARK.md quarterly; never quote numbers older than the last
   refresh in new posts.
 
 ## Registry and release ops
 
-Moved here from DEVELOPMENT.md, which now describes only the release
-flow. Dated entries are a log, not a status: the release workflow run
-for the latest `v*` tag is the source of truth.
+DEVELOPMENT.md describes the release flow; this section is the ops log.
+Dated entries are a log, not a status: the release workflow run for the
+latest `v*` tag is the source of truth.
 
 ### Open release-ops items
 
@@ -127,8 +129,9 @@ up. Still open:
   deploy first ran with the classpath-root layout on 2026-07-07; verify
   once that the published JAR loads its bundled natives on a machine
   with no repo checkout and `datalogic.library.path` unset. Every release
-  now runs that check on macOS and Windows against the JAR it built
-  (`release-smoke-hosts.yml`); a Linux machine is still unchecked.
+  runs that check on macOS and Windows against the JAR it built
+  (`release-smoke-hosts.yml`, reported but not a gate); a Linux machine
+  is still unchecked.
 - **NuGet signing** remains unimplemented: needs org certificates and a
   signing decision (README embedding, SourceLink, and snupkg already ship).
 
@@ -136,12 +139,11 @@ up. Still open:
 
 Registry state is a living figure; the release workflow run for the
 latest `v*` tag is the source of truth, not this paragraph. Last
-recorded check (2026-08-19, the 5.2.0 release): eight of the nine
-registries served the tag (crates.io, npm ×3, PyPI, NuGet, the Go proxy,
-and Maven Central, first published 2026-07-07); Packagist (registered
-2026-07-03) lagged because the PHP dist push token had expired, so the
-PHP leg needs `PHP_DIST_PUSH_TOKEN` rotated and `release.yml` rerun on
-the tag. Done on 2026-07-03: Packagist
+recorded check (2026-10-08, while the 5.8.0 release ran): Packagist lists
+every tag from v5.0.0 to v5.8.0, so the lag recorded at 5.2.0 (an
+expired `PHP_DIST_PUSH_TOKEN`) is resolved. crates.io, npm (all three
+packages), PyPI and NuGet served 5.8.0; Maven Central's index still
+showed 5.7.1 while the release ran. Done on 2026-07-03: Packagist
 registration + webhook, GitHub Discussions enabled, wiki disabled. Done
 on 2026-07-07: first Maven Central publish (`io.github.goplasmatic:datalogic`);
 the root README's Maven row now carries the shields.io maven-central

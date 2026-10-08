@@ -1,18 +1,22 @@
 # Tests
 
-Two layers:
+Three kinds of test live here:
 
-- **Rust unit tests** (`*.rs` in this directory): exercise specific
-  modules (compile, evaluate, arena, custom operators, threading, etc.).
-- **JSONLogic compatibility suite** (`suites/`): a large data-driven
-  battery that `test_jsonlogic.rs` runs.
+- **Rust integration tests** (`*.rs` in this directory): one file per
+  area (compile, evaluate, sessions, custom operators, config, errors,
+  tracing, threading, ...).
+- **JSONLogic compatibility suite** (`suites/`): a data-driven battery
+  that `test_jsonlogic.rs` runs on every evaluation path.
+- **Generated checks** that run every suite case, or generated rules,
+  through a second path and require the same outcome (see
+  [Generated checks](#generated-checks)).
 
 ## Running
 
-All commands assume you're at the repo root. Most integration tests are
-gated behind `feature = "serde_json"` (they use `serde_json::json!`);
-the JSONLogic suite runner additionally needs `feature = "templating"`.
-Use `--all-features` to run everything.
+All commands assume you're at the repo root. Most integration tests need
+`serde_json` (they use `serde_json::json!`), several need more, and the
+JSONLogic suite runner needs `templating` too. Use `--all-features` to
+run everything.
 
 Each gated file declares its features twice: a `#![cfg(...)]` header and
 a matching `[[test]] required-features` entry in `../Cargo.toml`. Without
@@ -40,8 +44,8 @@ JSONLOGIC_TEST_FILE=tests/suites/arithmetic/plus.json \
 ## Suite format
 
 Each file in `suites/` is a JSON array of test-case objects. The runner
-skips strings inside the array and uses them as section headers in the
-test output:
+prints strings inside the array as section headers and does not run
+them:
 
 ```json
 [
@@ -67,9 +71,9 @@ Test case fields:
 |----------------------|----------|----------------------------------------------------------------------|
 | `description`        | yes      | Human-readable test name.                                            |
 | `rule`               | yes      | JSONLogic expression to evaluate.                                    |
-| `data`               | yes      | Input data (object or `null`).                                       |
+| `data`               | no       | Input data. Defaults to `{}`.                                        |
 | `result`             | one of   | Expected output value. Mutually exclusive with `error`.              |
-| `error`              | one of   | Expected error object, e.g. `{"type": "NaN"}`.                       |
+| `error`              | one of   | Expected error, compared as JSON. A thrown value compares as itself (the engine raises `NaN` as the thrown value `{"type": "NaN"}`); `InvalidArguments` compares as `{"type": "<message>"}` and an unknown operator as `{"type": "Unknown Operator"}`. Other error kinds cannot be expected here. |
 | `templating`         | no       | When `true`, evaluate in templating mode (unknown keys preserved).   |
 | `template_key_escape`| no       | One character. Evaluate with that template-key escape prefix (see `with_template_key_escape`). Combines with `templating`. |
 | `requires`           | no       | Array of cargo feature names the case needs beyond its operators, e.g. `["datetime"]` for a rule whose *data* only carries meaning under a feature. Skipped when absent. |
@@ -121,9 +125,38 @@ in the operator table is called by no rule in any suite, and
 `operators/table_tests.rs`) when a foldable operator has no case with
 literal arguments, or folding one changes its result.
 
+## Generated checks
+
+These tests generate their cases (from the suites, from proptest, or as
+a cross product of rule shapes and datasets) and require a second path to
+agree. A new suite case is covered by the suite-driven ones without an
+edit:
+
+| Test file | What must hold |
+|---|---|
+| `oracle_test.rs` | The engine agrees with the reference oracle (below). |
+| `facts_test.rs` | Evaluating against data pruned to the paths `Logic::facts()` reports gives the same outcome as the full data. |
+| `projection_test.rs` | Evaluating with input projection gives what evaluating the whole input gives, on default, unfolded and `MissingVar::Error` engines. |
+| `roots_test.rs` | Splitting a case's data into `Roots` leaves the outcome unchanged. |
+| `compile_mode_test.rs` | `compile_template` / `compile_strict` give the same compiled rule and outcome as an engine built in that mode. |
+| `check_test.rs` | No suite rule that expects a value draws an error diagnostic; on generated rules, `compile` fails exactly when `check` reports a compile-level problem. |
+| `trace_pointers_test.rs` | Every suite rule compiled for tracing places each node at a JSON Pointer that resolves in the rule as written. |
+| `to_json_round_trip_test.rs` | On generated rules, `compile(to_json(compile(r)))` evaluates as `r` does. |
+| `fast_predicate_test.rs`, `fast_arith_test.rs` | The `filter` / `all` / `some` / `none` predicate fast paths and the `map` / `reduce` arithmetic fast paths agree with a traced evaluation, which skips them. |
+| `property_test.rs` | On bounded arbitrary rules and data, nothing panics and the optimized pipeline agrees with the traced one (`optimized_and_traced_agree`), plus CSE, fused `reduce(map(..))` and template-escape properties. |
+
+The operator table has its own generated guardrails: `operator_names_test.rs`
+(`builtin_operator_names()` against each family's feature;
+`catalogue_gates_match_cargo_features` keeps the table's feature gates
+and the `all-operators` list in step with `Cargo.toml`), `operators_json_test.rs` (the `docs/src/operators/operators.json`
+snapshot and the overview's feature table; regenerate both with
+`UPDATE_OPERATORS_JSON=1`), `budget_audit_test.rs` (every costed operator
+charges more for a larger input) and `operator_table_rule_test.rs` (an
+`OpCode::` reference outside the table needs a listed reason).
+
 ## Reference oracle
 
-`oracle/mod.rs` is a second, deliberately unoptimised reading of the rules:
+`oracle/mod.rs` is a second, unoptimised reading of the rules:
 it walks the rule JSON with its own frame stack and implements every
 operator that decides which expression runs or what data it sees (`var` /
 `val` / `exists` / `missing`, the control-flow operators, every iterator,
@@ -136,6 +169,8 @@ oracle, so no argument the operator sees has been through the optimizer.
 
 - `every_suite_case_agrees_with_the_oracle`: every suite case, on the
   default engine and on one without constant folding.
+- `every_suite_case_agrees_with_the_oracle_when_a_miss_is_an_error`: the
+  same with `MissingVar::Error`.
 - `generated_rules_agree_with_the_oracle` and
   `generated_templates_agree_with_the_oracle`: proptest rules biased toward
   the shapes the optimizer rewrites (field comparisons in `filter`, `map`
@@ -164,7 +199,8 @@ when it invokes an operator this build did not compile in, and reports the
 skip count so a run shows its real coverage:
 
 ```
-TOTAL RESULTS: 1142 passed, 0 failed, 572 skipped
+TOTAL RESULTS: <passed> passed, 0 failed, <skipped> skipped
+(<skipped> cases need operators this build did not compile in)
 ```
 
 Detection walks the rule for single-key objects (how an operator call is
@@ -177,4 +213,6 @@ skipped.
 
 `requires` covers the residual case where a feature changes value semantics
 rather than adding an operator. Under `--all-features` nothing is skipped, so
-CI's coverage is unchanged.
+CI's coverage is unchanged. CI's `feature-combos` job runs the suite on
+reduced builds, pairing `serde_json`, `templating` and `trace` with one
+family or a few at a time.

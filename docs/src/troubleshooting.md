@@ -6,13 +6,17 @@ Common issues and solutions for datalogic-rs.
 
 ### "Invalid operator: xyz"
 
-**Cause:** Using an unrecognized operator name.
+**Cause:** The rule calls an operator name the engine does not know.
+`compile` accepts the call, and the error appears when evaluation reaches
+it. The name may be misspelled, belong to an operator family this build
+or engine leaves out (a Cargo feature, or `EngineBuilder::with_families`),
+or be meant as an output key.
 
 **Solutions:**
 
 1. Check the operator name spelling (operators are case-sensitive).
 2. Register a custom operator on the builder.
-3. Enable templating mode (requires `feature = "templating"`); unknown
+3. Compile in templating mode (requires `feature = "templating"`); unknown
    keys then become literal output fields.
 
 ```rust
@@ -24,17 +28,26 @@ let engine = datalogic_rs::Engine::builder()
     .add_operator("xyz", XyzOperator)
     .build();
 
-// Option 3: Templating mode (feature = "templating")
+// Option 3: Templating mode (feature = "templating"), for the engine
+// or for one compile
 # #[cfg(feature = "templating")]
 let engine = datalogic_rs::Engine::builder().with_templating(true).build();
+# #[cfg(feature = "templating")]
+let template = datalogic_rs::Engine::new().compile_template(logic)?;
 ```
+
+To catch the error before any input reaches it, compile with
+`Engine::compile_checked` or run `Engine::check`, which also suggests a
+known name one edit away (see
+[Finding every problem in a rule](#finding-every-problem-in-a-rule)).
 
 ### A template key runs as an operator instead of being emitted
 
 **Cause:** This is the inverse of the error above, and it is quieter: you
-get no error, only the wrong result. In templating mode a
-single-key object is always an operator invocation, so a key that happens
-to name a built-in runs the operator instead of becoming an output field.
+get no error, only the wrong result. In templating mode a single-key
+object whose key names an operator is an operator call, so a key that
+happens to name a built-in runs the operator instead of becoming an output
+field.
 
 ```json
 { "type": { "var": "x" } }
@@ -42,7 +55,8 @@ to name a built-in runs the operator instead of becoming an output field.
 // expected           ->  {"type": 1}
 ```
 
-Around 60 names are affected: `type`, `map`, `filter`, `if`, `keys`,
+Every built-in operator name is affected (87 names, aliases included,
+with every operator feature on): `type`, `map`, `filter`, `if`, `keys`,
 `values`, `entries`, `length`, `in`, `sort`, `now`, `try`, `cat`, `+`,
 `==` and the rest of the operator table, plus any custom operator you
 registered. The same key behaves differently with siblings:
@@ -68,20 +82,48 @@ let engine = datalogic_rs::Engine::builder()
 
 The prefix is a `char`, not a fixed `$`, so payloads that already use `$`
 keys (MongoDB documents, JSON Schema output) can pick `~` or `#` instead.
-The setting is off by default, requires `feature = "templating"`, and is
-inert outside templating mode. See
+The setting is off by default, requires `feature = "templating"`, and
+applies only to rules compiled in templating mode (on a templating engine
+or through `compile_template`). See
 [Structured Objects](./advanced/structured-objects.md#emitting-keys-that-are-operator-names)
 for the full rules.
 
+### A misspelled path returns `null` instead of failing
+
+**Cause:** JSONLogic reads a path that finds nothing as `null`, so
+`{"var": "usr.name"}` against `{"user": {"name": "ada"}}` is `null`, and
+the `null` flows on into comparisons and arithmetic.
+
+**Solution:** if your data has a known shape, make a miss an error:
+
+```rust
+use datalogic_rs::{Engine, EvaluationConfig, MissingVar};
+
+let engine = Engine::builder()
+    .with_config(EvaluationConfig::default().with_missing_var(MissingVar::Error))
+    .build();
+
+let err = engine.eval_str(r#"{"var": "usr.name"}"#, r#"{"user": {"name": "ada"}}"#).unwrap_err();
+assert_eq!(err.to_string(), "Variable not found: usr.name (in operator: var)");
+```
+
+The bindings take the same setting as the config key
+`"missing_var": "error"`. Iterators run their general path under this
+setting, so `map`, `filter` and `reduce` over fields are slower (see
+[Performance](performance.md#iterator-fast-paths)).
+
 ### "Variable not found"
 
-**Cause:** Accessing a path that doesn't exist in the data.
+**Cause:** The engine is configured with `MissingVar::Error`, and a `var`
+or `val` read found nothing at its path. Under the default
+`MissingVar::Null` the read is `null` and raises nothing.
 
 **Solutions:**
 
-1. Check the variable path spelling
-2. Use a default value
-3. Use `missing` to check first
+1. Check the variable path spelling.
+2. Give the read a default: a read with a default is not a miss.
+3. Test with `missing` or `exists` first (they never raise this error),
+   or wrap the read in `try`.
 
 ```json
 {"var": ["user.name", "Anonymous"]}
@@ -91,11 +133,16 @@ for the full rules.
     "No name",
     {"var": "user.name"}
 ]}
+
+{"try": [{"var": "user.name"}, "No name"]}
 ```
 
 ### Unexpected `NaN` / `Thrown` errors from arithmetic
 
-**Cause:** Non-numeric values in arithmetic operations.
+**Cause:** A value in an arithmetic operation does not coerce to a number.
+The default `NanHandling::ThrowError` raises a `Thrown` error carrying
+`{"type": "NaN"}`. The strings `"NaN"`, `"inf"` and `"infinity"`, and
+numeric literals that overflow `f64`, do not coerce either.
 
 **Solution:** Configure NaN handling:
 
@@ -103,13 +150,102 @@ for the full rules.
 use datalogic_rs::{Engine, EvaluationConfig, NanHandling};
 
 let config = EvaluationConfig::default()
-    .with_arithmetic_nan_handling(NanHandling::IgnoreValue); // or CoerceToZero
+    .with_arithmetic_nan_handling(NanHandling::IgnoreValue); // or CoerceToZero, ReturnNull
 let engine = Engine::builder().with_config(config).build();
 ```
 
+`IgnoreValue` skips the value (`{"*": [2, "x", 3]}` is `6`), `CoerceToZero`
+substitutes 0 (`0`), and `ReturnNull` makes the whole operation `null`.
+
+### Matching on the kind of an error
+
+Switch on `Error::code()`, which returns an `ErrorCode` (`Copy`, `Eq`,
+`Hash`, present in every build), instead of comparing `Error::tag()`
+strings or matching `ErrorKind` with its payload:
+
+```rust
+use datalogic_rs::{Engine, ErrorCode};
+
+let engine = Engine::new();
+match engine.eval_str(r#"{"throw": "rejected"}"#, "null") {
+    Ok(out) => println!("{out}"),
+    Err(e) => match e.code() {
+        ErrorCode::Thrown => println!("rule threw {:?}", e.thrown_value()),
+        ErrorCode::BudgetExceeded => println!("too expensive"),
+        _ => println!("failed: {e}"),
+    },
+}
+```
+
+`ErrorCode::as_str()` gives the name `tag()` returns, which is also the
+name the bindings put on the wire. That name parses back with
+`str::parse`, and `ErrorCode::ALL` lists every code. `ErrorCode` is
+`#[non_exhaustive]`, so keep a wildcard arm.
+
+### `Error::operator()` names a nested operator
+
+`Error::operator()` (and the serialized error's `"operator"` field) names
+the innermost operator that failed, custom operators included, and plain
+and traced runs agree. `{"if": [true, {"+": [1, {"abs": ["x"]}]}, 0]}`
+reports `abs`. Releases before 5.8.0 reported the rule's root operator
+unless a deeper site set one, so code that expected the root (`if` here)
+needs updating. `Error::node_ids()` still carries the whole breadcrumb
+from the failing node to the root, and `Error::resolve_path(&logic)` turns
+it into named steps.
+
+### Finding every problem in a rule
+
+`compile` stops at the first problem and leaves calls that cannot succeed
+to fail at evaluation. `Engine::check` reports every problem it can see,
+in every branch, each with an RFC 6901 JSON Pointer into the rule:
+
+```rust
+use datalogic_rs::{CheckMode, Engine};
+
+let engine = Engine::new();
+let rule = r#"{"if": [true, {"vr": "x"}, {"map": [1]}]}"#;
+for d in engine.check(rule, CheckMode::Engine) {
+    println!("{d}");
+}
+// error at /if/1: unknown operator `vr`; did you mean `var`?
+// error at /if/2: `map` takes exactly 2 arguments, not 1
+```
+
+`Engine::compile_checked` compiles only a rule with no error diagnostic
+and otherwise returns them all in a `CompileError`. See
+[Rule Analysis](advanced/rule-analysis.md#checking-a-rule-enginecheck).
+
+### A rule behaves differently on another engine
+
+Any engine can evaluate a `Logic` compiled on another. Constant folding
+runs under the compiling engine's number coercion, NaN and division
+handling, loose equality and truthiness, so the engine that evaluates the
+rule recompiles it (once per distinct setting, cached on the rule) when
+those settings differ, and the result follows the evaluating engine. Other
+differences remain:
+
+- Custom operators: the rule finds the evaluating engine's operator by
+  name, which may be a different implementation.
+- Operator families: the rule keeps the operators it was compiled with,
+  whatever families the evaluating engine has.
+- Speed: the rule is evaluated without [input projection](performance.md#input-projection).
+
+`Logic::compiled_on(&engine)` tells you whether that engine compiled the
+rule. In 6.0 a rule evaluates only on its own engine.
+
+### An object with a `datetime` key is not treated as a datetime
+
+Only a single-key object, `{"datetime": "..."}` or `{"timestamp": "..."}`,
+is the boundary form of a datetime or duration. A record that has such a
+field next to others (`{"datetime": "2024-01-01T00:00:00Z", "id": 1}`) is
+ordinary data: `==`, `===`, `in` and `distinct` compare all of its
+fields, and `type` reports `"object"`. Before 5.8.0 any object carrying
+the key counted as a datetime. To compare the timestamps, read the field:
+`{"==": [{"var": "a.datetime"}, {"var": "b.datetime"}]}`.
+
 ### "the trait bound `T: CustomOperator` is not satisfied" / `Send`-`Sync` errors
 
-**Cause:** Custom operator type that isn't `Send + Sync`.
+**Cause:** The custom operator type is not `Send + Sync`.
 
 **Solution:** Use thread-safe primitives. Avoid `Rc`, `RefCell`, etc., in
 operator state; wrap shared state in `Arc<Mutex<_>>` or atomics.
@@ -136,12 +272,12 @@ shim. v5 is a hard cliff: there is no transitional feature flag.
 
 ### Slow compilation
 
-**Cause:** Very large or deeply nested expressions.
+**Cause:** Large or deeply nested expressions.
 
 **Solutions:**
 
-- Compile once, evaluate many times
-- Break expressions into smaller composable pieces
+- Compile once, evaluate many times.
+- Break expressions into smaller composable pieces.
 - Use `feature = "trace"` to see which sub-expressions run and how often
   (the step log carries iteration counts, not timings); for timing, use a
   sampling profiler such as perf or Instruments (see
@@ -160,42 +296,56 @@ for data in dataset {
 
 ## JavaScript / WASM Issues
 
-### "RuntimeError: memory access out of bounds"
-
-**Cause:** WASM module not initialized.
-
-**Solution:** Call `init()` before using any functions:
-
-```javascript
-import init, { evaluate } from '@goplasmatic/datalogic-wasm';
-
-await init();
-evaluate(logic, data, false);
-```
-
 ### "TypeError: Cannot read properties of undefined"
 
-**Cause:** Wrong import style for your environment.
+**Cause:** On the `web` target, the code called into the module before
+`init()` finished loading it. The message names an internal export, for
+example `(reading '__wbindgen_add_to_stack_pointer')`.
+
+**Solution:** Await `init()` once before creating an `Engine`:
+
+```javascript
+import init, { Engine } from '@goplasmatic/datalogic-wasm';
+
+await init();
+const engine = new Engine();
+engine.evalStr(logic, data);
+```
+
+### "TypeError: init is not a function"
+
+**Cause:** Under Node the package resolves to its `nodejs` target, which
+loads the module on import and has no `init` loader; a default import
+binds the module namespace instead.
 
 **Solutions:**
 
 ```javascript
-// Browser/Bundler: need default import for init
-import init, { evaluate } from '@goplasmatic/datalogic-wasm';
+// Code shared between browser and Node: guard the call
+import init, { Engine } from '@goplasmatic/datalogic-wasm';
+if (typeof init === 'function') await init();
 
-// Node.js: no init needed
-const { evaluate } = require('@goplasmatic/datalogic-wasm');
+// Node.js only: no init needed
+const { Engine } = require('@goplasmatic/datalogic-wasm');
 ```
+
+On a Node server, the native `@goplasmatic/datalogic-node` package is
+faster than WASM; see [Performance](performance.md).
 
 ### "Failed to fetch" in browser
 
-**Cause:** WASM file not accessible from the browser.
+**Cause:** The browser cannot load the `.wasm` file. On the `web` target,
+`init()` fetches `datalogic_wasm_bg.wasm` from next to
+`datalogic_wasm.js` (resolved against `import.meta.url`) unless you pass
+one: `init({ module_or_path: url })`.
 
 **Solutions:**
 
-1. Check your bundler configuration
-2. Ensure your server serves the WASM files correctly
-3. Check CORS headers if loading from CDN
+1. Check that your bundler copies the `.wasm` file into the build output.
+2. Check that your server serves it at that URL, with `Content-Type:
+   application/wasm` (without it the loader falls back to a slower path
+   and logs a warning).
+3. Check CORS headers if loading from a CDN.
 
 For Webpack:
 
@@ -210,12 +360,13 @@ module.exports = {
 
 ### Results are strings, not values
 
-**Cause:** WASM returns JSON strings, not native values.
+**Cause:** The WASM binding takes and returns JSON strings, not native
+values.
 
 **Solution:** Parse the result:
 
 ```javascript
-const resultString = evaluate(logic, data, false);
+const resultString = engine.evalStr(logic, data);
 const result = JSON.parse(resultString);
 ```
 
@@ -223,14 +374,19 @@ const result = JSON.parse(resultString);
 
 **Cause:** Recompiling rules repeatedly.
 
-**Solution:** Use `CompiledRule`:
+**Solution:** Compile once with `engine.compile` and evaluate the `Rule`:
 
 ```javascript
-const rule = new CompiledRule(logic, false);
+const engine = new Engine();
+const rule = engine.compile(logic);
 for (const item of items) {
   rule.evaluate(JSON.stringify(item));
 }
 ```
+
+The `CompiledRule` class and the free `evaluate` / `evaluateWithTrace`
+functions are deprecated and removed in 6.0. Build an `Engine` and use
+`compile`, `evalStr` and `engine.evaluateWithTrace`.
 
 ---
 
@@ -238,7 +394,8 @@ for (const item of items) {
 
 ### "ResizeObserver loop completed with undelivered notifications"
 
-**Cause:** Container size changes rapidly. Usually harmless.
+**Cause:** The container size changes rapidly. The browser reports the
+skipped notifications; the warning is usually harmless.
 
 ### Editor shows blank / empty
 
@@ -275,11 +432,12 @@ import '@goplasmatic/datalogic-ui/styles.css';
 
 With `data` the toolbar gains the debugger controls (play/pause, step, and a
 step timeline). Values appear as you step: the current node shows its context
-and result in a bubble. Nodes do not display results at rest.
+and result in a bubble. Nodes show no results until you step.
 
 ### SSR / Hydration errors in Next.js
 
-**Cause:** WASM doesn't run on server.
+**Cause:** The editor loads the WASM engine in the browser; server
+rendering cannot run it.
 
 **Solution:** Use a client component with dynamic import:
 

@@ -1,6 +1,6 @@
 # Basic Concepts
 
-This page covers the model behind datalogic-rs: rules, compilation, evaluation, and the engine.
+This page covers the model behind datalogic-rs: rules, compilation, evaluation and the engine.
 
 ## JSONLogic Format
 
@@ -35,11 +35,11 @@ Arguments can be:
 
 ## Compilation vs Evaluation
 
-`datalogic` separates rule processing into two phases: you compile a rule once, then evaluate it against as many data payloads as you need.
+datalogic-rs works in two phases: you compile a rule once, then evaluate it against as many data payloads as you need.
 
 ### Compilation Phase
 
-When you compile a rule, the engine parses the JSON rule, resolves string operator names to integer OpCodes, performs strength reduction and constant folding, and produces a reusable, immutable compiled logic AST:
+When you compile a rule, the engine parses the JSON, resolves operator names to OpCodes (and custom operators to their slot on the engine), runs constant folding, strength reduction, dead-branch removal and common-subexpression elimination, and returns an immutable compiled tree you can reuse:
 
 <div class="codetabs">
 
@@ -85,9 +85,11 @@ $rule = $engine->compile('{">": [{"var": "x"}, 10]}');
 
 </div>
 
+`compile` accepts a rule with an unknown operator and leaves it to fail when evaluation reaches it. `check` reports that and other mistakes before anything runs, and `compile_checked` (`compileChecked` in the bindings) refuses such a rule; see [Rule Analysis](../advanced/rule-analysis.md).
+
 ### Evaluation Phase
 
-During evaluation, the engine dispatches operations via OpCodes and walks the data context. It allocates evaluation buffers in a transient or session-scoped memory arena.
+During evaluation, the engine dispatches each node by its OpCode and reads from the data context. Intermediate values live in a memory arena: a fresh one per one-shot call, or the one a session owns.
 
 To evaluate a compiled rule against data with a reusable session:
 
@@ -176,9 +178,9 @@ echo $result; // "true"
 
 ## The Engine
 
-The `Engine` holds custom configurations and registered operators. Once constructed, the engine is immutable.
+The `Engine` holds the evaluation configuration and the registered custom operators.
 
-To construct and configure an engine in each runtime:
+To build and configure an engine in each runtime:
 
 <div class="codetabs">
 
@@ -215,6 +217,7 @@ const engineWithOps = new Engine({}, {
 ```
 
 ```python
+import json
 from datalogic_py import Engine
 
 # 1. Default engine
@@ -299,17 +302,20 @@ $engineWithOps = Engine::builder()
 </div>
 
 The engine:
-- Owns the registered custom operators (frozen at `build()`)
-- Holds the evaluation configuration
-- Provides compile and evaluate methods
+- owns the registered custom operators, fixed at `build()`
+- holds the evaluation configuration
+- provides the compile and evaluate methods
 
-> **Note:** v5 makes operator registration **builder-only**. You can no
-> longer mutate an `Engine` to add operators after construction.
+Operator registration is builder-only. To change a running engine's
+operators or configuration, start a builder from it with
+`Engine::to_builder()` and build a new engine; the two engines share
+each operator instance.
 
 ## Context Stack
 
-The context stack manages variable scope during evaluation. Array
-operations like `map`, `filter`, and `reduce` depend on it.
+The context stack tracks variable scope during evaluation. Iterator
+operators such as `map`, `filter` and `reduce` push a frame for each
+element.
 
 ```rust
 // In a filter operation, "" refers to the current element
@@ -320,19 +326,22 @@ let r = datalogic_rs::eval_str(
 // Result: "[4,5]"
 ```
 
-During array operations:
-- `""` (or `var` with empty string) refers to the current element
-- The outer data context is still accessible
-- Nested operations push and pop frames automatically
+Inside an iterator body:
+- `{"var": ""}` reads the current element
+- `val` with a level marker (`{"val": [[2], "field"]}`) reads an enclosing frame or the root (see [Variable Access](../operators/variable-access.md))
+- each nested iterator pushes its own frame and pops it when done
 
 ## Type Coercion
 
-JSONLogic operators often perform type coercion:
+Several operators coerce types:
 
 ### Arithmetic
-- Arithmetic operators parse strings as numbers when possible (`"5" + 3 = 8`)
-- Non-numeric strings raise a `Thrown { type: "NaN" }` error by default;
-  configurable via [`EvaluationConfig::arithmetic_nan_handling`](../advanced/configuration.md)
+- Arithmetic operators parse numeric strings as numbers (`"5" + 3 = 8`)
+- A non-numeric string, including `"NaN"`, `"inf"` and `"infinity"`, raises
+  a `Thrown { type: "NaN" }` error by default; change that with
+  [`EvaluationConfig::arithmetic_nan_handling`](../advanced/configuration.md#nan-handling)
+- Integers stay exact up to the `i64` range: values above 2^53 compare,
+  divide and sort without rounding
 
 ### Comparison
 - `==` performs loose equality (with type coercion)
@@ -340,14 +349,16 @@ JSONLogic operators often perform type coercion:
 
 ### Truthiness
 By default, the engine uses JavaScript-style truthiness:
-- Falsy: `false`, `0`, `""`, `null`, `[]`, `{}`
+- Falsy: `false`, `0`, `NaN`, `""`, `null`, `[]`, `{}`
 - Truthy: everything else
 
-You can change this via `EvaluationConfig`.
+`EvaluationConfig::truthy_evaluator` changes the rule, and `Engine::truthy_of`
+(`truthy` in the bindings) applies the engine's rule to a value you
+already hold.
 
 ## Thread Safety
 
-`Logic` is `Send + Sync`, so you can share it across threads via `Arc`:
+`Logic` is `Send + Sync`, so you can share it across threads in an `Arc`:
 
 ```rust
 use datalogic_rs::Engine;
@@ -371,9 +382,14 @@ for h in handles {
 }
 ```
 
+A `Session` borrows its engine. To keep a session in a struct field, move
+it to another thread, or hold it across an `.await`, use `SharedSession`,
+which holds the engine by `Arc` (`SharedSession::new(Arc<Engine>)`); see
+[Thread Safety](../advanced/threading.md).
+
 ## Next Steps
 
 - [Operators Overview](../operators/overview.md): every available operator
 - [Configuration](../advanced/configuration.md): customize evaluation behavior
 - [Custom Operators](../advanced/custom-operators.md): extend the engine with your own logic
-- [Migration Guide](../migration.md): move from v4 to v5
+- [Migration Guide](../migration.md): move from v4 to v5, or from an earlier 5.x release
