@@ -28,8 +28,7 @@
 # skipped CI). The release `validate` job runs `--strict`, so a release
 # can never ship stale numbers; `--write` is the one-command fix.
 #
-# CHANGELOG.md and TECH_DEBT.md are exempt everywhere: they are historical
-# records.
+# CHANGELOG.md is exempt everywhere: it is a historical record.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -72,7 +71,7 @@ patterns = [
     (r"(conformance\s+(?:battery|suite)\s+)\(\d+ suites\)", rf"\g<1>({suites} suites)"),
 ]
 skip_dirs = {"node_modules", "target", "dist", "dist-embed", "book", ".git", "vendor", ".venv"}
-skip_files = {"CHANGELOG.md", "TECH_DEBT.md"}
+skip_files = {"CHANGELOG.md"}
 drift = []
 for root, dirs, files in os.walk("."):
     dirs[:] = sorted(d for d in dirs if d not in skip_dirs)
@@ -167,7 +166,6 @@ for pat in "${stale_patterns[@]}"; do
     --include='*.md' \
     --include='*.txt' \
     --exclude='CHANGELOG.md' \
-    --exclude='TECH_DEBT.md' \
     --exclude-dir=node_modules \
     --exclude-dir=target \
     --exclude-dir=dist \
