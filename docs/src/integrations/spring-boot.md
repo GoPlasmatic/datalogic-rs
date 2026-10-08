@@ -16,7 +16,7 @@ database column, changeable by ops without a deployment.
 <dependency>
   <groupId>io.github.goplasmatic</groupId>
   <artifactId>datalogic</artifactId>
-  <version>5.3.0</version>
+  <version>5.8.0</version>
 </dependency>
 ```
 

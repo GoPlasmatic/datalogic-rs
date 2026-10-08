@@ -664,10 +664,10 @@ WASM-specific notes:
   handle costs about one string-path evaluation, so it pays for itself
   from the second evaluation onward. For one-off payloads, stay on
   the string path.
-- **Self-contained module**: approximately 2.84 MB uncompressed, around
-  600 KB gzipped (5.3.0 release build). Most of the growth since 5.1 is
-  the compiled-in IANA timezone database behind the `datetime`
-  feature's timezone arguments (5.2.0); see
+- **Self-contained module**: approximately 5.2 MB uncompressed, around
+  1.0 MB gzipped (5.8.0 release build). It compiles in the IANA
+  timezone database behind the `datetime` feature's timezone
+  arguments (since 5.2.0); see
   [Building from source](#building-from-source) for the
   `CHRONO_TZ_TIMEZONE_FILTER` knob that shrinks it and the measured
   per-profile sizes

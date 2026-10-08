@@ -92,7 +92,7 @@ const result: string = evaluate('{"==": [1, 1]}', '{}', false);
 
 ## Bundle Size
 
-The WASM binary is a single self-contained module: approximately 2.84 MB uncompressed, around 600 KB gzipped (measured on the 5.3.0 release build). Most of the growth since 5.1 is the compiled-in IANA timezone database that the `datetime` feature's `format_date` / `parse_date` timezone arguments use (5.2.0). Size-sensitive embedders building from source can shrink it by setting `CHRONO_TZ_TIMEZONE_FILTER` to the zones they need; see [Building from source](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/wasm#building-from-source).
+The WASM binary is a single self-contained module: approximately 5.2 MB uncompressed, around 1.0 MB gzipped (measured on the 5.8.0 release build). It compiles in the IANA timezone database that the `datetime` feature's `format_date` / `parse_date` timezone arguments use (since 5.2.0). Size-sensitive embedders building from source can shrink it by setting `CHRONO_TZ_TIMEZONE_FILTER` to the zones they need; see [Building from source](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/wasm#building-from-source).
 
 ## CDN Usage
 

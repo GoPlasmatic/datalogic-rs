@@ -37,11 +37,11 @@ go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5
 <dependency>
     <groupId>io.github.goplasmatic</groupId>
     <artifactId>datalogic</artifactId>
-    <version>5.3.0</version>
+    <version>5.8.0</version>
 </dependency>
 
 // Gradle: build.gradle.kts
-implementation("io.github.goplasmatic:datalogic:5.3.0")
+implementation("io.github.goplasmatic:datalogic:5.8.0")
 ```
 
 ```csharp
