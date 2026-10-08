@@ -1,7 +1,7 @@
 //! Example demonstrating the configuration system in Engine.
 //!
-//! Uses the v5 string-based one-shot API ([`Engine::evaluate_str`]) — no
-//! `serde_json::Value` boundary, no `compat` feature required.
+//! Uses the string-based one-shot API ([`Engine::eval_str`]), so it needs
+//! no `serde_json::Value` boundary and no extra feature.
 
 use datalogic_rs::{Engine, EvaluationConfig, NanHandling, NumericCoercionConfig, TruthyEvaluator};
 

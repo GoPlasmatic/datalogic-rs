@@ -13,9 +13,11 @@ use Goplasmatic\Datalogic\Internal\Native;
 
 /**
  * Builder for engines with custom JSONLogic operators implemented in
- * PHP. Mirrors the cross-binding contract: registering a name that
- * collides with a built-in (`+`, `if`, `var`, …) silently dispatches
- * to the built-in at evaluation time — built-ins always win.
+ * PHP. Mirrors the cross-binding contract: a custom operator named like a
+ * built-in of the build (`+`, `if`, `var`, …) never runs, because the
+ * built-in wins at evaluation. `withStrictOperatorNames(true)` makes such
+ * a registration fail instead, and a family left out with
+ * `withFamilies()` frees its names for custom operators.
  */
 final class EngineBuilder
 {

@@ -16,10 +16,12 @@ import java.util.List;
 
 /**
  * Builder for engines with custom JSONLogic operators implemented in
- * Java. Mirrors the cross-binding contract: registering a name that
- * collides with a built-in ({@code +}, {@code if}, {@code var}, …)
- * silently dispatches to the built-in at evaluation time — built-ins
- * always win.
+ * Java. Mirrors the cross-binding contract: a custom operator named like a
+ * built-in of the build ({@code +}, {@code if}, {@code var}, …) never
+ * runs, because the built-in wins at evaluation.
+ * {@link #withStrictOperatorNames(boolean)} makes such a registration
+ * fail instead, and a family left out with {@link #withFamilies(String...)}
+ * frees its names for custom operators.
  *
  * <p>A builder dropped without {@link #build()} (for instance after a
  * setter threw) is released by a {@link java.lang.ref.Cleaner} once it is

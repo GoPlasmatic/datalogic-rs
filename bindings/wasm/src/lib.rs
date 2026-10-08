@@ -592,7 +592,9 @@ impl Engine {
     }
 
     /// Compile `logic` outside templating mode, whatever this engine was
-    /// built with: a multi-key object or an unknown operator is an error.
+    /// built with. A multi-key object fails to compile; an unknown
+    /// operator compiles and fails with `InvalidOperator` when evaluated
+    /// (`compileChecked` refuses it up front).
     #[wasm_bindgen(js_name = compileStrict)]
     pub fn compile_strict(&self, logic: &str) -> Result<Rule, JsValue> {
         let compiled = self
@@ -731,7 +733,7 @@ impl Engine {
     }
 
     /// Names of the custom operators registered on this engine via
-    /// `customOperators`, in registration order. Built-ins are listed by
+    /// `customOperators`, in no particular order. Built-ins are listed by
     /// the module-level [`builtin_operator_names`].
     #[wasm_bindgen(js_name = customOperatorNames)]
     pub fn custom_operator_names(&self) -> Vec<String> {

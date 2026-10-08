@@ -330,9 +330,9 @@ pub unsafe extern "C" fn datalogic_engine_builder_set_families(
 /// may do: an integer ceiling on the operations one evaluation may
 /// charge, or `null` for unbounded (the default). Crossing it fails the
 /// evaluation with tag `"BudgetExceeded"` before the work is done, and a
-/// `try` in the rule cannot recover from it. There is no per-call budget
-/// across this ABI yet — the config is engine-wide, so build a second
-/// engine when two budgets are wanted.
+/// `try` in the rule cannot recover from it. The budget is engine-wide;
+/// `datalogic_session_evaluate_metered` reports what one evaluation
+/// charged, so a host can enforce its own per-call limit on top.
 ///
 /// # Safety
 ///

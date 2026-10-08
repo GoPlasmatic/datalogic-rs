@@ -6,7 +6,7 @@
  * exported CATEGORY_COLORS, the single source of the category palette.
  *
  * `icon` is typed as IconName so an unregistered name is a compile error
- * instead of a runtime crash inside <Icon> (which has no fallback).
+ * instead of the generic `list` icon that <Icon> falls back to.
  */
 
 import type { CategoryMeta, OperatorCategory } from './operators.types';

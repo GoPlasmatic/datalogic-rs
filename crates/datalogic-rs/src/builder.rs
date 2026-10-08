@@ -136,9 +136,10 @@ impl EngineBuilder {
     /// Set the escape prefix that marks a template object key as a literal
     /// output field instead of an operator invocation. Unset by default.
     ///
-    /// Without it, a single-key object is *always* an operator call, so the
-    /// ~60 built-in names (`type`, `map`, `if`, `keys`, `length`, `+`, …)
-    /// and every registered custom operator are unreachable as output keys.
+    /// Without it, a single-key object whose key names an operator is an
+    /// operator call, so the built-in names (87 with every operator family:
+    /// `type`, `map`, `if`, `keys`, `length`, `+`, …) and every registered
+    /// custom operator are unreachable as output keys.
     /// With it, exactly one leading `prefix` is stripped from every template
     /// key, and an escaped key is never resolved as an operator:
     ///
@@ -160,10 +161,12 @@ impl EngineBuilder {
     /// begins real keys in MongoDB documents and JSON Schema output; those
     /// callers can pick `~` or `#` and leave their `$` keys untouched.
     ///
-    /// Only effective in templating mode ([`Self::with_templating`]) and
-    /// when the crate is built with `feature = "templating"`. Without
-    /// templating every single-key object is an operator invocation, so
-    /// there is nothing to escape *into* and this setting is inert.
+    /// It applies wherever a rule compiles as a template, with
+    /// `feature = "templating"`: on an engine in templating mode
+    /// ([`Self::with_templating`]) and through `Engine::compile_template`
+    /// on any engine. A strict compile reads
+    /// every single-key object as an operator invocation, so there is
+    /// nothing to escape *into* and the setting does nothing there.
     ///
     /// ```
     /// use datalogic_rs::Engine;

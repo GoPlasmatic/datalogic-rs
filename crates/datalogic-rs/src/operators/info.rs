@@ -22,9 +22,9 @@ pub struct OperatorInfo {
     /// The Cargo feature that gates the family, or `None` for the core
     /// JSONLogic operators.
     pub feature: Option<&'static str>,
-    /// Fewest arguments the operator's signature reads. Operators that
-    /// check their own argument lists (variadics, lazy and control-flow
-    /// operators, iterators) report `0`.
+    /// Fewest arguments the operator reads, as declared on its table row:
+    /// `==` and `map` report 2, `and` and `if` report 1. Variadics that
+    /// accept an empty list (`+`, `cat`, `missing`) report `0`.
     pub min_args: usize,
     /// Most arguments the operator's signature reads, or `None` when it
     /// does not declare a maximum.

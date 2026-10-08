@@ -2,7 +2,7 @@
 //! evaluating engine's settings, even where compiling folded a constant
 //! subexpression. Folding evaluates under the compiling engine's settings
 //! (number coercion, NaN and division handling, loose equality,
-//! truthiness), so before 5.8.1 a folded `{"/": [1.5, 0]}` kept the
+//! truthiness), so before 5.8.0 a folded `{"/": [1.5, 0]}` kept the
 //! compiling engine's answer on an engine configured to return `null`,
 //! while the same division computed at runtime returned `null`.
 

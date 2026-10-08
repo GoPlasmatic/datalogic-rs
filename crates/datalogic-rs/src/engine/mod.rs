@@ -1020,14 +1020,13 @@ impl Engine {
     ///   that fills the slot.
     ///
     /// The count is deterministic for a pinned crate version and a given
-    /// (rule, data) pair. It is not stable *across* versions: a new fast
-    /// path or fold changes what gets dispatched. Nor across configs: an
-    /// iterator fast path charges one per item, where the general path
-    /// charges each node of the body, and under
-    /// [`MissingVar::Error`](crate::MissingVar::Error) no fast path runs,
-    /// so `map`, `filter` and `reduce` over a field cost two to four times
-    /// as much there. Budget for the work you want to allow, not for an
-    /// exact number you measured.
+    /// (rule, data) pair, whichever evaluation path runs: an iterator fast
+    /// path charges what the general path would for the same data, so
+    /// tracing and [`MissingVar::Error`](crate::MissingVar::Error), which
+    /// turn the fast paths off, leave it unchanged. It is not stable
+    /// *across* versions: a new fold changes what gets dispatched. Budget
+    /// for the work you want to allow, not for an exact number you
+    /// measured.
     ///
     /// # Example
     ///

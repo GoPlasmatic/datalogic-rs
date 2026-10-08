@@ -21,7 +21,8 @@
 //! convenience-API tiers (`Engine::eval_str`, `Session::eval_borrowed`)
 //! are intentionally not in the matrix — their numbers measure
 //! API-shape costs (parse cost, session reset cost), not engine cost.
-//! For those, see `bin/self.rs`.
+//! `bin/self.rs` times `Session::eval_borrowed`, and
+//! `bin/boundary_core.rs` times `Engine::evaluate` over each input form.
 //!
 //! Adding a subject:
 //! - **Native Rust crate**: add a Cargo feature in `tools/benchmark/Cargo.toml`

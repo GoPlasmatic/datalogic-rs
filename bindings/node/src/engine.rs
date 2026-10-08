@@ -213,7 +213,9 @@ impl Engine {
     }
 
     /// Compile `rule` outside templating mode, whatever this engine was
-    /// built with: a multi-key object or an unknown operator is an error.
+    /// built with. A multi-key object fails to compile; an unknown
+    /// operator compiles and fails with `InvalidOperator` when evaluated
+    /// (`compileChecked` refuses it up front).
     #[napi(catch_unwind)]
     pub fn compile_strict(&self, env: Env, rule: Value) -> Result<Rule> {
         guard(&env, || self.compile_in(&env, rule, CheckMode::Strict))
@@ -380,7 +382,7 @@ impl Engine {
     }
 
     /// Names of the custom operators registered on this engine (second
-    /// constructor argument), in registration order. Built-ins are listed
+    /// constructor argument), in no particular order. Built-ins are listed
     /// by the module-level `builtinOperatorNames()`.
     #[napi(catch_unwind, js_name = "customOperatorNames")]
     pub fn custom_operator_names(&self) -> Vec<String> {

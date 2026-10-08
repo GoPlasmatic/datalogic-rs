@@ -20,9 +20,11 @@ public delegate string CustomOperator(string argsJson);
 
 /// <summary>
 /// Builder for engines with custom operators. Mirrors the cross-binding
-/// contract (registering a name that collides with a built-in like
-/// <c>+</c> / <c>if</c> / <c>var</c> silently dispatches to the built-in
-/// — built-ins always win).
+/// contract: a custom operator named like a built-in of the build
+/// (<c>+</c>, <c>if</c>, <c>var</c>, ...) never runs, because the built-in
+/// wins at evaluation. <see cref="WithStrictOperatorNames"/> makes such a
+/// registration fail instead, and a family left out with
+/// <see cref="WithFamilies"/> frees its names for custom operators.
 /// </summary>
 /// <remarks>
 /// A builder dropped without <see cref="Build"/> (for instance after a

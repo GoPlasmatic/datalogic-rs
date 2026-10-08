@@ -172,8 +172,8 @@ pub enum MissingVar {
     /// error naming the path.
     ///
     /// Iterators then read every element through the general path, since
-    /// an inline field read cannot raise: slower, and charged more by
-    /// `Engine::evaluate_metered`.
+    /// an inline field read cannot raise. That path is slower;
+    /// `Engine::evaluate_metered` charges the same count on either.
     Error,
 }
 

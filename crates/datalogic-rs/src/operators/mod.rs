@@ -7,9 +7,10 @@
 //! # Operator → required feature
 //!
 //! The default build (`features = []`) carries the JSONLogic baseline.
-//! Extra operators live behind opt-in features; rules that use them
-//! against an engine compiled without the feature error out at compile
-//! time as `InvalidOperator("…")`.
+//! Extra operators live behind opt-in features. A rule that uses one
+//! against an engine compiled without the feature still compiles, and
+//! evaluating it fails with `InvalidOperator("…")`; `Engine::check` and
+//! `Engine::compile_checked` report it up front.
 //!
 //! | Operator(s) | Required feature |
 //! |---|---|

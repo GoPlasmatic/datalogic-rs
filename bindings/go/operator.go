@@ -235,6 +235,8 @@ func (b *EngineBuilder) StrictOperatorNames(on bool) *EngineBuilder {
 //   - numeric_coercion: object with bool keys empty_string_to_zero,
 //     null_to_zero, bool_to_number, reject_non_numeric
 //   - max_recursion_depth: integer >= 1
+//   - missing_var: "null" (the default) | "error" (a var/val read that
+//     finds nothing fails with Type "VariableNotFound")
 //   - ops_budget: integer >= 1, or null for unbounded (the default)
 //
 // ops_budget is how a caller bounds the work a rule may do: a ceiling on
