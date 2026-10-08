@@ -753,6 +753,10 @@ jobs:
           distribution: 'temurin'
           java-version: ${{ matrix.java }}
 
+      # The runner image's Maven floats; see the action for why that
+      # broke the 5.8.0 Central bundle.
+      - uses: ./.github/actions/install-maven
+
       - name: Cache Maven repository
         uses: actions/cache@v5
         with:

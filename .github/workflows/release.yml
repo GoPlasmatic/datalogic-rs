@@ -3,29 +3,33 @@ name: Release
 # Single unified release workflow. One `git tag v5.x.y && git push --tags`
 # fires this and ships every artifact in the monorepo.
 #
-# Flow (two phases — all builds must pass before any publish runs):
+# Flow (two phases: every build must pass before anything publishes):
 #
 #   validate
 #      │
-#      ├─ ci             (the whole of ci.yml, against the tagged commit)
+#      ├─ ci              (the whole of ci.yml, against the tagged commit)
 #      ├─ build-wasm
-#      ├─ build-ui (needs build-wasm)
-#      ├─ python-build-wheels (matrix)
-#      ├─ python-build-sdist
-#      ├─ python-test
-#      ├─ go-build-staticlib (matrix)
-#      ├─ node-build-prebuild (matrix)
-#      └─ smoke-hosts    (packaged JVM/.NET/PHP on macOS + Windows;
-#                         reported, not yet a gate)
-#      ↓  ci + all builds + tests green
-#   publish-crate              ← single chokepoint; nothing publishes if any build above fails
+#      │    └─ build-ui
+#      ├─ build-python    (wheels matrix, sdist, tests)
+#      ├─ build-go        (staticlib matrix)
+#      ├─ build-node      (prebuild matrix, JS loader and typings)
+#      └─ build-c-cdylib  (cdylib matrix)
+#           ├─ build-dotnet
+#           ├─ build-jvm
+#           └─ build-php
+#                └─ smoke-hosts  (packaged JVM/.NET/PHP on macOS and
+#                                 Windows; reported, not a gate)
+#      ↓  ci and every build-* green
+#   publish-crate         ← single chokepoint: nothing publishes if any build fails
 #      │
-#      ├─ publish-wasm   (downloads build-wasm artifact, npm publish — no rebuild)
-#      ├─ publish-python (downloads wheel/sdist artifacts, PyPI upload)
-#      ├─ publish-go     (downloads go-staticlib artifacts, tag push)
-#      └─ publish-node   (downloads node-prebuild artifacts, napi prepublish + npm publish)
-#      ↓  publish-wasm done
-#   publish-ui            (downloads build-ui artifact, npm publish)
+#      ├─ publish-wasm    (npm, from the build-wasm artifact)
+#      │    └─ publish-ui (npm, from the build-ui artifact)
+#      ├─ publish-python  (PyPI)
+#      ├─ publish-go      (pushes the bindings/go/vX.Y.Z tag)
+#      ├─ publish-node    (npm: per-platform packages, then the umbrella)
+#      ├─ publish-dotnet  (NuGet)
+#      ├─ publish-jvm     (Maven Central)
+#      └─ publish-php     (subtree split to datalogic-php, Packagist)
 #
 # github-release runs in PARALLEL with publish-crate (gated on the same
 # build phase, not on any publish job) so a flake in one registry
@@ -790,6 +794,10 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '25'
+
+      # The runner image's Maven floats; see the action for why that
+      # broke the 5.8.0 Central bundle.
+      - uses: ./.github/actions/install-maven
 
       - name: Check if version exists on Maven Central
         id: check

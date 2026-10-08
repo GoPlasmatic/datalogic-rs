@@ -1,0 +1,51 @@
+name: Install Maven (pinned)
+description: |
+  Installs a pinned Apache Maven release, checksum-verified, and puts its
+  bin/ first on PATH, ahead of the runner image's own Maven.
+
+  The runner image's Maven moves with the image. ubuntu24/20261004 moved
+  it from 3.9.16 to 3.10.0, which stages `maven-metadata-local.xml` next
+  to the version directory. central-publishing-maven-plugin 0.11.0 only
+  removes the older `maven-metadata-central-staging.xml` name before
+  bundling, so Maven Central rejected the 5.8.0 bundle ("Bundle has
+  content that does NOT have a .pom file"). Bump `version` and `sha512`
+  together (Apache publishes the sha512 next to each binary as
+  `<asset>.sha512`), and re-check the Central bundle layout when you do.
+
+inputs:
+  version:
+    description: Apache Maven version
+    required: false
+    default: '3.9.16'
+  sha512:
+    description: SHA-512 of apache-maven-<version>-bin.tar.gz
+    required: false
+    default: 831a8591fe20c8243b1dbe7d71e3244f31d1665b0804b2e825e38cbbe5ce0cafb8338851f90780735568773e0a6cd07bbec107cda0b896b008b861075358b6f6
+
+runs:
+  using: composite
+  steps:
+    - name: Download and verify Maven
+      shell: bash
+      env:
+        MAVEN_VERSION: ${{ inputs.version }}
+        MAVEN_SHA512: ${{ inputs.sha512 }}
+      run: |
+        set -euo pipefail
+        asset="apache-maven-${MAVEN_VERSION}-bin.tar.gz"
+        dir="$RUNNER_TEMP/maven"
+        mkdir -p "$dir"
+        # archive.apache.org keeps every release; the dlcdn mirrors drop
+        # a version once a newer one ships.
+        curl -sSfL --retry 3 -o "$dir/$asset" \
+          "https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/${asset}"
+        echo "${MAVEN_SHA512}  $dir/$asset" | shasum -a 512 -c -
+        tar -xzf "$dir/$asset" -C "$dir"
+        echo "$dir/apache-maven-${MAVEN_VERSION}/bin" >> "$GITHUB_PATH"
+
+    - name: Show Maven version
+      shell: bash
+      run: |
+        mvn -v
+        mvn -v | head -1 | grep -qF "Apache Maven ${{ inputs.version }} " \
+          || { echo "::error::mvn on PATH is not ${{ inputs.version }}"; exit 1; }
