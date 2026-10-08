@@ -8,221 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
-## [Unreleased]
-
-### Fixed
-
-- **A `reduce` can no longer build a value deep enough to abort the
-  process.** A fold that wraps its accumulator each step
-  (`{"reduce": [xs, [{"var": "accumulator"}], null]}`) nested one level per
-  item, and serialising, comparing or copying the result recursed once per
-  level: 100,000 items overflowed an 8 MiB stack and aborted with
-  `fatal runtime error: stack overflow`, which no `catch_unwind` can stop.
-  The accumulator may now nest at most 1,024 levels (four times what the
-  parser accepts as input), and passing that is an `InvalidArguments`
-  error. Accumulators are measured against the previous step's parts and,
-  for bodies of built-ins, only every few steps, so folds to numbers and
-  folds that rebuild flat lists cost what they did.
-- **`format_date` with an unknown chrono specifier is an error, not a
-  panic.** A raw specifier chrono does not know (`"%Q"`) or a trailing `%`
-  panicked inside chrono's formatter. It is now
-  `InvalidArguments("Invalid date format")`.
-- **A rule compiled on one engine follows the evaluating engine's
-  settings.** Constant folding evaluates under the compiling engine's
-  number coercion, NaN and division handling, loose equality and
-  truthiness, so `{"/": [1.5, 0]}` compiled on a default engine kept
-  `1.797e308` on an engine set to return `null` on division by zero, while
-  the same division computed at runtime returned `null`; a dead `if` branch
-  was dropped by the compiling engine's truthiness. A rule whose compile
-  folded something under those settings now keeps its source and is
-  compiled again on an engine whose settings differ (once per distinct
-  setting, cached on the rule). Rules evaluated on the engine that
-  compiled them, or on one with the same settings, are unchanged.
-- **A record with a `datetime` or `timestamp` field is ordinary data.**
-  Any object carrying such a key was taken for the boundary form of a
-  datetime, so `===` and `==` judged two different records equal by that
-  field alone, `in` matched them, `distinct` dropped all but one, and
-  `type` reported `"datetime"` or `"duration"`. Only the single-key form
-  (`{"datetime": "..."}`, `{"timestamp": "..."}`) is a datetime now.
-
-- **`Logic::to_json` writes valid JSON and keeps dotted `val` keys.**
-  Paths, `missing` / `exists` paths, template keys, custom operator names
-  and `throw` types holding quotes, backslashes or control characters
-  came out unescaped (so the trace tree's `expression` strings broke
-  too), and `{"val": "a.b"}` came back as `{"var": "a.b"}`, which reads
-  `a` then `b`. Such reads are now written in the `val` form; other output
-  is unchanged.
-- **`Error::resolve_path` names a `var` default and template fields
-  right** on a rule not compiled for tracing: `/var/1` (was `/var/0`) and
-  `/b` (was `/1`), as a traced compile records them.
-- **`Error::operator` names the innermost failing operator**, custom
-  operators included, and plain and traced runs agree. It was the root
-  operator unless a deeper site set one, and the traced run always
-  reported the root. *Behaviour change* in that field and in the
-  serialized error's `"operator"`.
-- **`Engine::to_builder()` keeps the names registered with
-  `try_add_operator`**, so `try_build()` on a reloaded builder checks them
-  again.
-- **`EngineBuilder::try_build()` refuses `max_recursion_depth == 0`**, as
-  `EvaluationConfig::from_json_str` already did; `build()` is unchanged.
-  Its doc now says what it bounds (evaluations running at once on one
-  thread).
-- **`fractional` weights past 32 bits no longer overflow.** `[i64::MAX,
-  1]` returned null and `[2^40, 2^40]` split differently from `[1, 1]` in
-  release builds (a debug build panicked). Weights clamp to `i32::MAX`, as
-  flagd's are 32-bit; weights within 32 bits pick exactly as before.
-- **Tensor constructors refuse more than 2^28 elements.** `zeros`, `full`,
-  `scatter`, `rle_expand`, `one_hot` and `pad` sized a buffer from the
-  rule's dimensions with only a `usize` overflow check, so
-  `{"zeros": [[1000000, 1000000], "f64"]}` asked for 8 TB and hung or
-  aborted the process. Past 2^28 elements (2 GiB of `f64`) they are now
-  `InvalidArguments`.
-- **Metered counts no longer depend on data types, tracing or
-  `MissingVar`.** Iterator fast paths now charge what the general path
-  charges for the same data, and the double charge when a fused
-  `reduce(map(...))` gave up is gone. *Behaviour change:* counts for
-  fast-path shapes rise to match the general path.
-- **The `reduce` fast path no longer treats `accumulator.x` as the whole
-  accumulator** (`{"+": [{"var": "current"}, {"var": "accumulator.x"}]}`
-  summed the accumulator itself).
-- **Datetime arithmetic takes any number of operands, in either order:**
-  `{"+": [dt, "1d", "1d"]}`, `{"+": ["1d", dt]}` and `{"-": [dt, "1d",
-  "1d"]}` raised NaN.
-- **Integers above 2^53 compare, divide and sort exactly** in `==` (with
-  integer strings), `===`, `<` and friends, `/`, `%` and `sort`, and
-  variadic `+` / `*` coerce numeric strings as the binary forms do.
-  *Behaviour change:* such values are no longer rounded or judged equal.
-- **`NanHandling::CoerceToZero` substitutes 0** as documented instead of
-  skipping the value: `{"*": [2, "x", 3]}` is `0`, not `6`.
-- **The strings `"NaN"`, `"inf"`, `"infinity"` and overflowing literals no
-  longer coerce to non-finite numbers.** Arithmetic applies NaN handling
-  to them (it produced `null`), `==` and `<` raise NaN, and `abs`, `ceil`
-  and `floor` raise `InvalidArguments`.
-- **`ceil` / `floor` keep results outside the `i64` range as floats**
-  instead of saturating to `i64::MAX` / `i64::MIN`.
-- **`lower` / `upper` apply context-sensitive Unicode case rules**
-  (`"ΟΔΟΣ"` → `"οδος"`).
-- **`type` classifies strings with the datetime and duration parsers:**
-  `"password1"` is `"string"` (it was `"duration"`), and an offset or
-  naive ISO datetime is `"datetime"`.
-- **`Engine::operators()` / `operators.json` declare the costs the
-  operators charge:** the equality operators, `+ - * / %`, `max` / `min`
-  and `missing` / `missing_some` are `per_item`, `length` is `bytes`, and
-  `group_by` is `quadratic`. What any operator charges is unchanged.
-
-### Performance
-
-- One-shot `Engine::eval*` and top-level `eval*` project owned,
-  `serde_json` and `Roots` input onto what the rule reads, as `evaluate`
-  and `Session` already did.
-- The CSE compile pass is one post-order walk instead of re-walking
-  subtrees at every node; a projection binary-searches wide read sets;
-  template keys are borrowed instead of copied per evaluation; compiling
-  a borrowed `&OwnedDataValue` no longer deep-clones it; `split`, stepped
-  string `slice`, `format_date`, `parse_date`, `now` and `missing` copy
-  less.
-- Measured against 5.8.0 on the suites whose cases did not change, the
-  canonical bench geomean moves +1.0%; macro suites are within +3%
-  (`checkout-40` +1.4%).
-
-### Fixed (bindings)
-
-- **Node: a panic in the engine throws instead of aborting Node.** No
-  export was guarded, so any panic killed the process (and a panic in
-  `evaluateStrAsync` ran unguarded on the libuv pool). Every export now
-  carries `#[napi(catch_unwind)]`, and every call into the engine turns a
-  panic into a thrown error (or a rejected promise) with
-  `name`/`errorType` `"InternalError"`.
-- **Go: custom operators keep working after the Engine is closed or
-  collected.** `Engine.Close()` (also its finalizer) deleted the callback
-  handles that Rules and Sessions from that engine still call, so a later
-  evaluation crashed the process with `misuse of an invalid Handle`. The
-  handles now belong to a registry that the Engine, every Rule, Session
-  and TracedSession keep alive, and the callback state passes through C as
-  a C-allocated box rather than a Go pointer, as cgo's pointer rules
-  require.
-- **.NET: custom operators keep working after the Engine is disposed or
-  finalized.** `Engine.Dispose()` freed the delegates' `GCHandle`s while
-  Rules and Sessions still called them, failing with
-  `operator handle had wrong type`. The handles now belong to an object
-  that the Engine, every Rule, Session and TracedSession hold.
-
-- **C ABI: a custom-operator callback that re-enters the session running
-  it gets `DATALOGIC_STATUS_INVALID_ARG`** instead of undefined behaviour
-  (memory corruption in Go, JVM, .NET and PHP); `reset` / `free` on that
-  session do nothing, and `allocated_bytes` returns 0.
-- **C ABI: builder setters called after `datalogic_engine_builder_build`
-  fail with `DATALOGIC_STATUS_INVALID_ARG`** (`set_config_json`,
-  `set_families`, `set_template_key_escape`, `add_operator`); they
-  returned OK and did nothing.
-- **Traced evaluation keeps the result's object key order** in every
-  binding; keys came back sorted.
-- **Node: `allocatedBytes` no longer wraps above 4 GiB.** Python releases
-  the GIL while compiling and checking. A typed-result mismatch on a
-  datetime or duration reports `got string`, not `got object`.
-- **Go, .NET, PHP, JVM: an engine builder dropped before `Build` no longer
-  leaks its native builder**, and Go, .NET and JVM `Close` / `Dispose` /
-  `close()` free a handle exactly once under concurrent calls. JVM handles
-  never closed are freed by a shared `Cleaner`.
-- **PHP: Rules, Sessions and TracedSessions keep their Engine (and its
-  custom operators) alive**, wrapping a native handle a second time throws
-  `InvalidArgumentException` instead of double-freeing it later
-  (*behaviour change*), and the native library is found on Windows (the
-  machine name was matched case-sensitively against `AMD64` / `ARM64`).
-- **Go, .NET (and JVM for non-string fields): a malformed batch item
-  decodes like the other hosts**, as tag `"InternalError"` with the raw
-  JSON as the message.
-- **JVM: the native library is extracted once to a per-user cache named by
-  its SHA-256** (`~/.cache/datalogic/native/` or the platform
-  equivalent, falling back to a temp directory) instead of a fresh temp
-  directory per start, which piled up on Windows. The jar declares
-  `Automatic-Module-Name: com.goplasmatic.datalogic`.
-- **Go: the module tag's static libraries are about 6x smaller**
-  (darwin/arm64 81.6 → 13.5 MB): a debuginfo-free, LTO'd `go-release`
-  profile. **.NET** ships `net8.0` and `net10.0` builds.
-- **WASM: the npm package declares `engines.node >=18`**, matching the
-  Node package. Python wheels list Python 3.14.
-
-### Fixed (UI)
-
-- **The CommonJS build (`require`) starts the WASM engine again**; Jest,
-  CJS SSR and older-bundler consumers got an editor without evaluation.
-  The editor shows a banner when the engine fails to load.
-- **Keyboard shortcuts apply only while focus is inside that editor**,
-  instead of taking keys from the host page and driving every editor on
-  it.
-- **The selection, open properties panel, pan and zoom survive the
-  `onChange` round trip** in a controlled editor; they reset ~300 ms after
-  each edit. Two editors on a page keep their properties-panel labels and
-  focus to themselves.
-- **The bundled React Flow styles and the editor's handle and edge
-  overrides no longer restyle other React Flow canvases** on the page, and
-  touch panning gets upstream's `touch-action: none` back.
-- **Debugger stepping re-renders only the nodes that change**, and long
-  traces no longer slow playback quadratically. Inline `config` /
-  `customOperators` objects no longer make the editor re-check its inputs
-  every render.
-- `uuid`, `lucide-react` and `@dagrejs/dagre` are no longer installed as
-  dependencies (they were always bundled), and `dist` no longer carries
-  dangling `sourceMappingURL` comments.
-
-### Changed (tooling)
-
-- The `Cargo.lock` of every shipping workspace is committed and releases
-  build `--locked` with a pinned toolchain; CI gains cargo-semver-checks,
-  cargo-deny, a docs check, a WASM size gate, fuzzing and weekly macOS /
-  Windows runs, and the release runs all of CI on the tag before
-  publishing. Integration tests declare their `required-features`.
-- **Dependency updates.** Every Rust lockfile refreshed (`napi` 3.14.2
-  in the Node binding). UI: `@xyflow/react` 12.12.0 (its bundled base
-  CSS regenerated), `vite` 8.3.3, `vitest` 5.0.3, `eslint` 10.12.0,
-  `typescript-eslint` 8.71.1, `lucide-react` 1.52.0 and smaller bumps;
-  `source-map-js` 1.2.2 (#82, an event-loop DoS advisory). TypeScript stays on
-  6.x until `typescript-eslint` admits 7. Node: `@napi-rs/cli` 3.10.8.
-  JVM: `maven-jar-plugin` 3.5.1. .NET, Python, PHP and Go were already
-  current.
-
-## [5.8.0] - 2026-10-05
+## [5.8.0] - 2026-10-08
 
 ### Added
 
@@ -324,6 +110,10 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   built-in. `add_operator` is unchanged. `EngineBuilder::check_operator_name`
   gives the same refusal without consuming the builder, which the C ABI's
   strict-names registration uses, so it follows the builder's families too.
+  **`EngineBuilder::try_build`** checks every name `try_add_operator`
+  took against the builder's final families (`Engine::to_builder()`
+  carries them over), and refuses a `max_recursion_depth` of 0, as
+  `EvaluationConfig::from_json_str` does; `build()` is unchanged.
 - **`Engine::compile_template` and `Engine::compile_strict`** choose
   the templating mode for one compile instead of for the engine. The
   engine's custom operators, template key escape and folding setting
@@ -483,6 +273,26 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   devDependency; every build already resolved the package to the WASM built
   from this tree. A build-time type check keeps the editor's hand-written
   WASM interface in step with the generated typings.
+- **The CommonJS build (`require`) starts the WASM engine again**; Jest,
+  CJS SSR and older-bundler consumers got an editor without evaluation.
+  The editor shows a banner when the engine fails to load.
+- **Keyboard shortcuts apply only while focus is inside that editor**,
+  instead of taking keys from the host page and driving every editor on
+  it.
+- **The selection, open properties panel, pan and zoom survive the
+  `onChange` round trip** in a controlled editor; they reset ~300 ms after
+  each edit. Two editors on a page keep their properties-panel labels and
+  focus to themselves.
+- **The bundled React Flow styles and the editor's handle and edge
+  overrides no longer restyle other React Flow canvases** on the page, and
+  touch panning gets upstream's `touch-action: none` back.
+- **Debugger stepping re-renders only the nodes that change**, and long
+  traces no longer slow playback quadratically. Inline `config` /
+  `customOperators` objects no longer make the editor re-check its inputs
+  every render.
+- `uuid`, `lucide-react` and `@dagrejs/dagre` are no longer installed as
+  dependencies (they were always bundled), and `dist` no longer carries
+  dangling `sourceMappingURL` comments.
 
 ### Deprecated
 
@@ -629,6 +439,155 @@ compared with the engine on every suite case and on generated rules.
   read back as an error (`{"or": [0]}` became `{"or": 0}`). Both now keep
   the array. Literal-shape arguments staying unfolded in this release made
   the shapes reachable on the default engine.
+- **A `reduce` can no longer build a value deep enough to abort the
+  process.** A fold that wraps its accumulator each step
+  (`{"reduce": [xs, [{"var": "accumulator"}], null]}`) nested one level per
+  item, and serialising, comparing or copying the result recursed once per
+  level: 100,000 items overflowed an 8 MiB stack and aborted with
+  `fatal runtime error: stack overflow`, which no `catch_unwind` can stop.
+  The accumulator may now nest at most 1,024 levels (four times what the
+  parser accepts as input), and passing that is an `InvalidArguments`
+  error. Accumulators are measured against the previous step's parts and,
+  for bodies of built-ins, only every few steps, so folds to numbers and
+  folds that rebuild flat lists cost what they did.
+- **`format_date` with an unknown chrono specifier is an error, not a
+  panic.** A raw specifier chrono does not know (`"%Q"`) or a trailing `%`
+  panicked inside chrono's formatter. It is now
+  `InvalidArguments("Invalid date format")`.
+- **A rule compiled on one engine follows the evaluating engine's
+  settings.** Constant folding evaluates under the compiling engine's
+  number coercion, NaN and division handling, loose equality and
+  truthiness, so `{"/": [1.5, 0]}` compiled on a default engine kept
+  `1.797e308` on an engine set to return `null` on division by zero, while
+  the same division computed at runtime returned `null`; a dead `if` branch
+  was dropped by the compiling engine's truthiness. A rule whose compile
+  folded something under those settings now keeps its source and is
+  compiled again on an engine whose settings differ (once per distinct
+  setting, cached on the rule). Rules evaluated on the engine that
+  compiled them, or on one with the same settings, are unchanged.
+- **A record with a `datetime` or `timestamp` field is ordinary data.**
+  Any object carrying such a key was taken for the boundary form of a
+  datetime, so `===` and `==` judged two different records equal by that
+  field alone, `in` matched them, `distinct` dropped all but one, and
+  `type` reported `"datetime"` or `"duration"`. Only the single-key form
+  (`{"datetime": "..."}`, `{"timestamp": "..."}`) is a datetime now.
+- **`Logic::to_json` writes valid JSON and keeps dotted `val` keys.**
+  Paths, `missing` / `exists` paths, template keys, custom operator names
+  and `throw` types holding quotes, backslashes or control characters
+  came out unescaped (so the trace tree's `expression` strings broke
+  too), and `{"val": "a.b"}` came back as `{"var": "a.b"}`, which reads
+  `a` then `b`. Such reads are now written in the `val` form; other output
+  is unchanged.
+- **`Error::resolve_path` names a `var` default and template fields
+  right** on a rule not compiled for tracing: `/var/1` (was `/var/0`) and
+  `/b` (was `/1`), as a traced compile records them.
+- **`Error::operator` names the innermost failing operator**, custom
+  operators included, and plain and traced runs agree. It was the root
+  operator unless a deeper site set one, and the traced run always
+  reported the root. *Behaviour change* in that field and in the
+  serialized error's `"operator"`.
+- **`fractional` weights past 32 bits no longer overflow.** `[i64::MAX,
+  1]` returned null and `[2^40, 2^40]` split differently from `[1, 1]` in
+  release builds (a debug build panicked). Weights clamp to `i32::MAX`, as
+  flagd's are 32-bit; weights within 32 bits pick exactly as before.
+- **Tensor constructors refuse more than 2^28 elements.** `zeros`, `full`,
+  `scatter`, `rle_expand`, `one_hot` and `pad` sized a buffer from the
+  rule's dimensions with only a `usize` overflow check, so
+  `{"zeros": [[1000000, 1000000], "f64"]}` asked for 8 TB and hung or
+  aborted the process. Past 2^28 elements (2 GiB of `f64`) they are now
+  `InvalidArguments`.
+- **Metered counts no longer depend on data types, tracing or
+  `MissingVar`.** Iterator fast paths now charge what the general path
+  charges for the same data, and the double charge when a fused
+  `reduce(map(...))` gave up is gone. *Behaviour change:* counts for
+  fast-path shapes rise to match the general path.
+- **The `reduce` fast path no longer treats `accumulator.x` as the whole
+  accumulator** (`{"+": [{"var": "current"}, {"var": "accumulator.x"}]}`
+  summed the accumulator itself).
+- **Datetime arithmetic takes any number of operands, in either order:**
+  `{"+": [dt, "1d", "1d"]}`, `{"+": ["1d", dt]}` and `{"-": [dt, "1d",
+  "1d"]}` raised NaN.
+- **Integers above 2^53 compare, divide and sort exactly** in `==` (with
+  integer strings), `===`, `<` and friends, `/`, `%` and `sort`, and
+  variadic `+` / `*` coerce numeric strings as the binary forms do.
+  *Behaviour change:* such values are no longer rounded or judged equal.
+- **`NanHandling::CoerceToZero` substitutes 0** as documented instead of
+  skipping the value: `{"*": [2, "x", 3]}` is `0`, not `6`.
+- **The strings `"NaN"`, `"inf"`, `"infinity"` and overflowing literals no
+  longer coerce to non-finite numbers.** Arithmetic applies NaN handling
+  to them (it produced `null`), `==` and `<` raise NaN, and `abs`, `ceil`
+  and `floor` raise `InvalidArguments`.
+- **`ceil` / `floor` keep results outside the `i64` range as floats**
+  instead of saturating to `i64::MAX` / `i64::MIN`.
+- **`lower` / `upper` apply context-sensitive Unicode case rules**
+  (`"ΟΔΟΣ"` → `"οδος"`).
+- **`type` classifies strings with the datetime and duration parsers:**
+  `"password1"` is `"string"` (it was `"duration"`), and an offset or
+  naive ISO datetime is `"datetime"`.
+
+### Fixed (bindings)
+
+- **Node: `@goplasmatic/datalogic-node` ships its `index.js` loader and
+  `index.d.ts` typings again.** 5.1.1 through 5.7.1 published the
+  package with only `package.json`, the README and the LICENSE, so
+  `require('@goplasmatic/datalogic-node')` failed with
+  `MODULE_NOT_FOUND` (the per-platform packages were complete). The
+  release now hands the generated loader to the publish job, and refuses
+  to publish the package without it.
+- **Node: a panic in the engine throws instead of aborting Node.** No
+  export was guarded, so any panic killed the process (and a panic in
+  `evaluateStrAsync` ran unguarded on the libuv pool). Every export now
+  carries `#[napi(catch_unwind)]`, and every call into the engine turns a
+  panic into a thrown error (or a rejected promise) with
+  `name`/`errorType` `"InternalError"`.
+- **Go: custom operators keep working after the Engine is closed or
+  collected.** `Engine.Close()` (also its finalizer) deleted the callback
+  handles that Rules and Sessions from that engine still call, so a later
+  evaluation crashed the process with `misuse of an invalid Handle`. The
+  handles now belong to a registry that the Engine, every Rule, Session
+  and TracedSession keep alive, and the callback state passes through C as
+  a C-allocated box rather than a Go pointer, as cgo's pointer rules
+  require.
+- **.NET: custom operators keep working after the Engine is disposed or
+  finalized.** `Engine.Dispose()` freed the delegates' `GCHandle`s while
+  Rules and Sessions still called them, failing with
+  `operator handle had wrong type`. The handles now belong to an object
+  that the Engine, every Rule, Session and TracedSession hold.
+- **C ABI: a custom-operator callback that re-enters the session running
+  it gets `DATALOGIC_STATUS_INVALID_ARG`** instead of undefined behaviour
+  (memory corruption in Go, JVM, .NET and PHP); `reset` / `free` on that
+  session do nothing, and `allocated_bytes` returns 0.
+- **C ABI: builder setters called after `datalogic_engine_builder_build`
+  fail with `DATALOGIC_STATUS_INVALID_ARG`** (`set_config_json`,
+  `set_families`, `set_template_key_escape`, `add_operator`); they
+  returned OK and did nothing.
+- **Traced evaluation keeps the result's object key order** in every
+  binding; keys came back sorted.
+- **Node: `allocatedBytes` no longer wraps above 4 GiB.** Python releases
+  the GIL while compiling and checking. A typed-result mismatch on a
+  datetime or duration reports `got string`, not `got object`.
+- **Go, .NET, PHP, JVM: an engine builder dropped before `Build` no longer
+  leaks its native builder**, and Go, .NET and JVM `Close` / `Dispose` /
+  `close()` free a handle exactly once under concurrent calls. JVM handles
+  never closed are freed by a shared `Cleaner`.
+- **PHP: Rules, Sessions and TracedSessions keep their Engine (and its
+  custom operators) alive**, wrapping a native handle a second time throws
+  `InvalidArgumentException` instead of double-freeing it later
+  (*behaviour change*), and the native library is found on Windows (the
+  machine name was matched case-sensitively against `AMD64` / `ARM64`).
+- **Go, .NET (and JVM for non-string fields): a malformed batch item
+  decodes like the other hosts**, as tag `"InternalError"` with the raw
+  JSON as the message.
+- **JVM: the native library is extracted once to a per-user cache named by
+  its SHA-256** (`~/.cache/datalogic/native/` or the platform
+  equivalent, falling back to a temp directory) instead of a fresh temp
+  directory per start, which piled up on Windows. The jar declares
+  `Automatic-Module-Name: com.goplasmatic.datalogic`.
+- **Go: the module tag's static libraries are about 6x smaller**
+  (darwin/arm64 81.6 → 13.5 MB): a debuginfo-free, LTO'd `go-release`
+  profile. **.NET** ships `net8.0` and `net10.0` builds.
+- **WASM: the npm package declares `engines.node >=18`**, matching the
+  Node package. Python wheels list Python 3.14.
 
 ### Performance
 
@@ -660,6 +619,36 @@ compared with the engine on every suite case and on generated rules.
   `reduce` over `map` 9 to 16%, `map` with two fields 13% and with a
   fractional literal 38%; the remaining shapes are flat to 5% faster. The
   timings are now the same across builds of the same code.
+- One-shot `Engine::eval*` and the top-level `eval*` functions project
+  owned, `serde_json` and `Roots` input the same way.
+- The CSE compile pass is one post-order walk instead of re-walking
+  subtrees at every node; a projection binary-searches wide read sets;
+  template keys are borrowed instead of copied per evaluation; compiling
+  a borrowed `&OwnedDataValue` no longer deep-clones it; `split`, stepped
+  string `slice`, `format_date`, `parse_date`, `now` and `missing` copy
+  less.
+- The second round of fixes in this release, measured against the tree
+  before it, moves the canonical bench geomean +1.0% on the suites whose
+  cases did not change; macro suites stay within +3% (`checkout-40`
+  +1.4%).
+
+### Changed (tooling)
+
+- The `Cargo.lock` of every shipping workspace is committed and releases
+  build `--locked` with a pinned toolchain; CI gains cargo-semver-checks,
+  cargo-deny, a docs check, a WASM size gate, fuzzing and weekly macOS /
+  Windows runs, and the release runs all of CI on the tag before
+  publishing. Integration tests declare their `required-features`.
+- **Dependency updates.** Every Rust lockfile refreshed (`napi` 3.14.2
+  in the Node binding). UI: `@xyflow/react` 12.12.0 (its bundled base
+  CSS regenerated), `vite` 8.3.3, `vitest` 5.0.3, `eslint` 10.12.0,
+  `typescript-eslint` 8.71.1, `lucide-react` 1.52.0 and smaller bumps;
+  `source-map-js` 1.2.2 (#82, an event-loop DoS advisory). TypeScript stays on
+  6.x until `typescript-eslint` admits 7. Node: `@napi-rs/cli` 3.10.8.
+  JVM: `maven-jar-plugin` 3.5.1. .NET, Python, PHP and Go were already
+  current.
+- The GitHub release attaches the `@goplasmatic/datalogic-ui` tarball
+  again; the asset step looked for the package one directory too deep.
 
 ## [5.7.1] - 2026-10-01
 

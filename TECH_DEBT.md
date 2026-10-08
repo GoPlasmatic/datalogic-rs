@@ -1,6 +1,6 @@
 # Tech-debt register
 
-Baseline: **5.8.0** (branch `fix/review-findings`, 2026-10-06).
+Baseline: the pre-release 5.8.0 tree at `c30cd5d` (branch `fix/review-findings`, 2026-10-06). 5.8.0 itself shipped with the fixes listed under Progress.
 Scope: the whole repo. That covers the core crate, `datalogic-bind`, all eight bindings, the React UI, tests, CI, build, release and docs.
 
 This register sorts every item by the release it can ship in:
@@ -59,7 +59,7 @@ These are the items to fix first. All of them can ship in 5.x except V6-OPS-01.
 
 ## Progress
 
-These items are fixed in the working tree (see `CHANGELOG.md` → Unreleased) and not yet released:
+These items are fixed and ship in 5.8.0 (see `CHANGELOG.md` → 5.8.0):
 
 | ID | Fix |
 |----|-----|
@@ -73,7 +73,7 @@ These items are fixed in the working tree (see `CHANGELOG.md` → Unreleased) an
 
 ### Batch 2 (5.x)
 
-All of these are committed and are listed in `CHANGELOG.md` under Unreleased.
+All of these ship in 5.8.0 and are listed in `CHANGELOG.md` under 5.8.0.
 
 The rule applied: bug fixes are in, even when they change output. So are refactors that keep behaviour identical, performance, tests, docs and CI. New APIs or options, deprecations, default changes and design changes are out.
 
@@ -147,12 +147,12 @@ The rule applied: bug fixes are in, even when they change output. So are refacto
 
 The JVM was not compiled: only JDK 17 is installed, and the binding needs 22 or newer.
 
-**Benchmarks against 5.8.0 (`c30cd5d`)**
+**Benchmarks against the pre-release 5.8.0 tree (`c30cd5d`)**
 - On the 43 suites whose cases did not change, the geomean is +1.0%.
 - Folded rules are back at baseline after `50155fb`.
 - The macro suites are within +3% (checkout-40 +1.4%).
 
-**WASM size gate:** +4.05% over its recorded baseline. That is a warning (the gate fails at +5%), and the growth comes from this batch's fixes.
+**WASM size gate:** +4.26% over its recorded baseline (CI on `fb82e24`). That is a warning (the gate fails at +5%), and the growth comes from this batch's fixes.
 
 **For the maintainer**
 1. OIDC Trusted Publishing for crates.io and npm.
@@ -165,7 +165,7 @@ New findings from this work:
 - **New:** .NET calls `GC.KeepAlive(this)` only after the throw paths. On an error path a finalizer could run mid-call (latent, left alone).
 - **New:** `to_json` of a folded literal object re-parses as an operator call outside templating mode (JSONLogic v5 has no literal-object syntax), and a folded datetime literal serializes as a plain string.
 - **New:** `min`, `max`, `abs`, `ceil` and `floor` still go through `f64` for integers above 2^53.
-- **BIND-24:** now that the core reports `format_date "%Q"` as an error, the Node panic-safety tests no longer reach a real panic, so `guard()` is only exercised indirectly. Its before and after behaviour was checked against 5.8.0. A panic probe built only under a test feature would restore coverage. Severity Low, effort S, target 5.x.
+- **BIND-24:** now that the core reports `format_date "%Q"` as an error, the Node panic-safety tests no longer reach a real panic, so `guard()` is only exercised indirectly. Its before and after behaviour was checked against the pre-release 5.8.0 tree. A panic probe built only under a test feature would restore coverage. Severity Low, effort S, target 5.x.
 
 ---
 
@@ -1019,7 +1019,7 @@ Paths are relative to the repo root.
 
 ## 1.7 Suggested 5.x sequencing
 
-1. **5.8.1, safety patch:**
+1. **Safety fixes (planned as 5.8.1; shipped in 5.8.0):**
    - Crashes and UB: CORE-01, OPS-01, OPS-02, OPS-03, BIND-01, BIND-02, HOST-01, HOST-02.
    - JSON and pointer output: CORE-02, CORE-03, CORE-05.
    - UI: UI-01, UI-02.
