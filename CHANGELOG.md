@@ -8,6 +8,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
+## [5.8.1] - 2026-10-08
+
+5.8.1 changes no behaviour. It ships the JVM package that 5.8.0 could not
+publish, and the documentation for the 5.8 API.
+
+### Fixed (tooling)
+
+- **The JVM binding publishes to Maven Central again.** GitHub's runner
+  image moved from Maven 3.9.16 to 3.10.0 on 2026-10-04. Maven 3.10.0
+  stages `maven-metadata-local.xml` beside the version directory,
+  `central-publishing-maven-plugin` 0.11.0 leaves it in the bundle, and
+  Maven Central rejected the 5.8.0 bundle ("Bundle has content that does
+  NOT have a .pom file"), so `io.github.goplasmatic:datalogic` has no
+  5.8.0. The release, the JVM build and CI's JVM tests now install Maven
+  3.9.16, checksum-verified (`.github/actions/install-maven`). Every
+  other package shipped 5.8.0.
+
+### Changed (docs)
+
+- The book, the crate README and every binding README describe the 5.8
+  API: checking a rule before it runs (`check`, `compile_checked`), rule
+  facts, the operator catalogue, `MissingVar`, operator families,
+  per-compile templating modes, `SharedSession`, `Roots` and `ErrorCode`.
+  A new Rule Analysis guide covers checking and inspecting rules. Examples
+  use the APIs that replace the ones 5.8.0 deprecated, and install
+  snippets pin 5.8.1.
+- API doc comments now match the code: metered counts are the same under
+  `MissingVar::Error`, the template key escape also applies through
+  `compile_template`, `OperatorInfo::min_args` reports the declared
+  minimum, Node and WASM list custom operator names in no particular
+  order, `compileStrict` compiles an unknown operator (it fails at
+  evaluation), the JVM, .NET and PHP builders describe strict operator
+  names and families, and the C ABI points to
+  `datalogic_session_evaluate_metered` for per-call limits.
+
 ## [5.8.0] - 2026-10-08
 
 ### Added
@@ -255,7 +290,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   each trace node to the rule by re-implementing the compiler's canonical
   forms (alias folding, `var` / `val` normalisation, single-argument
   unwrapping) and fell back to loose and positional guesses, so a compiler
-  change could silently attach steps to the wrong node. It now resolves each
+  change could attach steps to the wrong node without any error. It now resolves each
   node's pointer against the rule it shows and pairs operands by identity;
   `child-matching.ts` and its heuristics are gone, and a step no node
   claims goes to the nearest placed node whose pointer strictly encloses it.
@@ -306,7 +341,7 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
 
 - **A custom operator call no longer looks its operator up by name.** The
   compiler records the operator's slot on the engine that compiled the
-  rule, and dispatch indexes it directly; a rule evaluated on another
+  rule, and dispatch indexes that slot; a rule evaluated on another
   engine still finds that engine's operator by name, as before. A rule
   calling eight custom operators measured 181 ns per evaluation before and
   75 ns after.
@@ -344,8 +379,8 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   earlier one. Calls that succeed are unaffected.
 - **`sort` with a literal key expression is no longer constant-folded.**
   Its key runs per element, like every other iterator body, and is now
-  classified that way. Results are unchanged; the rule is simply
-  evaluated at run time.
+  classified that way. Results are unchanged; the engine evaluates the
+  rule at run time.
 
 ### Fixed
 
@@ -368,15 +403,15 @@ under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.
   field is `null`; with any other key expression they tied and kept their
   input order. They now tie on both paths.
 - **A fractional `slice` bound is an error whether written or computed.**
-  A literal `1.5` was silently ignored while a computed one raised `NaN`;
+  The engine ignored a literal `1.5` while a computed one raised `NaN`;
   both raise `NaN` now. Whole floats (`2.0`) are still indices.
 - **A fractional `missing_some` minimum rounds up.** `2.5` means at least 3
   present, as JSONLogic's `present >= need` reads it. A literal minimum was
   truncated and a computed one fell back to 1.
 
-These were found by a new reference interpreter in the test suite
-(`tests/oracle/`), which evaluates rules without any optimization and is
-compared with the engine on every suite case and on generated rules.
+A new reference interpreter in the test suite (`tests/oracle/`) found
+these. It evaluates rules without any optimization, and the tests compare
+it with the engine on every suite case and on generated rules.
 
 - **`filter` with a strict comparison against `null` now sees missing
   fields.** `{"filter": [list, {"===": [{"var": "v"}, null]}]}` dropped the
@@ -594,7 +629,7 @@ compared with the engine on every suite case and on generated rules.
 - **Evaluating against an owned, serde or `Roots` input brings in only
   what the rule reads.** A compiled rule whose reads are all known
   (`Logic::facts()`, `reads_complete()`) and that does not read the whole
-  input now views just those paths: on the way down each path only the
+  input now views only those paths: on the way down each path only the
   object keys it names, and the whole value at its end. Reading one field
   of an 8 MB context through `Engine::evaluate` or a `Session` takes 36 ns
   owned and 41 ns serde, where viewing the whole input took 2.96 ms and
@@ -796,7 +831,7 @@ compared with the engine on every suite case and on generated rules.
   (#74).** Inside two nested iterators no form reached the outer element:
   `[[0]]` and `[[1]]` both read the current one, and `[[2]]` and every higher
   level read the root. `{"val": [[N], "index"]}` was worse: it ignored `N`
-  entirely and always returned the innermost index, at any nesting. Rules
+  and always returned the innermost index, at any nesting. Rules
   that needed a value from the enclosing element had to thread it through a
   `reduce` accumulator.
 
@@ -827,8 +862,8 @@ compared with the engine on every suite case and on generated rules.
   **Data addressing is unchanged for a rule with a single iterator**, which
   is the overwhelming majority: at one frame deep every level from `[[1]]` up
   still resolves to the root, and `[[1], "index"]` / `[[1], "key"]` are
-  unchanged. What moves is a level of `2` or more *inside nested frames*,
-  which previously collapsed to the root. Three shapes do change at any
+  unchanged. The change affects a level of `2` or more *inside nested
+  frames*, which 5.5.0 collapsed to the root. Three shapes do change at any
   depth, including at one frame and at no frame at all: a bare
   `{"val": [[N]]}`, an *even* level with `index` / `key` (now an ordinary
   field name, where it used to be the innermost index), and `index` / `key`
@@ -854,8 +889,8 @@ compared with the engine on every suite case and on generated rules.
   Both paths now read it as a level marker.
 
 - **A level marker is an array of exactly one number.** The arity was never
-  checked, so `{"val": [[0, 1]]}` was read as level 0 with the `1` silently
-  dropped, where it had been (and is again) a path chain walking index 0 then
+  checked, so `{"val": [[0, 1]]}` was read as level 0 with the `1` dropped
+  without an error, where it had been (and is again) a path chain walking index 0 then
   index 1. `{"val": [[N, junk], "path"]}` is no longer level `N` either; 5.5.0
   accepted that shape and the reference implementation never has.
 
@@ -953,12 +988,11 @@ compared with the engine on every suite case and on generated rules.
   budget in a loop.
 
   A Cargo feature rather than an always-on `Option<u64>` because the cost
-  is measurable, not free: self benchmark `--all`, paired runs on one
+  is measurable: self benchmark `--all`, paired runs on one
   machine, 22.75 ns/op with the feature off and 23.56 ns/op with it
   compiled in and no budget set (+3.6%). The feature-off number is
   unchanged from before the feature existed; builds that do not want a
-  counter compile out the counter, the compare and the error variant
-  entirely.
+  counter compile out the counter, the compare and the error variant.
 
 - **The tensor family now charges through that counter.** `charge()` in
   `operators/tensor/` stopped being a no-op; every operator prices itself
@@ -1017,7 +1051,7 @@ compared with the engine on every suite case and on generated rules.
   `transpose`, `pad`, `crop`, `gather`), and readers (`cast`, `normalize`,
   `argmax`, `to_list`, `shape`, `dtype`). No new dependency.
 
-  Deliberately no arithmetic. Every operator's cost is proportional to the
+  The family has no arithmetic, by design. Every operator's cost is proportional to the
   data it moves, which is what will make it honest to price through the
   planned per-evaluation operation budget; a matmul reads 2n² elements and
   does n³ multiplies, so pricing it by data moved under-counts by an
@@ -1025,7 +1059,7 @@ compared with the engine on every suite case and on generated rules.
 
   A tensor crosses the JSON boundary as datavalue's tagged
   `{"tensor": {"dtype", "shape", "data"}}` form, with `data` little-endian
-  base64. That is simultaneously the operator call, the form the engine
+  base64. That one form is the operator call, the form the engine
   emits, and the form the decoder accepts, so serialized output pasted back
   into a rule evaluates to the tensor it came from. The text-returning
   bindings carry it with no FFI change; the Python binding returns the same
@@ -1054,8 +1088,8 @@ compared with the engine on every suite case and on generated rules.
   itself.
 
 - **16 conformance cases for scope resolution and filter hoisting**
-  (`scopes.json` and `iterators.extra.json`). The battery
-  previously had no rule nested deeply enough to distinguish a correct
+  (`scopes.json` and `iterators.extra.json`). Before them, the battery
+  had no rule nested deeply enough to distinguish a correct
   interior-frame resolver from a broken one (every existing leveled `val`
   resolved either to the current frame or, via the clamp, to the root), and
   nothing exercised the filter hoisting rule at all.
@@ -1080,7 +1114,7 @@ compared with the engine on every suite case and on generated rules.
 - **Compile-time scope resolution.** Variable references now carry the
   frame they resolve against, computed once at compile time by a new
   `compile/scope.rs` pass, instead of the engine probing `ctx.depth()` on
-  every evaluation. Purely internal: every rule evaluates to exactly what
+  every evaluation. Internal only: every rule evaluates to exactly what
   it did before, clamp and level semantics untouched. Rules that read an
   outer scope from inside an iterator benefit most: the `scopes` suite
   drops 21.7% (73.4 ns to 57.5 ns per evaluation) and `val.extra` 13.4%,
@@ -1132,7 +1166,7 @@ compared with the engine on every suite case and on generated rules.
   the general path: a predicate reading `index` or `key`, which resolve
   against the current frame whatever the level, and a `[[1]]` reference
   inside a filter that is itself nested one or more frames deep, where
-  `[[1]]` names the current item. Both silently returned wrong rows. For example,
+  `[[1]]` names the current item. Both returned wrong rows without an error. For example,
   `{"filter": [{"var":"xs"}, {"===": [{"var":"a"}, {"val":[[1],"index"]}]}]}`
   over `[{"a":0},{"a":1},{"a":2}]` matched nothing instead of everything.
   Hoisting is now gated on the compile-time scope binding: only a literal
@@ -1150,9 +1184,8 @@ compared with the engine on every suite case and on generated rules.
   `{"$type": ...}` emits the key `type` instead of running the `type`
   operator and `{"$$type": ...}` emits a literal `$type`. Unset by
   default. WASM also accepts it as `CompiledRule`'s fourth argument,
-  alongside `config`. Anything other than a one-character string is
-  rejected at construction (`InvalidArguments`) rather than silently
-  ignored.
+  alongside `config`. Construction rejects anything other than a
+  one-character string (`InvalidArguments`) rather than ignoring it.
 - **Templating: opt-in `$`-prefix escape for object keys.**
   `Engine::builder().with_template_key_escape('$')` makes exactly one
   leading prefix strip from every template key, and stops an escaped key
@@ -1178,7 +1211,7 @@ compared with the engine on every suite case and on generated rules.
 ### Changed
 
 - **`date_diff` rejects unknown units.** An unrecognised unit now raises
-  `InvalidArguments` (`date_diff: unknown unit ...`) instead of silently
+  `InvalidArguments` (`date_diff: unknown unit ...`) instead of
   returning `0`. Accepted units are `days`, `hours`, `minutes`, `seconds`,
   and `milliseconds`; `milliseconds` is now documented alongside the
   others.
@@ -1234,7 +1267,7 @@ compared with the engine on every suite case and on generated rules.
   is truthy, and `{"and": [{"var": "a"}, "x"]}` returns `"x"` when `a`
   is truthy, matching unoptimised evaluation. Regression cases live in
   `control/and.json` and `control/or.json`.
-- **`try` now hands engine errors to the catch arm.** Previously only a
+- **`try` now hands engine errors to the catch arm.** Before 5.4.0 only a
   `throw` payload reached the catch arm; an engine-raised error left the
   original data in scope. The catch arm now sees `{"type": ...}` for
   every error: `"Unknown Operator"` for an unknown operator, and the
@@ -1267,19 +1300,19 @@ compared with the engine on every suite case and on generated rules.
   accepts is documented and insertable.
 - **Per-operator documentation links** in the properties panel, pointing at
   that operator's page on the docs site.
-- **Test suite (about 1,100 vitest cases).** Every operator help example is
-  evaluated against the bundled engine, a corpus covering every operator
-  round-trips through the node graph, real trace envelopes are asserted to map
-  onto the diagram, and every shipped sample is checked against its expected
-  result.
+- **Test suite (about 1,100 vitest cases).** The suite evaluates every
+  operator help example against the bundled engine, round-trips a corpus
+  covering every operator through the node graph, asserts that real trace
+  envelopes map onto the diagram, and checks every shipped sample against its
+  expected result.
 
 ### Changed (UI)
 
 - **Samples cover every operator family**, including `switch`, `??`,
   `try`/`throw`, `type`, `keys`/`values`/`entries`, `group_by`, `distinct`,
   `sort` with a key extractor, `slice` with a step, `sem_ver`, `fractional`,
-  IANA timezones and iteration metadata. Templating samples switch the mode on
-  automatically when loaded.
+  IANA timezones and iteration metadata. Loading a templating sample switches
+  the mode on.
 - **`data` accepts any JSON value** (object, array or scalar) in the component,
   the Studio and the embed, matching the engine.
 - **One CSS import.** React Flow's base styles were already vendored into
@@ -1310,11 +1343,11 @@ compared with the engine on every suite case and on generated rules.
   remove on `if`, `switch` and `exists`, and clone id collisions.
 - **Iteration metadata.** The editor emitted `{"val": "index"}`, which the
   engine reads as a plain key lookup; it now emits `{"val": [[1], "index"]}`.
-- **Operator help matched to the engine.** Wrong arities (`sort`, `??`,
-  `parse_date`/`format_date`, `reduce`), wrong results (`all` on an empty
-  array, `!`/`!!` on empty collections, `timestamp` normalisation), and
-  capabilities the engine does not have (datetime property access on `val`,
-  dot-notation paths for `exists`) were corrected.
+- **Operator help matched to the engine.** The help no longer lists wrong
+  arities (`sort`, `??`, `parse_date`/`format_date`, `reduce`), wrong results
+  (`all` on an empty array, `!`/`!!` on empty collections, `timestamp`
+  normalisation), or capabilities the engine does not have (datetime property
+  access on `val`, dot-notation paths for `exists`).
 - **Trace mapping.** Steps now match their nodes through the engine's
   canonicalised expressions (`val`/`var` forms, `?:` and `match` aliases,
   nested `switch` cases, templating structures), so the diagram no longer
@@ -1325,7 +1358,7 @@ compared with the engine on every suite case and on generated rules.
   node breadcrumb and thrown payload, and are parsed from the error object's
   own properties rather than its message text.
 - **Menus.** The Object category was missing from the canvas menu and the
-  per-category cap silently hid `distinct`; every operator is now reachable.
+  per-category cap hid `distinct`; every operator is now reachable.
 - **Embed.** Canvas edits now reach the host through `onChange`, templating is
   supported (toolbar toggle and `data-templating`), and structured errors are
   displayed.
@@ -1389,8 +1422,8 @@ compared with the engine on every suite case and on generated rules.
 ### Fixed
 
 - **`jsonlogic_to_chrono_format` is now a single-pass longest-match
-  scanner** instead of sequential `String::replace`. Previously `"MMM"`
-  corrupted to `"%mM"` (rendering as a month number followed by a
+  scanner** instead of sequential `String::replace`. The replace chain turned `"MMM"`
+  into `"%mM"` (rendering as a month number followed by a
   literal `M`); token families now disambiguate by length and a
   replacement can never be re-matched by a later token.
 
@@ -1401,8 +1434,8 @@ compared with the engine on every suite case and on generated rules.
 - **Root `Makefile` with repo-wide targets.** `make lint`, `make fmt`,
   `make clippy`, `make clean` and `make clean-all` fan out over every
   Cargo manifest in the tree; root-level `cargo fmt --all` / `cargo
-  clippy --workspace` / `cargo clean` silently skip the four bindings
-  and the fuzz crate, which are excluded workspaces. `make clippy`
+  clippy --workspace` / `cargo clean` skip the four bindings and the
+  fuzz crate without a warning, because those are excluded workspaces. `make clippy`
   lints `bindings/wasm` against `wasm32-unknown-unknown` (so its
   `#![cfg(target_arch = "wasm32")]` test module is checked)
   and reports every crate's failures in one pass. See
@@ -1412,8 +1445,8 @@ compared with the engine on every suite case and on generated rules.
 
 - **CI and release validation lint through one shared composite action**
   (`.github/actions/rust-lint`) running the `make` targets above, so the
-  clippy/fmt gate now covers all six Cargo manifests (previously the
-  root workspace only) and release validation is structurally identical
+  clippy/fmt gate now covers all six Cargo manifests (it covered the
+  root workspace only before) and release validation is structurally identical
   to PR CI instead of a mirrored copy that could drift.
 - Dependency floors raised to current: `serde` 1.0.229, `serde_json`
   1.0.151, `smallvec` 1.15.2, `self_cell` 1.3.0, and dev-dependencies
@@ -1465,7 +1498,7 @@ compared with the engine on every suite case and on generated rules.
   path and the constant-folding path now implement that, and a test
   pins them in lockstep by running the same rule with folding on and
   off. Default truthiness is `JavaScript`, so JSONLogic conformance is
-  unaffected; only engines explicitly configured with
+  unaffected; only engines configured with
   `TruthyEvaluator::Python` see a behaviour change, and only on values
   arithmetic produced (`NaN` has no JSON literal).
 
@@ -1488,7 +1521,7 @@ compared with the engine on every suite case and on generated rules.
   `permissions:` block at all and so inherited the repository default;
   it now declares `contents: read`.
 - **Removed an expression-interpolation sink.** `release-build-ui.yml`
-  spliced `${{ inputs.version }}` directly into a shell script; the
+  spliced `${{ inputs.version }}` into a shell script's text; the
   value now reaches the script through the environment.
 - **Two high-severity dev-dependency advisories patched in the UI
   package.** `postcss` 8.5.16 → 8.5.23
@@ -1513,7 +1546,7 @@ compared with the engine on every suite case and on generated rules.
   first-byte prefilter the rest of the crate already uses. No public
   API change.
 - CI gains a `feature-matrix` job building each opt-in feature
-  standalone. `check` previously ran only `--all-features` and
+  standalone. Until then `check` ran only `--all-features` and
   `--no-default-features`, so a cross-feature reference missing a
   `#[cfg]` compiled in both and broke only for users enabling a single
   feature. All ten features build clean today.
@@ -1548,7 +1581,7 @@ compared with the engine on every suite case and on generated rules.
 ### Performance
 
 - `reduce(map(...))` pipelines fuse into a single pass: the fold runs
-  directly over the map's input instead of materializing the
+  over the map's input instead of materializing the
   intermediate array in the arena. Results are bit-identical (the
   fused loop composes the same representation-choice primitives as the
   unfused pipeline); non-numeric shapes bail to the general flow.
@@ -1569,7 +1602,7 @@ compared with the engine on every suite case and on generated rules.
   instead of a saturated `"9223372036854775807.0"` (matching
   serde_json). The `datavalue` dependency floor moves to 0.2.3.
 - Removed the unsound numeric-string precoercion optimizer pass:
-  folded and unfolded evaluation previously disagreed on arithmetic
+  folded and unfolded evaluation disagreed on arithmetic
   over numeric strings with values beyond 2^53 (a string operand keeps
   arithmetic in f64 space while a rewritten number literal takes the
   exact-integer paths). Rules with fully-static numeric-string
@@ -1625,9 +1658,9 @@ compared with the engine on every suite case and on generated rules.
   now route JSON-string data straight into the arena parser instead of
   building an intermediate `serde_json::Value` tree (mirroring what
   `evaluateStr` and the Session methods already did).
-- Python: wheels now build with fat LTO + a single codegen unit; the
-  binding's standalone workspace previously shipped with no release
-  profile at all, losing cross-crate inlining into the core.
+- Python: wheels now build with fat LTO + a single codegen unit; until
+  this release the binding's standalone workspace shipped with no
+  release profile, losing cross-crate inlining into the core.
 - Python: dict inputs and results convert via a direct walk between
   Python objects and arena values instead of the pythonize double tree
   (pythonize retained only as the exotic-shape fallback), with the
@@ -1635,7 +1668,7 @@ compared with the engine on every suite case and on generated rules.
   2.5-3.4x faster at every payload size, and the 8 KB dict path drops
   from ~82 µs to ~24 µs, now ~3x faster than a `json.dumps` /
   `json.loads` round-trip. (The same direct-converter approach was
-  built, measured, and deliberately reverted for Node: 23-31% faster
+  built, measured, and reverted for Node: 23-31% faster
   than its serde bridge but still structurally slower than V8's
   `JSON.stringify` + one string crossing; the string path remains
   Node's fast lane, and the equivalence test stays in-tree as the gate
@@ -1647,7 +1680,7 @@ compared with the engine on every suite case and on generated rules.
   interns the NaN payload.
 - Composite literals are pre-converted at compile time via
   self-referential cells.
-- Strings render directly into the evaluation arena (no intermediate
+- Strings render into the evaluation arena (no intermediate
   heap `String`); contiguous `slice` (step == 1) is zero-copy; hot
   numeric/flagd paths and cold error/output paths drop throwaway
   allocations; constant-fold passes early-bail before cloning arg trees.
@@ -1735,7 +1768,8 @@ compared with the engine on every suite case and on generated rules.
   (`"default"` / `"safe_arithmetic"` / `"strict"`) plus per-field
   overrides. This is the wire format the language bindings use to pass
   engine configuration across FFI boundaries through one shared parser.
-  Unknown keys and enum strings are rejected loudly.
+  `from_json_str` returns an error for unknown keys and unknown enum
+  strings.
 - cargo-fuzz target over `eval_str`.
 - flagd `fractional` testbed scenarios (flagd v3.1.0–v3.5.0) ported into
   the conformance suites.
@@ -1763,9 +1797,9 @@ compared with the engine on every suite case and on generated rules.
   `with_undefined_to_zero` setter. The flag was documented as reserved
   and was never read: JSONLogic does not distinguish a missing key from
   an explicit `null`, and a missing var already coerces to `0` under the
-  default `null_to_zero = true`. Removing an inert public field is
-  technically breaking for code that merely named it; delete the field
-  access or setter call; nothing changes behaviourally.
+  default `null_to_zero = true`. Removing an inert public field breaks
+  code that named it: delete the field access or setter call. Behaviour
+  does not change.
 
 ## [5.0.0] - 2026-05-14
 
@@ -1835,7 +1869,7 @@ step-by-step v4→v5 migration, see [MIGRATION.md](./MIGRATION.md).
 - Arena-mode evaluation dispatch: every operator now has a native
   arena variant (no legacy bridge fallbacks), structured-error
   breadcrumbs carry a node-id path, and the trace pipeline reuses
-  `CompiledNode::id` directly instead of a side-table HashMap.
+  `CompiledNode::id` instead of a side-table HashMap.
 
 ### Changed
 
@@ -1985,7 +2019,7 @@ side-by-side patterns, and structural-error consumer recipes.
   `Cow`-based intermediate values.
 - Replaced the `BTreeMap`-backed reduce context frame with explicit
   fields (`accumulator`, `current`).
-- Removed the `SmallVec` dependency; array nodes use `Vec` directly.
+- Removed the `SmallVec` dependency; array nodes use `Vec`.
 - Operator modules consolidated; duplicated comparison logic
   deduplicated.
 - Moved `val` datetime / duration property access out of the val
@@ -2188,6 +2222,16 @@ section for the subsequent migration).
   optional dispatch mode in v5).
 - Hash-caching layer (see above).
 
+[5.8.1]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.8.0...v5.8.1
+[5.8.0]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.7.1...v5.8.0
+[5.7.1]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.7.0...v5.7.1
+[5.7.0]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.6.0...v5.7.0
+[5.6.0]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.5.0...v5.6.0
+[5.5.0]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.4.0...v5.5.0
+[5.4.0]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.3.0...v5.4.0
+[5.3.0]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.2.0...v5.3.0
+[5.2.0]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.1.1...v5.2.0
+[5.1.1]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.1.0...v5.1.1
 [5.1.0]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.0.1...v5.1.0
 [5.0.1]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.0.0...v5.0.1
 [5.0.0]: https://github.com/GoPlasmatic/datalogic-rs/compare/v4.0.21...v5.0.0

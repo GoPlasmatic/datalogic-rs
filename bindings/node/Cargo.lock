@@ -89,7 +89,7 @@ checksum = "914a755b7c2d4af2bdcff7ce1739e2db9a1b81a9b07123d8015786ae03c0980d"
 
 [[package]]
 name = "datalogic-bind"
-version = "5.8.0"
+version = "5.8.1"
 dependencies = [
  "datalogic-rs",
  "serde",
@@ -98,7 +98,7 @@ dependencies = [
 
 [[package]]
 name = "datalogic-node"
-version = "5.8.0"
+version = "5.8.1"
 dependencies = [
  "datalogic-bind",
  "datalogic-rs",
@@ -111,7 +111,7 @@ dependencies = [
 
 [[package]]
 name = "datalogic-rs"
-version = "5.8.0"
+version = "5.8.1"
 dependencies = [
  "bumpalo",
  "chrono",

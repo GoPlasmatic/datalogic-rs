@@ -7,7 +7,7 @@
 
 [package]
 name = "datalogic-node"
-version = "5.8.0"
+version = "5.8.1"
 edition = "2024"
 description = "Node.js native bindings for datalogic-rs JSONLogic engine"
 license = "Apache-2.0"

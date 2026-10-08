@@ -97,7 +97,7 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "datalogic-bind"
-version = "5.8.0"
+version = "5.8.1"
 dependencies = [
  "datalogic-rs",
  "serde",
@@ -106,7 +106,7 @@ dependencies = [
 
 [[package]]
 name = "datalogic-rs"
-version = "5.8.0"
+version = "5.8.1"
 dependencies = [
  "bumpalo",
  "chrono",
@@ -123,7 +123,7 @@ dependencies = [
 
 [[package]]
 name = "datalogic-wasm"
-version = "5.8.0"
+version = "5.8.1"
 dependencies = [
  "console_error_panic_hook",
  "datalogic-bind",
