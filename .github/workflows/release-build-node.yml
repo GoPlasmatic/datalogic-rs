@@ -125,6 +125,23 @@ jobs:
           path: bindings/node/*.node
           if-no-files-found: error
 
+      # The umbrella package's `main` / `types`. `napi build` generates
+      # them, they are gitignored, and the loader covers every target, so
+      # one leg uploads them for publish-node. Without this the umbrella
+      # shipped only package.json, README and LICENSE (5.1.1 through
+      # 5.7.1), and `require('@goplasmatic/datalogic-node')` failed.
+      # The artifact name stays outside publish-node's `node-prebuild-*`
+      # pattern so the two downloads never mix.
+      - name: Upload JS loader and typings
+        if: matrix.target.target == 'x86_64-unknown-linux-gnu'
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-js-loader
+          path: |
+            bindings/node/index.js
+            bindings/node/index.d.ts
+          if-no-files-found: error
+
   # aarch64-musl prebuild, built inside a Node 22 Alpine container via plain
   # `docker run` (a GHA `container:` job would override HOME and break rustup's
   # toolchain lookup). napi-rs's own `lts-alpine` image still ships Node 18,

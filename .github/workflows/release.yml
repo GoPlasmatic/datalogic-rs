@@ -615,6 +615,14 @@ jobs:
           pattern: node-prebuild-*
           merge-multiple: true
 
+      # index.js / index.d.ts: the umbrella's `main` and `types`, which
+      # `napi build` generates and git ignores (see release-build-node.yml).
+      - name: Download JS loader and typings
+        uses: actions/download-artifact@v8
+        with:
+          name: node-js-loader
+          path: bindings/node/
+
       # `napi prepublish -t npm` publishes the per-platform subpackages
       # under `bindings/node/npm/<triple>/`, NOT the .node files at root.
       # napi-cli creates the npm/ skeleton during `napi build` — but
@@ -640,6 +648,24 @@ jobs:
           done
           echo "Final npm/ layout:"
           ls -la npm/*/
+
+      # Checked before anything publishes: the subpackages go out first,
+      # and an umbrella without its loader cannot be required. 5.1.1
+      # through 5.7.1 shipped exactly that.
+      - name: Check the umbrella package carries its entry points
+        working-directory: bindings/node
+        run: |
+          set -euo pipefail
+          files=$(npm pack --dry-run --json --ignore-scripts | node -e '
+            const [pack] = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            console.log(pack.files.map((f) => f.path).join("\n"));')
+          echo "$files"
+          for f in index.js index.d.ts; do
+            if ! grep -qx "$f" <<<"$files"; then
+              echo "::error::the umbrella package would ship without $f"
+              exit 1
+            fi
+          done
 
       - name: Check if version exists on npm
         id: check
@@ -1023,9 +1049,14 @@ jobs:
           if [ -d release-assets/wasm-pkg ]; then
             cd release-assets/wasm-pkg && npm pack --pack-destination ../../assets && cd ../..
           fi
-          # UI npm tarball — artifact roots at ui/, repack from there
-          if [ -d release-assets/ui-package/ui ]; then
-            cd release-assets/ui-package/ui && npm pack --pack-destination ../../../assets && cd ../../..
+          # UI npm tarball. upload-artifact strips the shared `ui/` prefix,
+          # so package.json sits at the artifact's top level (publish-ui
+          # relies on the same layout). The old `ui-package/ui` test stopped
+          # matching after 5.1.0, so 5.1.1 through 5.7.1 shipped without it.
+          if [ -f release-assets/ui-package/package.json ]; then
+            cd release-assets/ui-package && npm pack --ignore-scripts --pack-destination ../../assets && cd ../..
+          else
+            echo "::warning::ui-package artifact has no package.json; UI tarball not attached"
           fi
           # Python wheels + sdist
           find release-assets -type f \( -name '*.whl' -o -name '*.tar.gz' \) \
