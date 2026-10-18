@@ -30,5 +30,5 @@ The distribution name and the import name differ:
 ```python
 import datalogic_py
 
-print(datalogic_py.__version__)  # "5.8.1"
+print(datalogic_py.__version__)  # "5.8.2"
 ```

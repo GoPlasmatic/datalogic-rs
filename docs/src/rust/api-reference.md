@@ -1,6 +1,6 @@
 # API Reference
 
-Core types and methods of the `datalogic-rs` crate, 5.8.1. For every item
+Core types and methods of the `datalogic-rs` crate, 5.8.2. For every item
 and its feature badge, see [docs.rs/datalogic-rs](https://docs.rs/datalogic-rs).
 
 ## Public surface at a glance

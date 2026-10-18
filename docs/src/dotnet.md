@@ -13,7 +13,7 @@ dotnet add package Goplasmatic.Datalogic
 or reference it in the project file:
 
 ```xml
-<PackageReference Include="Goplasmatic.Datalogic" Version="5.8.1" />
+<PackageReference Include="Goplasmatic.Datalogic" Version="5.8.2" />
 ```
 
 The package ships precompiled shared libraries (`.so`, `.dylib`, `.dll`) under NuGet's standard `runtimes/` structure, and MSBuild picks the one for the target runtime identifier (RID) during publish. .NET 8 and 9 apps use the `net8.0` build; .NET 10 and newer use `net10.0`.

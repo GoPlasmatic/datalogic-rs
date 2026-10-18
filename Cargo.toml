@@ -45,7 +45,7 @@ repository = "https://github.com/GoPlasmatic/datalogic-rs"
 # binding workspaces are separate roots and keep their own requirements.
 [workspace.dependencies]
 serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
+serde_json = "1.0.154"
 bumpalo = "3.20"
 
 # Lint policy for the members that opt in with `[lints] workspace = true`

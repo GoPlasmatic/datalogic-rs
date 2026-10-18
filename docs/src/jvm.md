@@ -12,14 +12,14 @@ Add the dependency to your project:
 <dependency>
     <groupId>io.github.goplasmatic</groupId>
     <artifactId>datalogic</artifactId>
-    <version>5.8.1</version>
+    <version>5.8.2</version>
 </dependency>
 ```
 
 ### Gradle (`build.gradle`)
 
 ```groovy
-implementation 'io.github.goplasmatic:datalogic:5.8.1'
+implementation 'io.github.goplasmatic:datalogic:5.8.2'
 ```
 
 On JDK 24 and newer the JVM prints a restricted-method warning the first time a library calls FFM, and a later JDK will deny the call by default. Grant native access when you start your application:

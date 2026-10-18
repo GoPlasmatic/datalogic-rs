@@ -32,7 +32,7 @@ dotnet add package Goplasmatic.Datalogic
 or in the project file:
 
 ```xml
-<PackageReference Include="Goplasmatic.Datalogic" Version="5.8.1" />
+<PackageReference Include="Goplasmatic.Datalogic" Version="5.8.2" />
 ```
 
 The binding is a P/Invoke wrapper over the engine's C ABI, built on

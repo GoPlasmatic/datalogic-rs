@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
+## [5.8.2] - 2026-10-18
+
+5.8.2 changes no behaviour. It takes dependency updates.
+
+### Changed
+
+- **Dependency updates.** Core crate: `datavalue-rs` 0.3.2, `serde_json`
+  1.0.154, `smallvec` 1.16.3; `proptest` 1.12 for the property tests. The
+  root lockfile is refreshed, and the C, Node, Python and WASM lockfiles
+  pick up the new core requirements.
+- Install snippets in the book and the binding READMEs pin 5.8.2.
+
 ## [5.8.1] - 2026-10-08
 
 5.8.1 changes no behaviour. It ships the JVM package that 5.8.0 could not
@@ -2222,6 +2234,7 @@ section for the subsequent migration).
   optional dispatch mode in v5).
 - Hash-caching layer (see above).
 
+[5.8.2]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.8.1...v5.8.2
 [5.8.1]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.8.0...v5.8.1
 [5.8.0]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.7.1...v5.8.0
 [5.7.1]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.7.0...v5.7.1

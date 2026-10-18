@@ -33,7 +33,7 @@ object is falsy, cross-type `==` raises an error); see
 
 ### Should I use v4 or v5?
 
-**Use v5** (5.8.1 is current) for new projects. The default build does
+**Use v5** (5.8.2 is current) for new projects. The default build does
 not pull in `serde_json`, and you can evaluate into your own arena. v5
 has no compatibility shim for v4 code, so plan a single cutover; the
 [Migration Guide](migration.md) and the repo-root `MIGRATION.md` have the
