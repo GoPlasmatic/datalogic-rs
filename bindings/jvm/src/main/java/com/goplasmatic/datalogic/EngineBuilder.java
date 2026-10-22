@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 package com.goplasmatic.datalogic;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.goplasmatic.datalogic.internal.DatalogicNative;
 
 import java.lang.foreign.Arena;
@@ -29,8 +28,6 @@ import java.util.List;
  * with their automatic arena.
  */
 public final class EngineBuilder {
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-
     private final NativeHandle handle;
     private boolean consumed;
     // Strongly retain every registered bridge until the resulting
@@ -188,7 +185,7 @@ public final class EngineBuilder {
         }
         String json;
         try {
-            json = MAPPER.writeValueAsString(families);
+            json = DatalogicNative.MAPPER.writeValueAsString(families);
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
             throw new IllegalArgumentException("families", e);
         }
@@ -227,7 +224,6 @@ public final class EngineBuilder {
         OperatorBridge bridge = new OperatorBridge(op);
         MemorySegment stub = DatalogicNative.LINKER.upcallStub(
                 OperatorBridge.INVOKE.bindTo(bridge), DatalogicNative.OP_FN_DESC, stubArena);
-        pinned.add(bridge);
 
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment nameSeg = DatalogicNative.utf8(arena, name);
@@ -245,6 +241,7 @@ public final class EngineBuilder {
                 throw DatalogicException.fromNative(status, errSlot, "add_operator failed");
             }
         }
+        pinned.add(bridge);
         return this;
     }
 

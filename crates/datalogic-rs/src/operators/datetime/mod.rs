@@ -259,10 +259,13 @@ fn resolve_tz(av: &DataValue<'_>) -> Result<chrono_tz::Tz> {
 /// Render an offset in seconds as the colonless `"+0530"` form that
 /// `DataDateTime::format("z")` produces for source offsets — the two `"z"`
 /// paths must stay byte-compatible.
-fn offset_to_z_string(secs: i32) -> String {
+fn offset_to_z_str(secs: i32, arena: &Bump) -> &str {
+    if secs == 0 {
+        return "+0000";
+    }
     let sign = if secs < 0 { '-' } else { '+' };
     let abs = secs.abs();
-    format!("{sign}{:02}{:02}", abs / 3600, (abs % 3600) / 60)
+    bumpalo::format!(in arena, "{sign}{:02}{:02}", abs / 3600, (abs % 3600) / 60).into_bump_str()
 }
 
 /// Native arena-mode `parse_date`.
@@ -365,7 +368,7 @@ pub(crate) fn format_date<'a>(
             let tz = resolve_tz(cx.eval(tz)?)?;
             let zoned = datetime.dt.with_timezone(&tz);
             let formatted: &'a str = if fmt == "z" {
-                cx.alloc_str(&offset_to_z_string(zoned.offset().fix().local_minus_utc()))
+                offset_to_z_str(zoned.offset().fix().local_minus_utc(), cx.arena)
             } else {
                 render_chrono(&zoned, fmt, cx.arena)?
             };
@@ -373,7 +376,7 @@ pub(crate) fn format_date<'a>(
         }
 
         let formatted: &'a str = if fmt == "z" {
-            cx.alloc_str(&datetime.format(fmt))
+            offset_to_z_str(datetime.original_offset.unwrap_or(0), cx.arena)
         } else {
             render_chrono(&datetime.dt, fmt, cx.arena)?
         };

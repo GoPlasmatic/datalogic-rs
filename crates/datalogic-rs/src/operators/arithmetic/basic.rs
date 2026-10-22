@@ -229,7 +229,9 @@ fn multiply_two_arg<'a>(
     // inputs aren't coerced to None and lost.
     #[cfg(feature = "datetime")]
     {
-        if let Some(av) = crate::operators::datetime::arith::datetime_multiply(a_av, b_av, arena) {
+        if let Some(av) =
+            crate::operators::datetime::arith::datetime_multiply(a_av, b_av, engine, arena)
+        {
             return Ok(av);
         }
     }
@@ -293,14 +295,35 @@ fn subtract_one_arg<'a>(
         if items.is_empty() {
             return Err(crate::Error::invalid_args());
         }
-        let mut result = coerce_to_number_cfg(&items[0], engine)
+        let first_av = &items[0];
+        let int_init = first_av
+            .as_i64()
+            .or_else(|| try_coerce_to_integer_cfg(first_av, engine));
+        let float_init = coerce_to_number_cfg(first_av, engine)
             .ok_or_else(|| nan_error(NanForm::Thrown, ctx))?;
+        let mut state = FoldState::new(int_init.unwrap_or_default(), float_init);
+        state.all_int = int_init.is_some();
         for elem in &items[1..] {
-            let n = coerce_to_number_cfg(elem, engine)
-                .ok_or_else(|| nan_error(NanForm::Thrown, ctx))?;
-            result -= n;
+            let int_opt = elem
+                .as_i64()
+                .or_else(|| try_coerce_to_integer_cfg(elem, engine));
+            let float_opt = if int_opt.is_some() {
+                None
+            } else {
+                coerce_to_number_cfg(elem, engine)
+            };
+            if let FoldStepOutcome::ReturnNull = state.step(
+                int_opt,
+                float_opt,
+                i64::checked_sub,
+                std::ops::Sub::sub,
+                ctx,
+                engine,
+            )? {
+                return Ok(crate::arena::singletons::singleton_null());
+            }
         }
-        return Ok(alloc_number(arena, NumberValue::from_f64(result)));
+        return Ok(state.finalize(arena));
     }
     // Negate single value (preserve integer typing when possible).
     if let Some(i) = av.as_i64() {

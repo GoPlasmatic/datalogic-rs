@@ -269,6 +269,24 @@ pub(crate) fn compare_equals(
     Ok(left == right)
 }
 
+/// Linear strict-equality (`===`) membership scan over `haystack`, charging
+/// `haystack.len()` up front and propagating budget exhaustion.
+#[inline]
+pub(crate) fn slice_contains_strict<'a>(
+    haystack: &[DataValue<'a>],
+    needle: &DataValue<'a>,
+    engine: &Engine,
+    ctx: &mut ContextStack<'a>,
+) -> Result<bool> {
+    ctx.charge(haystack.len() as u64)?;
+    for item in haystack {
+        if compare_equals(item, needle, true, engine, ctx)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// What [`datetime_probe`] needs to know about one operand of an equality.
 #[derive(Clone, Copy)]
 // Read only by the `datetime` probe.

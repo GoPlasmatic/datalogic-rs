@@ -40,11 +40,13 @@ MODE_ORDER = {
         "rule-evaluate", "engine-apply-oneshot",
     ],
     "python": [
-        "session-evaluate-str", "rule-evaluate-str", "rule-evaluate-dict",
+        "session-evaluate-str", "session-evaluate-data", "session-evaluate-many-100",
+        "rule-evaluate-str", "rule-evaluate-dict",
         "dumps-str-loads-roundtrip", "engine-eval-oneshot",
     ],
     "node": [
-        "session-evaluateStr-str", "rule-evaluateStr-str", "rule-evaluate-obj",
+        "session-evaluateStr-str", "session-evaluate-data", "session-evaluate-many-100",
+        "rule-evaluateStr-str", "rule-evaluate-obj",
         "stringify-str-parse-roundtrip", "engine-eval-oneshot",
     ],
     "go": [
@@ -60,7 +62,8 @@ MODE_ORDER = {
         "rule-evaluate", "encode-eval-decode-roundtrip", "engine-apply-oneshot",
     ],
     "wasm": [
-        "session-evaluate-str", "compiledrule-evaluate-str", "oneshot-evaluate",
+        "session-evaluate-str", "session-evaluate-data", "session-evaluate-many-100",
+        "compiledrule-evaluate-str", "oneshot-evaluate",
     ],
 }
 

@@ -12,8 +12,6 @@ mod lookup;
 mod strings;
 mod traversal;
 
-#[cfg(feature = "datetime")]
-pub(crate) use coercion::coerce_to_number;
 pub(crate) use coercion::{coerce_to_number_cfg, parse_finite, try_coerce_to_integer_cfg};
 #[cfg(feature = "serde_json")]
 pub(crate) use conversion::data_to_value;

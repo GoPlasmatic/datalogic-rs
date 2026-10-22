@@ -1,7 +1,7 @@
 //! `distinct` — drop duplicate elements, by value or by a computed key.
 
 use crate::arena::{ContextStack, DataValue, IterGuard, bvec};
-use crate::operators::comparison::compare_equals;
+use crate::operators::comparison::slice_contains_strict;
 use crate::{CompiledNode, Engine, Result};
 use bumpalo::Bump;
 
@@ -50,15 +50,7 @@ fn distinct_by_value<'a>(
     let mut kept = bvec::<DataValue<'a>>(arena, len);
     for i in 0..len {
         let item = src.get(i);
-        ctx.charge(kept.len() as u64)?;
-        let mut seen = false;
-        for prev in kept.iter() {
-            if compare_equals(prev, item, true, engine, ctx)? {
-                seen = true;
-                break;
-            }
-        }
-        if !seen {
+        if !slice_contains_strict(&kept, item, engine, ctx)? {
             kept.push(*item);
         }
     }
@@ -74,7 +66,7 @@ fn distinct_by_key<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     let len = src.len();
-    let mut seen_keys = bvec::<&'a DataValue<'a>>(arena, len);
+    let mut seen_keys = bvec::<DataValue<'a>>(arena, len);
     let mut kept = bvec::<DataValue<'a>>(arena, len);
     let mut guard = IterGuard::new(ctx);
     for i in 0..len {
@@ -82,16 +74,8 @@ fn distinct_by_key<'a>(
         guard.step_indexed(item, i);
         let key = engine.dispatch_node(key_expr, guard.stack(), arena)?;
 
-        guard.stack().charge(seen_keys.len() as u64)?;
-        let mut seen = false;
-        for prev in seen_keys.iter() {
-            if compare_equals(prev, key, true, engine, guard.stack())? {
-                seen = true;
-                break;
-            }
-        }
-        if !seen {
-            seen_keys.push(key);
+        if !slice_contains_strict(&seen_keys, key, engine, guard.stack())? {
+            seen_keys.push(*key);
             kept.push(*item);
         }
     }

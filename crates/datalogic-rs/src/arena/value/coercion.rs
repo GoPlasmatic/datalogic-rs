@@ -6,8 +6,7 @@
 //!
 //! | Policy            | Where                                          | Used by                          |
 //! |-------------------|------------------------------------------------|----------------------------------|
-//! | Numeric (config)  | this module — `coerce_to_number_cfg`           | comparison, arithmetic helpers   |
-//! | Numeric (default) | this module — `coerce_to_number` (datetime)    | datetime arithmetic              |
+//! | Numeric (config)  | this module — `coerce_to_number_cfg`           | comparison, arithmetic, datetime |
 //! | Equality          | `operators/comparison.rs::loose_equals_core`   | `==` / `!=` (typed coercion table) |
 //! | Arithmetic pair   | `operators/arithmetic/helpers.rs::coerce_pair_*` | `+`/`-`/`*`/`/`/`%` (delegate to `_cfg`) |
 //!
@@ -87,40 +86,5 @@ pub(crate) fn try_coerce_to_integer_cfg(v: &DataValue<'_>, engine: &crate::Engin
         DataValue::Bool(b) if coercion.bool_to_number => Some(if *b { 1 } else { 0 }),
         DataValue::Null if coercion.null_to_zero => Some(0),
         _ => None,
-    }
-}
-
-/// Coerce an `DataValue` to f64 using default JSON Logic coercion rules
-/// (no engine config consulted). Used by datetime arithmetic where the
-/// duration/scalar-multiply path runs before user config can intervene.
-#[cfg(feature = "datetime")]
-pub(crate) fn coerce_to_number(v: &DataValue<'_>) -> Option<f64> {
-    match v {
-        DataValue::Number(n) => Some(n.as_f64()),
-        DataValue::Bool(true) => Some(1.0),
-        DataValue::Bool(false) => Some(0.0),
-        DataValue::Null => Some(0.0),
-        DataValue::String(s) => {
-            let t = s.trim();
-            if t.is_empty() {
-                Some(0.0)
-            } else {
-                parse_finite(t)
-            }
-        }
-        DataValue::Array(items) => match items.len() {
-            0 => Some(0.0),
-            1 => coerce_to_number(&items[0]),
-            _ => None,
-        },
-        DataValue::Object(_) => None,
-        #[cfg(feature = "datetime")]
-        DataValue::DateTime(_) | DataValue::Duration(_) => None,
-        // No coercion. A 1-element tensor could arguably yield its scalar
-        // (as a 1-element array does), but that would make arithmetic on
-        // tensors silently shape-dependent; `to_list` is the explicit way
-        // out.
-        #[cfg(feature = "tensor")]
-        DataValue::Tensor(_) => None,
     }
 }

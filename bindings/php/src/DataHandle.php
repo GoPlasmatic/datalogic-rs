@@ -31,6 +31,8 @@ use Goplasmatic\Datalogic\Internal\Native;
 final class DataHandle
 {
     private ?CData $handle;
+    /** Address recorded by {@see Native::own()}, released on close. */
+    private int $address = 0;
 
     /**
      * Parse a JSON document into a resident handle.
@@ -46,6 +48,7 @@ final class DataHandle
         if ($rc !== Native::STATUS_OK) {
             throw DatalogicException::fromNative($rc, $err, 'data parse failed');
         }
+        $this->address = Native::own($out, 'DataHandle');
         $this->handle = $out;
     }
 
@@ -71,6 +74,7 @@ final class DataHandle
     {
         if ($this->handle !== null) {
             Native::ffi()->datalogic_data_free($this->handle);
+            Native::disown($this->address);
             $this->handle = null;
         }
     }

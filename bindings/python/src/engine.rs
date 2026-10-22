@@ -305,12 +305,8 @@ impl Engine {
     ) -> PyResult<String> {
         let mode = datalogic_bind::check_mode(mode)
             .map_err(|msg| engine_error_to_pyerr(py, &DlError::invalid_arguments(msg), None))?;
-        let engine = self.inner.clone();
-        let logic_owned = logic.to_string();
-        let data_owned = data.to_string();
-        Ok(py.detach(move || {
-            datalogic_bind::traced_json_in(&engine, logic_owned.as_str(), data_owned.as_str(), mode)
-        }))
+        let engine: &RsEngine = &self.inner;
+        Ok(py.detach(|| datalogic_bind::traced_json_in(engine, logic, data, mode)))
     }
 
     /// Open a hot-loop [`Session`] bound to this engine. The session
@@ -427,9 +423,10 @@ impl Rule {
         let engine: &RsEngine = &self.engine;
         let logic: &Logic = &self.logic;
         let result = py.detach(|| -> Result<String, datalogic_rs::Error> {
-            let arena = Bump::new();
-            let av = engine.evaluate(logic, data, &arena)?;
-            Ok(av.to_string())
+            datalogic_bind::with_pooled_arena(|arena| {
+                let av = engine.evaluate(logic, data, arena)?;
+                Ok(av.to_string())
+            })
         });
         result.map_err(|e| engine_error_to_pyerr(py, &e, Some(&self.logic)))
     }
@@ -478,9 +475,10 @@ impl Rule {
         let logic: &Logic = &self.logic;
         let tree = &data.tree;
         py.detach(move || -> Result<String, datalogic_rs::Error> {
-            let arena = Bump::new();
-            let av = engine.evaluate(logic, tree.value(), &arena)?;
-            Ok(av.to_string())
+            datalogic_bind::with_pooled_arena(|arena| {
+                let av = engine.evaluate(logic, tree.value(), arena)?;
+                Ok(av.to_string())
+            })
         })
         .map_err(|e| engine_error_to_pyerr(py, &e, Some(&self.logic)))
     }
@@ -595,9 +593,9 @@ pub(crate) fn evaluate_value(
     // conversion — parse and evaluate in one detached pass, then convert
     // the borrowed result directly.
     if let Ok(s) = data.cast::<PyString>() {
-        let text = s.to_str()?.to_string();
+        let text = s.to_str()?;
         let mut arena = Bump::new();
-        let res = eval_borrowing(py, engine, logic, DetachInput::Str(&text), &mut arena);
+        let res = eval_borrowing(py, engine, logic, DetachInput::Str(text), &mut arena);
         return match res {
             Ok(av) => datavalue_to_pyobject(py, av),
             Err(e) => Err(engine_error_to_pyerr(py, &e, Some(logic))),
@@ -663,29 +661,32 @@ pub(crate) fn evaluate_metered(
     // String input parses straight into the arena; anything else walks
     // the Python object tree.
     if let Ok(s) = data.cast::<PyString>() {
-        let s_owned = s.to_str()?.to_string();
+        let text = s.to_str()?;
         return py
             .detach(|| -> Result<(String, u64), datalogic_rs::Error> {
-                let arena = Bump::new();
-                let m = engine_ref.evaluate_metered(logic_ref, s_owned.as_str(), &arena, budget)?;
-                Ok((m.value.to_string(), m.ops))
+                datalogic_bind::with_pooled_arena(|arena| {
+                    let m = engine_ref.evaluate_metered(logic_ref, text, arena, budget)?;
+                    Ok((m.value.to_string(), m.ops))
+                })
             })
             .map_err(|e| engine_error_to_pyerr(py, &e, Some(logic)));
     }
     match build_py_tree(data) {
         Ok(tree) => py
             .detach(move || -> Result<(String, u64), datalogic_rs::Error> {
-                let arena = Bump::new();
-                let m = engine_ref.evaluate_metered(logic_ref, tree.value(), &arena, budget)?;
-                Ok((m.value.to_string(), m.ops))
+                datalogic_bind::with_pooled_arena(|arena| {
+                    let m = engine_ref.evaluate_metered(logic_ref, tree.value(), arena, budget)?;
+                    Ok((m.value.to_string(), m.ops))
+                })
             })
             .map_err(|e| engine_error_to_pyerr(py, &e, Some(logic))),
         Err(_) => {
             let value = dict_to_value(py, data)?;
             py.detach(|| -> Result<(String, u64), datalogic_rs::Error> {
-                let arena = Bump::new();
-                let m = engine_ref.evaluate_metered(logic_ref, &value, &arena, budget)?;
-                Ok((m.value.to_string(), m.ops))
+                datalogic_bind::with_pooled_arena(|arena| {
+                    let m = engine_ref.evaluate_metered(logic_ref, &value, arena, budget)?;
+                    Ok((m.value.to_string(), m.ops))
+                })
             })
             .map_err(|e| engine_error_to_pyerr(py, &e, Some(logic)))
         }
@@ -704,9 +705,10 @@ fn run_eval_to_value(
     let engine_ref: &RsEngine = engine;
     let logic_ref: &Logic = logic;
     py.detach(|| -> Result<Value, datalogic_rs::Error> {
-        let arena = Bump::new();
-        let av = engine_ref.evaluate(logic_ref, value, &arena)?;
-        serde_json::to_value(av).map_err(datalogic_rs::Error::wrap)
+        datalogic_bind::with_pooled_arena(|arena| {
+            let av = engine_ref.evaluate(logic_ref, value, arena)?;
+            serde_json::to_value(av).map_err(datalogic_rs::Error::wrap)
+        })
     })
     .map_err(|e| engine_error_to_pyerr(py, &e, Some(logic)))
 }

@@ -124,15 +124,27 @@ impl Refold {
     fn on(&self, engine: &crate::Engine) -> Option<&Logic> {
         let fingerprint = engine.fold_fingerprint();
         for slot in &self.others {
+            if let Some((held, logic)) = slot.get()
+                && *held == fingerprint
+            {
+                return Some(logic);
+            }
+        }
+        let mut pending: Option<Box<Logic>> = None;
+        for slot in &self.others {
             if slot.get().is_none() {
-                let mut logic =
-                    Logic::compile_in_mode(&self.source, engine, self.templating).ok()?;
-                // Only ever reached through this rule, so it needs no
-                // source of its own.
-                logic.refold = None;
-                // Another thread may fill the slot first; then its entry
-                // is checked like any other.
-                let _ = slot.set((fingerprint, Box::new(logic)));
+                let boxed = match pending.take() {
+                    Some(b) => b,
+                    None => Box::new(
+                        Logic::compile_for_refold(&self.source, engine, self.templating).ok()?,
+                    ),
+                };
+                // Another thread may fill the slot first; keep our boxed
+                // `Logic` on contention so the next empty slot can take it
+                // without recompiling.
+                if let Err((_, returned)) = slot.set((fingerprint, boxed)) {
+                    pending = Some(returned);
+                }
             }
             if let Some((held, logic)) = slot.get()
                 && *held == fingerprint

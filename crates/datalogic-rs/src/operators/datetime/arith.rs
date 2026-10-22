@@ -2,8 +2,8 @@
 //! operand is a datetime/duration form so the caller falls through to the
 //! generic numeric path.
 
-use crate::arena::DataValue;
-use crate::arena::value::coerce_to_number;
+use crate::Engine;
+use crate::arena::{DataValue, coerce_to_number_cfg};
 use bumpalo::Bump;
 use std::fmt::Display;
 
@@ -152,18 +152,19 @@ pub(crate) fn datetime_add<'a>(
 pub(crate) fn datetime_multiply<'a>(
     a_av: &'a DataValue<'a>,
     b_av: &'a DataValue<'a>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Option<&'a DataValue<'a>> {
     let (_, a_dur) = extract_dt_dur(a_av);
     let (_, b_dur) = extract_dt_dur(b_av);
 
     if let (Some(dur), None) = (&a_dur, &b_dur)
-        && let Some(factor) = coerce_to_number(b_av)
+        && let Some(factor) = coerce_to_number_cfg(b_av, engine)
     {
         return Some(write_into_arena(arena, dur.multiply(factor)));
     }
     if let (None, Some(dur)) = (&a_dur, &b_dur)
-        && let Some(factor) = coerce_to_number(a_av)
+        && let Some(factor) = coerce_to_number_cfg(a_av, engine)
     {
         return Some(write_into_arena(arena, dur.multiply(factor)));
     }
@@ -177,11 +178,12 @@ pub(crate) fn datetime_divide<'a>(
     a_av: &'a DataValue<'a>,
     b_av: &'a DataValue<'a>,
     ctx: &mut crate::arena::ContextStack<'_>,
+    engine: &Engine,
     arena: &'a Bump,
 ) -> Option<crate::Result<&'a DataValue<'a>>> {
     let (_, a_dur) = extract_dt_dur(a_av);
     let a_dur = a_dur?;
-    let divisor = coerce_to_number(b_av)?;
+    let divisor = coerce_to_number_cfg(b_av, engine)?;
     if divisor == 0.0 {
         return Some(Err(crate::operators::nan_error(
             crate::operators::NanForm::Thrown,

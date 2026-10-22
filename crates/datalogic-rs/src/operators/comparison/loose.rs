@@ -108,19 +108,9 @@ fn loose_equals_core(left: &DataValue<'_>, right: &DataValue<'_>) -> LooseEquals
             if s.is_empty() { Equal } else { NotEqual }
         }
 
-        // Composite mixed with primitive: incompatible
-        (DataValue::Array(_), _) | (_, DataValue::Array(_))
-            if !matches!((left, right), (DataValue::Array(_), DataValue::Array(_))) =>
-        {
-            Incompatible
-        }
-        (DataValue::Object(_), _) | (_, DataValue::Object(_))
-            if !matches!((left, right), (DataValue::Object(_), DataValue::Object(_))) =>
-        {
-            Incompatible
-        }
-
-        // Array-array structural compare
+        // Array-array structural compare; two objects are NotEqual (never
+        // structurally compared by `==`), while a composite mixed with a
+        // non-composite is Incompatible.
         (DataValue::Array(a), DataValue::Array(b)) => {
             if a == b {
                 Equal
@@ -128,6 +118,11 @@ fn loose_equals_core(left: &DataValue<'_>, right: &DataValue<'_>) -> LooseEquals
                 Incompatible
             }
         }
+        (DataValue::Object(_), DataValue::Object(_)) => NotEqual,
+        (DataValue::Array(_), _)
+        | (_, DataValue::Array(_))
+        | (DataValue::Object(_), _)
+        | (_, DataValue::Object(_)) => Incompatible,
 
         // Tensor-tensor is datavalue's structural `PartialEq`: dtype,
         // shape, and payload bytes. Two tensors that differ are genuinely
@@ -147,6 +142,7 @@ fn loose_equals_core(left: &DataValue<'_>, right: &DataValue<'_>) -> LooseEquals
         #[cfg(feature = "tensor")]
         (DataValue::Tensor(_), _) | (_, DataValue::Tensor(_)) => Incompatible,
 
+        #[cfg(feature = "datetime")]
         _ => NotEqual,
     }
 }

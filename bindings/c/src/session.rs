@@ -662,5 +662,5 @@ pub unsafe extern "C" fn datalogic_session_evaluate_many(
 /// failures need no handles of their own: `{"message", "operator"?,
 /// "tag"}`.
 fn write_item(item: &ItemError, out: &mut Vec<u8>) {
-    out.extend_from_slice(item.to_value().to_string().as_bytes());
+    let _ = serde_json::to_writer(&mut *out, &item.to_value());
 }

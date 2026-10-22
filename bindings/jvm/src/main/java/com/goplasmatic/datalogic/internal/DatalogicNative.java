@@ -24,6 +24,8 @@
 
 package com.goplasmatic.datalogic.internal;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -49,6 +51,9 @@ public final class DatalogicNative {
 
     /** The additions to v2 this binding calls (see `datalogic_abi_minor`). */
     public static final int EXPECTED_ABI_MINOR = 1;
+
+    /** Shared Jackson ObjectMapper for JSON marshalling across the binding. */
+    public static final ObjectMapper MAPPER = new ObjectMapper();
 
     // =============== modes (datalogic_mode) ===============
 

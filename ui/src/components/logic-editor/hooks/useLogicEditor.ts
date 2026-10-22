@@ -144,8 +144,8 @@ export function useLogicEditor({
   // identity: a host may pass an equal but new object on every render, and
   // re-converting (and re-tracing) for that would be wasted work. The
   // conversion reads the parsed copies, which is also all the engine sees.
-  const valueKey = JSON.stringify(value);
-  const dataKey = JSON.stringify(data);
+  const valueKey = useMemo(() => JSON.stringify(value), [value]);
+  const dataKey = useMemo(() => JSON.stringify(data), [data]);
   return useMemo(
     () =>
       buildModel(

@@ -286,7 +286,9 @@ impl EngineBuilder {
         let name = name.into();
         self.check_operator_name(&name)?;
         let mut builder = self.add_operator(name.clone(), operator);
-        builder.settings.checked_names.push(name);
+        if !builder.settings.checked_names.contains(&name) {
+            builder.settings.checked_names.push(name);
+        }
         Ok(builder)
     }
 

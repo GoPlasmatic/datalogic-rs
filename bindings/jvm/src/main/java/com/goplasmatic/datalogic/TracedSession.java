@@ -2,7 +2,6 @@
 package com.goplasmatic.datalogic;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.goplasmatic.datalogic.internal.DatalogicNative;
 
 import java.io.IOException;
@@ -18,8 +17,6 @@ import java.lang.ref.Reference;
  * metadata. Thread-safe — share freely.
  */
 public final class TracedSession implements AutoCloseable {
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-
     private final NativeHandle handle;
     // Keeps the owning engine's custom-operator stubs reachable while a
     // traced evaluation (which may dispatch into Java) is in flight.
@@ -76,7 +73,7 @@ public final class TracedSession implements AutoCloseable {
             Reference.reachabilityFence(this);
         }
         try {
-            JsonNode node = MAPPER.readTree(payload);
+            JsonNode node = DatalogicNative.MAPPER.readTree(payload);
             return new TracedRun(
                     node.get("result"),
                     node.get("expression_tree"),

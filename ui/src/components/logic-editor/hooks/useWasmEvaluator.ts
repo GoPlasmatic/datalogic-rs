@@ -314,6 +314,22 @@ interface EngineSlot {
   engine: WasmEngineInstance;
 }
 
+let cachedWasmPromise: Promise<WasmModule> | null = null;
+
+function loadWasmModule(): Promise<WasmModule> {
+  if (!cachedWasmPromise) {
+    cachedWasmPromise = (async () => {
+      const wasm = await import('@goplasmatic/datalogic-wasm');
+      await wasm.default();
+      return { Engine: wasm.Engine };
+    })().catch((err) => {
+      cachedWasmPromise = null;
+      throw err;
+    });
+  }
+  return cachedWasmPromise;
+}
+
 export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasmEvaluatorResult {
   const { templating = false, config, customOperators } = options;
   const [ready, setReady] = useState(false);
@@ -356,15 +372,10 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
         setLoading(true);
         setError(null);
 
-        // Dynamic import of the WASM module; the web target's default
-        // export is the async loader.
-        const wasm = await import('@goplasmatic/datalogic-wasm');
-        await wasm.default();
+        const mod = await loadWasmModule();
 
         if (!cancelled) {
-          moduleRef.current = {
-            Engine: wasm.Engine,
-          };
+          moduleRef.current = mod;
           setReady(true);
           setLoading(false);
         }

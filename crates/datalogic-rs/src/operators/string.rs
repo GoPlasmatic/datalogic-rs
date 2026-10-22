@@ -16,17 +16,37 @@ use {crate::arena::ContextStack, bumpalo::Bump};
 /// `cat`: the string forms of every argument, concatenated; an array
 /// argument contributes each item's string form.
 #[inline]
-pub(crate) fn concat<'a>(
-    cx: &mut Cx<'_, 'a>,
-    parts: RestArgs<'a, Any>,
-) -> Result<&'a DataValue<'a>> {
+pub(crate) fn concat<'a>(cx: &mut Cx<'_, 'a>, parts: RestArgs<'a, Any>) -> Result<&'a str> {
+    if parts.is_empty() {
+        return Ok("");
+    }
+    let arena = cx.arena;
     // Build the concatenated string using a bumpalo String to avoid heap alloc.
     // Each piece is charged its bytes before it is appended, and an array
     // argument one per item on top, so an accumulator (`cat` of the
     // accumulator inside `reduce`) is charged for the copy it makes.
-    let arena = cx.arena;
-    let mut buf = bumpalo::collections::String::new_in(arena);
-    for i in 0..parts.len() {
+    let mut buf = bumpalo::collections::String::with_capacity_in(parts.len() * 8, arena);
+    let mut start = 0;
+    if parts.len() == 1 {
+        let av = parts.get(0, cx)?;
+        match av {
+            DataValue::Array(items) => {
+                cx.charge(items.len() as u64)?;
+                for it in *items {
+                    let piece = data_to_str(it, arena);
+                    cx.charge_bytes(piece.len())?;
+                    buf.push_str(piece);
+                }
+                start = 1;
+            }
+            _ => {
+                let piece = data_to_str(av, arena);
+                cx.charge_bytes(piece.len())?;
+                return Ok(piece);
+            }
+        }
+    }
+    for i in start..parts.len() {
         match parts.get(i, cx)? {
             // For arrays, concat each item's string form.
             DataValue::Array(items) => {
@@ -44,7 +64,7 @@ pub(crate) fn concat<'a>(
             }
         }
     }
-    Ok(cx.alloc(DataValue::String(buf.into_bump_str())))
+    Ok(buf.into_bump_str())
 }
 
 /// `substr(text, start?, length?)`: char-indexed substring. Negative
@@ -171,26 +191,7 @@ pub(crate) fn in_<'a>(
         // iterators charge theirs, so the cost does not depend on where
         // (or whether) the needle is found.
         DataValue::Array(items) => {
-            cx.charge(items.len() as u64)?;
-            let mut found = false;
-            for it in items.iter() {
-                // A failed comparison counts as "not this item", except an
-                // exhausted budget, which is final.
-                match crate::operators::comparison::compare_equals(
-                    it, needle, true, cx.engine, cx.ctx,
-                ) {
-                    Ok(true) => {
-                        found = true;
-                        break;
-                    }
-                    Ok(false) => {}
-                    Err(e) if matches!(e.kind, crate::ErrorKind::BudgetExceeded { .. }) => {
-                        return Err(e);
-                    }
-                    Err(_) => {}
-                }
-            }
-            found
+            crate::operators::comparison::slice_contains_strict(items, needle, cx.engine, cx.ctx)?
         }
         _ => false,
     })

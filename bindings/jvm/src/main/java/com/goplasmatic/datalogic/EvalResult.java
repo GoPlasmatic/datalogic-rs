@@ -2,7 +2,7 @@
 package com.goplasmatic.datalogic;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.goplasmatic.datalogic.internal.DatalogicNative;
 
 /**
  * Per-item outcome of {@link Session#evaluateBatch(Rule, java.util.List)}
@@ -23,8 +23,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  */
 public record EvalResult(String value, String errorTag, String errorMessage, String errorOperator) {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-
     /** Whether this item evaluated successfully. */
     public boolean isSuccess() {
         return errorTag == null;
@@ -43,7 +41,7 @@ public record EvalResult(String value, String errorTag, String errorMessage, Str
      */
     static EvalResult failure(String errorJson) {
         try {
-            JsonNode node = MAPPER.readTree(errorJson);
+            JsonNode node = DatalogicNative.MAPPER.readTree(errorJson);
             String tag = text(node, "tag", "InternalError");
             String message = text(node, "message", errorJson);
             String operator = text(node, "operator", null);

@@ -498,13 +498,14 @@ impl Rule {
     #[napi(catch_unwind, ts_return_type = "unknown")]
     pub fn evaluate_data(&self, env: Env, handle: &DataHandle) -> Result<Value> {
         guard(&env, || {
-            let arena = Bump::new();
-            let av = self
-                .engine
-                .evaluate(&self.logic, &handle.parsed, &arena)
-                .map_err(|e| engine_error(&env, &e, Some(&self.logic)))?;
-            serde_json::to_value(av)
-                .map_err(|e| engine_error(&env, &DlError::wrap(e), Some(&self.logic)))
+            datalogic_bind::with_pooled_arena(|arena| {
+                let av = self
+                    .engine
+                    .evaluate(&self.logic, &handle.parsed, arena)
+                    .map_err(|e| engine_error(&env, &e, Some(&self.logic)))?;
+                serde_json::to_value(av)
+                    .map_err(|e| engine_error(&env, &DlError::wrap(e), Some(&self.logic)))
+            })
         })
     }
 
@@ -513,12 +514,13 @@ impl Rule {
     #[napi(catch_unwind)]
     pub fn evaluate_data_str(&self, env: Env, handle: &DataHandle) -> Result<String> {
         guard(&env, || {
-            let arena = Bump::new();
-            let av = self
-                .engine
-                .evaluate(&self.logic, &handle.parsed, &arena)
-                .map_err(|e| engine_error(&env, &e, Some(&self.logic)))?;
-            Ok(av.to_string())
+            datalogic_bind::with_pooled_arena(|arena| {
+                let av = self
+                    .engine
+                    .evaluate(&self.logic, &handle.parsed, arena)
+                    .map_err(|e| engine_error(&env, &e, Some(&self.logic)))?;
+                Ok(av.to_string())
+            })
         })
     }
 
@@ -581,10 +583,11 @@ impl Task for EvaluateStrTask {
         // `AssertUnwindSafe`: on a panic the arena and its borrows are
         // dropped with the closure, and nothing else is mutated.
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let arena = Bump::new();
-            self.engine
-                .evaluate(&self.logic, self.data.as_str(), &arena)
-                .map(|av| av.to_string())
+            datalogic_bind::with_pooled_arena(|arena| {
+                self.engine
+                    .evaluate(&self.logic, self.data.as_str(), arena)
+                    .map(|av| av.to_string())
+            })
         }));
         // Fallback reasons, used if `reject` cannot build the decorated
         // object: the message prefixed with the stable error tag.
@@ -724,17 +727,18 @@ pub(crate) fn evaluate_value(
     // `&str` entry point (mirroring `evaluate_str` and the Session
     // methods) instead of round-tripping through a second
     // `serde_json::Value` tree.
-    let arena = Bump::new();
-    let av = match &data {
-        Value::String(s) => engine
-            .evaluate(logic, s.as_str(), &arena)
-            .map_err(|e| engine_error(env, &e, Some(logic)))?,
-        other => engine
-            .evaluate(logic, other, &arena)
-            .map_err(|e| engine_error(env, &e, Some(logic)))?,
-    };
-    serde_json::to_value(av)
-        .map_err(|e| engine_error(env, &datalogic_rs::Error::wrap(e), Some(logic)))
+    datalogic_bind::with_pooled_arena(|arena| {
+        let av = match &data {
+            Value::String(s) => engine
+                .evaluate(logic, s.as_str(), arena)
+                .map_err(|e| engine_error(env, &e, Some(logic)))?,
+            other => engine
+                .evaluate(logic, other, arena)
+                .map_err(|e| engine_error(env, &e, Some(logic)))?,
+        };
+        serde_json::to_value(av)
+            .map_err(|e| engine_error(env, &datalogic_rs::Error::wrap(e), Some(logic)))
+    })
 }
 
 /// Resolve a JS-supplied operation budget: an explicit number wins, then
@@ -757,17 +761,18 @@ pub(crate) fn evaluate_metered(
     budget: Option<f64>,
 ) -> Result<MeteredResult> {
     let budget = resolve_budget(env, engine, budget)?;
-    let arena = Bump::new();
-    // Same string fast path as `evaluate_str`: a JSON-string input parses
-    // straight into the arena instead of through a `serde_json::Value`.
-    let metered = match &data {
-        Value::String(s) => engine.evaluate_metered(logic, s.as_str(), &arena, budget),
-        other => engine.evaluate_metered(logic, other, &arena, budget),
-    }
-    .map_err(|e| engine_error(env, &e, Some(logic)))?;
-    Ok(MeteredResult {
-        result: metered.value.to_string(),
-        ops: metered.ops as f64,
+    datalogic_bind::with_pooled_arena(|arena| {
+        // Same string fast path as `evaluate_str`: a JSON-string input parses
+        // straight into the arena instead of through a `serde_json::Value`.
+        let metered = match &data {
+            Value::String(s) => engine.evaluate_metered(logic, s.as_str(), arena, budget),
+            other => engine.evaluate_metered(logic, other, arena, budget),
+        }
+        .map_err(|e| engine_error(env, &e, Some(logic)))?;
+        Ok(MeteredResult {
+            result: metered.value.to_string(),
+            ops: metered.ops as f64,
+        })
     })
 }
 

@@ -124,9 +124,9 @@ impl DataHandle {
     #[new]
     fn new(py: Python<'_>, data: &Bound<'_, PyAny>) -> PyResult<Self> {
         if let Ok(s) = data.cast::<PyString>() {
-            let owned = s.to_str()?.to_string();
+            let text = s.to_str()?;
             let parsed = py
-                .detach(move || ParsedData::from_json(&owned))
+                .detach(|| ParsedData::from_json(text))
                 .map_err(|e| engine_error_to_pyerr(py, &e, None))?;
             return Ok(Self {
                 tree: SharedTree(ParsedTree::Json(parsed)),

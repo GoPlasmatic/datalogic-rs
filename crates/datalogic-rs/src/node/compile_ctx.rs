@@ -112,13 +112,14 @@ impl CompileCtx {
     /// [`Self::descend`] into array index `index`.
     #[inline]
     pub(crate) fn descend_index(&mut self, index: usize) -> usize {
-        use std::fmt::Write;
         let Some(pointer) = &mut self.pointer else {
             return 0;
         };
         let mark = pointer.len();
         // Digits need no escaping.
-        let _ = write!(pointer, "/{index}");
+        let mut buf = itoa::Buffer::new();
+        pointer.push('/');
+        pointer.push_str(buf.format(index));
         mark
     }
 

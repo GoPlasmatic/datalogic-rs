@@ -54,13 +54,6 @@ pub(crate) fn push_json_str(out: &mut String, s: &str) {
     out.push('"');
 }
 
-/// `s` as a quoted JSON string literal; see [`push_json_str`].
-pub(crate) fn json_str(s: &str) -> String {
-    let mut out = String::new();
-    push_json_str(&mut out, s);
-    out
-}
-
 /// The text of a path segment.
 #[inline]
 fn segment_str(seg: &PathSegment) -> &str {
@@ -69,80 +62,116 @@ fn segment_str(seg: &PathSegment) -> &str {
     }
 }
 
-/// `segments` as a JSON array of strings.
-fn segments_array(segments: &[PathSegment]) -> String {
-    let items: Vec<String> = segments.iter().map(|s| json_str(segment_str(s))).collect();
-    format!("[{}]", items.join(", "))
+/// Write `segments` as a JSON array of strings into `out`.
+fn write_segments_array(out: &mut String, segments: &[PathSegment]) {
+    out.push('[');
+    for (i, s) in segments.iter().enumerate() {
+        if i > 0 {
+            out.push_str(", ");
+        }
+        push_json_str(out, segment_str(s));
+    }
+    out.push(']');
 }
 
-/// `{"<name>": <args>}`, with the name escaped.
-fn call(name: &str, args: &str) -> String {
-    let mut out = String::with_capacity(name.len() + args.len() + 6);
+/// Write `{"<name>": ` prefix into `out`, with the name escaped.
+#[inline]
+fn begin_call(out: &mut String, name: &str) {
     out.push('{');
-    push_json_str(&mut out, name);
+    push_json_str(out, name);
     out.push_str(": ");
-    out.push_str(args);
-    out.push('}');
-    out
 }
 
 /// Serialise an entire compiled tree as a JSONLogic string.
 pub(crate) fn node_to_json_string(node: &CompiledNode) -> String {
+    let mut out = String::new();
+    write_node_json(&mut out, node);
+    out
+}
+
+/// Append a compiled tree as a JSONLogic string into `out`.
+fn write_node_json(out: &mut String, node: &CompiledNode) {
     match node {
-        CompiledNode::Value { value, .. } => value.to_json_string(),
+        CompiledNode::Value { value, .. } => out.push_str(&value.to_json_string()),
         CompiledNode::Array { nodes, .. } => {
-            let items: Vec<String> = nodes.iter().map(node_to_json_string).collect();
-            format!("[{}]", items.join(", "))
+            out.push('[');
+            for (i, n) in nodes.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                write_node_json(out, n);
+            }
+            out.push(']');
         }
-        CompiledNode::BuiltinOperator { opcode, args, .. } => builtin_to_json_string(opcode, args),
-        CompiledNode::CustomOperator(data) => custom_to_json_string(&data.name, &data.args),
+        CompiledNode::BuiltinOperator { opcode, args, .. } => {
+            write_builtin_json(out, opcode, args);
+        }
+        CompiledNode::CustomOperator(data) => {
+            write_custom_json(out, &data.name, &data.args);
+        }
         // Memo wrappers are invisible in serialized output — `to_json()`
         // of a CSE'd tree is byte-identical to the unwrapped tree.
-        CompiledNode::Cse(data) => node_to_json_string(&data.inner),
+        CompiledNode::Cse(data) => write_node_json(out, &data.inner),
         #[cfg(feature = "templating")]
-        CompiledNode::StructuredObject(data) => structured_to_json_string(&data.fields),
+        CompiledNode::StructuredObject(data) => write_structured_json(out, &data.fields),
         CompiledNode::Var {
             scope_level,
             segments,
             default_value,
             ..
-        } => compiled_var_to_json_string(*scope_level, segments, default_value.as_deref()),
+        } => write_compiled_var_json(out, *scope_level, segments, default_value.as_deref()),
         #[cfg(feature = "ext-control")]
-        CompiledNode::Exists(data) => compiled_exists_to_json_string(&data.segments),
+        CompiledNode::Exists(data) => write_compiled_exists_json(out, &data.segments),
         #[cfg(feature = "error-handling")]
         CompiledNode::Throw(data) => {
+            begin_call(out, "throw");
             if let datavalue::OwnedDataValue::Object(pairs) = &data.error
                 && let Some((_, datavalue::OwnedDataValue::String(s))) =
                     pairs.iter().find(|(k, _)| k == "type")
             {
-                return call("throw", &json_str(s));
+                push_json_str(out, s);
+            } else {
+                out.push_str(&data.error.to_json_string());
             }
-            call("throw", &data.error.to_json_string())
+            out.push('}');
         }
         CompiledNode::Missing(data) => {
-            let parts: Vec<String> = data
-                .args
-                .iter()
-                .map(|a| match a {
-                    crate::node::CompiledMissingArg::Now((path, _)) => json_str(path),
-                    crate::node::CompiledMissingArg::Later(n) => node_to_json_string(n),
-                })
-                .collect();
-            format!("{{\"missing\": [{}]}}", parts.join(", "))
+            out.push_str("{\"missing\": [");
+            for (i, a) in data.args.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                match a {
+                    crate::node::CompiledMissingArg::Now((path, _)) => push_json_str(out, path),
+                    crate::node::CompiledMissingArg::Later(n) => write_node_json(out, n),
+                }
+            }
+            out.push_str("]}");
         }
         CompiledNode::MissingSome(data) => {
-            let min_str = match &data.min_present {
-                crate::node::CompiledMissingMin::Now(n) => n.to_string(),
-                crate::node::CompiledMissingMin::Later(n) => node_to_json_string(n),
-            };
-            let paths_str = match &data.paths {
-                crate::node::CompiledMissingPaths::Now(paths) => {
-                    let items: Vec<String> = paths.iter().map(|(p, _)| json_str(p)).collect();
-                    format!("[{}]", items.join(", "))
+            out.push_str("{\"missing_some\": [");
+            match &data.min_present {
+                crate::node::CompiledMissingMin::Now(n) => {
+                    let mut buf = itoa::Buffer::new();
+                    out.push_str(buf.format(*n));
                 }
-                crate::node::CompiledMissingPaths::Later(n) => node_to_json_string(n),
-            };
-            format!("{{\"missing_some\": [{}, {}]}}", min_str, paths_str)
+                crate::node::CompiledMissingMin::Later(n) => write_node_json(out, n),
+            }
+            out.push_str(", ");
+            match &data.paths {
+                crate::node::CompiledMissingPaths::Now(paths) => {
+                    out.push('[');
+                    for (i, (p, _)) in paths.iter().enumerate() {
+                        if i > 0 {
+                            out.push_str(", ");
+                        }
+                        push_json_str(out, p);
+                    }
+                    out.push(']');
+                }
+                crate::node::CompiledMissingPaths::Later(n) => write_node_json(out, n),
+            }
+            out.push_str("]}");
         }
         // Re-emit the offending rule verbatim, not a placeholder. The node
         // keeps both the misused operator and its raw arguments, so this
@@ -153,7 +182,11 @@ pub(crate) fn node_to_json_string(node: &CompiledNode) -> String {
         // ordinary output field, turning an erroring rule into a
         // successful one, and outside it as an unknown operator, losing
         // which op actually failed.
-        CompiledNode::InvalidArgs { op_name, args, .. } => call(op_name, &args.to_json_string()),
+        CompiledNode::InvalidArgs { op_name, args, .. } => {
+            begin_call(out, op_name);
+            out.push_str(&args.to_json_string());
+            out.push('}');
+        }
     }
 }
 
@@ -162,36 +195,80 @@ pub(crate) fn node_to_json_string(node: &CompiledNode) -> String {
 /// argument that renders as an array would be read back as the argument
 /// list itself (`{"max": [[1, 2]]}` is not `{"max": [1, 2]}`). Shared by
 /// the builtin and custom operator renderers.
-fn args_to_json_string(args: &[CompiledNode], inline: bool) -> String {
+fn write_args_json(out: &mut String, args: &[CompiledNode], inline: bool) {
     if let [arg] = args {
-        let rendered = node_to_json_string(arg);
-        if inline && !rendered.starts_with('[') {
-            return rendered;
+        if inline {
+            let start = out.len();
+            write_node_json(out, arg);
+            if out.as_bytes().get(start) == Some(&b'[') {
+                out.insert(start, '[');
+                out.push(']');
+            }
+        } else {
+            out.push('[');
+            write_node_json(out, arg);
+            out.push(']');
         }
-        return format!("[{rendered}]");
+        return;
     }
-    let items: Vec<String> = args.iter().map(node_to_json_string).collect();
-    format!("[{}]", items.join(", "))
+    out.push('[');
+    for (i, arg) in args.iter().enumerate() {
+        if i > 0 {
+            out.push_str(", ");
+        }
+        write_node_json(out, arg);
+    }
+    out.push(']');
 }
 
-pub(crate) fn builtin_to_json_string(opcode: &OpCode, args: &[CompiledNode]) -> String {
+fn write_builtin_json(out: &mut String, opcode: &OpCode, args: &[CompiledNode]) {
     // `and` / `or` / `if` read only an argument array: a lone argument
     // written in place is an error, not that argument.
     let inline = opcode.meta().args_form != crate::operators::meta::ArgsForm::ArrayOnly;
-    call(opcode.as_str(), &args_to_json_string(args, inline))
+    begin_call(out, opcode.as_str());
+    write_args_json(out, args, inline);
+    out.push('}');
 }
 
+#[cfg(feature = "trace")]
+pub(crate) fn builtin_to_json_string(opcode: &OpCode, args: &[CompiledNode]) -> String {
+    let mut out = String::new();
+    write_builtin_json(&mut out, opcode, args);
+    out
+}
+
+fn write_custom_json(out: &mut String, name: &str, args: &[CompiledNode]) {
+    begin_call(out, name);
+    write_args_json(out, args, true);
+    out.push('}');
+}
+
+#[cfg(feature = "trace")]
 pub(crate) fn custom_to_json_string(name: &str, args: &[CompiledNode]) -> String {
-    call(name, &args_to_json_string(args, true))
+    let mut out = String::new();
+    write_custom_json(&mut out, name, args);
+    out
 }
 
 #[cfg(feature = "templating")]
+fn write_structured_json(out: &mut String, fields: &[(String, CompiledNode)]) {
+    out.push('{');
+    for (i, (key, node)) in fields.iter().enumerate() {
+        if i > 0 {
+            out.push_str(", ");
+        }
+        push_json_str(out, key);
+        out.push_str(": ");
+        write_node_json(out, node);
+    }
+    out.push('}');
+}
+
+#[cfg(all(feature = "templating", feature = "trace"))]
 pub(crate) fn structured_to_json_string(fields: &[(String, CompiledNode)]) -> String {
-    let items: Vec<String> = fields
-        .iter()
-        .map(|(key, node)| format!("{}: {}", json_str(key), node_to_json_string(node)))
-        .collect();
-    format!("{{{}}}", items.join(", "))
+    let mut out = String::new();
+    write_structured_json(&mut out, fields);
+    out
 }
 
 /// Render a compiled `var` / `val` read.
@@ -203,19 +280,24 @@ pub(crate) fn structured_to_json_string(fields: &[(String, CompiledNode)]) -> St
 /// `{"var": "a.b"}` reads `a` then `b`. Such a read is written in the `val`
 /// form, as a list of literal keys that is never split. A level marker
 /// (`scope_level > 0`) exists only in the `val` form.
-fn compiled_var_to_json_string(
+fn write_compiled_var_json(
+    out: &mut String,
     scope_level: u32,
     segments: &[PathSegment],
     default_value: Option<&CompiledNode>,
-) -> String {
+) {
     if scope_level > 0 {
-        let mut list = format!("[[{}]", scope_level);
+        begin_call(out, "val");
+        out.push_str("[[");
+        let mut buf = itoa::Buffer::new();
+        out.push_str(buf.format(scope_level));
+        out.push(']');
         for seg in segments {
-            list.push_str(", ");
-            push_json_str(&mut list, segment_str(seg));
+            out.push_str(", ");
+            push_json_str(out, segment_str(seg));
         }
-        list.push(']');
-        return call("val", &list);
+        out.push_str("]}");
+        return;
     }
     // A `var` path is split on `.`, and an empty one reads the whole
     // context, so a dotted segment or a lone empty one needs the `val`
@@ -225,29 +307,46 @@ fn compiled_var_to_json_string(
         _ => segments.iter().any(|s| segment_str(s).contains('.')),
     };
     if needs_val && default_value.is_none() {
-        return match segments {
-            [seg] => call("val", &json_str(segment_str(seg))),
-            _ => call("val", &segments_array(segments)),
-        };
+        begin_call(out, "val");
+        match segments {
+            [seg] => push_json_str(out, segment_str(seg)),
+            _ => write_segments_array(out, segments),
+        }
+        out.push('}');
+        return;
     }
     let path = segments
         .iter()
         .map(segment_str)
         .collect::<Vec<_>>()
         .join(".");
+    begin_call(out, "var");
     match default_value {
-        Some(def) => call(
-            "var",
-            &format!("[{}, {}]", json_str(&path), node_to_json_string(def)),
-        ),
-        None => call("var", &json_str(&path)),
+        Some(def) => {
+            out.push('[');
+            push_json_str(out, &path);
+            out.push_str(", ");
+            write_node_json(out, def);
+            out.push(']');
+        }
+        None => push_json_str(out, &path),
     }
+    out.push('}');
 }
 
 #[cfg(feature = "ext-control")]
-pub(crate) fn compiled_exists_to_json_string(segments: &[PathSegment]) -> String {
+fn write_compiled_exists_json(out: &mut String, segments: &[PathSegment]) {
+    begin_call(out, "exists");
     match segments {
-        [seg] => call("exists", &json_str(segment_str(seg))),
-        _ => call("exists", &segments_array(segments)),
+        [seg] => push_json_str(out, segment_str(seg)),
+        _ => write_segments_array(out, segments),
     }
+    out.push('}');
+}
+
+#[cfg(all(feature = "ext-control", feature = "trace"))]
+pub(crate) fn compiled_exists_to_json_string(segments: &[PathSegment]) -> String {
+    let mut out = String::new();
+    write_compiled_exists_json(&mut out, segments);
+    out
 }

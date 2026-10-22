@@ -111,25 +111,16 @@ pub(crate) fn exists<'a>(
 
     // Several arguments: each must evaluate to a string segment. A
     // non-string one ends the call before later ones are evaluated.
-    let Some(head) = first.as_str() else {
+    let Some(mut prev) = first.as_str() else {
         return Ok(false);
     };
-    let mut segments: bumpalo::collections::Vec<'a, &'a str> =
-        bumpalo::collections::Vec::with_capacity_in(rest.len() + 1, cx.arena);
-    segments.push(head);
+    let mut walk = Some(cur);
     for i in 0..rest.len() {
         let Some(seg) = rest.get(i, cx)?.as_str() else {
             return Ok(false);
         };
-        segments.push(seg);
+        walk = walk.and_then(|w| object_step(w, prev));
+        prev = seg;
     }
-    let (last, init) = segments.split_last().expect("at least the head segment");
-    let mut walk = cur;
-    for seg in init {
-        match object_step(walk, seg) {
-            Some(next) => walk = next,
-            None => return Ok(false),
-        }
-    }
-    Ok(object_contains(walk, last))
+    Ok(walk.is_some_and(|w| object_contains(w, prev)))
 }

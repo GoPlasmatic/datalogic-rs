@@ -5,10 +5,9 @@
 //! session-grade allocation behaviour (one warm arena per thread)
 //! without the "session is not thread-safe" trap.
 
-use std::cell::RefCell;
 use std::sync::Arc;
 
-use datalogic_rs::bumpalo::Bump;
+pub(crate) use datalogic_bind::with_pooled_arena;
 use datalogic_rs::{Engine as RsEngine, Logic};
 
 use crate::data::Data;
@@ -24,34 +23,6 @@ use crate::{Buf, guard_status, str_from_raw};
 pub struct Rule {
     pub(crate) engine: Arc<RsEngine>,
     pub(crate) logic: Arc<Logic>,
-}
-
-thread_local! {
-    /// One warm arena per thread for the session-less paths. `take` on
-    /// entry / put back on exit keeps reentrancy safe: a custom
-    /// operator that calls back into a `datalogic_*` entry point on the
-    /// same thread simply builds a fresh arena for the nested call.
-    static POOLED_ARENA: RefCell<Option<Bump>> = const { RefCell::new(None) };
-}
-
-/// Cap on the retained per-thread arena so one huge payload doesn't pin
-/// its high-water mark for the thread's lifetime.
-const MAX_POOLED_ARENA_BYTES: usize = 4 * 1024 * 1024;
-
-/// Run `body` with a warm thread-local arena; reset and repool it after
-/// (dropping it instead when it grew past the cap — `Bump::reset` keeps
-/// the largest chunk, so `allocated_bytes` reads retained capacity).
-pub(crate) fn with_pooled_arena<T>(body: impl FnOnce(&Bump) -> T) -> T {
-    let arena = POOLED_ARENA
-        .with(|cell| cell.borrow_mut().take())
-        .unwrap_or_default();
-    let result = body(&arena);
-    let mut arena = arena;
-    arena.reset();
-    if arena.allocated_bytes() <= MAX_POOLED_ARENA_BYTES {
-        POOLED_ARENA.with(|cell| *cell.borrow_mut() = Some(arena));
-    }
-    result
 }
 
 /// Release a rule handle. Safe to call with `NULL`.

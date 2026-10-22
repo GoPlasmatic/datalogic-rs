@@ -105,6 +105,28 @@ fn slice_string<'a>(
     step: i64,
     arena: &'a Bump,
 ) -> &'a DataValue<'a> {
+    if s.is_ascii() {
+        let len = s.len() as i64;
+        if step == 1 {
+            let a = normalize_index(start.unwrap_or(0), len) as usize;
+            let b = normalize_index(end.unwrap_or(len), len) as usize;
+            if a >= b {
+                return crate::arena::singletons::singleton_empty_string();
+            }
+            return arena.alloc(DataValue::String(&s[a..b]));
+        }
+        let bytes = s.as_bytes();
+        let indices = slice_indices(len, start, end, step);
+        let mut out = bumpalo::collections::String::new_in(arena);
+        for i in indices {
+            out.push(bytes[i as usize] as char);
+        }
+        if out.is_empty() {
+            return crate::arena::singletons::singleton_empty_string();
+        }
+        return arena.alloc(DataValue::String(out.into_bump_str()));
+    }
+
     // Contiguous step==1: mirror the array arm. The selected chars form the
     // run [a, b), and `s` is already an arena `&'a str`, so return a borrowed
     // sub-slice at the char boundaries instead of collecting chars.
@@ -127,6 +149,9 @@ fn slice_string<'a>(
     let mut out = bumpalo::collections::String::new_in(arena);
     for i in slice_indices(chars.len() as i64, start, end, step) {
         out.push(chars[i as usize]);
+    }
+    if out.is_empty() {
+        return crate::arena::singletons::singleton_empty_string();
     }
     arena.alloc(DataValue::String(out.into_bump_str()))
 }

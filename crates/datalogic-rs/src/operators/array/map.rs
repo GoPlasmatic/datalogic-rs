@@ -176,13 +176,13 @@ fn map_extract<'a>(
     let len = src.len();
     let mut results = bvec::<DataValue<'a>>(arena, len);
     if segments.is_empty() {
-        for i in 0..len {
-            results.push(*src.get(i));
+        for item in src.0 {
+            results.push(*item);
         }
     } else {
-        for i in 0..len {
-            let item = src.get(i);
-            match crate::arena::value::traverse_segments(item, segments) {
+        let mut cursor = FieldCursor::new(segments);
+        for item in src.0 {
+            match cursor.resolve(item) {
                 Some(v) => results.push(*v),
                 None => results.push(DataValue::Null),
             }

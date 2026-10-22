@@ -58,6 +58,7 @@ import "C"
 import (
 	"fmt"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"unsafe"
 )
@@ -349,15 +350,23 @@ func (s *Session) Evaluate(rule *Rule, dataJSON string) (string, error) {
 
 // Reset manually resets the session's arena. Optional — Evaluate already
 // resets at the start of every call. Exposed for consumers that want to
-// release memory between long idle periods.
+// release memory between long idle periods. Doing so on a nil or closed
+// Session is a no-op.
 func (s *Session) Reset() {
+	if s == nil {
+		return
+	}
 	C.datalogic_session_reset(s.cptr())
 	runtime.KeepAlive(s)
 }
 
 // AllocatedBytes returns the bytes currently held by the session's arena
-// (sum across all chunks). Useful for sizing and diagnostics.
+// (sum across all chunks). Useful for sizing and diagnostics. Returns 0
+// for a nil or closed Session.
 func (s *Session) AllocatedBytes() uint64 {
+	if s == nil {
+		return 0
+	}
 	n := uint64(C.datalogic_session_allocated_bytes(s.cptr()))
 	runtime.KeepAlive(s)
 	return n
@@ -462,15 +471,21 @@ func (ts *TracedSession) EvaluateMode(ruleJSON, dataJSON string, mode Mode) (str
 
 // =============== package-level conveniences ===============
 
-// Apply is a top-level convenience equivalent to:
+var (
+	defaultEngineOnce sync.Once
+	defaultEngine     *Engine
+)
+
+// Apply is a top-level convenience that evaluates ruleJSON against
+// dataJSON on a shared default Engine.
 //
-//	e := NewEngine(); defer e.Close(); return e.Apply(rule, data)
-//
-// Use it for ad-hoc one-shots; for repeated evaluations, hold an Engine.
+// For repeated evaluations of the same rule, prefer Compile +
+// Rule.Evaluate.
 func Apply(ruleJSON, dataJSON string) (string, error) {
-	e := NewEngine()
-	defer e.Close()
-	return e.Apply(ruleJSON, dataJSON)
+	defaultEngineOnce.Do(func() {
+		defaultEngine = NewEngine()
+	})
+	return defaultEngine.Apply(ruleJSON, dataJSON)
 }
 
 // Version returns the binding's version string (sourced from the

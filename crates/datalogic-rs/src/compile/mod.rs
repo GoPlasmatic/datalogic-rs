@@ -23,6 +23,8 @@ mod walker;
 
 pub(crate) use path_segments::parse_path_segments;
 
+use std::borrow::Cow;
+
 use datavalue::OwnedDataValue;
 
 use crate::node::{CompileCtx, Logic};
@@ -34,7 +36,7 @@ impl Logic {
     /// folding on (default) runs the optimizer + constant-fold passes;
     /// off skips them so every operator survives in the tree. Used by
     /// [`Engine::compile`].
-    pub(crate) fn compile_with(logic: &OwnedDataValue, engine: &Engine) -> Result<Self> {
+    pub(crate) fn compile_with(logic: Cow<'_, OwnedDataValue>, engine: &Engine) -> Result<Self> {
         Self::compile_in_mode(logic, engine, engine.is_templating_enabled())
     }
 
@@ -43,6 +45,22 @@ impl Logic {
     /// and [`Engine::compile_strict`]; everything else (folding, escape,
     /// custom operators) still comes from `engine`.
     pub(crate) fn compile_in_mode(
+        logic: Cow<'_, OwnedDataValue>,
+        engine: &Engine,
+        templating: bool,
+    ) -> Result<Self> {
+        let ctx = if engine.constant_folding_enabled() {
+            CompileCtx::new()
+        } else {
+            CompileCtx::no_fold()
+        };
+        Self::compile_inner(logic, engine, templating, ctx, true)
+    }
+
+    /// [`Self::compile_in_mode`] for [`crate::node::Refold::on`]: never
+    /// attaches a second `Refold` to the recompiled rule, so `logic` is
+    /// never cloned.
+    pub(crate) fn compile_for_refold(
         logic: &OwnedDataValue,
         engine: &Engine,
         templating: bool,
@@ -52,7 +70,7 @@ impl Logic {
         } else {
             CompileCtx::no_fold()
         };
-        Self::compile_inner(logic, engine, templating, ctx)
+        Self::compile_inner(Cow::Borrowed(logic), engine, templating, ctx, false)
     }
 
     /// Compile with the optimizer + constant-fold passes disabled
@@ -72,17 +90,18 @@ impl Logic {
     ) -> Result<Self> {
         let ctx = CompileCtx::no_fold();
         let ctx = if place { ctx.recording_pointers() } else { ctx };
-        Self::compile_inner(logic, engine, templating, ctx)
+        Self::compile_inner(Cow::Borrowed(logic), engine, templating, ctx, false)
     }
 
     #[inline]
     fn compile_inner(
-        logic_src: &OwnedDataValue,
+        logic_src: Cow<'_, OwnedDataValue>,
         engine: &Engine,
         templating: bool,
         mut ctx: CompileCtx,
+        keep_refold: bool,
     ) -> Result<Self> {
-        let mut root = walker::compile_node(logic_src, engine, templating, &mut ctx)?;
+        let mut root = walker::compile_node(&logic_src, engine, templating, &mut ctx)?;
         // CSE runs once over the finished tree, after the per-node fixpoint
         // optimizer (folded shapes are final) and before `Logic::new`'s
         // populate pass (so hints are derived through the wrappers). Gated
@@ -106,9 +125,9 @@ impl Logic {
         let mut logic = Self::new(root, cse_slot_count, needs_ancestor_frames);
         logic.engine_id = engine.id();
         logic.pointers = ctx.take_pointers();
-        if ctx.has_config_folds() {
+        if keep_refold && ctx.has_config_folds() {
             logic.refold = Some(Box::new(crate::node::Refold::new(
-                logic_src.clone(),
+                logic_src.into_owned(),
                 templating,
                 engine.fold_fingerprint(),
             )));

@@ -675,7 +675,7 @@ impl Engine {
     /// ```
     pub fn compile<R: crate::IntoLogic>(&self, rule: R) -> Result<Logic> {
         let owned = rule.logic_source()?;
-        Logic::compile_with(&owned, self)
+        Logic::compile_with(owned, self)
     }
 
     /// Check `rule` without compiling it: every problem the engine can see
@@ -747,7 +747,7 @@ impl Engine {
         {
             return Err(crate::CompileError { diagnostics });
         }
-        Logic::compile_with(&owned, self).map_err(crate::CompileError::from_error)
+        Logic::compile_with(owned, self).map_err(crate::CompileError::from_error)
     }
 
     /// Compile `rule` in templating mode, whatever mode the engine was
@@ -778,7 +778,7 @@ impl Engine {
     #[cfg_attr(docsrs, doc(cfg(feature = "templating")))]
     pub fn compile_template<R: crate::IntoLogic>(&self, rule: R) -> Result<Logic> {
         let owned = rule.logic_source()?;
-        Logic::compile_in_mode(&owned, self, true)
+        Logic::compile_in_mode(owned, self, true)
     }
 
     /// Compile `rule` outside templating mode, whatever mode the engine
@@ -803,7 +803,7 @@ impl Engine {
     /// ```
     pub fn compile_strict<R: crate::IntoLogic>(&self, rule: R) -> Result<Logic> {
         let owned = rule.logic_source()?;
-        Logic::compile_in_mode(&owned, self, false)
+        Logic::compile_in_mode(owned, self, false)
     }
 
     /// Compile and wrap in an [`Arc`](std::sync::Arc) in one call. Convenience for the

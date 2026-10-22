@@ -152,12 +152,12 @@ impl Session {
         self.arena.reset();
 
         if let Ok(s) = data.cast::<PyString>() {
-            let text = s.to_str()?.to_string();
+            let text = s.to_str()?;
             let res = eval_borrowing(
                 py,
                 &self.engine,
                 rule.logic(),
-                DetachInput::Str(&text),
+                DetachInput::Str(text),
                 &mut self.arena,
             );
             return match res {
@@ -191,17 +191,16 @@ impl Session {
     /// result as a JSON ``str``.
     fn evaluate_str(&mut self, py: Python<'_>, rule: &Rule, data: &str) -> PyResult<String> {
         self.arena.reset();
-        let engine = self.engine.clone();
-        let logic = rule.logic().clone();
+        let engine: &RsEngine = &self.engine;
+        let logic: &Logic = rule.logic();
         let arena: &mut Bump = &mut self.arena;
-        let data_owned = data.to_string();
         // `move` is load-bearing: without it the closure captures
         // `arena` by `&` (reborrow only needs immutable access), giving
         // a captured field of type `&&mut Bump`. That's `!Send` because
         // `Bump: !Sync`. With `move`, the closure owns `&mut Bump`
         // directly — `&mut Bump: Send` (since `Bump: Send`).
         py.detach(move || -> Result<String, datalogic_rs::Error> {
-            let av = engine.evaluate(&logic, data_owned.as_str(), arena)?;
+            let av = engine.evaluate(logic, data, arena)?;
             Ok(av.to_string())
         })
         .map_err(|e| engine_error_to_pyerr(py, &e, Some(rule.logic())))
@@ -413,10 +412,10 @@ fn run_to_value(
     rule: &Rule,
     value: &Value,
 ) -> PyResult<Value> {
-    let engine = engine.clone();
-    let logic = rule.logic().clone();
+    let engine: &RsEngine = engine;
+    let logic: &Logic = rule.logic();
     py.detach(move || -> Result<Value, datalogic_rs::Error> {
-        let av = engine.evaluate(&logic, value, arena)?;
+        let av = engine.evaluate(logic, value, arena)?;
         serde_json::to_value(av).map_err(datalogic_rs::Error::wrap)
     })
     .map_err(|e| engine_error_to_pyerr(py, &e, Some(rule.logic())))

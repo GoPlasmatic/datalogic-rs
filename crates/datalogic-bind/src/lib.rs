@@ -18,11 +18,13 @@
 //! | Error path: `[{node_id, operator, arg_index, json_pointer}]` (or camelCase) | [`path_value`] |
 //!
 //! The plumbing: [`EngineOptions`] and [`add_operators`] assemble an engine
-//! from constructor options, [`typed`] reads typed results, [`same_engine`]
-//! checks a session's rule, and [`resolve_budget`] / [`resolve_budget_u64`]
-//! settle an operation budget.
+//! from constructor options, [`with_pooled_arena`] runs session-less
+//! evaluations on a warm per-thread arena, [`typed`] reads typed results,
+//! [`same_engine`] checks a session's rule, and [`resolve_budget`] /
+//! [`resolve_budget_u64`] settle an operation budget.
 
 use datalogic_rs::bumpalo::Bump;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -592,6 +594,34 @@ pub fn single_char(s: &str) -> Option<char> {
     }
 }
 
+thread_local! {
+    /// One warm arena per thread for the session-less paths. `take` on
+    /// entry / put back on exit keeps reentrancy safe: a custom
+    /// operator that calls back into a binding entry point on the
+    /// same thread simply builds a fresh arena for the nested call.
+    static POOLED_ARENA: RefCell<Option<Bump>> = const { RefCell::new(None) };
+}
+
+/// Cap on the retained per-thread arena so one huge payload doesn't pin
+/// its high-water mark for the thread's lifetime.
+const MAX_POOLED_ARENA_BYTES: usize = 4 * 1024 * 1024;
+
+/// Run `f` with a warm thread-local arena; reset and repool it after
+/// (dropping it instead when it grew past the cap — `Bump::reset` keeps
+/// the largest chunk, so `allocated_bytes` reads retained capacity).
+pub fn with_pooled_arena<R>(f: impl FnOnce(&Bump) -> R) -> R {
+    let arena = POOLED_ARENA
+        .with(|cell| cell.borrow_mut().take())
+        .unwrap_or_default();
+    let result = f(&arena);
+    let mut arena = arena;
+    arena.reset();
+    if arena.allocated_bytes() <= MAX_POOLED_ARENA_BYTES {
+        POOLED_ARENA.with(|cell| *cell.borrow_mut() = Some(arena));
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -953,5 +983,20 @@ mod tests {
         let v: Value = serde_json::from_str(&traced_run_json(&run)).unwrap();
         assert_eq!(v["result"], Value::Null);
         assert_eq!(v["structured_error"]["type"], "Thrown");
+    }
+
+    #[test]
+    fn pooled_arena_reuses_and_supports_reentrancy() {
+        let first_ptr = with_pooled_arena(|arena| {
+            let s = arena.alloc_str("outer");
+            let nested_ptr = with_pooled_arena(|inner| {
+                let inner_s = inner.alloc_str("inner");
+                inner_s.as_ptr() as usize
+            });
+            assert_ne!(s.as_ptr() as usize, nested_ptr);
+            s.as_ptr() as usize
+        });
+        let second_ptr = with_pooled_arena(|arena| arena.alloc_str("again").as_ptr() as usize);
+        assert_eq!(first_ptr, second_ptr);
     }
 }

@@ -43,6 +43,10 @@ python3 "$WORKLOADS/generate.py" --check
 
 # The dylib/so search path for runners that link libdatalogic_c.
 C_LIB_DIR="$REPO_ROOT/bindings/c/target/release"
+case "$(uname -s)" in
+  Darwin) C_LIB_EXT="dylib" ;;
+  *)      C_LIB_EXT="so" ;;
+esac
 export DYLD_LIBRARY_PATH="$C_LIB_DIR:${DYLD_LIBRARY_PATH:-}"
 export LD_LIBRARY_PATH="$C_LIB_DIR:${LD_LIBRARY_PATH:-}"
 
@@ -102,7 +106,7 @@ for rt in $RUNTIMES; do
     dotnet)
       note "dotnet: dotnet run -c Release"
       (cd "$REPO_ROOT/bindings/c" && cargo build --release)
-      DATALOGIC_NATIVE_LIB="$C_LIB_DIR/libdatalogic_c.dylib" \
+      DATALOGIC_NATIVE_LIB="$C_LIB_DIR/libdatalogic_c.$C_LIB_EXT" \
         dotnet run -c Release --project "$BOUNDARY_DIR/runner-dotnet" -- "$WORKLOADS" \
         | tee -a "$OUT_FILE"
       ;;
@@ -123,7 +127,7 @@ for rt in $RUNTIMES; do
     php)
       note "php: run with JIT"
       (cd "$REPO_ROOT/bindings/c" && cargo build --release)
-      DATALOGIC_NATIVE_LIB="$C_LIB_DIR/libdatalogic_c.dylib" \
+      DATALOGIC_NATIVE_LIB="$C_LIB_DIR/libdatalogic_c.$C_LIB_EXT" \
         php -d opcache.enable_cli=1 -d opcache.jit=tracing -d opcache.jit_buffer_size=64M \
         "$BOUNDARY_DIR/runner-php.php" "$WORKLOADS" | tee -a "$OUT_FILE"
       ;;

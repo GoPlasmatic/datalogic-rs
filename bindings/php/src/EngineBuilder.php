@@ -245,6 +245,7 @@ final class EngineBuilder
             FFI::addr($err),
         );
         if ($rc !== Native::STATUS_OK) {
+            array_pop($this->pinned);
             throw DatalogicException::fromNative($rc, $err, 'add_operator failed');
         }
         return $this;

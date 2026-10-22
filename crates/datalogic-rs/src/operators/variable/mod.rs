@@ -112,12 +112,14 @@ fn path_str_from_data<'a>(av: &'a DataValue<'a>, arena: &'a Bump) -> &'a str {
         return s;
     }
     if let DataValue::Number(n) = av {
-        if let Some(i) = n.as_i64()
-            && let Some(s) = small_int_str(i)
-        {
-            return s;
+        if let Some(i) = n.as_i64() {
+            if let Some(s) = small_int_str(i) {
+                return s;
+            }
+            let mut buf = itoa::Buffer::new();
+            return arena.alloc_str(buf.format(i));
         }
-        return arena.alloc_str(&n.to_string());
+        return crate::arena::value::data_to_str(av, arena);
     }
     ""
 }

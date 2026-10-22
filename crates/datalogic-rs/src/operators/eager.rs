@@ -82,12 +82,6 @@ impl<'c, 'a> Cx<'c, 'a> {
     pub(crate) fn alloc<T>(&self, value: T) -> &'a mut T {
         self.arena.alloc(value)
     }
-
-    /// Copy a string into the arena.
-    #[inline(always)]
-    pub(crate) fn alloc_str(&self, s: &str) -> &'a str {
-        self.arena.alloc_str(s)
-    }
 }
 
 // ---------------------------------------------------------------------------

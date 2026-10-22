@@ -308,8 +308,9 @@ impl Checker<'_> {
                 self.call(op, argv, pointer);
             }
             OwnedDataValue::Array(items) => {
+                let mut buf = itoa::Buffer::new();
                 for (i, item) in items.iter().enumerate() {
-                    under(pointer, &i.to_string(), |p| self.node(item, p));
+                    under(pointer, buf.format(i), |p| self.node(item, p));
                 }
             }
             _ => {}
@@ -349,8 +350,9 @@ impl Checker<'_> {
         };
         under(pointer, op, |p| match argv {
             OwnedDataValue::Array(items) => {
+                let mut buf = itoa::Buffer::new();
                 for (i, item) in items.iter().enumerate() {
-                    under(p, &i.to_string(), |p| one(self, i, item, p));
+                    under(p, buf.format(i), |p| one(self, i, item, p));
                 }
             }
             other => one(self, 0, other, p),
@@ -591,7 +593,13 @@ impl Checker<'_> {
     /// then the engine's custom operators. Short names are left out, since
     /// almost any short key is one edit from `+` or `in`.
     fn similar_operator(&self, key: &str) -> Option<String> {
-        let close = |name: &str| name.chars().count() >= 3 && one_edit_apart(key, name);
+        let key_chars = key.chars().count();
+        let close = |name: &str| {
+            let name_chars = name.chars().count();
+            name_chars >= 3
+                && key_chars.abs_diff(name_chars) <= 1
+                && one_edit_apart_with_len(key, key_chars, name, name_chars)
+        };
         if let Some(name) = self.engine.builtin_operator_names().find(|n| close(n)) {
             return Some(name.to_string());
         }
@@ -637,8 +645,12 @@ fn describe_count(min: usize, max: Option<usize>) -> String {
 /// Whether `a` and `b` are exactly one edit apart (an insertion, a
 /// deletion or a substitution of one char): Levenshtein distance 1,
 /// without the table.
+#[cfg(test)]
 fn one_edit_apart(a: &str, b: &str) -> bool {
-    let (la, lb) = (a.chars().count(), b.chars().count());
+    one_edit_apart_with_len(a, a.chars().count(), b, b.chars().count())
+}
+
+fn one_edit_apart_with_len(a: &str, la: usize, b: &str, lb: usize) -> bool {
     match la.abs_diff(lb) {
         0 => a.chars().zip(b.chars()).filter(|(x, y)| x != y).count() == 1,
         1 => {

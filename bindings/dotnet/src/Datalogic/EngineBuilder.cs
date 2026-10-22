@@ -246,6 +246,7 @@ public sealed class EngineBuilder
             GC.KeepAlive(this);
             if (status != DatalogicStatus.Ok)
             {
+                _roots.RemoveLast();
                 throw DatalogicException.FromNative(status, err, "add_operator failed");
             }
         }
@@ -338,10 +339,10 @@ public sealed class EngineBuilder
                 SetError(outResult, "custom operator returned null");
                 return 1;
             }
-            var bytes = Encoding.UTF8.GetBytes(result);
-            fixed (byte* rp = bytes)
+            using var bytes = Utf8Input.From(result, stackalloc byte[Utf8Input.StackBufferSize]);
+            fixed (byte* rp = bytes.Span)
             {
-                NativeMethods.datalogic_op_result_set_json(outResult, rp, (nuint)bytes.Length);
+                NativeMethods.datalogic_op_result_set_json(outResult, rp, (nuint)bytes.Span.Length);
             }
             return 0;
         }
@@ -356,10 +357,10 @@ public sealed class EngineBuilder
     {
         try
         {
-            var bytes = Encoding.UTF8.GetBytes(message);
-            fixed (byte* mp = bytes)
+            using var bytes = Utf8Input.From(message, stackalloc byte[Utf8Input.StackBufferSize]);
+            fixed (byte* mp = bytes.Span)
             {
-                NativeMethods.datalogic_op_result_set_error(outResult, mp, (nuint)bytes.Length);
+                NativeMethods.datalogic_op_result_set_error(outResult, mp, (nuint)bytes.Span.Length);
             }
         }
         catch
@@ -394,6 +395,18 @@ internal sealed class CallbackRoots
         var handle = GCHandle.Alloc(op);
         _handles.Add(handle);
         return GCHandle.ToIntPtr(handle);
+    }
+
+    /// <summary>
+    /// Remove and free the most recently added handle when registration
+    /// fails on the native side.
+    /// </summary>
+    internal void RemoveLast()
+    {
+        if (_handles.Count == 0) return;
+        var last = _handles.Count - 1;
+        _handles[last].Free();
+        _handles.RemoveAt(last);
     }
 
     /// <summary>

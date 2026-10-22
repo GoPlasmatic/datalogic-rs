@@ -173,13 +173,14 @@ fn sort_by_field<'a>(
     // A missing field reads as `null`, as the key expression would on the
     // general path, so it ties with a present `null` and keeps its place.
     let null = crate::arena::singletons::singleton_null();
+    let mut cursor = super::fused::FieldCursor::new(segments);
     let mut keyed = bvec::<(usize, &'a DataValue<'a>)>(arena, len);
-    keyed.extend((0..len).map(|i| {
-        (
-            i,
-            crate::arena::value::traverse_segments(src.get(i), segments).unwrap_or(null),
-        )
-    }));
+    keyed.extend(
+        src.0
+            .iter()
+            .enumerate()
+            .map(|(i, item)| (i, cursor.resolve(item).unwrap_or(null))),
+    );
     keyed.sort_by(|(_, ka), (_, kb)| {
         let cmp = compare_values(ka, kb);
         if ascending { cmp } else { cmp.reverse() }

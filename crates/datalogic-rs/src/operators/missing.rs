@@ -30,16 +30,18 @@ fn lookup_data<'a>(ctx: &ContextStack<'a>) -> &'a DataValue<'a> {
 pub(crate) fn missing<'a>(
     cx: &mut Cx<'_, 'a>,
     paths: RestArgs<'a, Any>,
-) -> Result<bumpalo::collections::Vec<'a, DataValue<'a>>> {
+) -> Result<&'a DataValue<'a>> {
     let lookup = lookup_data(cx.ctx);
-    let mut missing: bumpalo::collections::Vec<'a, DataValue<'a>> =
-        bumpalo::collections::Vec::with_capacity_in(paths.len(), cx.arena);
+    let mut missing: Option<bumpalo::collections::Vec<'a, DataValue<'a>>> = None;
 
     for i in 0..paths.len() {
         let av = paths.get(i, cx)?;
-        accumulate_dynamic_missing(av, lookup, &mut missing, cx.ctx)?;
+        accumulate_dynamic_missing(av, lookup, &mut missing, paths.len(), cx.ctx, cx.arena)?;
     }
-    Ok(missing)
+    match missing {
+        Some(v) if !v.is_empty() => Ok(cx.alloc(DataValue::Array(v.into_bump_slice()))),
+        _ => Ok(crate::arena::singletons::singleton_empty_array()),
+    }
 }
 
 /// `missing_some`: `[]` when at least `min_av` of the listed paths are
@@ -54,9 +56,18 @@ pub(crate) fn missing_some<'a>(
     let (ctx, arena) = (&mut *cx.ctx, cx.arena);
     let min_present = min_present(min_av);
     let lookup = lookup_data(ctx);
+    eval_missing_some_dynamic(paths_av, lookup, min_present, ctx, arena)
+}
 
-    let mut missing: bumpalo::collections::Vec<'a, DataValue<'a>> =
-        bumpalo::collections::Vec::new_in(arena);
+#[inline]
+fn eval_missing_some_dynamic<'a>(
+    paths_av: &'a DataValue<'a>,
+    lookup: &'a DataValue<'a>,
+    min_present: usize,
+    ctx: &mut ContextStack<'a>,
+    arena: &'a Bump,
+) -> Result<&'a DataValue<'a>> {
+    let mut missing: Option<bumpalo::collections::Vec<'a, DataValue<'a>>> = None;
     let mut present_count: usize = 0;
 
     // A path list from data is charged its full length up front, whether or
@@ -64,19 +75,31 @@ pub(crate) fn missing_some<'a>(
     let short_circuit = match paths_av {
         DataValue::Array(items) => {
             ctx.charge(items.len() as u64)?;
+            let cap = items.len();
             items.iter().any(|it| {
                 it.as_str().is_some_and(|p| {
-                    check_path(p, lookup, &mut missing, &mut present_count, min_present)
+                    check_path(
+                        p,
+                        lookup,
+                        &mut missing,
+                        cap,
+                        &mut present_count,
+                        min_present,
+                        arena,
+                    )
                 })
             })
         }
         _ => false,
     };
 
-    if short_circuit || present_count >= min_present || missing.is_empty() {
+    if short_circuit || present_count >= min_present {
         return Ok(crate::arena::singletons::singleton_empty_array());
     }
-    Ok(arena.alloc(DataValue::Array(missing.into_bump_slice())))
+    match missing {
+        Some(v) if !v.is_empty() => Ok(arena.alloc(DataValue::Array(v.into_bump_slice()))),
+        _ => Ok(crate::arena::singletons::singleton_empty_array()),
+    }
 }
 
 // =============================================================================
@@ -119,10 +142,7 @@ pub(crate) fn evaluate_compiled_missing<'a>(
             }
             CompiledMissingArg::Later(node) => {
                 let av = engine.dispatch_node(node, ctx, arena)?;
-                let buf = missing.get_or_insert_with(|| {
-                    bumpalo::collections::Vec::with_capacity_in(data.args.len(), arena)
-                });
-                accumulate_dynamic_missing(av, lookup, buf, ctx)?;
+                accumulate_dynamic_missing(av, lookup, &mut missing, data.args.len(), ctx, arena)?;
             }
         }
     }
@@ -182,25 +202,7 @@ pub(crate) fn evaluate_compiled_missing_some<'a>(
         }
         CompiledMissingPaths::Later(node) => {
             let paths_av = engine.dispatch_node(node, ctx, arena)?;
-            let mut missing: bumpalo::collections::Vec<'a, DataValue<'a>> =
-                bumpalo::collections::Vec::new_in(arena);
-            let mut present = 0usize;
-            // Charged like the runtime path list in `evaluate_missing_some`.
-            let short = match paths_av {
-                DataValue::Array(items) => {
-                    ctx.charge(items.len() as u64)?;
-                    items.iter().any(|it| {
-                        it.as_str().is_some_and(|p| {
-                            check_path(p, lookup, &mut missing, &mut present, min_present)
-                        })
-                    })
-                }
-                _ => false,
-            };
-            if short || present >= min_present || missing.is_empty() {
-                return Ok(crate::arena::singletons::singleton_empty_array());
-            }
-            Ok(arena.alloc(DataValue::Array(missing.into_bump_slice())))
+            eval_missing_some_dynamic(paths_av, lookup, min_present, ctx, arena)
         }
     }
 }
@@ -226,13 +228,17 @@ pub(crate) fn min_present(av: &DataValue<'_>) -> usize {
 fn check_path<'a>(
     path: &'a str,
     lookup: &'a DataValue<'a>,
-    missing: &mut bumpalo::collections::Vec<'a, DataValue<'a>>,
+    missing: &mut Option<bumpalo::collections::Vec<'a, DataValue<'a>>>,
+    cap: usize,
     present: &mut usize,
     min_present: usize,
+    arena: &'a Bump,
 ) -> bool {
     if !crate::arena::value::path_exists_str(lookup, path) {
         // The path already lives for `'a` (arena or rule data): borrowed.
-        missing.push(DataValue::String(path));
+        missing
+            .get_or_insert_with(|| bumpalo::collections::Vec::with_capacity_in(cap, arena))
+            .push(DataValue::String(path));
     } else {
         *present += 1;
         if *present >= min_present {
@@ -249,8 +255,10 @@ fn check_path<'a>(
 fn accumulate_dynamic_missing<'a>(
     av: &'a DataValue<'a>,
     lookup: &'a DataValue<'a>,
-    missing: &mut bumpalo::collections::Vec<'a, DataValue<'a>>,
+    missing: &mut Option<bumpalo::collections::Vec<'a, DataValue<'a>>>,
+    cap: usize,
     ctx: &mut ContextStack<'a>,
+    arena: &'a Bump,
 ) -> Result<()> {
     match av {
         DataValue::Array(items) => {
@@ -259,12 +267,18 @@ fn accumulate_dynamic_missing<'a>(
                 if let Some(path) = it.as_str()
                     && !crate::arena::value::path_exists_str(lookup, path)
                 {
-                    missing.push(DataValue::String(path));
+                    missing
+                        .get_or_insert_with(|| {
+                            bumpalo::collections::Vec::with_capacity_in(cap.max(items.len()), arena)
+                        })
+                        .push(DataValue::String(path));
                 }
             }
         }
         DataValue::String(s) if !crate::arena::value::path_exists_str(lookup, s) => {
-            missing.push(DataValue::String(s));
+            missing
+                .get_or_insert_with(|| bumpalo::collections::Vec::with_capacity_in(cap, arena))
+                .push(DataValue::String(s));
         }
         _ => {}
     }

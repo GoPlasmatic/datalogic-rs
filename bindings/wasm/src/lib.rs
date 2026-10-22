@@ -404,7 +404,9 @@ impl CompiledRule {
     /// # Throws
     /// An `Error` object carrying the structured fields (see [`evaluate`]).
     pub fn evaluate(&self, data: &str) -> Result<String, JsValue> {
-        evaluate_in(&self.engine, &self.compiled, data, &Bump::new())
+        datalogic_bind::with_pooled_arena(|arena| {
+            evaluate_in(&self.engine, &self.compiled, data, arena)
+        })
     }
 
     /// Evaluate the compiled rule against a pre-parsed [`DataHandle`] —
@@ -418,12 +420,13 @@ impl CompiledRule {
     /// An `Error` object carrying the structured fields (see [`evaluate`]).
     #[wasm_bindgen(js_name = evaluateData)]
     pub fn evaluate_data(&self, data: &DataHandle) -> Result<String, JsValue> {
-        let arena = Bump::new();
-        let result = self
-            .engine
-            .evaluate(&self.compiled, &*data.parsed, &arena)
-            .map_err(|e| engine_err_to_js(&e))?;
-        Ok(result.to_string())
+        datalogic_bind::with_pooled_arena(|arena| {
+            let result = self
+                .engine
+                .evaluate(&self.compiled, &*data.parsed, arena)
+                .map_err(|e| engine_err_to_js(&e))?;
+            Ok(result.to_string())
+        })
     }
 }
 
@@ -690,7 +693,9 @@ impl Engine {
             .inner
             .compile_arc(logic)
             .map_err(|e| engine_err_to_js(&e))?;
-        metered_in(&self.inner, &compiled, data, &Bump::new(), budget)
+        datalogic_bind::with_pooled_arena(|arena| {
+            metered_in(&self.inner, &compiled, data, arena, budget)
+        })
     }
 
     /// Open a [`Session`]: a reusable evaluation handle that owns a bump
@@ -772,7 +777,9 @@ impl Rule {
 
     /// Evaluate the compiled rule against `data` (a JSON string).
     pub fn evaluate(&self, data: &str) -> Result<String, JsValue> {
-        evaluate_in(&self.engine, &self.compiled, data, &Bump::new())
+        datalogic_bind::with_pooled_arena(|arena| {
+            evaluate_in(&self.engine, &self.compiled, data, arena)
+        })
     }
 
     /// Evaluate the compiled rule against a pre-parsed [`DataHandle`] —
@@ -780,12 +787,13 @@ impl Rule {
     /// crosses back to JS.
     #[wasm_bindgen(js_name = evaluateData)]
     pub fn evaluate_data(&self, data: &DataHandle) -> Result<String, JsValue> {
-        let arena = Bump::new();
-        let result = self
-            .engine
-            .evaluate(&self.compiled, &*data.parsed, &arena)
-            .map_err(|e| engine_err_to_js(&e))?;
-        Ok(result.to_string())
+        datalogic_bind::with_pooled_arena(|arena| {
+            let result = self
+                .engine
+                .evaluate(&self.compiled, &*data.parsed, arena)
+                .map_err(|e| engine_err_to_js(&e))?;
+            Ok(result.to_string())
+        })
     }
 
     /// Evaluate the compiled rule against `data` under an operation
@@ -797,7 +805,9 @@ impl Rule {
     #[wasm_bindgen(js_name = evaluateMetered)]
     pub fn evaluate_metered(&self, data: &str, budget: Option<f64>) -> Result<String, JsValue> {
         let budget = resolve_budget(&self.engine, budget)?;
-        metered_in(&self.engine, &self.compiled, data, &Bump::new(), budget)
+        datalogic_bind::with_pooled_arena(|arena| {
+            metered_in(&self.engine, &self.compiled, data, arena, budget)
+        })
     }
 
     /// Internal: deposit a cheap reference-counted duplicate (two `Arc`

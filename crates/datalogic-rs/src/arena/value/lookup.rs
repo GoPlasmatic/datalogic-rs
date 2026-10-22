@@ -57,10 +57,7 @@ fn key_cmp(a: &[u8], b: &[u8]) -> Ordering {
 /// disagree there (serde_json keeps the last occurrence, the arena parser
 /// keeps all).
 #[inline]
-fn ordered_probe<'a>(
-    pairs: &'a [(&'a str, DataValue<'a>)],
-    target: &str,
-) -> Option<&'a DataValue<'a>> {
+fn ordered_probe<'a>(pairs: &'a [(&'a str, DataValue<'a>)], target: &str) -> Option<usize> {
     let tb = target.as_bytes();
     let mut lo = 0usize;
     let mut hi = pairs.len();
@@ -77,7 +74,7 @@ fn ordered_probe<'a>(
                 while i > 0 && key_eq(pairs[i - 1].0, target) {
                     i -= 1;
                 }
-                return Some(&pairs[i].1);
+                return Some(i);
             }
         }
     }
@@ -161,10 +158,30 @@ fn wide_lookup<'a>(
     pairs: &'a [(&'a str, DataValue<'a>)],
     target: &str,
 ) -> Option<&'a DataValue<'a>> {
-    if let Some(v) = ordered_probe(pairs, target) {
-        return Some(v);
+    if let Some(idx) = ordered_probe(pairs, target) {
+        return Some(&pairs[idx].1);
     }
     linear_lookup(pairs, target)
+}
+
+#[cold]
+#[inline(never)]
+fn lookup_field_index<'a>(pairs: &'a [(&'a str, DataValue<'a>)], target: &str) -> Option<usize> {
+    if pairs.len() >= ORDERED_PROBE_MIN_PAIRS
+        && let Some(idx) = ordered_probe(pairs, target)
+    {
+        return Some(idx);
+    }
+    let tb = target.as_bytes();
+    let tlen = tb.len();
+    if tlen == 0 {
+        return pairs.iter().position(|(k, _)| k.is_empty());
+    }
+    let tfirst = tb[0];
+    pairs.iter().position(|(k, _)| {
+        let kb = k.as_bytes();
+        kb.len() == tlen && kb[0] == tfirst && key_eq(k, target)
+    })
 }
 
 /// The prefiltered linear scan shared by narrow and wide lookups. Hoisting
@@ -240,7 +257,7 @@ pub(crate) fn object_lookup_field_hinted<'a>(
     {
         return Some(v);
     }
-    let idx = pairs.iter().position(|(k, _)| key_eq(k, target))?;
+    let idx = lookup_field_index(pairs, target)?;
     *hint = idx;
     Some(&pairs[idx].1)
 }

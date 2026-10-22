@@ -656,12 +656,13 @@ fn hash_owned<H: Hasher>(value: &OwnedDataValue, h: &mut H) {
         #[cfg(feature = "datetime")]
         OwnedDataValue::DateTime(d) => {
             h.write_u8(7);
-            format!("{d:?}").hash(h);
+            d.dt.hash(h);
+            d.original_offset.hash(h);
         }
         #[cfg(feature = "datetime")]
         OwnedDataValue::Duration(d) => {
             h.write_u8(8);
-            format!("{d:?}").hash(h);
+            d.0.hash(h);
         }
         // `DataTensor`'s `Debug` is deliberately lossy (dtype, shape, byte
         // count — never the payload), so unlike the datetime arms above
@@ -833,12 +834,10 @@ fn owned_eq(a: &OwnedDataValue, b: &OwnedDataValue) -> bool {
         }
         #[cfg(feature = "datetime")]
         (OwnedDataValue::DateTime(x), OwnedDataValue::DateTime(y)) => {
-            format!("{x:?}") == format!("{y:?}")
+            x.dt == y.dt && x.original_offset == y.original_offset
         }
         #[cfg(feature = "datetime")]
-        (OwnedDataValue::Duration(x), OwnedDataValue::Duration(y)) => {
-            format!("{x:?}") == format!("{y:?}")
-        }
+        (OwnedDataValue::Duration(x), OwnedDataValue::Duration(y)) => x == y,
         // datavalue's `PartialEq` is structural (dtype, shape, bytes),
         // which is exactly the equality `hash_owned` above hashes.
         #[cfg(feature = "tensor")]

@@ -371,7 +371,7 @@ fn lookup_array_path<'a>(
     ctx: &mut ContextStack<'a>,
     arena: &'a Bump,
 ) -> Result<Option<&'a DataValue<'a>>> {
-    use crate::arena::value::{access_path_str_ref, apply_path_element};
+    use crate::arena::value::apply_path_element;
 
     if arr_len == 0 {
         return Ok(Some(current_data(ctx)));
@@ -393,10 +393,7 @@ fn lookup_array_path<'a>(
             for i in 1..arr_len {
                 let item = array_get(path_av, i)
                     .unwrap_or_else(|| crate::arena::singletons::singleton_null());
-                let Some(seg) = item.as_str() else {
-                    return Ok(None);
-                };
-                match access_path_str_ref(cur, seg) {
+                match apply_path_element(cur, item) {
                     Some(next) => cur = next,
                     None => return Ok(None),
                 }
@@ -470,12 +467,12 @@ fn lookup_scalar_path<'a>(
     {
         let cur = current_data(ctx);
         // Common small indices (0..100) hit the static `&'static str`
-        // cache; only larger keys pay the heap `String` allocation.
+        // cache; larger keys format into a stack buffer with `itoa`.
         if let Some(static_key) = super::small_int_str(i) {
             return access_path_str_ref(cur, static_key);
         }
-        let key = i.to_string();
-        return access_path_str_ref(cur, &key);
+        let mut buf = itoa::Buffer::new();
+        return access_path_str_ref(cur, buf.format(i));
     }
 
     None

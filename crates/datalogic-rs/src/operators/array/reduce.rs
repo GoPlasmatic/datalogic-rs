@@ -75,27 +75,26 @@ pub(crate) fn evaluate_reduce<'a>(
         return Ok(result);
     }
 
-    reduce_general(&src, body, initial, ctx, engine, arena)
+    reduce_general(src.len(), src.0.iter(), body, initial, ctx, engine, arena)
 }
 
 /// General reduce path — push reduce frames via `IterGuard` and dispatch the
 /// body per item.
 #[inline]
 fn reduce_general<'a>(
-    src: &IterSrc<'a>,
+    len: usize,
+    items: impl Iterator<Item = &'a DataValue<'a>>,
     body: &'a CompiledNode,
     initial: &'a DataValue<'a>,
     ctx: &mut ContextStack<'a>,
     engine: &Engine,
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
-    let len = src.len();
     let total = len as u32;
     let mut acc_av: &'a DataValue<'a> = initial;
     let mut depth = AccumulatorDepth::new(body);
     let mut guard = IterGuard::new(ctx);
-    for i in 0..len {
-        let item = src.get(i);
+    for (i, item) in items.enumerate() {
         guard.step_reduce(item, acc_av);
         acc_av = engine.run_iter_body(body, guard.stack(), arena, i as u32, total)?;
         depth.step(acc_av)?;
@@ -119,20 +118,15 @@ fn reduce_arena_bridge<'a>(
     arena: &'a Bump,
 ) -> Result<&'a DataValue<'a>> {
     match input {
-        DataValue::Object(pairs) => {
-            let total = pairs.len() as u32;
-            let mut acc_av: &'a DataValue<'a> = initial;
-            let mut depth = AccumulatorDepth::new(body);
-            let mut guard = IterGuard::new(ctx);
-            for (i, (_k, v)) in pairs.iter().enumerate() {
-                guard.step_reduce(v, acc_av);
-                acc_av = engine.run_iter_body(body, guard.stack(), arena, i as u32, total)?;
-                depth.step(acc_av)?;
-            }
-            drop(guard);
-            depth.finish(acc_av)?;
-            Ok(acc_av)
-        }
+        DataValue::Object(pairs) => reduce_general(
+            pairs.len(),
+            pairs.iter().map(|(_k, v)| v),
+            body,
+            initial,
+            ctx,
+            engine,
+            arena,
+        ),
         // Anything else (scalars, strings) — return initial. Null and Array
         // never reach the Bridge variant, so they are not handled here.
         _ => Ok(initial),
