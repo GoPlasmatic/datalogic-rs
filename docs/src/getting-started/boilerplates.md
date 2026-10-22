@@ -1,6 +1,8 @@
 # Starter Boilerplates
 
-Starting points for three services: route authorization in Express, a pricing endpoint in FastAPI, and a feature-flag endpoint in Axum. Each compiles its rules once at startup and evaluates them per request. For a fuller Express walkthrough see [Integration: Express](../integrations/express.md).
+Minimal, production-shaped starting points for three web frameworks: route authorization in Express (Node.js), a pricing endpoint in FastAPI (Python), and a feature-flag endpoint in Axum (Rust). Each example compiles its rules once at startup and evaluates them per request.
+
+For full production walkthroughs—including database-backed rule caches, static validation on save, and request-scoped sessions—see [Integration: Express](../integrations/express.md) and [Integration: Spring Boot](../integrations/spring-boot.md).
 
 ---
 
@@ -170,3 +172,11 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 ```
+
+---
+
+## Next Steps
+
+- **Full service integrations**: [Integration: Express](../integrations/express.md) and [Integration: Spring Boot](../integrations/spring-boot.md)
+- **Language guides**: [Node.js](../nodejs/overview.md), [Python](../python/quick-start.md), [Rust](../rust/overview.md), [Go](../go/quick-start.md), [Java / Kotlin](../jvm.md), [.NET](../dotnet.md), [PHP](../php.md)
+- **Production hardening**: [Thread Safety](../advanced/threading.md), [Rule Analysis (`check` & `facts`)](../advanced/rule-analysis.md), [Operation Budget](../advanced/operation-budget.md), and [Security & Sandboxing](../advanced/security.md)

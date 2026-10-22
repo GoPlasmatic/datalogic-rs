@@ -259,3 +259,10 @@ The default JavaScript-style truthiness:
 | `null` | No |
 
 `EvaluationConfig::truthy_evaluator` replaces these rules wherever an operator tests truthiness (`!`, `!!`, `and`, `or`, `if`, and the conditions of `filter`, `all`, `some` and `none`); see [Truthiness Evaluation](../advanced/configuration.md#truthiness-evaluation). To apply the engine's rules to a value in host code, such as an evaluated result, call [`Engine::truthy_of`](../rust/api-reference.md#truthy_of).
+
+## See Also
+
+- [Control Flow (`if`, `?:`, `??`, `switch`)](control-flow.md): conditional branching and null-coalescing
+- [Comparison Operators (`==`, `===`, `>`, `<`)](comparison.md): equality and ordering checks
+- [Array Operators (`all`, `some`, `none`)](array.md): test conditions across collections
+- [Operators Overview](overview.md): full operator table and feature flags

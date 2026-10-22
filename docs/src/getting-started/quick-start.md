@@ -325,7 +325,8 @@ Each binding's chapter covers how an uncaught error reaches your code (Rust `Res
 
 ## Next Steps
 
-- [Basic Concepts](basic-concepts.md): how rules, compilation and evaluation fit together
-- [Operators](../operators/overview.md): every operator with runnable examples
+- [Basic Concepts](basic-concepts.md): how rules, compilation, sessions, and evaluation fit together
+- [Starter Boilerplates](boilerplates.md): Express, FastAPI, and Axum service templates
+- [Operators](../operators/overview.md): every built-in operator with runnable examples
 - [Use Cases & Examples](../use-cases/examples.md): complete rule patterns for real workloads
-- Language chapters: [Rust](../rust/overview.md), [Node.js](../nodejs/overview.md), [JavaScript in the browser (WASM)](../javascript/installation.md), [Python](../python/installation.md), [Go](../go/installation.md), [Java / Kotlin](../jvm.md), [.NET](../dotnet.md), [PHP](../php.md)
+- Language chapters: [Rust](../rust/overview.md), [Node.js](../nodejs/overview.md), [JavaScript in the browser (WASM)](../javascript/installation.md), [Python](../python/installation.md) ([Quick Start](../python/quick-start.md)), [Go](../go/installation.md) ([Quick Start](../go/quick-start.md)), [Java / Kotlin](../jvm.md), [.NET](../dotnet.md), [PHP](../php.md)

@@ -99,5 +99,6 @@ Data:
 ## Learn More
 
 - [Operators Overview](operators/overview.md): Full operator documentation
-- [Getting Started](getting-started/quick-start.md): Using the library
-- [Use Cases](use-cases/examples.md): Real-world examples
+- [Getting Started](getting-started/quick-start.md): Using the library in your stack
+- [React Visual Debugger](react-ui/installation.md): Embed this visual editor and debugger into your own React app
+- [Use Cases & Examples](use-cases/examples.md): Real-world recipes for feature flags, pricing, and validation

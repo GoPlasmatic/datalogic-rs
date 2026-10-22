@@ -1,13 +1,15 @@
 # Contributing to datalogic-rs
 
-Thanks for your interest in contributing. This file covers the
-contribution workflow. For the cross-package layout see
+Thanks for your interest in contributing! This guide covers the
+contribution workflow. For the repository overview see
 [README.md](./README.md), for design and dependency flow see
-[ARCHITECTURE.md](./ARCHITECTURE.md), and for build / test / run commands
-per package see [DEVELOPMENT.md](./DEVELOPMENT.md).
+[ARCHITECTURE.md](./ARCHITECTURE.md), and for build, test, and run commands
+per package see [DEVELOPMENT.md](./DEVELOPMENT.md). All contributors are expected
+to follow our [Code of Conduct](./CODE_OF_CONDUCT.md). To report a security issue,
+see [SECURITY.md](./SECURITY.md).
 
 Most contributions touch only the Rust crate. You only need a binding's
-toolchain (Node, Python, Go, JVM, .NET, PHP) or the UI toolchain if you
+toolchain (Node.js, Python, Go, JVM, .NET, or PHP) or the UI toolchain if you
 are changing that layer or verifying an end-to-end change in the React
 debugger.
 
@@ -15,17 +17,16 @@ debugger.
 
 ## Prerequisites
 
-- **Rust** 1.98 or newer (`rustup update stable`); the floor is the core crate's `rust-version`, inherited from its `datavalue-rs` dependency
+- **Rust** 1.98 or newer (`rustup update stable`). This floor matches the core crate's `rust-version`, inherited from its `datavalue-rs` dependency.
 - **wasm-pack**: only if you are rebuilding WASM
   (`curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh`)
-- **Node.js** 20+: only if you are working on `ui/`, `bindings/node/` or `bindings/wasm/`
+- **Node.js** 20+: only if you are working on `ui/`, `bindings/node/`, or `bindings/wasm/`
 - **Python 3.10+** with [`maturin`](https://www.maturin.rs/): only if you are working on `bindings/python/`
-- **Go 1.25+** and a C compiler (only if you are working on `bindings/go/`)
+- **Go 1.25+** and a C compiler: only if you are working on `bindings/go/`
 - **Java JDK 22+ & Maven**: only if you are working on `bindings/jvm/`
 - **.NET SDK 8.0+**: only if you are working on `bindings/dotnet/`
 - **PHP 8.4+ & Composer**: only if you are working on `bindings/php/`
-- **mdbook**: only if you are building the docs site
-  (`cargo install mdbook`)
+- **mdbook**: only if you are building the documentation site (`cargo install mdbook`)
 
 ## Setup
 
@@ -51,19 +52,18 @@ WASM package through its npm hooks), and per-binding build commands, see
 
 ## Code style
 
-- `make lint` must pass before you open a PR; CI enforces it. It covers
-  every Cargo manifest in the tree, including those outside the root
-  workspace; see
-  [DEVELOPMENT.md](./DEVELOPMENT.md#repo-wide-commands).
-- Public items should have rustdoc. Examples in rustdoc should compile
-  (they run under `cargo test --doc`), and so must the Rust blocks in
-  `crates/datalogic-rs/README.md`, which run as doctests under
+- `make lint` must pass before you open a PR (CI enforces it). It checks
+  every Cargo manifest in the repository, including workspaces outside the root
+  workspace. See [DEVELOPMENT.md](./DEVELOPMENT.md#repo-wide-commands).
+- Public items must have rustdoc comments. Examples in rustdoc must compile
+  (tested via `cargo test --doc`), and so must the Rust code blocks in
+  [`crates/datalogic-rs/README.md`](./crates/datalogic-rs/README.md), which run as doctests under
   `--all-features`.
-- A new integration test file gated on features declares the same
-  features as a `[[test]] required-features` entry in
-  `crates/datalogic-rs/Cargo.toml`; `scripts/check-test-features.sh`
-  (`make stats`) fails until it does.
-- A change to dependencies commits the updated `Cargo.lock`: CI builds
+- Any new integration test file gated on features must declare those same
+  features in a `[[test]] required-features` entry in
+  [`crates/datalogic-rs/Cargo.toml`](./crates/datalogic-rs/Cargo.toml). The `scripts/check-test-features.sh`
+  script (`make stats`) enforces this.
+- Any change to dependencies must commit the updated `Cargo.lock` because CI builds
   with `--locked`.
 - Prefer editing existing files over adding new ones. Keep comments
   focused on *why*, not *what*.
@@ -72,19 +72,19 @@ WASM package through its npm hooks), and per-binding build commands, see
 
 Tests go in one of three places:
 
-- **Rust integration tests** in `crates/datalogic-rs/tests/*.rs` (e.g.
+- **Rust integration tests** in `crates/datalogic-rs/tests/*.rs` (for example,
   `basic_test.rs`, `config_test.rs`, `trace_test.rs`). Use these for
-  engine-level behaviour, configuration, tracing, custom operators, and
+  engine-level behavior, configuration, tracing, custom operators, and
   anything that needs Rust-specific setup.
 - **JSONLogic suites**: JSON files under `crates/datalogic-rs/tests/suites/`,
-  listed in its `index.json`. Use these for any new JSONLogic operator or
-  edge case. They double as the canonical behaviour spec and are
-  replayable in the playground. Several generated tests run every suite
-  case through another path too (the reference oracle, rule facts, input
-  projection, compile modes); see the
+  listed in `crates/datalogic-rs/tests/suites/index.json`. Use these for any new JSONLogic operator or
+  edge case. They serve as the canonical behavior spec and are
+  replayable in the playground. Several generated tests also run every suite
+  case through the reference oracle, rule facts, input
+  projection, and compile modes. See the
   [tests README](./crates/datalogic-rs/tests/README.md).
-- **Binding scenarios** in `bindings/scenarios/api.json`, which all eight
-  bindings run. Add one when you add or change binding surface.
+- **Binding scenarios** in [`bindings/scenarios/api.json`](./bindings/scenarios/api.json), which all eight
+  bindings run. Add a scenario here whenever you add or change binding API surface (see [`bindings/BINDINGS.md`](./bindings/BINDINGS.md)).
 
 A suite entry looks like:
 

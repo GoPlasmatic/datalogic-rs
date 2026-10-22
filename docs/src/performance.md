@@ -406,3 +406,11 @@ impl RuleEngine {
 }
 # fn load_rules() -> Vec<(String, String)> { Vec::new() }
 ```
+
+## See Also
+
+- [How It Compares](comparison.md) — feature and benchmark comparison with other JSONLogic engines
+- [Thread Safety](advanced/threading.md) — sharing `Engine` and `Logic` across threads and async tasks
+- [Rule Analysis](advanced/rule-analysis.md#what-a-rule-reads-logicfacts) — how `Logic::facts()` powers input projection
+- [Operation Budget](advanced/operation-budget.md) — cap and meter rule work in production
+- [Rust API Reference](rust/api-reference.md) — full `Engine`, `Session`, and `Roots` APIs

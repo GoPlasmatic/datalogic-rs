@@ -1,8 +1,10 @@
 # Development
 
-A walkthrough of working on each package in this monorepo. For the big
-picture (what depends on what, why the layout is shaped this way), see
-[ARCHITECTURE.md](./ARCHITECTURE.md).
+A practical guide to building, testing, and working on each package in this monorepo.
+- For the big picture (dependency graph, workspace isolation, compilation pipeline, and feature flags), see [ARCHITECTURE.md](./ARCHITECTURE.md).
+- For contribution workflow and PR requirements, see [CONTRIBUTING.md](./CONTRIBUTING.md).
+- For quick AI/editor reference, see [CLAUDE.md](./CLAUDE.md).
+- For version migration notes, see [MIGRATION.md](./MIGRATION.md), and for security reporting see [SECURITY.md](./SECURITY.md).
 
 ## Prerequisites
 

@@ -1,6 +1,6 @@
 # C ABI: Embedding & Writing New Bindings
 
-For language runtimes without direct Rust interoperability libraries (like `pyo3` or `napi-rs`), `datalogic-rs` exposes a stable C ABI in [`bindings/c`](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/c). It is how the **Go, JVM (Java/Kotlin), .NET (C#), and PHP** bindings talk to the core, and it is the starting point if you want to embed the engine in a language we don't ship yet.
+For language runtimes without direct Rust interoperability libraries (like `pyo3` or `napi-rs`), `datalogic-rs` exposes a stable C ABI in [`bindings/c`](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/c). It is how the **[Go](go/installation.md), [JVM (Java/Kotlin)](jvm.md), [.NET (C#)](dotnet.md), and [PHP](php.md)** bindings talk to the core, and it is the starting point if you want to embed the engine in a language we don't ship yet.
 
 ```
 +-------------------+
@@ -145,3 +145,9 @@ Each handle type has its own thread-safety rule:
 ### Why `Session` is not thread-safe
 
 `Session` contains a `bumpalo` arena allocator, which allocates by moving a cursor forward through pre-allocated memory. If two threads evaluate logic concurrently with the same session, they overwrite each other's memory and cause crashes or data corruption.
+
+## See also
+
+- **Language bindings built on the C ABI:** [Go (`cgo`)](go/installation.md), [Java / Kotlin (`java.lang.foreign`)](jvm.md), [.NET (`P/Invoke`)](dotnet.md), and [PHP (`ext-ffi`)](php.md)
+- **Engine guides:** [Thread Safety](advanced/threading.md), [Custom Operators](advanced/custom-operators.md), [Configuration](advanced/configuration.md), [Rule Analysis](advanced/rule-analysis.md), and [Operation Budget](advanced/operation-budget.md)
+- **Full C header & contract:** [`bindings/c/README.md`](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/c#readme) and [`bindings/BINDINGS.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/bindings/BINDINGS.md)

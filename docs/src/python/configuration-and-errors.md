@@ -164,3 +164,10 @@ string entry points (`eval_str`, `evaluate_str`) serialize it as
 
 For payloads with exotic types, use `rule.evaluate_str(json_text)` and
 bring your own JSON encoder (e.g. `json.dumps(payload, default=str)`).
+
+## Next Steps
+
+- [API & GIL Management](api-gil.md): sessions, GIL release, `DataHandle`, and batch evaluation
+- [Quick Start](quick-start.md): basic evaluation patterns
+- [Starter Boilerplates](../getting-started/boilerplates.md#python--fastapi): FastAPI service example
+- [Configuration](../advanced/configuration.md) and [Rule Analysis](../advanced/rule-analysis.md): full engine configuration and static analysis reference

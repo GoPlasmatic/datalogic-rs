@@ -84,3 +84,10 @@ if err != nil {
     }
 }
 ```
+
+## Next Steps
+
+- [Configuration & Errors](configuration-and-errors.md): builder options, operator families, and error tags
+- [Quick Start](quick-start.md): basic one-shot and compiled rule usage
+- [Thread Safety](../advanced/threading.md): cross-language concurrency patterns
+- [Operation Budget](../advanced/operation-budget.md): cap untrusted evaluations with `ops_budget` and `EvaluateMetered`

@@ -70,27 +70,19 @@ graph TD
     class UI,NPM_WASM,NPM_NODE,PyPI,NPM_UI ui;
 ```
 
-The Rust core is the source of truth for behaviour. Each binding is a
-thin FFI shell that converts at the language boundary and re-exposes
-the engine. WASM, Node, Python, and C pin the core via Cargo path-deps;
-Go, JVM, .NET, and PHP all link against `bindings/c`'s artifacts (Go
-statically via `.a`; JVM/.NET/PHP dynamically via `.so` / `.dylib` /
-`.dll`). The four Rust-side bindings also depend on
-`crates/datalogic-bind`, which defines once the JSON documents every
-binding emits (the traced-run envelope, the operator catalogue, rule
-facts, check diagnostics, serialised errors; versioned schemas in
-`schemas/`) and the custom-operator bridge. One scenario suite,
-`bindings/scenarios/api.json`, runs in all eight bindings. The React UI
-(`ui/`) consumes the WASM package vendored from `bindings/wasm/pkg` (its
-npm lifecycle hooks copy the local build into `ui/vendor/datalogic`) and
-adds editing, visualisation, and trace inspection on top.
+The Rust core is the single source of truth for behavior. Each language binding is a
+thin FFI shell that converts values at the language boundary and exposes
+the core engine:
 
-The repo ships two JS-side packages over the same engine.
-**`@goplasmatic/datalogic-node`** (napi-rs, per-platform `.node`
-prebuilds) is the primary target for Node services.
-**`@goplasmatic/datalogic-wasm`** (WASM) targets browsers, Deno, Bun,
-Cloudflare Workers, and any context where one artifact across runtimes
-beats per-platform prebuilds.
+- **Direct Rust bindings (`bindings/wasm`, `bindings/node`, `bindings/python`, `bindings/c`)** depend on `crates/datalogic-rs` and `crates/datalogic-bind` via Cargo path dependencies.
+- **`crates/datalogic-bind`** defines the shared JSON wire documents that every binding emits (the traced-run envelope, operator catalogue, rule facts, check diagnostics, and serialized errors—with versioned schemas in [`schemas/`](./schemas/README.md)) as well as the custom-operator bridge.
+- **C ABI target bindings (`bindings/go`, `bindings/jvm`, `bindings/dotnet`, `bindings/php`)** link against the native libraries built from `bindings/c` (Go links the static `.a` library; JVM, .NET, and PHP load the dynamic `.so` / `.dylib` / `.dll` library at runtime).
+- **Cross-binding parity (`bindings/scenarios/api.json`)**: a single scenario suite runs across all eight language bindings (see [`bindings/BINDINGS.md`](./bindings/BINDINGS.md)).
+- **React UI (`ui/`)**: consumes the WASM package vendored from `bindings/wasm/pkg` (its npm lifecycle hooks copy the local build into `ui/vendor/datalogic`) and provides visual editing, graph rendering, and step-by-step trace inspection.
+
+For JavaScript and TypeScript environments, the repository ships two packages over the same engine:
+- **[`@goplasmatic/datalogic-node`](./bindings/node/README.md)** (`napi-rs`, per-platform `.node` prebuilds) is the primary target for Node.js servers and services.
+- **[`@goplasmatic/datalogic-wasm`](./bindings/wasm/README.md)** (WebAssembly) targets browsers, Deno, Bun, Cloudflare Workers, and any environment where a single portable artifact is preferred over native prebuilds.
 
 ## Cargo workspace layout
 
@@ -221,7 +213,7 @@ opt in via their dependency line.
 | `wasm-clock`      | JS-host clock for `now` on `wasm32-unknown-unknown` (forwards to `chrono/wasmbind`). Opt-in because it links JS imports that non-JS wasm runtimes (wasmtime, wazero, Chicory) cannot satisfy (issue #47) | WASM only. Never enable when the module runs outside a JS host |
 | `tensor`          | datavalue's `Tensor` value (dtype + shape + row-major byte buffer) and 20 marshalling-only operators over it. Arithmetic-free by design: every operator's cost is proportional to the data it moves, which is what lets `budget` price it honestly. No new dependency; crosses JSON as the tagged `{"tensor": {..}}` form, so the text-returning bindings carry it with no FFI change | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit), `benchmark` |
 | `tensor-half`     | Lifts the `f16` / `bf16` restriction on the element-wise tensor operators (the byte-moving ones already work on every dtype). Pulls in `half` through datavalue | Opt-in per Rust consumer; not enabled in any binding |
-| `budget`          | Per-evaluation operation counter with a hard abort: `EvaluationConfig::ops_budget`, `Engine::evaluate_metered` / `Session::eval_metered`, `EvalContext::charge`, and `ErrorKind::BudgetExceeded`. Compiled in and unset, it costs about 3% on the self benchmark's micro geomean (+3.6% when it landed, 22.75 -> 23.56 ns/op; +2.8% measured on 5.8, with `distinct` and `map` near +10%), which is why it is a flag | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit), `datalogic-bind` |
+| `budget`          | Per-evaluation operation counter with a hard abort and usage reports: `EvaluationConfig::ops_budget`, `Engine::evaluate_metered` / `Engine::evaluate_metered_report`, `Session::eval_metered` / `Session::eval_metered_report`, `EvalContext::charge`, and `ErrorKind::BudgetExceeded`. When compiled in and unset, it adds ~3% overhead on the self-benchmark micro geomean (+3.6% when it landed, 22.75 → 23.56 ns/op; +2.8% measured on 5.8, with `distinct` and `map` near +10%), which is why it remains an opt-in Cargo feature | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit), `datalogic-bind` |
 | `all-operators`   | Umbrella: every operator family at once (`datetime`, `error-handling`, the five `ext-*`, `flagd`, `tensor`). Adds no code of its own. `operator_names_test` checks that it lists every family in the operator table, so a new family is one entry here | WASM, Node, Python, C (Go/JVM/.NET/PHP inherit), `benchmark`, `datalogic-bind` (dev) |
 
 The non-Rust bindings (Go, JVM, .NET, PHP) inherit whatever feature set
@@ -279,7 +271,7 @@ runner) and `all-operators` (so every suite runs). It does not enable
 | React editor + debugger        | `ui/src/components/logic-editor/`                 |
 | Benchmark harness              | `tools/benchmark/src/`                            |
 
-For day-to-day commands (build, test, run, link), see [DEVELOPMENT.md](./DEVELOPMENT.md).
+For day-to-day commands (build, test, run, lint), see [DEVELOPMENT.md](./DEVELOPMENT.md). For contribution rules see [CONTRIBUTING.md](./CONTRIBUTING.md), for security guarantees see [SECURITY.md](./SECURITY.md), for version upgrades see [MIGRATION.md](./MIGRATION.md), and for user-facing guides see [`docs/src/introduction.md`](./docs/src/introduction.md).
 
 ## Compile-time optimizations
 

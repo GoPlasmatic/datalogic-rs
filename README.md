@@ -97,7 +97,7 @@ Result: "free-shipping"
 
 ### 2. JSON response templates
 
-Enable templating mode and JSON key-value structures flow through to the output, with operators computing fields in place:
+Enable templating mode to pass JSON objects through to the output while evaluating embedded operators in place:
 
 ```yaml
 Template: {"greeting": {"cat": ["Hello ", {"var": "name"}]},
@@ -106,7 +106,7 @@ Data:     {"name": "Jane", "age": 25}
 Output:   {"greeting": "Hello Jane", "isAdult": true}
 ```
 
-Templating is an engine option in every binding (in Rust: `Engine::builder().with_templating(true)`, behind the `templating` feature). You can also pick the mode per compile (`compile_template` / `compile_strict` in Rust, `compileTemplate` / `compileStrict` in JavaScript), so one engine checks conditions strictly and compiles output templates. An optional escape prefix (`.with_template_key_escape('$')` in Rust, an engine option in every binding) lets a key that names an operator be emitted: `{"$type": ...}` outputs `type` rather than running the `type` operator.
+Templating is an engine option in every binding (`Engine::builder().with_templating(true)` in Rust, behind the `templating` Cargo feature). You can also choose the mode per compile (`compile_template` / `compile_strict` in Rust, `compileTemplate` / `compileStrict` in JavaScript), allowing a single engine to validate conditions strictly and compile output templates. An optional escape prefix (`.with_template_key_escape('$')` in Rust, available in every binding) lets you emit output keys that match operator names—for example, `{"$type": ...}` outputs the literal key `"type"` instead of running the `type` operator. See [Structured Objects & Templating](https://goplasmatic.github.io/datalogic-rs/advanced/structured-objects.html).
 
 ### 3. Safe user expressions
 
@@ -184,50 +184,51 @@ Reproduce it yourself with `cargo run --release -p datalogic-bench --bin compare
 ## Engine guarantees
 
 - **Conformance, enforced in CI**: passes the official JSONLogic suite plus an extended cross-binding battery: 2,128 cases across 66 suites, run against the same core every binding ships.
-- **84 built-in operators**: comparison, arithmetic, logic, strings, arrays, objects, datetime (with IANA timezones), error handling, tensor marshalling and the flagd operators; you can add custom operators written in each host language. `engine.operators()` lists them, generated from the same table that drives dispatch.
-- **Checks before evaluation**: `check` reports every problem it can see in a rule (an unknown operator, an argument count the operator rejects, a timezone that does not exist), each with an RFC 6901 pointer into the rule; `facts` reports the data paths a compiled rule reads.
-- **Thread-safe evaluation**: compiled `Logic` is `Send + Sync`; share it across threads via `Arc`.
+- **84 built-in operators**: comparison, arithmetic, logic, strings, arrays, objects, datetime (with IANA timezones), error handling, tensor marshalling, and the flagd operators. You can also register custom operators written in each host language. `engine.operators()` lists all active built-in operators from the same table that drives dispatch.
+- **Checks before evaluation**: `check` reports every static issue in a rule (unknown operators, invalid argument counts, or unknown timezones) along with an RFC 6901 JSON Pointer into the rule. `facts` reports the data paths and operators a compiled rule uses.
+- **Operation budgets**: bound untrusted rules with an operation budget (`ops_budget`) and inspect exact per-run consumption (`evaluate_metered_report` / `evaluateMetered`).
+- **Thread-safe evaluation**: compiled `Logic` is `Send + Sync` and can be shared across threads via `Arc`.
 - **Zero `unsafe`**: the core engine forbids unsafe code (`#![forbid(unsafe_code)]`).
-- **Zero-copy variables**: `bumpalo`-backed evaluation; read-through operations like `var` borrow from the input, and a rule whose reads are known brings in only those paths of an owned or `serde_json` input.
-- **Serde-optional**: the default build has no `serde_json` dependency; enable the feature only for typed interop.
-- **Configurable semantics**: division-by-zero behavior, NaN handling, truthiness rules, numeric coercions, and whether a missing variable reads as `null` or raises an error (`missing_var`) are engine options.
-- **Verifiable supply chain**: npm packages publish from GitHub Actions with provenance attestation; check with `npm audit signatures`.
+- **Zero-copy variables**: `bumpalo`-backed evaluation borrows read-through operations like `var` directly from the input. When a rule's data reads are statically known, input projection views only those paths from an owned or `serde_json` input.
+- **Serde-optional**: the default Rust build has no `serde_json` dependency. Enable the `serde_json` feature only when you want typed Rust interop.
+- **Configurable semantics**: division-by-zero behavior, NaN handling, truthiness rules, numeric coercions, operator-family allowlists, and missing-variable behavior (`missing_var`: return `null` or raise an error) are all configurable on the engine.
+- **Verifiable supply chain**: npm packages publish from GitHub Actions with provenance attestation (verify with `npm audit signatures`).
 
 ### OpenFeature / flagd
 
-The opt-in `flagd` cargo feature (enabled in every language binding) ships the `fractional` and `sem_ver` operators used by [OpenFeature flagd](https://flagd.dev) flag definitions. `fractional` implements murmurhash3 bucketing byte-compatible with the canonical Go evaluator, so users land in the same variant buckets across implementations. With it, the engine works as an in-process, flagd-compatible feature-flag evaluator in all eight runtimes.
+The opt-in `flagd` Cargo feature (enabled by default in every language binding) provides the `fractional` and `sem_ver` operators used by [OpenFeature flagd](https://flagd.dev) flag definitions. `fractional` implements MurmurHash3 bucketing that is byte-compatible with the canonical Go evaluator, so users land in the exact same variant buckets across implementations. This lets `datalogic-rs` act as an in-process, flagd-compatible feature-flag evaluator across all eight runtimes.
 
 ---
 
 ## Migrating from v4
 
-v5 breaks the API: it renames `DataLogic` to `Engine`, `CompiledLogic` to `Logic`, and `Operator` to `CustomOperator`. One-shot evaluation now uses `eval_str` (returning a `String`) or `eval_into::<T>` (for typed values). The npm WASM package moved from `@goplasmatic/datalogic` to `@goplasmatic/datalogic-wasm`. See [MIGRATION.md](./MIGRATION.md) for the step-by-step guide. If you are upgrading within 5.x, the same file lists the changed results and deprecations in 5.6 and 5.8.
+v5 introduces a cleaner API: it renames `DataLogic` to `Engine`, `CompiledLogic` to `Logic`, and `Operator` to `CustomOperator`. One-shot evaluation now uses `eval_str` (returning a `String`) or `eval_into::<T>` (for typed values). The npm WASM package moved from `@goplasmatic/datalogic` to `@goplasmatic/datalogic-wasm`. See [MIGRATION.md](./MIGRATION.md) for the step-by-step v4 → v5 guide as well as notes on behavior changes and deprecations across 5.x releases.
 
 ---
 
 ## Resources
 
-- [Documentation site](https://goplasmatic.github.io/datalogic-rs/): operator reference, per-language guides, configuration
-- [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/): build and debug rules in your browser
-- [How it compares](https://goplasmatic.github.io/datalogic-rs/comparison.html): vs json-logic-js, json-logic-engine, jsonlogic-rs, ZEN, CEL
+- [Documentation site](https://goplasmatic.github.io/datalogic-rs/) (source in [`docs/src/`](./docs/src/SUMMARY.md)): operator reference, per-language guides, and advanced configuration
+- [Online playground](https://goplasmatic.github.io/datalogic-rs/playground/): build, trace, and debug rules in your browser
+- [How it compares](https://goplasmatic.github.io/datalogic-rs/comparison.html): vs `json-logic-js`, `json-logic-engine`, `jsonlogic-rs`, ZEN, and CEL
 - [Rust API docs on docs.rs](https://docs.rs/datalogic-rs)
 - [JSONLogic specification](https://jsonlogic.com)
-- [Architecture overview](./ARCHITECTURE.md) · [Development guide](./DEVELOPMENT.md) · [Changelog](./CHANGELOG.md)
+- [Architecture overview](./ARCHITECTURE.md) · [Development guide](./DEVELOPMENT.md) · [Contributing](./CONTRIBUTING.md) · [Security policy](./SECURITY.md) · [Migration guide](./MIGRATION.md) · [Changelog](./CHANGELOG.md)
 
 ---
 
 ## Who is using datalogic-rs?
 
-- **[dataflow-rs](https://github.com/GoPlasmatic/dataflow-rs)** (Plasmatic): workflow/rules automation engine; every route condition is a compiled datalogic rule.
+- **[dataflow-rs](https://github.com/GoPlasmatic/dataflow-rs)** (Plasmatic): workflow and rules automation engine where every route condition is a compiled `datalogic-rs` rule.
 - **[datafake-rs](https://github.com/GoPlasmatic/datafake-rs)** (Plasmatic): mock JSON data generator configured with JSONLogic expressions.
 
-If you run datalogic-rs in production, [add your project](https://github.com/GoPlasmatic/datalogic-rs/issues/new?title=Who%27s%20using:%20). A one-line PR or issue is enough.
+If you run `datalogic-rs` in production, [add your project](https://github.com/GoPlasmatic/datalogic-rs/issues/new?title=Who%27s%20using:%20)—a one-line PR or issue is enough.
 
 ---
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution rules, [DEVELOPMENT.md](./DEVELOPMENT.md) for environment setup, and [ARCHITECTURE.md](./ARCHITECTURE.md) for structural diagrams. Bring questions and ideas to [Discussions](https://github.com/GoPlasmatic/datalogic-rs/discussions).
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution guidelines, [DEVELOPMENT.md](./DEVELOPMENT.md) for environment setup and build commands, [ARCHITECTURE.md](./ARCHITECTURE.md) for structural diagrams, and [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) for community standards. Bring questions and ideas to [Discussions](https://github.com/GoPlasmatic/datalogic-rs/discussions).
 
 ## About Plasmatic
 

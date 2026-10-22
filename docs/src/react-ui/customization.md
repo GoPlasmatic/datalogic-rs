@@ -433,3 +433,10 @@ function DebugWithDeferred({ expression, data }) {
   );
 }
 ```
+
+## Next Steps
+
+- [Props & API](props-api.md): complete reference for `DataLogicEditorProps`, `useWasmEvaluator`, and layout utilities
+- [Usage Modes](modes.md): combining read-only visualization, step-through debugging, and visual editing
+- [Quick Start](quick-start.md) and [Installation](installation.md): setup and common component patterns
+- [Playground](../playground.md): test custom expressions and themes in the live visual editor

@@ -32,3 +32,10 @@ import datalogic_py
 
 print(datalogic_py.__version__)  # "5.9.0"
 ```
+
+## Next Steps
+
+- [Quick Start](quick-start.md): run your first one-shot and compiled evaluations in Python
+- [API & GIL Management](api-gil.md): sessions, GIL release, data handles, and batch evaluation
+- [Configuration & Errors](configuration-and-errors.md): engine presets, exception hierarchy, and type conversion
+- [Starter Boilerplates](../getting-started/boilerplates.md#python--fastapi): copy-paste FastAPI pricing endpoint

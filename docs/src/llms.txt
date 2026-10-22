@@ -58,8 +58,10 @@ Rule analysis: `check(rule)` returns diagnostics (unknown operator with a
   NaN, division, truthiness, missing-variable and operator-family settings
 - [Security & sandboxing](https://goplasmatic.github.io/datalogic-rs/advanced/security.html):
   the sandbox guarantees and what remains the host's job
+- [Operation budget](https://goplasmatic.github.io/datalogic-rs/advanced/operation-budget.html):
+  bounding untrusted rules with `ops_budget` and reading metered reports (`evaluateMetered`)
 - [Migration guide](https://goplasmatic.github.io/datalogic-rs/migration.html):
-  v4 to v5, and the behaviour changes in 5.8.0
+  v4 to v5, and the behaviour changes across 5.x releases (5.6, 5.8, 5.9)
 - [How it compares](https://goplasmatic.github.io/datalogic-rs/comparison.html):
   vs json-logic-js, json-logic-engine, GoRules ZEN, CEL
 - [Performance](https://goplasmatic.github.io/datalogic-rs/performance.html):

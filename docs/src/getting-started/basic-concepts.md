@@ -389,7 +389,9 @@ which holds the engine by `Arc` (`SharedSession::new(Arc<Engine>)`); see
 
 ## Next Steps
 
-- [Operators Overview](../operators/overview.md): every available operator
-- [Configuration](../advanced/configuration.md): customize evaluation behavior
-- [Custom Operators](../advanced/custom-operators.md): extend the engine with your own logic
-- [Migration Guide](../migration.md): move from v4 to v5, or from an earlier 5.x release
+- [Starter Boilerplates](boilerplates.md): put compilation and sessions to work in Express, FastAPI, and Axum
+- [Operators Overview](../operators/overview.md): browse every available operator
+- [Configuration](../advanced/configuration.md): customize evaluation behavior, NaN handling, and operator families
+- [Rule Analysis](../advanced/rule-analysis.md): validate rules with `check` and inspect data reads with `facts`
+- [Custom Operators](../advanced/custom-operators.md): extend the engine with your own host-language logic
+- [Migration Guide](../migration.md): upgrade from v4 to v5, or from an earlier 5.x release

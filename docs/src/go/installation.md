@@ -36,3 +36,10 @@ cgo build tags select the matching static library (`libdatalogic_c.a`) at build 
 *   **Go 1.25 or newer** (the module's `go.mod` directive; older toolchains with `GOTOOLCHAIN=auto` download it on demand).
 *   **A C compiler** (e.g. `gcc` or `clang` / Xcode command line tools) to link the static library during `go build`.
 *   **No Rust toolchain:** the static library already contains the compiled Rust engine. You need Rust only to build the binding from a source checkout (`make build` in `bindings/go`).
+
+## Next Steps
+
+- [Quick Start](quick-start.md): one-shot and compiled rule evaluation in Go
+- [Concurrency & Sessions](concurrency.md): goroutine safety, `Session` arena reuse, `DataHandle`, and batch evaluation
+- [Configuration & Errors](configuration-and-errors.md): `EngineBuilder` options and the `*datalogic.Error` type
+- [C ABI](../c-abi.md): the underlying C FFI contract that `datalogic-go` links against

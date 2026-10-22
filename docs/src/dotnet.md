@@ -105,6 +105,7 @@ catch (ParseException e) when (e.ErrorType == "CompileError")
 ## Going deeper
 
 - [C ABI internals: memory management & thread safety](c-abi.md): the native-heap ownership rules every FFI binding shares
-- [Engine configuration semantics](advanced/configuration.md)
-- [Rule analysis](advanced/rule-analysis.md): diagnostic codes, the facts fields and the operator catalogue
+- [Engine configuration semantics](advanced/configuration.md) and [Operation Budget](advanced/operation-budget.md)
+- [Rule analysis](advanced/rule-analysis.md): diagnostic codes, the `Facts()` fields, and the operator catalogue
+- [Thread safety](advanced/threading.md): cross-language concurrency patterns
 - [Package README on NuGet](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/dotnet#readme): full API surface, error types, and platform table

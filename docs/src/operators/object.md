@@ -116,3 +116,10 @@ Turn an object into an array of `{key, value}` rows.
 - `null` input, including an absent field, yields `[]`.
 - Any other non-object input (array, string, number, boolean) is an Invalid Arguments error.
 - Keys come out in stored order, duplicates included, exactly as the object carries them. The order depends on how the data entered: JSON text parsed by the engine (the `ParsedData` and string entry points, and the Node, WASM, and C-based bindings) keeps source-text order and duplicate keys, while data passed as a `serde_json::Value` or as a Python dict is key-sorted and duplicate-free (so `{ "zed": 10, "alpha": 7 }` comes out as `["alpha", "zed"]`). Do not rely on source-text order across input routes.
+
+## See Also
+
+- [Array Operators](array.md) — iterate over `entries` rows with `map`, `filter`, `reduce`, and `group_by`
+- [Variable Access](variable-access.md) — read specific object fields with `var`, `val`, and `exists`
+- [Structured Objects (Templating)](../advanced/structured-objects.md) — construct new JSON objects dynamically
+- [Operators Overview](overview.md) — full operator catalog and feature-flag table

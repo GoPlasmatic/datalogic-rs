@@ -178,3 +178,11 @@ app.use((err, req, res, next) => {
 See the [Node.js chapter](../nodejs/overview.md) for the full API
 surface (sessions, data handles, typed results, batch and async
 evaluation, tracing, operator names, rule facts).
+
+## See Also
+
+- [Node.js Native (`@goplasmatic/datalogic-node`)](../nodejs/overview.md) — full Node.js API reference
+- [Starter Boilerplates](../getting-started/boilerplates.md) — runnable project templates for every language
+- [Sandboxing Untrusted Rules](../advanced/security.md) — security checklist for user-authored rules
+- [Rule Analysis](../advanced/rule-analysis.md) — `check`, `compileChecked`, and `facts` in detail
+- [Integration: Spring Boot (JVM)](spring-boot.md) — the same architecture in a Java/Spring service

@@ -246,8 +246,8 @@ Crossing the ceiling raises `ErrorKind::BudgetExceeded { budget, spent }`
 it. The variant exists in every build, so a `match` on it compiles with or
 without the feature; only a `budget` build raises it. See
 [Operation Budget](operation-budget.md) for what one operation is, how to
-pick a number, and the per-call `Engine::evaluate_metered` entry point
-that reports what a rule spent.
+pick a number, and the per-call `Engine::evaluate_metered` and
+`Engine::evaluate_metered_report` entry points that report what a rule spent.
 
 ## Configuration Presets
 
@@ -482,3 +482,11 @@ let engine = Engine::builder().with_config(config).build();
 // {"if": [-5, "yes", "no"]}  ⇒ "no"
 // {"if": [1,  "yes", "no"]}  ⇒ "yes"
 ```
+
+## See Also
+
+- [Custom Operators](custom-operators.md) — register custom operators and rebuild engines with `to_builder()`
+- [Structured Objects (Templating)](structured-objects.md) — emit JSON objects and escape operator names
+- [Operation Budget](operation-budget.md) — cap and meter per-evaluation work
+- [Sandboxing Untrusted Rules](security.md) — recommended configuration for multi-tenant deployments
+- [Rust API Reference](../rust/api-reference.md#evaluationconfig) — full `EvaluationConfig` and `EngineBuilder` signatures

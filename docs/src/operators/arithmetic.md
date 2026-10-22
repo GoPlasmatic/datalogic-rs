@@ -554,3 +554,10 @@ more operands:
 `/` and `%` raise a `NaN` error for a non-numeric operand under every
 setting, and so does `-`, except for the operands after the first in a call
 with three or more. See [NaN Handling](../advanced/configuration.md#nan-handling).
+
+## See Also
+
+- [Configuration (`NanHandling`, `DivisionByZeroHandling`, `NumericCoercionConfig`)](../advanced/configuration.md): customize arithmetic coercion and error behavior
+- [DateTime Operators](datetime.md#duration-arithmetic): add, subtract, and scale datetimes and durations with `+`, `-`, `*`, and `/`
+- [Error Handling (`try`, `throw`)](error-handling.md): catch arithmetic `NaN` and division-by-zero errors
+- [Operators Overview](overview.md): full operator table and feature flags

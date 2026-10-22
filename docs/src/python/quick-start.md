@@ -60,4 +60,9 @@ except CompileError as e:
 *   `rule.evaluate(dict_data)` accepts a Python `dict` or `list` and walks the Python objects straight into the engine's arena (it falls back to `pythonize` only for unusual types such as subclasses and sets). In the boundary benchmark this is about 3 to 6 times faster than a `json.dumps` → `evaluate_str` → `json.loads` round trip.
 *   `rule.evaluate_str(json_string)` accepts a raw JSON string. If you already have a serialized JSON payload (e.g. read from a network socket or file), use this method to skip Python-to-Rust dictionary marshaling.
 
-Next: [Configuration & Errors](configuration-and-errors.md) covers engine configuration presets, the exception hierarchy, and type conversion.
+## Next Steps
+
+- [Installation](installation.md): wheel platforms and supported Python versions
+- [API & GIL Management](api-gil.md): sessions, multi-threaded GIL release, `DataHandle`, and batch evaluation
+- [Configuration & Errors](configuration-and-errors.md): engine configuration presets, the exception hierarchy, and type conversion
+- [Starter Boilerplates](../getting-started/boilerplates.md#python--fastapi): build a FastAPI service with compiled rules

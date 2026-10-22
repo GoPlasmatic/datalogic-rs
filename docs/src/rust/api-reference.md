@@ -1076,3 +1076,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+## See Also
+
+- [Rust Quick Start](overview.md) — evaluation tiers, input routes, and Cargo feature flags
+- [Configuration](../advanced/configuration.md) — `EvaluationConfig` and `EngineBuilder` options
+- [Custom Operators](../advanced/custom-operators.md) — implementing `CustomOperator` and `ArenaExt`
+- [Rule Analysis](../advanced/rule-analysis.md) — `Engine::check`, `compile_checked`, `Logic::facts`, and `Engine::operators`
+- [Thread Safety](../advanced/threading.md) — sharing `Engine` and `Logic` across threads and async tasks

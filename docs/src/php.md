@@ -10,7 +10,7 @@ Add the Composer dependency to your project:
 composer require goplasmatic/datalogic
 ```
 
-Composer records the constraint `^5.8`.
+Composer records the constraint `^5.9`.
 
 Enable PHP's FFI extension in your `php.ini` configuration. The binding supports two setups:
 
@@ -135,6 +135,7 @@ To free native memory at a known point, call `$object->close()` on the `Engine`,
 ## Going deeper
 
 - [C ABI internals: memory management & thread safety](c-abi.md): the native-heap ownership rules every FFI binding shares
-- [Engine configuration semantics](advanced/configuration.md)
-- [Rule analysis](advanced/rule-analysis.md): diagnostic codes, the facts fields and the operator catalogue
+- [Engine configuration semantics](advanced/configuration.md) and [Operation Budget](advanced/operation-budget.md)
+- [Rule analysis](advanced/rule-analysis.md): diagnostic codes, the `facts()` fields, and the operator catalogue
+- [Thread safety](advanced/threading.md): cross-language concurrency patterns
 - [Package README on Packagist](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/php#readme): full API surface, error types, and platform table

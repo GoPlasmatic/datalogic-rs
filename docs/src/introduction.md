@@ -46,20 +46,20 @@ datalogic-rs works in two phases:
 
 Every binding exposes this compile-once, evaluate-many pattern; [Performance](performance.md) has the numbers.
 
-Before a rule runs, you can check it: `Engine::check` (`check` in every binding) reports unknown operators with a "did you mean" suggestion, wrong argument counts and other mistakes, each with a JSON Pointer into the rule ([Rule Analysis](advanced/rule-analysis.md#checking-a-rule-enginecheck)). The `MissingVar::Error` setting turns a read of a misspelled data path into a `VariableNotFound` error instead of `null` ([Configuration](advanced/configuration.md#missing-variables)), and `Engine::operators()` lists every operator your build has ([API Reference](rust/api-reference.md)).
+Before a rule runs, you can validate it statically: `Engine::check` (`check` in every binding) reports unknown operators with a "did you mean" suggestion, wrong argument counts, and other mistakes—each with a JSON Pointer into the rule ([Rule Analysis](advanced/rule-analysis.md#checking-a-rule-enginecheck)). The `MissingVar::Error` setting turns a read of a misspelled data path into a `VariableNotFound` error instead of `null` ([Configuration](advanced/configuration.md#missing-variables)), `ops_budget` bounds untrusted execution ([Operation Budget](advanced/operation-budget.md)), and `Engine::operators()` lists every operator compiled into your build ([API Reference](rust/api-reference.md)).
 
 ## Find your language
 
-Each language has its own chapter with install steps, a quick start and the API surface:
+Each language has its own chapter with install steps, a quick start, and the full API surface:
 
 | Your stack | Start here |
 | :--- | :--- |
 | Rust | [Rust (native crate)](rust/overview.md) |
-| Node.js services | [Node.js (native)](nodejs/overview.md) |
-| Browser, edge, Deno, Bun | [JavaScript (WASM)](javascript/installation.md) |
-| Python | [Python](python/installation.md) |
-| Go | [Go](go/installation.md) |
-| Java, Kotlin, Scala | [Java / Kotlin (JVM)](jvm.md) |
+| Node.js services | [Node.js (native)](nodejs/overview.md) · [Integration: Express](integrations/express.md) |
+| Browser, edge, Deno, Bun | [JavaScript (WASM)](javascript/installation.md) · [Browser & Frameworks](javascript/frameworks.md) |
+| Python | [Python](python/installation.md) · [Quick Start](python/quick-start.md) |
+| Go | [Go](go/installation.md) · [Quick Start](go/quick-start.md) |
+| Java, Kotlin, Scala | [Java / Kotlin (JVM)](jvm.md) · [Integration: Spring Boot](integrations/spring-boot.md) |
 | .NET (C#, F#) | [.NET](dotnet.md) |
 | PHP | [PHP](php.md) |
 | Any other language | [C ABI](c-abi.md) |
@@ -67,16 +67,18 @@ Each language has its own chapter with install steps, a quick start and the API 
 
 ## How these docs are organized
 
-- **[Getting Started](getting-started/installation.md)**: install, first evaluation, core concepts, starter service code
-- **[Operators](operators/overview.md)**: reference for the 84 built-in operators, with runnable examples on every page
+- **[Getting Started](getting-started/installation.md)**: [installation](getting-started/installation.md), [first evaluation](getting-started/quick-start.md), [core concepts](getting-started/basic-concepts.md), and [starter service boilerplates](getting-started/boilerplates.md)
+- **[Operators](operators/overview.md)**: reference for all 84 built-in operators, with runnable examples on every page
 - **Languages**: one chapter per binding (see the table above)
-- **Guides**: [custom operators](advanced/custom-operators.md), [configuration](advanced/configuration.md), [rule analysis](advanced/rule-analysis.md), [operation budget](advanced/operation-budget.md), [structured objects / templating](advanced/structured-objects.md), [thread safety](advanced/threading.md), and [security & sandboxing](advanced/security.md)
+- **Guides**: [custom operators](advanced/custom-operators.md), [configuration](advanced/configuration.md), [rule analysis](advanced/rule-analysis.md), [operation budget](advanced/operation-budget.md), [structured objects / templating](advanced/structured-objects.md), [thread safety](advanced/threading.md), [security & sandboxing](advanced/security.md), and service integrations ([Express](integrations/express.md), [Spring Boot](integrations/spring-boot.md))
 - **Reference**: [use-case cookbook](use-cases/examples.md), [performance](performance.md), [comparisons](comparison.md), [migration](migration.md), [FAQ](faq.md), and [troubleshooting](troubleshooting.md)
 
 ## Next steps
 
-- [Installation](getting-started/installation.md): add datalogic to your project
-- [Quick Start](getting-started/quick-start.md): your first evaluation
-- [Use Cases & Examples](use-cases/examples.md): feature flags, pricing, validation, fraud scoring
-- [Coming from json-logic-js?](coming-from-json-logic-js.md): your rules run unchanged
-- [Migration Guide](migration.md): from v4, and the behaviour changes in 5.8
+- [Installation](getting-started/installation.md): add `datalogic-rs` to your project
+- [Quick Start](getting-started/quick-start.md): run your first evaluation
+- [Basic Concepts](getting-started/basic-concepts.md): understand compilation, sessions, and evaluation
+- [Starter Boilerplates](getting-started/boilerplates.md): copy-paste Express, FastAPI, and Axum services
+- [Use Cases & Examples](use-cases/examples.md): feature flags, pricing, validation, and fraud scoring
+- [Coming from json-logic-js?](coming-from-json-logic-js.md): run your existing rules unchanged
+- [Migration Guide](migration.md): upgrade from v4 or review behavior changes across 5.x releases

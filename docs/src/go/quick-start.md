@@ -72,4 +72,8 @@ if errors.As(err, &dlErr) && dlErr.Type == "CompileError" {
 }
 ```
 
-Next: [Configuration & Errors](configuration-and-errors.md) covers engine configuration via the builder and the `*datalogic.Error` type.
+## Next Steps
+
+- [Installation & cgo Setup](installation.md): Go module setup and prebuilt static libraries
+- [Concurrency & Sessions](concurrency.md): goroutine safety, `Session` arena reuse, `DataHandle`, and batch evaluation
+- [Configuration & Errors](configuration-and-errors.md): engine configuration via `EngineBuilder` and structured `*datalogic.Error` inspection

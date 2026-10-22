@@ -1,10 +1,17 @@
 # Migration Guide
 
-This page covers the behaviour changes in 5.8.0 and gives an overview of
+This page covers the updates in 5.9.0 and 5.8.0 and gives an overview of
 the move from v4 to v5. The full v4 to v5 cookbook (every renamed call,
-cargo-feature swap and error-handling update) and the notes for earlier
+cargo-feature swap, and error-handling update) and the notes for earlier
 5.x releases live in [`MIGRATION.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/MIGRATION.md)
 at the repo root, which is authoritative.
+
+## Upgrading to 5.9
+
+5.9.0 is backwards-compatible with 5.8.x:
+
+- **Rust MSRV is now 1.98** (Edition 2024).
+- **New metered report APIs (`budget` feature)**: [`Engine::evaluate_metered_report`](rust/api-reference.md) and [`Session::eval_metered_report`](rust/api-reference.md) return `Metered<Result<...>>` so callers can read `ops` even when evaluation fails with an ordinary error (`Thrown`, `VariableNotFound`, `TypeError`). See [Operation Budget](advanced/operation-budget.md#picking-a-number).
 
 ## Upgrading to 5.8
 
@@ -244,5 +251,6 @@ in it applies to this codebase. Read the
 If you hit a problem during migration:
 
 1. Check the [API Reference](rust/api-reference.md)
-2. Review the [examples](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs/examples)
-3. Open an issue on [GitHub](https://github.com/GoPlasmatic/datalogic-rs/issues)
+2. Review the [FAQ](faq.md) and [Troubleshooting Guide](troubleshooting.md)
+3. Review the [examples](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs/examples)
+4. Open an issue on [GitHub](https://github.com/GoPlasmatic/datalogic-rs/issues)

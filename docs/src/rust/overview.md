@@ -66,7 +66,8 @@ Before a rule runs, `Engine::check` lists every problem the engine can see in it
 ## Where everything else is documented
 
 - [API Reference](api-reference.md): the public types, methods, and error variants
+- [Starter Boilerplates](../getting-started/boilerplates.md#rust--axum): copy-paste Axum feature-flag endpoint
 - [docs.rs/datalogic-rs](https://docs.rs/datalogic-rs): rustdoc with feature badges
 - [Crate README](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs#readme): the deep-dive with per-tier performance profiles
 - [Runnable examples](https://github.com/GoPlasmatic/datalogic-rs/tree/main/crates/datalogic-rs/examples): ten CI-built examples from getting started to zero-copy input
-- [Custom Operators](../advanced/custom-operators.md) · [Configuration](../advanced/configuration.md) · [Rule Analysis](../advanced/rule-analysis.md) · [Structured Objects](../advanced/structured-objects.md) · [Security & Sandboxing](../advanced/security.md)
+- [Custom Operators](../advanced/custom-operators.md) · [Configuration](../advanced/configuration.md) · [Rule Analysis](../advanced/rule-analysis.md) · [Operation Budget](../advanced/operation-budget.md) · [Structured Objects](../advanced/structured-objects.md) · [Thread Safety](../advanced/threading.md) · [Security & Sandboxing](../advanced/security.md)

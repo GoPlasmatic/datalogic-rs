@@ -279,3 +279,11 @@ The mode argument is a string in Node, WASM and Python (`"engine"`,
 `"strict"`, `"template"`) and an enum or constant elsewhere. A custom
 operator registered from a binding declares no argument count and no
 `check`, so the checker accepts every call to it.
+
+## See Also
+
+- [Custom Operators](custom-operators.md) — declare `CustomOperator::info` and `check` in Rust
+- [Configuration](configuration.md#operator-families) — restrict built-in operator families per engine
+- [Structured Objects (Templating)](structured-objects.md) — check templates with `CheckMode::Template`
+- [Sandboxing Untrusted Rules](security.md) — validate untrusted rules at ingestion with `compile_checked`
+- [Rust API Reference](../rust/api-reference.md) — full `Diagnostic`, `Facts`, and `OperatorInfo` types

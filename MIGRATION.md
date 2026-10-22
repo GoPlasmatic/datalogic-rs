@@ -1,13 +1,21 @@
 # Migrating to datalogic-rs v5
 
 v5 is a clean break from v4. There is **no `compat` feature**, no
-`LegacyApi` trait, and no deprecated method shims inside the v5 crate;
-v4 callers rewrite their call sites following this guide. The
-rewrites are mechanical and 1:1; this document is the authoritative
-cookbook.
+`LegacyApi` trait, and no deprecated method shims inside the v5 crate.
+Callers upgrading from v4 rewrite their call sites following this guide. The
+rewrites are mechanical and 1:1.
 
 If you are still on v4 and not ready to migrate, stay on the latest
-4.x release. v5 does not support a side-by-side mode.
+4.x release (`v5` does not support a side-by-side compatibility mode). For user-facing documentation see the [Documentation book](./docs/src/migration.md), for architecture details see [ARCHITECTURE.md](./ARCHITECTURE.md), and for full release notes see [CHANGELOG.md](./CHANGELOG.md).
+
+## 5.8 → 5.9: metered reports and Rust 1.98 MSRV
+
+Code written against 5.8 compiles against 5.9.0 unchanged.
+
+- **Rust MSRV is now 1.98+** (inherited from `datavalue-rs` 0.3). Update your toolchain with `rustup update stable`.
+- **Metered evaluation reports (additive)**:
+  - Rust (`budget` feature): `Engine::evaluate_metered_report` and `Session::eval_metered_report` return `MeteredReport<T>` (`value`, `used`, `limit`), and `Error::ops_used()` reports the operations consumed before a runtime error.
+  - Every language binding (`Node.js`, `WASM`, `Python`, `Go`, `JVM`, `.NET`, `PHP`) now exposes `evaluateMetered` / `evaluate_metered` on `Session`, returning the result alongside `{ used, limit }` (and attaching `opsUsed` / `ops_used` to `BudgetExceeded` errors). See the [Operation Budget guide](./docs/src/advanced/operation-budget.md).
 
 ## 5.0.0 → 5.0.1: C ABI v2 (bindings-internal)
 
@@ -228,6 +236,7 @@ If a v4 surface isn't covered here, search this document or
 
 ## Contents
 
+- [5.8 → 5.9: metered reports and Rust 1.98 MSRV](#58--59-metered-reports-and-rust-198-msrv)
 - [5.0.0 → 5.0.1: C ABI v2 (bindings-internal)](#500--501-c-abi-v2-bindings-internal)
 - [5.5.0 → 5.6.0: `val` scope levels](#550--560-val-scope-levels)
 - [5.7 → 5.8: deprecations and changed results](#57--58-deprecations-and-changed-results)

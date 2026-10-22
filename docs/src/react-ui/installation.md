@@ -27,7 +27,7 @@ The package requires:
 
 The package has no runtime dependencies beyond these. Do not install
 `@goplasmatic/datalogic-wasm` for the editor: the WASM engine, built from the
-same datalogic-rs release (5.8.0), ships inside the package's `dist` with the
+same datalogic-rs release (5.9.0), ships inside the package's `dist` with the
 `.wasm` binary inlined, so your bundler needs no WASM loader. `@dagrejs/dagre`,
 `lucide-react` and `uuid` are bundled as well.
 
@@ -166,6 +166,8 @@ export function LogicVisualizer({ expression }) {
 
 ## Next Steps
 
-- [Quick Start](quick-start.md): basic usage examples
-- [Modes](modes.md): visualize, debug, and edit modes
-- [Props & API](props-api.md): complete props reference
+- [Quick Start](quick-start.md): basic visualization, debugging, and editing examples
+- [Modes](modes.md): read-only, debugger, editing, and templating modes
+- [Props & API](props-api.md): complete props and utility exports reference
+- [Customization](customization.md): CSS variables, dark/light themes, and custom React Flow nodes
+- [Playground](../playground.md): try the component live in your browser

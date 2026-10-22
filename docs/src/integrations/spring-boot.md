@@ -169,3 +169,11 @@ can render and step-debug with the
 [visual editor](../react-ui/installation.md), and that a Node or Python
 service can evaluate with its own binding, so behavior does not drift
 between them.
+
+## See Also
+
+- [Java / JVM (`io.github.goplasmatic:datalogic`)](../jvm.md) — full JVM API reference and installation guide
+- [Starter Boilerplates](../getting-started/boilerplates.md) — runnable project templates for every language
+- [Sandboxing Untrusted Rules](../advanced/security.md) — security checklist for user-authored rules
+- [Rule Analysis](../advanced/rule-analysis.md) — `check`, `compileChecked`, and `facts` in detail
+- [Integration: Express (Node.js)](express.md) — the same architecture in a Node.js/Express service

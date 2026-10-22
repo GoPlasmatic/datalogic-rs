@@ -155,3 +155,10 @@ One exception to the pattern: `TracedSession.Evaluate` reports rule
 parse and evaluation failures inside its returned JSON envelope (the
 `error` and `structured_error` fields), with the Go error return
 reserved for binding-level failures such as invalid handles.
+
+## Next Steps
+
+- [Concurrency & Sessions](concurrency.md): goroutine safety, `Session` arena reuse, `DataHandle`, and batch evaluation
+- [Quick Start](quick-start.md): basic evaluation patterns
+- [Configuration](../advanced/configuration.md) and [Rule Analysis](../advanced/rule-analysis.md): full engine configuration and static analysis reference
+- [C ABI](../c-abi.md): the C FFI layer beneath `datalogic-go`

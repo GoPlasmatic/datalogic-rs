@@ -62,6 +62,7 @@ Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement at
 `nharishankar@gmail.com` with `[datalogic-rs conduct]` in the subject.
 All complaints will be reviewed and investigated promptly and fairly.
+(To report a security vulnerability instead, see [SECURITY.md](./SECURITY.md). For general contribution guidelines, see [CONTRIBUTING.md](./CONTRIBUTING.md).)
 
 All community leaders are obligated to respect the privacy and security of the
 reporter of any incident.

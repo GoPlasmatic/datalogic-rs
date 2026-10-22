@@ -21,7 +21,7 @@ The prebuilt platform binaries ship as `optionalDependencies`, so npm pulls only
 
 Requires Node 18 or newer. There is no build step and no WASM initialization: import and call.
 
-If `require('@goplasmatic/datalogic-node')` or `import` fails with `MODULE_NOT_FOUND`, upgrade to 5.8.0. Versions 5.1.1 through 5.7.1 were published without the package's `index.js` loader and `index.d.ts` typings; the per-platform packages were complete.
+If `require('@goplasmatic/datalogic-node')` or `import` fails with `MODULE_NOT_FOUND`, upgrade to 5.8.0 or newer (5.9.0 is current). Versions 5.1.1 through 5.7.1 were published without the umbrella package's `index.js` loader and `index.d.ts` typings, although the per-platform packages were complete.
 
 ## Quick start
 
@@ -272,6 +272,7 @@ Choose [`@goplasmatic/datalogic-wasm`](../javascript/installation.md) when the c
 ## Next steps
 
 - [Integration: Express](../integrations/express.md) for the compile-once, cache-by-version service pattern
-- [Framework integration patterns](../javascript/frameworks.md) for the React/Vue/worker recipes (they apply to both JS packages)
-- [Use cases & examples](../use-cases/examples.md)
-- [Thread safety](../advanced/threading.md)
+- [Starter Boilerplates](../getting-started/boilerplates.md#nodejs--express) for a minimal Express authorization middleware
+- [Framework integration patterns](../javascript/frameworks.md) for React, Vue, and worker recipes (applicable to both JS packages)
+- [Operation Budget](../advanced/operation-budget.md) and [Security & Sandboxing](../advanced/security.md) for running untrusted rules safely
+- [Use cases & examples](../use-cases/examples.md) and [Thread safety](../advanced/threading.md)

@@ -30,7 +30,12 @@ java --enable-native-access=ALL-UNNAMED ...
 
 That flag covers classpath applications. The JAR declares `Automatic-Module-Name: com.goplasmatic.datalogic`, so on the module path you write `requires com.goplasmatic.datalogic;` and grant access with `--enable-native-access=com.goplasmatic.datalogic`.
 
-The JAR bundles the native library for Linux, macOS and Windows on x86_64 and arm64. On first start the binding extracts the one for your platform to a per-user cache (`$XDG_CACHE_HOME/datalogic/native/`, default `~/.cache/datalogic/native/`, on Linux; `~/Library/Caches/datalogic/native/` on macOS; `%LOCALAPPDATA%\datalogic\native\` on Windows), in a directory named by the library's SHA-256, and later starts reuse that file. If the cache is not writable, it extracts to a temp directory instead. Set `-Ddatalogic.library.path=<dir>` to load a library you built yourself.
+The JAR bundles precompiled native libraries for Linux, macOS, and Windows on `x86_64` and `arm64`. On first startup, the binding extracts the matching library into a per-user cache directory named by the library's SHA-256:
+- **Linux:** `$XDG_CACHE_HOME/datalogic/native/` (defaults to `~/.cache/datalogic/native/`)
+- **macOS:** `~/Library/Caches/datalogic/native/`
+- **Windows:** `%LOCALAPPDATA%\datalogic\native\`
+
+Subsequent startups reuse the cached file, or fall back to a temporary directory if the cache is not writable. Set `-Ddatalogic.library.path=<dir>` to load a custom library you built yourself.
 
 *The Maven `groupId` is `io.github.goplasmatic`, but the Java package path is `com.goplasmatic.datalogic`.*
 
@@ -136,7 +141,9 @@ try (Rule rule = engine.compileChecked(ruleJson)) {
 
 ## Going deeper
 
+- [Integration: Spring Boot](integrations/spring-boot.md): production service walkthrough with a database-backed rule cache, `@Bean` lifecycle, and request-scoped sessions
 - [C ABI internals: memory management & thread safety](c-abi.md): the native-heap ownership rules every FFI binding shares
-- [Engine configuration semantics](advanced/configuration.md)
-- [Rule analysis](advanced/rule-analysis.md): diagnostic codes, the facts fields and the operator catalogue
+- [Engine configuration semantics](advanced/configuration.md) and [Operation Budget](advanced/operation-budget.md)
+- [Rule analysis](advanced/rule-analysis.md): diagnostic codes, the `facts()` fields, and the operator catalogue
+- [Thread safety](advanced/threading.md): cross-language concurrency patterns
 - [JVM binding README](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/jvm#readme): full API surface, error types, and platform table

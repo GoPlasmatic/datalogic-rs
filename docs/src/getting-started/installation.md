@@ -83,7 +83,7 @@ the 33 JSONLogic core operators and no optional dependencies:
 | `wasm-clock` | off | JS-host clock for the `now` operator on `wasm32-unknown-unknown` (browsers, Node, Deno, Workers); combine with `datetime`. It forwards to `chrono/wasmbind`, whose JS imports fail to instantiate in non-JS wasm runtimes such as wasmtime, wazero and Chicory, so leave it off there (on WASI the OS clock works without it). |
 | `tensor` | off | The `Tensor` value (dtype, shape and a row-major byte buffer) and 20 marshalling-only operators over it, for turning JSON into a model's inputs and its outputs back into JSON. Constructors refuse more than 2^28 elements. No new dependency. |
 | `tensor-half` | off | Lifts the `f16` / `bf16` restriction on the element-wise tensor operators. Implies `tensor`; pulls in `half`. |
-| `budget` | off | A per-evaluation operation counter with a hard abort (`EvaluationConfig::ops_budget`, `Engine::evaluate_metered`, `Session::eval_metered`, `ErrorKind::BudgetExceeded`). |
+| `budget` | off | A per-evaluation operation counter with a hard abort and usage reports (`EvaluationConfig::ops_budget`, `Engine::evaluate_metered` / `Engine::evaluate_metered_report`, `Session::eval_metered` / `Session::eval_metered_report`, `ErrorKind::BudgetExceeded`). See [Operation Budget](../advanced/operation-budget.md). |
 | `all-operators` | off | Every operator family at once: `datetime`, `error-handling`, the five `ext-*` families, `flagd` and `tensor`. A family added in a later release joins it. It does not include `serde_json`, `templating`, `trace`, `budget`, `tensor-half` or `wasm-clock`. |
 
 Example: opt into `serde_json::Value` interop plus templating:
@@ -229,3 +229,11 @@ echo "1 + 2 = " . $engine->apply('{"+": [1, 2]}', '{}'); // 1 + 2 = 3
 ```
 
 </div>
+
+## Next Steps
+
+- [Quick Start](quick-start.md): run your first one-shot and compiled evaluations
+- [Basic Concepts](basic-concepts.md): learn how rules, compilation, sessions, and the context stack work
+- [Starter Boilerplates](boilerplates.md): copy-paste service setups for Express, FastAPI, and Axum
+- [Operators Overview](../operators/overview.md): browse all 84 built-in operators
+- [Troubleshooting](../troubleshooting.md): fix common build, bundler, and FFI loader issues

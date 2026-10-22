@@ -773,6 +773,8 @@ Result: `true` (14:00 is outside 22:00 to 08:00; at `current_hour` 23 or 3 the r
 
 ## Where next
 
-- Open the [interactive playground](https://goplasmatic.github.io/datalogic-rs/playground/) to edit any of these rules (switch on **Templating** for the templating recipes).
+- Open the [interactive playground](../playground.md) ([live Studio](https://goplasmatic.github.io/datalogic-rs/playground/)) to edit any of these rules (switch on **Templating** for the templating recipes).
+- Read [Structured Objects (Templating)](../advanced/structured-objects.md) for full details on multi-key output templates and key escaping.
 - Browse the full [operators overview](../operators/overview.md) for everything these recipes are built from.
+- See production service patterns in [Integration: Express (Node.js)](../integrations/express.md) and [Integration: Spring Boot (JVM)](../integrations/spring-boot.md).
 - See [how datalogic-rs compares](../comparison.md) to other JSONLogic engines.

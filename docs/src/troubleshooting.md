@@ -499,3 +499,10 @@ If you can't resolve an issue:
    - Environment (Rust / Node / Browser)
    - Minimal code to reproduce
    - Expected vs actual behavior
+
+## See Also
+
+- [FAQ](faq.md) — answers to common questions about JSONLogic and datalogic-rs
+- [Rule Analysis](advanced/rule-analysis.md) — catch rule errors before evaluation with `Engine::check` and `compile_checked`
+- [Configuration](advanced/configuration.md) — configure `MissingVar`, `NanHandling`, and `DivisionByZeroHandling`
+- [Migration Guide](migration.md) — upgrading from v4 or earlier 5.x versions

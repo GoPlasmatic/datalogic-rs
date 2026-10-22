@@ -361,3 +361,11 @@ for h in handles {
 
 `Error` is `Send + Sync`, so you can return it from a thread or send it
 over a channel.
+
+## See Also
+
+- [Rust Quick Start](../rust/overview.md) — choosing between per-call evaluation, `Session`, and `Engine::evaluate`
+- [Rust API Reference](../rust/api-reference.md) — full `Engine`, `Logic`, `Session`, and `SharedSession` signatures
+- [Custom Operators](custom-operators.md#thread-safety-requirements) — writing thread-safe `Send + Sync` custom operators
+- [Performance & Benchmarks](../performance.md) — throughput characteristics across evaluation tiers
+- [Go Concurrency & Pooling](../go/concurrency.md) and [Python GIL & Concurrency](../python/api-gil.md) — concurrency patterns in language bindings

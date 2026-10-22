@@ -184,5 +184,8 @@ Each step records the node id, the data context it saw, and its result (or error
 
 ## Next Steps
 
-- [API Reference](api-reference.md) - Complete function documentation
-- [Framework Integration](frameworks.md) - React, Vue, and bundler setup
+- [Installation](installation.md) - Build targets (`web`, `bundler`, `nodejs`) and WASM initialization
+- [API Reference](api-reference.md) - Complete class, method, configuration, and error documentation
+- [Framework Integration](frameworks.md) - React, Vue, Next.js, and bundler setup
+- [Node.js Native Binding](../nodejs/overview.md) - Faster native N-API binding for Node.js servers
+- [React Visual Debugger](../react-ui/installation.md) - Ready-made React rule editor and step-through debugger

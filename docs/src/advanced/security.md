@@ -171,3 +171,10 @@ survive an adversarial worst case.
 Please report suspected security issues privately rather than in a public
 issue. See [`SECURITY.md`](https://github.com/GoPlasmatic/datalogic-rs/blob/main/SECURITY.md)
 for the disclosure process.
+
+## See Also
+
+- [Operation Budget](operation-budget.md) — cap and meter the work a rule can perform
+- [Rule Analysis](rule-analysis.md) — validate rules before storing them with `compile_checked` and `facts`
+- [Configuration](configuration.md) — configure `max_recursion_depth`, `missing_var`, and operator families
+- [Integration: Express (Node.js)](../integrations/express.md) and [Integration: Spring Boot (JVM)](../integrations/spring-boot.md) — end-to-end ingestion and evaluation patterns

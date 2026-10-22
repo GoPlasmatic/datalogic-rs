@@ -409,3 +409,10 @@ Tensor operators are never constant-folded and never memoized by the CSE
 pass, even though they are pure functions of their arguments: folding
 `{"zeros": [[128, 128], "f32"]}` would bake a 64 KB literal into the
 compiled rule.
+
+## See Also
+
+- [Array Operators](array.md) — manipulate ordinary JSON arrays before converting with `tensor` or after `to_list`
+- [Operation Budget](../advanced/operation-budget.md) — how tensor operations charge per element
+- [Configuration](../advanced/configuration.md#operator-families) — enable or disable `Family::Tensor` at runtime
+- [Operators Overview](overview.md) — full operator catalog and feature-flag table

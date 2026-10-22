@@ -612,3 +612,10 @@ To wrap a foreign error type into `Error`, use `Error::wrap`:
 4. **Keep operators focused**: one responsibility per operator.
 5. **Use `Arc` for shared configuration** to maintain `Send + Sync`.
 6. **Test with literals, variables, and nested expressions**: the engine evaluates each before calling you.
+
+## See Also
+
+- [Configuration](configuration.md) — configure operator families, recursion depth, and strict operator names
+- [Rule Analysis](rule-analysis.md) — how `CustomOperator::info` and `check` integrate with static analysis
+- [Operation Budget](operation-budget.md#pricing-a-custom-operator) — charge custom operator work with `ctx.charge(n)`
+- [Rust API Reference](../rust/api-reference.md) — full signatures for `CustomOperator`, `EvalContext`, and `ArenaExt`

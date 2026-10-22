@@ -89,7 +89,9 @@ export function useJsonLogic(logic: object, data: unknown) {
 }
 ```
 
-Two details matter here. The effects key on the serialized inputs, not the objects: an inline rule literal is a new object identity on every render, and an object result from `JSON.parse` is a new identity on every evaluation, so keying on the objects themselves would recompile per render and, for object results, loop until React reports "Maximum update depth exceeded". And every `Rule` holds WASM memory, so the hook calls `free()` when it replaces a rule and on unmount instead of leaving it to the garbage collector. The engine lives for the page, so the hook never frees it.
+Two details matter in this hook:
+- **Key effects on serialized JSON strings, not object references:** an inline rule literal creates a new object reference on every render, and `JSON.parse` creates a new result reference on every evaluation. Keying `useEffect` on `logicJson` and `dataJson` ensures the rule only recompiles when its JSON text changes and prevents infinite render loops ("Maximum update depth exceeded").
+- **Free compiled rules explicitly:** every `Rule` holds WASM linear memory. The hook calls `free()` whenever it replaces a compiled rule and again on component unmount, rather than waiting for garbage collection. Because the `Engine` is shared across the page, the hook leaves it alive.
 
 Usage:
 
@@ -438,3 +440,13 @@ if (isMainThread) {
   });
 }
 ```
+
+---
+
+## Next Steps
+
+- [API Reference](api-reference.md) - Full WASM class and method reference
+- [React Visual Debugger](../react-ui/installation.md) - Drop-in React visual rule builder and debugger component
+- [Node.js Native Binding](../nodejs/overview.md) and [Integration: Express](../integrations/express.md) - High-throughput native Node.js server integration
+- [Starter Boilerplates](../getting-started/boilerplates.md) - Minimal Express, FastAPI, and Axum service templates
+- [Troubleshooting](../troubleshooting.md) - Bundler, SSR, and memory-management fixes

@@ -185,5 +185,12 @@ With data `{"age": 25, "status": "active"}`, every binding returns `true`:
 | PHP | `$engine->apply($rule, $data)` |
 
 All eight calls run the same compiled core. Try the rule live in the
-[playground](https://goplasmatic.github.io/datalogic-rs/playground/), then
+[playground](playground.md) ([live Studio](https://goplasmatic.github.io/datalogic-rs/playground/)), then
 pick your language in [Installation](getting-started/installation.md).
+
+## See Also
+
+- [Performance & Benchmarks](performance.md) — methodology, input projection, and optimization tips
+- [Coming from json-logic-js](coming-from-json-logic-js.md) — migrating from the JavaScript reference implementation
+- [Operators Overview](operators/overview.md) — all 84 built-in operators across 10 families
+- [Sandboxing Untrusted Rules](advanced/security.md) — safety guarantees and resource bounds

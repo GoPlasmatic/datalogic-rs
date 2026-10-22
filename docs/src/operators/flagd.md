@@ -2,11 +2,11 @@
 
 Two operators specified by the OpenFeature flagd in-process provider ([fractional](https://flagd.dev/reference/custom-operations/fractional-operation/), [semantic version](https://flagd.dev/reference/custom-operations/semver-operation/)) for feature-flag targeting. The implementation follows the canonical [Go evaluator](https://github.com/open-feature/flagd/tree/main/core/pkg/evaluator), so a flag definition that works under a flagd provider picks the same variants here.
 
-**Cargo feature:** `flagd`. Off by default in the Rust crate; every language binding enables it. Opt in via:
-
-```toml
-datalogic-rs = { version = "5", features = ["flagd"] }
-```
+> **Feature flag (Rust crate).** `fractional` and `sem_ver` require the `flagd` feature (off by default in the Rust crate; enabled in every language binding). An engine built with [`EngineBuilder::with_families`](../advanced/configuration.md#operator-families) includes them only when `Family::Flagd` is listed. See the [feature table](overview.md#which-operators-need-which-cargo-feature).
+>
+> ```toml
+> datalogic-rs = { version = "5", features = ["flagd"] }
+> ```
 
 **Argument counts:** `fractional` takes one or more arguments; `sem_ver` takes exactly three.
 
@@ -171,3 +171,10 @@ The conformance test suites live under [`crates/datalogic-rs/tests/suites/flagd/
 - [`semver_test.go`](https://github.com/open-feature/flagd/blob/main/core/pkg/evaluator/semver_test.go)
 
 The release workflow runs the full suite on the tag before it publishes.
+
+## See Also
+
+- [Control Flow Operators](control-flow.md) — combine `fractional` and `sem_ver` with `if` and `??`
+- [String Operators](string.md) — build bucketing keys with `cat`
+- [Use Cases & Examples](../use-cases/examples.md) — feature flag and rollout rule patterns
+- [Operators Overview](overview.md) — full operator catalog and feature-flag table

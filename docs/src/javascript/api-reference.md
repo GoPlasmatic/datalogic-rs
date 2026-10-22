@@ -652,3 +652,11 @@ A compiled rule with its own internal engine, so it cannot use custom operators.
    ```
 
 4. **Parse a payload once when it feeds several evaluations:** a `DataHandle` plus a `Session` skips the per-call copy and parse; on kilobyte payloads that is most of the round trip.
+
+## Next Steps
+
+- [Quick Start](quick-start.md) - Core evaluation and compilation patterns
+- [Framework Integration](frameworks.md) - React, Vue, Next.js, and Web Worker recipes
+- [Node.js Native Binding](../nodejs/overview.md) - Native N-API package for Node.js servers
+- [React Visual Debugger](../react-ui/installation.md) - Embeddable visual rule editor and debugger
+- [Troubleshooting](../troubleshooting.md) - Solutions for common bundler and initialization issues

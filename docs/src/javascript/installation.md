@@ -99,7 +99,7 @@ The declarations mark the deprecated exports (`evaluate`, `evaluateWithTrace`, `
 
 ## Bundle Size
 
-The WASM binary is a single self-contained module: 5,197,441 bytes (about 5.2 MB) uncompressed and 1,002,235 bytes (about 1.0 MB) gzipped in the 5.8.0 release build. It compiles in the IANA timezone database that the `datetime` feature's `format_date` / `parse_date` timezone arguments use. Size-sensitive embedders building from source can shrink it by setting `CHRONO_TZ_TIMEZONE_FILTER` to the zones they need; see [Building from source](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/wasm#building-from-source).
+The WASM binary is a single self-contained module: about 5.2 MB uncompressed and about 1.0 MB gzipped in the 5.9.0 release build. It compiles in the IANA timezone database used by the `datetime` feature's `format_date` and `parse_date` timezone arguments. Size-sensitive embedders building from source can shrink it by setting `CHRONO_TZ_TIMEZONE_FILTER` to only the zones they need; see [Building from source](https://github.com/GoPlasmatic/datalogic-rs/tree/main/bindings/wasm#building-from-source).
 
 ## CDN Usage
 

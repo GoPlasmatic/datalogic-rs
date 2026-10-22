@@ -369,3 +369,11 @@ Check if the first value is less than or equal to the second.
 - Two strings compare lexicographically (`{ ">": ["10", "9"] }` is `false`); a string against a number is coerced numerically (`{ ">": ["10", 9] }` is `true`). A string that is not a finite number against a number throws a `NaN` error (`{ "<": ["abc", 1] }`, `{ "<": [1, "inf"] }`)
 - `null` and booleans compare as numbers (`{ "<": [null, 1] }` and `{ "<": [false, true] }` are `true`)
 - An array or object operand (other than a datetime or duration value) throws a `NaN` error
+
+## See Also
+
+- [Logical Operators (`!`, `!!`, `and`, `or`)](logical.md): combine comparison results
+- [Control Flow (`if`, `?:`, `switch`)](control-flow.md): branch on comparisons
+- [DateTime Operators](datetime.md): compare ISO 8601 instants and durations
+- [Configuration: Loose Equality Errors](../advanced/configuration.md#loose-equality-errors): customize how `==` and `!=` handle incomparable types
+- [Operators Overview](overview.md): full operator table and feature flags

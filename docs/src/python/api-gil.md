@@ -130,3 +130,10 @@ except EvaluateError as e:
     print(f"Failed at: {e.operator}") # "+"
     print(f"Path: {e.path}")          # list of step dicts
 ```
+
+## Next Steps
+
+- [Configuration & Errors](configuration-and-errors.md): engine presets, missing-variable handling, and exception details
+- [Quick Start](quick-start.md): basic one-shot and compiled evaluation
+- [Thread Safety](../advanced/threading.md): cross-language concurrency rules
+- [Operation Budget](../advanced/operation-budget.md): cap untrusted rule execution with `ops_budget` and `evaluate_metered`

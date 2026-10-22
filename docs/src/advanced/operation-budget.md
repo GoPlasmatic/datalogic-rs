@@ -301,3 +301,11 @@ set, the geomean moved from 22.75 to 23.56 ns/op (+3.6%) when the feature
 was introduced, measured as paired runs on one machine. Builds without the
 feature have no counter and no compare; `ErrorKind::BudgetExceeded` stays
 in the enum but nothing raises it.
+
+## See Also
+
+- [Sandboxing Untrusted Rules](security.md) — combine operation budgets with payload size limits and `compile_checked`
+- [Configuration](configuration.md#operation-budget) — set `ops_budget` on `EvaluationConfig` or via JSON
+- [Custom Operators](custom-operators.md) — price custom operator work with `ctx.charge(n)`
+- [Error Handling Operators](../operators/error-handling.md) — why `try` does not catch `BudgetExceeded`
+- [Rust API Reference](../rust/api-reference.md) — `evaluate_metered` and `evaluate_metered_report` signatures

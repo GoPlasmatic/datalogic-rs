@@ -530,3 +530,10 @@ Calculate the difference between two dates in a specified unit.
 ```json
 { "<": [{ "var": "expiresAt" }, { "now": [] }] }
 ```
+
+## See Also
+
+- [Arithmetic Operators](arithmetic.md) — `+`, `-`, `*`, and `/` with datetimes and durations
+- [Comparison Operators](comparison.md) — `<`, `<=`, `>`, `>=`, and `==` on timestamps and durations
+- [Error Handling Operators](error-handling.md) — catch invalid date or timezone formats with `try`
+- [Operators Overview](overview.md) — full operator catalog and feature-flag table

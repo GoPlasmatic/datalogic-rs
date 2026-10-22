@@ -708,3 +708,10 @@ Drop duplicate elements, by value or by a computed key.
 **Notes:**
 - Equality is strict deep equality (the same predicate `in` uses): mixed types never merge, arrays and objects compare structurally. An object counts as a datetime only in the single-key form `{ "datetime": "..." }`, so records that share a `datetime` field but differ elsewhere stay distinct.
 - `null` or empty input yields `[]`. Non-array input is an error.
+
+## See Also
+
+- [Variable Access: Scope Levels](variable-access.md#scope-levels): access enclosing elements and iteration `index` / `key` inside `map`, `filter`, and `reduce`
+- [Object Operators (`keys`, `values`, `entries`)](object.md): turn objects into arrays for iteration
+- [String Operators (`in`, `length`, `split`)](string.md): check membership with `in` or measure array length with `length`
+- [Operators Overview](overview.md): full operator table and feature flags

@@ -474,3 +474,9 @@ Split a string into an array.
 **Notes:**
 - `split` reads exactly two arguments. There is no limit argument: `{ "split": ["a,b,c,d", ",", 2] }` still returns all four parts, and a single argument is Invalid Arguments
 - An empty input string gives `[""]`
+
+## See Also
+
+- [Array Operators (`slice`, `merge`, `map`, `filter`)](array.md): slice and transform arrays produced by `split`
+- [Comparison Operators (`==`, `===`)](comparison.md): compare strings lexicographically or with type coercion
+- [Operators Overview](overview.md): full operator table and feature flags
