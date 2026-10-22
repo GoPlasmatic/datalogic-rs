@@ -211,3 +211,127 @@ describe('operation budget', () => {
     expect(summarizeEvaluationConfig({ ops_budget: 5000 })).toContain('budget 5000');
   });
 });
+
+describe('v5.8 / v5.9 engine features', () => {
+  it('supports missing_var: "error" to raise VariableNotFound on missing paths', () => {
+    expect(summarizeEvaluationConfig({ missing_var: 'error' })).toBe('missing var error');
+    const engine = createWasmEngine(module, { config: { missing_var: 'error' } });
+    // Explicit default argument still works when path is missing
+    expect(JSON.parse(engine.evalStr('{"var":["missing","fallback"]}', '{}'))).toBe('fallback');
+    // Missing path without default raises VariableNotFound
+    let caught: unknown;
+    try {
+      engine.evalStr('{"var":"missing"}', '{}');
+    } catch (err) {
+      caught = err;
+    }
+    const structured = parseStructuredError(caught, 'fallback');
+    expect(structured.type).toBe('VariableNotFound');
+    expect(structured.variable).toBe('missing');
+    engine.free();
+  });
+
+  it('supports templateKeyEscape in templating mode', () => {
+    const engine = createWasmEngine(module, {
+      templating: true,
+      templateKeyEscape: '$',
+    });
+    // Without escape, {"var": "x"} evaluates as operator `var`; with `$` prefix,
+    // {"$var": "literal"} emits literal key "var" with value "literal".
+    expect(JSON.parse(engine.evalStr('{"$var":"literal"}', '{"literal":"ignored"}'))).toEqual({
+      var: 'literal',
+    });
+    engine.free();
+  });
+
+  it('supports strictOperatorNames to reject custom operators that shadow built-ins', () => {
+    expect(() =>
+      createWasmEngine(module, {
+        strictOperatorNames: true,
+        customOperators: { var: () => null },
+      }),
+    ).toThrow(DataLogicEvaluationError);
+  });
+
+  it('supports families option to restrict built-in operator families', () => {
+    const engine = createWasmEngine(module, {
+      families: ['ExtString'],
+    });
+    // Core + ExtString work
+    expect(JSON.parse(engine.evalStr('{"upper":"hello"}', '{}'))).toBe('HELLO');
+    // DateTime is excluded
+    expect(() => engine.evalStr('{"datetime":"2026-01-01T00:00:00Z"}', '{}')).toThrow();
+    const ops = JSON.parse(engine.operators()) as { family: string }[];
+    const families = new Set(ops.map((o) => o.family));
+    expect(families.has('Core')).toBe(true);
+    expect(families.has('ExtString')).toBe(true);
+    expect(families.has('DateTime')).toBe(false);
+    engine.free();
+  });
+
+  it('exposes static rule diagnostics via engine.check() and CompileError diagnostics', () => {
+    const engine = createWasmEngine(module, {});
+    // Extra unused argument on fixed-arity operator (`!` takes 1 arg) produces a warning
+    const warnings = JSON.parse(engine.check('{"!":[true,false]}'));
+    expect(warnings).toEqual([
+      expect.objectContaining({
+        code: 'ArgumentCount',
+        severity: 'warning',
+        operator: '!',
+      }),
+    ]);
+
+    // Invalid timezone in format_date produces an error diagnostic
+    const tzDiags = JSON.parse(
+      engine.check('{"format_date":[{"datetime":"2026-01-01T00:00:00Z"},"yyyy","Mars/Phobos"]}'),
+    );
+    expect(tzDiags).toEqual([
+      expect.objectContaining({
+        code: 'InvalidTimezone',
+        severity: 'error',
+        operator: 'format_date',
+      }),
+    ]);
+
+    // compileChecked throws CompileError with diagnostics array preserved by parseStructuredError
+    let compileCaught: unknown;
+    try {
+      engine.compileChecked('{"unknown_op":[1]}');
+    } catch (err) {
+      compileCaught = err;
+    }
+    const structured = parseStructuredError(compileCaught, 'fallback');
+    expect(structured.type).toBe('CompileError');
+    expect(structured.diagnostics).toEqual([
+      expect.objectContaining({
+        code: 'UnknownOperator',
+        severity: 'error',
+        operator: 'unknown_op',
+      }),
+    ]);
+    engine.free();
+  });
+
+  it('exposes static rule facts via rule.facts() and truthy via engine.truthy()', () => {
+    const engine = createWasmEngine(module, {
+      config: { truthy_evaluator: 'strict_boolean' },
+    });
+    const rule = engine.compile('{"and":[{">":[{"var":"user.age"},18]},{"==":[{"var":"status"},"active"]}]}');
+    const facts = JSON.parse(rule.facts());
+    expect(facts).toEqual({
+      reads: [['status'], ['user', 'age']],
+      computed_reads: false,
+      reads_complete: true,
+      reads_data: true,
+      operators: ['==', '>', 'and', 'val'],
+      custom_operators: [],
+      deterministic: true,
+    });
+    rule.free();
+
+    // Under strict_boolean, 0 and "" are truthy (only false and null are falsy)
+    expect(engine.truthy('0')).toBe(true);
+    expect(engine.truthy('false')).toBe(false);
+    engine.free();
+  });
+});

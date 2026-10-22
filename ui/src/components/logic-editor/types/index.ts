@@ -25,12 +25,20 @@ export type {
   DataLogicEditorProps,
   DataLogicEvaluationConfig,
   DataLogicCustomOperator,
+  OperatorFamily,
+  CheckMode,
 } from './editor';
 export type {
   ExpressionNode,
   ExecutionStep,
   TracedResult,
   StructuredError,
+  DiagnosticSeverity,
+  DiagnosticCode,
+  RuleDiagnostic,
+  DataPathSegment,
+  RuleFacts,
+  WasmOperatorInfo,
 } from './trace';
 
 // Re-export CATEGORY_COLORS from constants for backward compatibility

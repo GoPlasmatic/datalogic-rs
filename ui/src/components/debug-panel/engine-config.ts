@@ -5,6 +5,7 @@ export type Preset = NonNullable<DataLogicEvaluationConfig['preset']>;
 export type NanHandling = NonNullable<DataLogicEvaluationConfig['arithmetic_nan_handling']>;
 export type DivisionByZero = NonNullable<DataLogicEvaluationConfig['division_by_zero']>;
 export type TruthyEvaluator = NonNullable<DataLogicEvaluationConfig['truthy_evaluator']>;
+export type MissingVarHandling = NonNullable<DataLogicEvaluationConfig['missing_var']>;
 export type CoercionFlags = Required<NonNullable<DataLogicEvaluationConfig['numeric_coercion']>>;
 
 export interface ResolvedConfig {
@@ -13,6 +14,7 @@ export interface ResolvedConfig {
   division_by_zero: DivisionByZero;
   loose_equality_errors: boolean;
   truthy_evaluator: TruthyEvaluator;
+  missing_var: MissingVarHandling;
   numeric_coercion: CoercionFlags;
   max_recursion_depth: number;
   /** `undefined` means unbounded — the engine's default. */
@@ -39,6 +41,7 @@ export const PRESET_BASES: Record<Preset, ResolvedConfig> = {
     division_by_zero: 'return_saturated',
     loose_equality_errors: true,
     truthy_evaluator: 'javascript',
+    missing_var: 'null',
     numeric_coercion: { ...DEFAULT_COERCION },
     max_recursion_depth: 256,
     ops_budget: undefined,
@@ -49,6 +52,7 @@ export const PRESET_BASES: Record<Preset, ResolvedConfig> = {
     division_by_zero: 'return_null',
     loose_equality_errors: false,
     truthy_evaluator: 'javascript',
+    missing_var: 'null',
     numeric_coercion: { ...DEFAULT_COERCION },
     max_recursion_depth: 256,
     ops_budget: undefined,
@@ -59,6 +63,7 @@ export const PRESET_BASES: Record<Preset, ResolvedConfig> = {
     division_by_zero: 'throw_error',
     loose_equality_errors: true,
     truthy_evaluator: 'javascript',
+    missing_var: 'null',
     numeric_coercion: {
       empty_string_to_zero: false,
       null_to_zero: false,
@@ -80,6 +85,7 @@ export function resolveEvaluationConfig(config: DataLogicEvaluationConfig | unde
     division_by_zero: config?.division_by_zero ?? base.division_by_zero,
     loose_equality_errors: config?.loose_equality_errors ?? base.loose_equality_errors,
     truthy_evaluator: config?.truthy_evaluator ?? base.truthy_evaluator,
+    missing_var: config?.missing_var ?? base.missing_var,
     numeric_coercion: { ...base.numeric_coercion, ...(config?.numeric_coercion ?? {}) },
     max_recursion_depth: config?.max_recursion_depth ?? base.max_recursion_depth,
     ops_budget: config?.ops_budget ?? base.ops_budget,
@@ -91,6 +97,7 @@ const TOP_LEVEL_KNOBS = [
   'division_by_zero',
   'loose_equality_errors',
   'truthy_evaluator',
+  'missing_var',
   'max_recursion_depth',
   // No preset sets a budget, so an explicit one is never a restatement —
   // it survives pruning by the `!== undefined` guard in `pruneAgainstPreset`.

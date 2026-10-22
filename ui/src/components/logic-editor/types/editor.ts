@@ -137,6 +137,12 @@ export interface DataLogicEvaluationConfig {
   loose_equality_errors?: boolean;
   /** Truthiness rules used by `if`, `and`, `or`, `!`. Default: `'javascript'`. */
   truthy_evaluator?: 'javascript' | 'python' | 'strict_boolean';
+  /**
+   * What `var` and `val` do when a path is missing and no default argument
+   * is given. `'null'` returns `null`; `'error'` raises `VariableNotFound`.
+   * Default: `'null'`.
+   */
+  missing_var?: 'null' | 'error';
   /** Numeric coercion knobs (all default to `true` except `reject_non_numeric`). */
   numeric_coercion?: {
     empty_string_to_zero?: boolean;
@@ -160,6 +166,31 @@ export interface DataLogicEvaluationConfig {
    */
   ops_budget?: number;
 }
+
+/**
+ * Built-in operator family names supported by `Engine` (`families` option).
+ * `Core` is always included even when omitted from `families`.
+ */
+export type OperatorFamily =
+  | 'Core'
+  | 'Array'
+  | 'Control'
+  | 'Object'
+  | 'ExtMath'
+  | 'ExtString'
+  | 'Coalesce'
+  | 'DateTime'
+  | 'Flagd'
+  | 'Tensor';
+
+/**
+ * Mode selector for `Engine#check` and `Engine#evaluateWithTrace`:
+ * - `'engine'` (default): follow the engine's `templating` setting
+ * - `'rule'`: plain JSONLogic (multi-key objects are literal values, warned as `NotAnOperator`)
+ * - `'template'`: templating mode (multi-key objects and arrays are output templates)
+ * - `'strict'`: strict JSONLogic (`Engine#check` only — unknown operators and multi-key objects are errors)
+ */
+export type CheckMode = 'engine' | 'rule' | 'template' | 'strict';
 
 /**
  * A custom operator implementation. Receives the already-evaluated
@@ -194,6 +225,14 @@ export interface DataLogicEditorProps {
    * (`Engine::builder().with_templating(true)`).
    */
   templating?: boolean;
+
+  /**
+   * Single-character prefix (e.g. `"$"`) that escapes a template key in
+   * templating mode so a one-key object whose key matches an operator name
+   * is emitted as a literal key with the prefix stripped instead of called
+   * as an operator (`Engine::builder().with_template_key_escape(prefix)`).
+   */
+  templateKeyEscape?: string;
 
   /** Callback when templating mode changes (from toolbar checkbox) */
   onTemplatingChange?: (value: boolean) => void;

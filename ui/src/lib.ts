@@ -11,6 +11,14 @@ export type {
   DataLogicEditorProps,
   DataLogicEvaluationConfig,
   DataLogicCustomOperator,
+  OperatorFamily,
+  CheckMode,
+  DiagnosticSeverity,
+  DiagnosticCode,
+  RuleDiagnostic,
+  DataPathSegment,
+  RuleFacts,
+  WasmOperatorInfo,
   // JSONLogic types
   JsonLogicValue,
   // Node types (for advanced use)

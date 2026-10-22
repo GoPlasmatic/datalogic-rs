@@ -52,7 +52,8 @@ export function ErrorDisplay({ error, compact = false }: ErrorDisplayProps) {
   const chips = collectDetailChips(error);
   const hasBreadcrumb = !!error.node_ids && error.node_ids.length > 0;
   const hasThrown = error.thrown !== undefined;
-  const showDetails = !compact && (hasBreadcrumb || chips.length > 0 || hasThrown);
+  const hasDiagnostics = !!error.diagnostics && error.diagnostics.length > 0;
+  const showDetails = !compact && (hasBreadcrumb || chips.length > 0 || hasThrown || hasDiagnostics);
 
   return (
     <div className="error-display" data-kind={error.type}>
@@ -93,6 +94,18 @@ export function ErrorDisplay({ error, compact = false }: ErrorDisplayProps) {
             <div className="error-detail-row error-thrown">
               <span className="error-detail-label">thrown</span>
               <JsonDisplay value={error.thrown} className="error-thrown-json" />
+            </div>
+          )}
+          {hasDiagnostics && (
+            <div className="error-diagnostics-list">
+              {error.diagnostics!.map((diag, i) => (
+                <div key={`${diag.pointer}-${diag.code}-${i}`} className={`error-diagnostic-item is-${diag.severity}`}>
+                  <span className={`diagnostic-code-pill is-${diag.severity}`}>{diag.code}</span>
+                  <span className="diagnostic-message">{diag.message}</span>
+                  {diag.operator && <span className="error-operator-chip">op: {diag.operator}</span>}
+                  {diag.pointer && <code className="diagnostic-pointer">{diag.pointer}</code>}
+                </div>
+              ))}
             </div>
           )}
         </div>

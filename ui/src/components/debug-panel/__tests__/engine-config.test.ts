@@ -94,3 +94,12 @@ describe('ops_budget', () => {
     expect(resolveEvaluationConfig({ ops_budget: 42 }).ops_budget).toBe(42);
   });
 });
+
+describe('missing_var', () => {
+  it('defaults to "null" across presets and keeps "error" as an override', () => {
+    expect(resolveEvaluationConfig({}).missing_var).toBe('null');
+    expect(resolveEvaluationConfig({ preset: 'strict' }).missing_var).toBe('null');
+    expect(withOverride({}, 'missing_var', 'error')).toEqual({ missing_var: 'error' });
+    expect(withOverride({ missing_var: 'error' }, 'missing_var', 'null')).toEqual({});
+  });
+});

@@ -81,6 +81,8 @@ function App() {
     ready: wasmReady,
     loading: wasmLoading,
     evaluateMetered,
+    check,
+    inspectFacts,
   } = useWasmEvaluator({ templating, config: engineConfig });
 
   // Update expression when logic text changes
@@ -245,6 +247,21 @@ function App() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [engineSettingsOpen, isMobile]);
 
+  // Static rule diagnostics and facts (derived from expression when valid JSON)
+  const { diagnostics, facts } = useMemo(() => {
+    if (!wasmReady || expression === null || logicError) {
+      return { diagnostics: [], facts: null };
+    }
+    try {
+      return {
+        diagnostics: check(expression),
+        facts: inspectFacts(expression),
+      };
+    } catch {
+      return { diagnostics: [], facts: null };
+    }
+  }, [wasmReady, expression, logicError, check, inspectFacts]);
+
   // Evaluate the expression when inputs change (derived, not stored)
   const { result, resultOps, resultError } = useMemo((): {
     result: unknown;
@@ -258,7 +275,12 @@ function App() {
       const { value, ops } = evaluateMetered(expression, data);
       return { result: value, resultOps: ops, resultError: null };
     } catch (err) {
-      return { result: undefined, resultOps: null, resultError: toDebugError(err) };
+      const debugErr = toDebugError(err);
+      const spent =
+        typeof debugErr === 'object' && debugErr !== null && typeof debugErr.spent === 'number'
+          ? debugErr.spent
+          : null;
+      return { result: undefined, resultOps: spent, resultError: debugErr };
     }
   }, [wasmReady, expression, data, logicError, dataError, evaluateMetered]);
 
@@ -312,6 +334,8 @@ function App() {
       logicText={logicText}
       onLogicChange={handleLogicChange}
       logicError={logicError}
+      diagnostics={diagnostics}
+      facts={facts}
       data={data}
       dataText={dataText}
       onDataChange={handleDataChange}

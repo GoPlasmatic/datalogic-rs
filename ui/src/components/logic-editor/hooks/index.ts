@@ -17,6 +17,9 @@ export type {
   UseWasmEvaluatorResult,
   WasmModule,
   WasmEngineInstance,
+  WasmRuleInstance,
+  WasmEngineOptions,
+  MeteredResult,
 } from './useWasmEvaluator';
 export { checkDepth } from './useRecursionCheck';
 export { useContextMenu } from './useContextMenu';

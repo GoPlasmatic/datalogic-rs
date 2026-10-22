@@ -577,6 +577,7 @@ export function DataLogicEditor({
   theme: themeProp,
   className = '',
   templating = false,
+  templateKeyEscape,
   onTemplatingChange,
   config,
   customOperators,
@@ -592,19 +593,19 @@ export function DataLogicEditor({
   const systemTheme = useSystemTheme();
   const resolvedTheme = themeProp ?? systemTheme;
 
-  // Internal WASM evaluator: one Engine per (templating, config, customOperators)
+  // Internal WASM evaluator: one Engine per (templating, templateKeyEscape, config, customOperators)
   const {
     ready: wasmReady,
     error: wasmError,
     evaluateWithTrace,
-  } = useWasmEvaluator({ templating, config, customOperators });
+  } = useWasmEvaluator({ templating, templateKeyEscape, config, customOperators });
 
   const configSummary = useMemo(() => summarizeEvaluationConfig(config), [config]);
   // Remount only when the settings or the vocabulary actually change. Keying
   // on the object identity instead would remount on every parent render for
   // the idiomatic inline `customOperators={{ ... }}`, discarding selection,
   // undo history and debugger position each time.
-  const engineKey = engineSettingsKey(config, customOperators);
+  const engineKey = `${engineSettingsKey(config, customOperators)}|${templateKeyEscape ?? ''}`;
 
   return (
     <DataLogicEditorBody

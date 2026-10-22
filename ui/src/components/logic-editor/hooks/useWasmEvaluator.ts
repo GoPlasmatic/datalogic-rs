@@ -4,6 +4,11 @@ import type {
   TracedResult,
   DataLogicEvaluationConfig,
   DataLogicCustomOperator,
+  OperatorFamily,
+  CheckMode,
+  RuleDiagnostic,
+  RuleFacts,
+  WasmOperatorInfo,
 } from '../types';
 
 /** Error thrown from the WASM boundary that carries the parsed StructuredError. */
@@ -28,6 +33,7 @@ const STRUCTURED_FIELDS = [
   'budget',
   'spent',
   'node_ids',
+  'diagnostics',
 ] as const;
 
 function isStructuredError(value: unknown): value is StructuredError {
@@ -93,19 +99,34 @@ export function parseStructuredError(err: unknown, fallbackMessage: string): Str
 // Mirrors `vendor/datalogic/web/datalogic_wasm.d.ts` for the surface this
 // hook uses. Hand-rolled so the library's published typings do not depend
 // on the WASM package; `__tests__/wasm-typings.test.ts` checks at build time
-// (`tsc -b`) that the generated `Engine` still satisfies it.
+// (`tsc -b`) that the generated `Engine` and `Rule` still satisfy them.
+export interface WasmRuleInstance {
+  facts: () => string;
+  free: () => void;
+}
+
 export interface WasmEngineInstance {
   evalStr: (logic: string, data: string) => string;
   /** Metered one-shot: returns `{"result": <value>, "ops": <number>}`. */
-  evalMetered: (logic: string, data: string, budget?: number) => string;
-  evaluateWithTrace: (logic: string, data: string) => string;
+  evalMetered: (logic: string, data: string, budget?: number | null) => string;
+  evaluateWithTrace: (logic: string, data: string, mode?: string | null) => string;
+  check: (logic: string, mode?: string | null) => string;
+  compile: (logic: string) => WasmRuleInstance;
+  compileTemplate: (logic: string) => WasmRuleInstance;
+  compileStrict: (logic: string) => WasmRuleInstance;
+  compileChecked: (logic: string) => WasmRuleInstance;
+  operators: () => string;
+  truthy: (value: string) => boolean;
   customOperatorNames: () => string[];
   free: () => void;
 }
 
 export interface WasmEngineOptions {
   templating?: boolean;
+  templateKeyEscape?: string;
   customOperators?: Record<string, (argsJson: string) => string>;
+  strictOperatorNames?: boolean;
+  families?: string[];
   config?: string | object;
 }
 
@@ -116,6 +137,12 @@ export interface WasmModule {
 export interface UseWasmEvaluatorOptions {
   /** Enable templating mode for JSON templates with embedded JSONLogic. */
   templating?: boolean;
+  /**
+   * Single-character prefix (e.g. `"$"`) that escapes a template key in
+   * templating mode so a one-key object whose key matches an operator name
+   * is emitted as a literal key with the prefix stripped.
+   */
+  templateKeyEscape?: string;
   /** Engine evaluation settings (see `DataLogicEvaluationConfig`). */
   config?: DataLogicEvaluationConfig | null;
   /**
@@ -124,6 +151,16 @@ export interface UseWasmEvaluatorOptions {
    * name rebuilds the engine.
    */
   customOperators?: Record<string, DataLogicCustomOperator>;
+  /**
+   * When `true`, registering a custom operator that shadows a built-in
+   * operator fails with `ConfigurationError`.
+   */
+  strictOperatorNames?: boolean;
+  /**
+   * Restrict the engine to `Core` plus the specified built-in operator
+   * families. When omitted, all built-in families are enabled.
+   */
+  families?: OperatorFamily[];
 }
 
 /** An evaluation's result paired with what the engine charged for it. */
@@ -150,7 +187,30 @@ export interface UseWasmEvaluatorResult {
    * returning a partial result.
    */
   evaluateMetered: (logic: unknown, data: unknown) => MeteredResult;
-  evaluateWithTrace: (logic: unknown, data: unknown) => TracedResult;
+  evaluateWithTrace: (logic: unknown, data: unknown, mode?: CheckMode) => TracedResult;
+  /**
+   * Run static rule diagnostics (`Engine#check`) without evaluating.
+   * Returns warnings and errors (unknown operators, extra/unused arguments,
+   * invalid timezones, template keys similar to operator names, etc.).
+   */
+  check: (logic: unknown, mode?: CheckMode) => RuleDiagnostic[];
+  /**
+   * Compile the rule and return its static analysis (`Rule#facts`):
+   * static data paths read, whether paths are computed dynamically,
+   * determinism, and operators used. Returns `null` if the rule does not
+   * compile.
+   */
+  inspectFacts: (logic: unknown) => RuleFacts | null;
+  /**
+   * Evaluate truthiness of a value under the engine's configured
+   * `truthy_evaluator` (`Engine#truthy`).
+   */
+  truthy: (value: unknown) => boolean;
+  /**
+   * Return metadata for every built-in operator enabled on the engine
+   * (`Engine#operators`).
+   */
+  operators: () => WasmOperatorInfo[];
 }
 
 /**
@@ -250,6 +310,7 @@ const SUMMARY_LABELS: Record<string, string> = {
   division_by_zero: 'div/0',
   loose_equality_errors: 'loose ==',
   truthy_evaluator: 'truthy',
+  missing_var: 'missing var',
   max_recursion_depth: 'depth',
   ops_budget: 'budget',
 };
@@ -298,6 +359,15 @@ export function createWasmEngine(
   latestCustomOperators?: () => Record<string, DataLogicCustomOperator> | undefined,
 ): WasmEngineInstance {
   const engineOptions: WasmEngineOptions = { templating: options.templating ?? false };
+  if (options.templateKeyEscape !== undefined && options.templateKeyEscape !== '') {
+    engineOptions.templateKeyEscape = options.templateKeyEscape;
+  }
+  if (options.strictOperatorNames !== undefined) {
+    engineOptions.strictOperatorNames = options.strictOperatorNames;
+  }
+  if (options.families !== undefined) {
+    engineOptions.families = options.families;
+  }
   const config = normalizeEvaluationConfig(options.config);
   if (config) engineOptions.config = config;
   const customOperators = adaptCustomOperators(options.customOperators, latestCustomOperators);
@@ -331,7 +401,14 @@ function loadWasmModule(): Promise<WasmModule> {
 }
 
 export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasmEvaluatorResult {
-  const { templating = false, config, customOperators } = options;
+  const {
+    templating = false,
+    templateKeyEscape,
+    config,
+    customOperators,
+    strictOperatorNames,
+    families,
+  } = options;
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -354,14 +431,22 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
   // name does.
   const configKey = useMemo(() => evaluationConfigKey(config), [config]);
   const operatorNamesKey = customOperatorNamesKey(customOperators);
-  // Same composition as engineSettingsKey(), with templating in front.
-  const engineKey = `${templating ? 1 : 0}|${configKey}|${operatorNamesKey}`;
+  const familiesKey = useMemo(
+    () => (families ? [...families].sort().join(',') : '*'),
+    [families],
+  );
+  // Same composition as engineSettingsKey(), with templating and builder options included.
+  const engineKey = `${templating ? 1 : 0}|${templateKeyEscape ?? ''}|${strictOperatorNames ? 1 : 0}|${familiesKey}|${configKey}|${operatorNamesKey}`;
   // The config as the engine sees it, derived from its key so it changes
   // only when the key does: a host passing an inline `config={{ ... }}`
   // literal must not churn the callbacks below on every render.
   const engineConfig = useMemo(
     () => (JSON.parse(configKey) as DataLogicEvaluationConfig | null) ?? undefined,
     [configKey],
+  );
+  const engineFamilies = useMemo(
+    () => (familiesKey === '*' ? undefined : (familiesKey === '' ? [] : (familiesKey.split(',') as OperatorFamily[]))),
+    [familiesKey],
   );
 
   useEffect(() => {
@@ -421,12 +506,19 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
     engineRef.current = null;
     const engine = createWasmEngine(
       module,
-      { templating, config: engineConfig, customOperators: customOperatorsRef.current },
+      {
+        templating,
+        templateKeyEscape,
+        strictOperatorNames,
+        families: engineFamilies,
+        config: engineConfig,
+        customOperators: customOperatorsRef.current,
+      },
       latestCustomOperators,
     );
     engineRef.current = { key: engineKey, engine };
     return engine;
-  }, [engineKey, templating, engineConfig, latestCustomOperators]);
+  }, [engineKey, templating, templateKeyEscape, strictOperatorNames, engineFamilies, engineConfig, latestCustomOperators]);
 
   const evaluateMetered = useCallback((logic: unknown, data: unknown): MeteredResult => {
     const engine = getEngine();
@@ -452,15 +544,58 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
     [evaluateMetered],
   );
 
-  const evaluateWithTrace = useCallback((logic: unknown, data: unknown): TracedResult => {
+  const evaluateWithTrace = useCallback((logic: unknown, data: unknown, mode?: CheckMode): TracedResult => {
     const engine = getEngine();
     const logicStr = JSON.stringify(logic);
     const dataStr = JSON.stringify(data);
     try {
-      const resultStr = engine.evaluateWithTrace(logicStr, dataStr);
+      const resultStr = engine.evaluateWithTrace(logicStr, dataStr, mode);
       return JSON.parse(resultStr) as TracedResult;
     } catch (err) {
       throw new DataLogicEvaluationError(parseStructuredError(err, 'Trace evaluation failed'));
+    }
+  }, [getEngine]);
+
+  const check = useCallback((logic: unknown, mode?: CheckMode): RuleDiagnostic[] => {
+    const engine = getEngine();
+    const logicStr = JSON.stringify(logic);
+    try {
+      return JSON.parse(engine.check(logicStr, mode)) as RuleDiagnostic[];
+    } catch (err) {
+      throw new DataLogicEvaluationError(parseStructuredError(err, 'Rule check failed'));
+    }
+  }, [getEngine]);
+
+  const inspectFacts = useCallback((logic: unknown): RuleFacts | null => {
+    const engine = getEngine();
+    const logicStr = JSON.stringify(logic);
+    let rule: WasmRuleInstance | null = null;
+    try {
+      rule = templating ? engine.compileTemplate(logicStr) : engine.compile(logicStr);
+      return JSON.parse(rule.facts()) as RuleFacts;
+    } catch {
+      return null;
+    } finally {
+      rule?.free();
+    }
+  }, [getEngine, templating]);
+
+  const truthy = useCallback((value: unknown): boolean => {
+    const engine = getEngine();
+    const valueStr = JSON.stringify(value === undefined ? null : value);
+    try {
+      return engine.truthy(valueStr);
+    } catch (err) {
+      throw new DataLogicEvaluationError(parseStructuredError(err, 'Truthy check failed'));
+    }
+  }, [getEngine]);
+
+  const operators = useCallback((): WasmOperatorInfo[] => {
+    const engine = getEngine();
+    try {
+      return JSON.parse(engine.operators()) as WasmOperatorInfo[];
+    } catch (err) {
+      throw new DataLogicEvaluationError(parseStructuredError(err, 'Operators query failed'));
     }
   }, [getEngine]);
 
@@ -471,5 +606,9 @@ export function useWasmEvaluator(options: UseWasmEvaluatorOptions = {}): UseWasm
     evaluate,
     evaluateMetered,
     evaluateWithTrace,
+    check,
+    inspectFacts,
+    truthy,
+    operators,
   };
 }

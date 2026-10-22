@@ -1,4 +1,4 @@
-import { useMemo, useRef, useEffect, type ChangeEvent, type ReactElement } from 'react';
+import { useMemo, useRef, useCallback, type ChangeEvent, type ReactElement } from 'react';
 import { tokenizeJson, type JsonToken } from '../../utils/json-tokenizer';
 
 interface JsonEditorProps {
@@ -30,7 +30,7 @@ function renderTokens(tokens: JsonToken[]): ReactElement[] {
 // JSON Editor with syntax highlighting
 export function JsonEditor({ value, onChange, placeholder, hasError }: JsonEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const wrapperRef = useRef<HTMLDivElement>(null);
+  const highlightRef = useRef<HTMLDivElement>(null);
 
   const highlighted = useMemo(() => {
     if (!value) return null;
@@ -39,21 +39,10 @@ export function JsonEditor({ value, onChange, placeholder, hasError }: JsonEdito
   }, [value]);
 
   // Sync scroll between textarea and highlight layer
-  const handleScroll = () => {
-    if (textareaRef.current && wrapperRef.current) {
-      const highlightLayer = wrapperRef.current.querySelector('.json-highlight-layer') as HTMLElement;
-      if (highlightLayer) {
-        highlightLayer.scrollTop = textareaRef.current.scrollTop;
-        highlightLayer.scrollLeft = textareaRef.current.scrollLeft;
-      }
-    }
-  };
-
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.addEventListener('scroll', handleScroll);
-      return () => textarea.removeEventListener('scroll', handleScroll);
+  const handleScroll = useCallback(() => {
+    if (textareaRef.current && highlightRef.current) {
+      highlightRef.current.scrollTop = textareaRef.current.scrollTop;
+      highlightRef.current.scrollLeft = textareaRef.current.scrollLeft;
     }
   }, []);
 
@@ -63,8 +52,8 @@ export function JsonEditor({ value, onChange, placeholder, hasError }: JsonEdito
 
   return (
     <div className={`json-editor-container ${hasError ? 'error' : ''}`}>
-      <div className="json-editor-wrapper" ref={wrapperRef}>
-        <div className="json-highlight-layer">
+      <div className="json-editor-wrapper">
+        <div className="json-highlight-layer" ref={highlightRef} aria-hidden="true">
           {highlighted || <span className="json-placeholder">{placeholder}</span>}
         </div>
         <textarea
@@ -72,6 +61,7 @@ export function JsonEditor({ value, onChange, placeholder, hasError }: JsonEdito
           className="json-editor-textarea"
           value={value}
           onChange={handleChange}
+          onScroll={handleScroll}
           placeholder={placeholder}
           spellCheck={false}
         />

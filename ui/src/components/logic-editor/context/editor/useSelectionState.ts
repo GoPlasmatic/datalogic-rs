@@ -43,23 +43,21 @@ export function useSelectionState(nodes: LogicNode[], internalNodes: LogicNode[]
   }, []);
 
   const toggleNodeSelection = useCallback((nodeId: string) => {
-    setSelectedNodeIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(nodeId)) {
-        next.delete(nodeId);
-        if (selectedNodeId === nodeId) {
-          const remaining = [...next];
-          setSelectedNodeId(remaining.length > 0 ? remaining[0] : null);
-        }
-      } else {
-        next.add(nodeId);
-        if (!selectedNodeId) {
-          setSelectedNodeId(nodeId);
-        }
+    const next = new Set(selectedNodeIds);
+    if (next.has(nodeId)) {
+      next.delete(nodeId);
+      if (selectedNodeId === nodeId) {
+        const remaining = [...next];
+        setSelectedNodeId(remaining.length > 0 ? remaining[0] : null);
       }
-      return next;
-    });
-  }, [selectedNodeId]);
+    } else {
+      next.add(nodeId);
+      if (!selectedNodeId) {
+        setSelectedNodeId(nodeId);
+      }
+    }
+    setSelectedNodeIds(next);
+  }, [selectedNodeId, selectedNodeIds]);
 
   const addToSelection = useCallback((nodeId: string) => {
     setSelectedNodeIds((prev) => {

@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
-import { ChevronDown, Copy, Check, Gauge, Settings2 } from 'lucide-react';
-import type { JsonLogicValue } from '../logic-editor/types';
+import { ChevronDown, Copy, Check, Gauge, Settings2, AlertTriangle } from 'lucide-react';
+import type { JsonLogicValue, RuleDiagnostic, RuleFacts, DataPathSegment } from '../logic-editor/types';
 import { JsonEditor, JsonDisplay } from './JsonHighlighter';
 import { ErrorDisplay, type DebugError } from './ErrorDisplay';
 import { errorToJson } from './error-utils';
@@ -9,11 +9,31 @@ import './DebugPanel.css';
 
 export type { DebugError } from './ErrorDisplay';
 
+const MAX_DISPLAYED_PATHS = 6;
+
+function formatDataPath(path: DataPathSegment[]): string {
+  if (path.length === 0) return '(root)';
+  return path.map(String).join('.');
+}
+
 interface DebugPanelProps {
   logic: JsonLogicValue | null;
   logicText: string;
   onLogicChange: (text: string) => void;
   logicError: DebugError;
+  /**
+   * Static rule diagnostics returned by `Engine#check`. Surfaced on the Logic
+   * pane when the JSON is syntactically valid so warnings (unused extra
+   * arguments, template keys close to operator names) and static errors
+   * (unknown operators, invalid timezones, argument form errors) are visible
+   * immediately.
+   */
+  diagnostics?: RuleDiagnostic[];
+  /**
+   * Static analysis of the compiled rule returned by `Rule#facts` (data paths
+   * read, dynamic reads, determinism).
+   */
+  facts?: RuleFacts | null;
   data: unknown;
   dataText: string;
   onDataChange: (text: string) => void;
@@ -45,6 +65,8 @@ export function DebugPanel({
   logicText,
   onLogicChange,
   logicError,
+  diagnostics = [],
+  facts = null,
   dataText,
   onDataChange,
   dataError,
@@ -108,7 +130,7 @@ export function DebugPanel({
     }
   }, [dataText, onDataChange]);
 
-  const opsBadge = resultOps === null || resultError !== null ? null : (
+  const opsBadge = resultOps === null ? null : (
     <Tooltip
       label={
         `${resultOps.toLocaleString()} operations charged. One per node the engine dispatched, ` +
@@ -123,6 +145,21 @@ export function DebugPanel({
       </span>
     </Tooltip>
   );
+
+  const activeDiagnostics = !logicError && diagnostics.length > 0 ? diagnostics : [];
+  const hasDiagnosticError = activeDiagnostics.some((d) => d.severity === 'error');
+
+  const diagnosticsBadge = activeDiagnostics.length > 0 ? (
+    <span
+      className={`debug-diagnostics-badge ${hasDiagnosticError ? 'is-error' : 'is-warning'}`}
+      title={`${activeDiagnostics.length} rule diagnostic${activeDiagnostics.length === 1 ? '' : 's'} from Engine.check()`}
+    >
+      <AlertTriangle size={11} />
+      <span>
+        {activeDiagnostics.length} {activeDiagnostics.length === 1 ? (hasDiagnosticError ? 'issue' : 'warning') : (hasDiagnosticError ? 'issues' : 'warnings')}
+      </span>
+    </span>
+  ) : null;
 
   const configBadge = configSummary ? (
     <Tooltip label={`Engine settings: ${configSummary}`} side="left">
@@ -168,6 +205,7 @@ export function DebugPanel({
             </div>
           )}
           <div className="debug-section-header-right">
+            {diagnosticsBadge}
             <Tooltip label="Pretty-print this JSON" side="left">
               <button
                 className="format-btn"
@@ -190,6 +228,18 @@ export function DebugPanel({
             {logicError && (
               <div className="debug-error">
                 <ErrorDisplay error={logicError} compact />
+              </div>
+            )}
+            {activeDiagnostics.length > 0 && (
+              <div className={`debug-diagnostics ${hasDiagnosticError ? 'is-error' : 'is-warning'}`} role="status">
+                {activeDiagnostics.map((diag, i) => (
+                  <div key={`${diag.pointer}-${diag.code}-${i}`} className={`debug-diagnostic-row is-${diag.severity}`}>
+                    <span className={`diagnostic-code-pill is-${diag.severity}`}>{diag.code}</span>
+                    <span className="diagnostic-message">{diag.message}</span>
+                    {diag.operator && <span className="error-operator-chip">op: {diag.operator}</span>}
+                    {diag.pointer && <code className="diagnostic-pointer">{diag.pointer}</code>}
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -306,6 +356,48 @@ export function DebugPanel({
               </div>
             ) : (
               <JsonDisplay value={result} />
+            )}
+            {facts && (
+              <div className="debug-facts-bar" title="Static rule analysis (Rule.facts)">
+                {!facts.deterministic && (
+                  <span
+                    className="debug-fact-pill debug-fact-pill--nondet"
+                    title="Rule uses non-deterministic operators (e.g. now, rand, or non-deterministic custom operators)"
+                  >
+                    nondeterministic
+                  </span>
+                )}
+                <span className="debug-fact-group">
+                  <span className="debug-fact-label">reads</span>
+                  {!facts.reads_data ? (
+                    <span className="debug-fact-empty">none</span>
+                  ) : (
+                    <>
+                      {facts.reads.slice(0, MAX_DISPLAYED_PATHS).map((path) => {
+                        const formatted = formatDataPath(path);
+                        return (
+                          <code key={formatted} className="debug-fact-path">
+                            {formatted}
+                          </code>
+                        );
+                      })}
+                      {facts.reads.length > MAX_DISPLAYED_PATHS && (
+                        <span className="debug-fact-more">
+                          +{facts.reads.length - MAX_DISPLAYED_PATHS} more
+                        </span>
+                      )}
+                      {facts.computed_reads && (
+                        <span
+                          className="debug-fact-pill debug-fact-pill--dynamic"
+                          title="Rule computes data paths dynamically at runtime"
+                        >
+                          dynamic
+                        </span>
+                      )}
+                    </>
+                  )}
+                </span>
+              </div>
             )}
           </div>
         )}

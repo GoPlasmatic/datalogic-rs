@@ -11,6 +11,7 @@ import {
   type NanHandling,
   type DivisionByZero,
   type TruthyEvaluator,
+  type MissingVarHandling,
   type CoercionFlags,
 } from './engine-config';
 import './EngineSettings.css';
@@ -33,6 +34,11 @@ const TRUTHY_OPTIONS: { value: TruthyEvaluator; label: string; hint: string }[] 
   { value: 'javascript', label: 'JavaScript', hint: '0, "", [], {} and null are falsy' },
   { value: 'python', label: 'Python', hint: 'Same as JavaScript except NaN is truthy' },
   { value: 'strict_boolean', label: 'Strict boolean', hint: 'Only false and null are falsy' },
+];
+
+const MISSING_VAR_OPTIONS: { value: MissingVarHandling; label: string; hint: string }[] = [
+  { value: 'null', label: 'Return null', hint: 'Missing paths without a default argument yield null' },
+  { value: 'error', label: 'Raise VariableNotFound', hint: 'Missing paths without a default argument raise VariableNotFound' },
 ];
 
 const COERCION_OPTIONS: { key: keyof CoercionFlags; label: string; hint: string }[] = [
@@ -186,6 +192,21 @@ export function EngineSettingsPanel({
           </select>
           <span className="engine-settings-hint">
             {TRUTHY_OPTIONS.find((o) => o.value === resolved.truthy_evaluator)?.hint}
+          </span>
+        </label>
+
+        <label className="engine-settings-field">
+          <span className="engine-settings-label">Missing variables</span>
+          <select
+            value={resolved.missing_var}
+            onChange={(e) => onChange(withOverride(config, 'missing_var', e.target.value as MissingVarHandling))}
+          >
+            {MISSING_VAR_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value} title={o.hint}>{o.label}</option>
+            ))}
+          </select>
+          <span className="engine-settings-hint">
+            {MISSING_VAR_OPTIONS.find((o) => o.value === resolved.missing_var)?.hint}
           </span>
         </label>
 
