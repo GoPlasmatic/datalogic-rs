@@ -187,7 +187,7 @@ self_cell = "1.3.0"
 # Two test files use these: `thread_safety_test.rs` (`#[tokio::test]`,
 # `spawn`, `spawn_blocking`, `join_all`) and `shared_session_test.rs` (a
 # multi-thread runtime). Only the runtime and the test macro, not `full`.
-tokio = { version = "1.53", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1.54", features = ["rt-multi-thread", "macros"] }
 futures = { version = "0.3.34", default-features = false, features = ["alloc"] }
 serde_json = { workspace = true }
 # Property-based tests (`tests/property_test.rs`). Floor kept current for

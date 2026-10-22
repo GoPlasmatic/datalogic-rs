@@ -167,7 +167,7 @@
                              `warnings` response field; 0.7.0 crashed
                              deserializing it *after* a successful publish,
                              reporting a false failure. -->
-                        <version>0.11.0</version>
+                        <version>0.12.0</version>
                         <extensions>true</extensions>
                         <configuration>
                             <publishingServerId>central</publishingServerId>
