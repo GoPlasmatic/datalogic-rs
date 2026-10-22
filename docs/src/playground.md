@@ -4,7 +4,7 @@
 > settings and resizable panels. This page embeds the same editor inline,
 > with a read-only diagram, for quick checks.
 
-Try JSONLogic expressions in your browser. This playground runs the `@goplasmatic/datalogic-ui` debugger on the datalogic-rs 5.8.2 engine, compiled to WebAssembly.
+Try JSONLogic expressions in your browser. This playground runs the `@goplasmatic/datalogic-ui` debugger on the datalogic-rs 5.9.0 engine, compiled to WebAssembly.
 
 <div id="datalogic-playground" data-datalogic-playground></div>
 

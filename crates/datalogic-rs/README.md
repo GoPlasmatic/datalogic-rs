@@ -576,7 +576,7 @@ Runnable example: [`examples/thread_safety.rs`](https://github.com/GoPlasmatic/d
 | `wasm-clock`      | JS-host clock for `now` on `wasm32-unknown-unknown` (`chrono/wasmbind`). Enable only when a JS host runs the module; never for wasmtime / wazero / Chicory (issue #47). Without it `now` traps on that target |
 | `tensor`          | The `Tensor` value plus 20 marshalling-only operators over it (JSON to a model's inputs and back). No new dependency |
 | `tensor-half`     | Lifts the `f16` / `bf16` restriction on the element-wise tensor operators; pulls in `half` through datavalue |
-| `budget`          | Per-evaluation operation counter with a hard abort: `EvaluationConfig::ops_budget`, `Engine::evaluate_metered`, `Session::eval_metered`; makes `EvalContext::charge` count and raises `ErrorKind::BudgetExceeded` (the variant exists in every build) |
+| `budget`          | Per-evaluation operation counter with a hard abort: `EvaluationConfig::ops_budget`, `Engine::evaluate_metered` / `evaluate_metered_report`, `Session::eval_metered` / `eval_metered_report`; makes `EvalContext::charge` count and raises `ErrorKind::BudgetExceeded` (the variant exists in every build) |
 | `all-operators`   | Every operator family at once: `datetime`, `error-handling`, the five `ext-*` families, `flagd` and `tensor`. A family added in a later release joins it, so depending on it keeps the full operator set. Not included: `serde_json`, `templating`, `trace`, `budget`, `tensor-half`, `wasm-clock` |
 
 The default build is `serde_json`-free; opt in via

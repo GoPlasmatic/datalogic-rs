@@ -886,3 +886,236 @@ fn a_zero_element_tensor_still_pays_for_what_it_reads() {
         1 + 1 + 3 * 2 + 3
     );
 }
+
+// ---------------------------------------------------------------------------
+// Failure-inclusive metering (`evaluate_metered_report` / `eval_metered_report`, issue #87)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn failure_inclusive_report_exposes_usage_on_ordinary_failure() {
+    // Issue #87's motivating example: `{"/": [1, {"var": "zero"}]}` over
+    // `{"zero": 0}` with budget 100.
+    let engine = Engine::new();
+    let compiled = engine
+        .compile(r#"{"/": [1, {"var": "zero"}]}"#)
+        .expect("compile");
+    let arena = Bump::new();
+
+    let report = engine.evaluate_metered_report(&compiled, r#"{"zero": 0}"#, &arena, 100);
+    assert_eq!(
+        report.ops, 2,
+        "`/` and `var` were dispatched before division by zero failed"
+    );
+    let err = report.value.expect_err("integer division by zero fails");
+    assert_eq!(err.code(), datalogic_rs::ErrorCode::Thrown);
+    assert_eq!(err.operator(), Some("/"));
+    assert!(
+        !err.node_ids().is_empty(),
+        "failed evaluation preserves the node breadcrumb"
+    );
+    assert!(!err.resolve_path(&compiled).is_empty());
+
+    // Session counterpart returns the identical count and decorated error.
+    let mut session = engine.session();
+    let session_report = session.eval_metered_report(&compiled, r#"{"zero": 0}"#, 100);
+    assert_eq!(session_report.ops, 2);
+    let session_err = session_report.value.expect_err("should fail");
+    assert_eq!(session_err.code(), datalogic_rs::ErrorCode::Thrown);
+    assert_eq!(session_err.operator(), Some("/"));
+    assert_eq!(session_err.node_ids(), err.node_ids());
+}
+
+#[test]
+fn failure_inclusive_report_matches_evaluate_metered_on_success() {
+    let engine = Engine::new();
+    let compiled = engine.compile(DOUBLE_XS).expect("compile");
+    let data = array_of(15);
+    let arena = Bump::new();
+
+    let plain = engine
+        .evaluate_metered(&compiled, data.as_str(), &arena, u64::MAX)
+        .expect("ok");
+    let report = engine.evaluate_metered_report(&compiled, data.as_str(), &arena, u64::MAX);
+    assert_eq!(report.ops, plain.ops);
+    assert_eq!(report.value.expect("ok"), plain.value);
+
+    // Transpose round-trips cleanly.
+    let transposed = engine
+        .evaluate_metered_report(&compiled, data.as_str(), &arena, u64::MAX)
+        .transpose()
+        .expect("ok");
+    assert_eq!(transposed, plain);
+
+    // Folded constant costs 0 in the report form too.
+    let folded = engine.compile(r#"{"+": [1, 2]}"#).expect("compile");
+    let folded_report = engine.evaluate_metered_report(&folded, "null", &arena, 100);
+    assert_eq!(folded_report.ops, 0);
+    assert_eq!(folded_report.value.expect("ok").as_i64(), Some(3));
+}
+
+#[test]
+fn failure_inclusive_report_tracks_partial_work_before_mid_iteration_failure() {
+    // `map` over `[10, 5, 0, 2]` dividing `100` by each element:
+    // - `map` node: 1
+    // - `map` up-front per-item charge for 4 elements: 4
+    // - item 0 (`10`): `/` (1) + `var` (1) = 2 -> succeeds
+    // - item 1 (`5`):  `/` (1) + `var` (1) = 2 -> succeeds
+    // - item 2 (`0`):  `/` (1) + `var` (1) = 2 -> fails on division by zero
+    // - item 3 (`2`):  never reached
+    let engine = Engine::new();
+    let compiled = engine
+        .compile(r#"{"map": [{"var": "xs"}, {"/": [100, {"var": ""}]}]}"#)
+        .expect("compile");
+    let arena = Bump::new();
+
+    let report =
+        engine.evaluate_metered_report(&compiled, r#"{"xs": [10, 5, 0, 2]}"#, &arena, u64::MAX);
+    assert_eq!(report.ops, 1 + 4 + 2 * 3);
+    let err = report.value.expect_err("division by zero at index 2");
+    assert_eq!(err.code(), datalogic_rs::ErrorCode::Thrown);
+    assert_eq!(err.operator(), Some("/"));
+}
+
+#[test]
+fn failure_inclusive_report_retains_budget_exceeded_without_double_charging() {
+    let engine = Engine::new();
+    let compiled = engine.compile(DOUBLE_XS).expect("compile");
+    let arena = Bump::new();
+    let data = array_of(N);
+
+    let report = engine.evaluate_metered_report(&compiled, data.as_str(), &arena, 10);
+    let err = report.value.expect_err("should exceed budget");
+    assert_eq!(err.code(), datalogic_rs::ErrorCode::BudgetExceeded);
+    assert!(!err.node_ids().is_empty());
+    match err.kind {
+        datalogic_rs::ErrorKind::BudgetExceeded { budget, spent } => {
+            assert_eq!(budget, 10);
+            assert_eq!(
+                report.ops, spent,
+                "report.ops must equal BudgetExceeded.spent, never double-charged"
+            );
+            assert!(spent > budget);
+        }
+        other => panic!("expected BudgetExceeded, got {other:?}"),
+    }
+}
+
+#[test]
+fn failure_inclusive_report_charges_zero_when_input_adaptation_fails() {
+    let engine = Engine::new();
+    let compiled = engine.compile(DOUBLE_XS).expect("compile");
+    let arena = Bump::new();
+
+    let report = engine.evaluate_metered_report(&compiled, "{not valid json", &arena, 100);
+    assert_eq!(report.ops, 0, "no node dispatched when input parsing fails");
+    let err = report.value.expect_err("bad JSON should fail");
+    assert_eq!(err.code(), datalogic_rs::ErrorCode::ParseError);
+
+    let mut session = engine.session();
+    let session_report = session.eval_metered_report(&compiled, "{not valid json", 100);
+    assert_eq!(session_report.ops, 0);
+    assert_eq!(
+        session_report.value.expect_err("bad JSON").code(),
+        datalogic_rs::ErrorCode::ParseError
+    );
+}
+
+#[test]
+fn failure_inclusive_report_preserves_missing_var_and_custom_operator_errors() {
+    use datalogic_rs::{CustomOperator, DataValue, MissingVar, operator::EvalContext};
+
+    struct ChargeThenFail;
+    impl CustomOperator for ChargeThenFail {
+        fn evaluate<'a>(
+            &self,
+            _args: &[&'a DataValue<'a>],
+            ctx: &mut EvalContext<'_, 'a>,
+            _arena: &'a bumpalo::Bump,
+        ) -> datalogic_rs::Result<&'a DataValue<'a>> {
+            ctx.charge(7)?;
+            Err(datalogic_rs::Error::custom_message("custom boom"))
+        }
+    }
+
+    let engine = Engine::builder()
+        .with_config(EvaluationConfig::default().with_missing_var(MissingVar::Error))
+        .add_operator("boom", ChargeThenFail)
+        .build();
+    let arena = Bump::new();
+
+    // MissingVar::Error inside an expression after an earlier operand ran.
+    let compiled = engine
+        .compile(r#"{"+": [{"var": "x"}, {"var": "missing"}]}"#)
+        .expect("compile");
+    let report = engine.evaluate_metered_report(&compiled, r#"{"x": 10}"#, &arena, 100);
+    // `+` (1) + `var x` (1) + `var missing` (1) = 3.
+    assert_eq!(report.ops, 3);
+    let err = report.value.expect_err("missing var should fail");
+    assert_eq!(err.code(), datalogic_rs::ErrorCode::VariableNotFound);
+    assert_eq!(err.operator(), Some("var"));
+    assert!(!err.node_ids().is_empty());
+
+    // Custom operator that charges 7 and then errors.
+    let custom_rule = engine
+        .compile(r#"{"boom": [{"var": "x"}]}"#)
+        .expect("compile");
+    let report = engine.evaluate_metered_report(&custom_rule, r#"{"x": 10}"#, &arena, 100);
+    // `boom` (1) + `var x` (1) + `ctx.charge(7)` = 9.
+    assert_eq!(report.ops, 9);
+    let err = report.value.expect_err("custom operator should fail");
+    assert_eq!(err.code(), datalogic_rs::ErrorCode::Custom);
+    assert_eq!(err.operator(), Some("boom"));
+    assert!(!err.node_ids().is_empty());
+}
+
+#[cfg(feature = "error-handling")]
+#[test]
+fn failure_inclusive_report_tracks_work_across_try_arms() {
+    let engine = Engine::new();
+    let arena = Bump::new();
+
+    // All arms fail: report includes the ops from the first protected arm
+    // plus the final arm before it threw (using root scope `{"val": [[-1], "z"]}`
+    // inside the final catch arm, which pushes the error object as its local scope).
+    let compiled = engine
+        .compile(r#"{"try": [{"/": [1, {"var": "z"}]}, {"/": [2, {"val": [[-1], "z"]}]}]}"#)
+        .expect("compile");
+    let report = engine.evaluate_metered_report(&compiled, r#"{"z": 0}"#, &arena, 100);
+    // `try` (1) + arm 0 (`/` + `var` = 2) + arm 1 (`/` + `val` = 2) = 5.
+    assert_eq!(report.ops, 5);
+    let err = report.value.expect_err("final arm threw");
+    assert_eq!(err.code(), datalogic_rs::ErrorCode::Thrown);
+    assert_eq!(err.operator(), Some("/"));
+}
+
+#[test]
+fn host_shared_budget_ledger_reconciles_success_and_failure() {
+    // Demonstrates the embedding contract from issue #87: a host with a
+    // shared parent ledger reserves a slice per expression and debits the
+    // actual consumed work regardless of whether the rule succeeded or
+    // failed with an ordinary error.
+    let engine = Engine::new();
+    let ok_rule = engine
+        .compile(r#"{"+": [{"var": "x"}, 2]}"#)
+        .expect("compile");
+    let err_rule = engine
+        .compile(r#"{"/": [1, {"var": "zero"}]}"#)
+        .expect("compile");
+    let mut session = engine.session();
+
+    let mut parent_ledger: u64 = 1_000;
+    let reservation: u64 = 100;
+
+    // 1. Successful run: debit `ops` (2), returning 98 to the ledger.
+    let r1 = session.eval_metered_report(&ok_rule, r#"{"x": 40}"#, reservation);
+    assert!(r1.value.is_ok());
+    parent_ledger -= r1.ops.min(reservation);
+    assert_eq!(parent_ledger, 998);
+
+    // 2. Ordinary failed run: still debit the 2 operations spent before `/`
+    //    threw, instead of treating the failed run as 0 ops.
+    let r2 = session.eval_metered_report(&err_rule, r#"{"zero": 0}"#, reservation);
+    assert!(r2.value.is_err());
+    parent_ledger -= r2.ops.min(reservation);
+    assert_eq!(parent_ledger, 996);
+}

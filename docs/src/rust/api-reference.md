@@ -1,6 +1,6 @@
 # API Reference
 
-Core types and methods of the `datalogic-rs` crate, 5.8.2. For every item
+Core types and methods of the `datalogic-rs` crate, 5.9.0. For every item
 and its feature badge, see [docs.rs/datalogic-rs](https://docs.rs/datalogic-rs).
 
 ## Public surface at a glance
@@ -176,7 +176,9 @@ assert_eq!(result.as_bool(), Some(true));
 
 With `feature = "budget"`, `evaluate_metered(&compiled, data, &arena, budget)`
 runs the same evaluation under an explicit operation budget and returns a
-`Metered { value, ops }`. See
+`Result<Metered<&DataValue>>` (`evaluate_metered_report` returns a
+failure-inclusive `Metered<Result<&DataValue>>`; `Session::eval_metered`
+and `Session::eval_metered_report` are the session counterparts). See
 [Operation Budget](../advanced/operation-budget.md).
 
 #### `session`

@@ -1,6 +1,6 @@
 [package]
 name = "datalogic-bind"
-version = "5.8.2"
+version = "5.9.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

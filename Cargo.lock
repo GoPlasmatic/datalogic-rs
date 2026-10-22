@@ -173,7 +173,7 @@ dependencies = [
 
 [[package]]
 name = "datalogic-bind"
-version = "5.8.2"
+version = "5.9.0"
 dependencies = [
  "datalogic-rs",
  "serde",
@@ -182,7 +182,7 @@ dependencies = [
 
 [[package]]
 name = "datalogic-rs"
-version = "5.8.2"
+version = "5.9.0"
 dependencies = [
  "bumpalo",
  "chrono",
@@ -202,9 +202,9 @@ dependencies = [
 
 [[package]]
 name = "datavalue-rs"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff814c91f97a2a58e3e012d61314669c22f667f79fb62df109dea3f898fab45e"
+checksum = "9dd41c92539e39b6ba3fd008263512f600f9e0136c55bbee3657dfb16ef63dca"
 dependencies = [
  "bumpalo",
  "chrono",

@@ -7,7 +7,7 @@ The Go binding `datalogic-go` links the Rust core into your Go program staticall
 Add the Go module dependency. Go Modules requires the `/v5` major-version suffix for versions 2 and above:
 
 ```bash
-go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5@v5.8.2
+go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5@v5.9.0
 ```
 
 Import it in your Go code:

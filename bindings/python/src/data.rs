@@ -50,7 +50,7 @@ pub(crate) enum ParsedTree {
 /// never allocates after construction: the tree is built once (in
 /// `ParsedData::from_json` or `build_py_tree`) and every subsequent
 /// access is a `&`-read of a `DataValue` tree with no interior
-/// mutability (verified against datavalue 0.2.2 — re-audit on datavalue
+/// mutability (verified against datavalue 0.3.3 — re-audit on datavalue
 /// upgrades). Concurrent reads of immutable memory are sound, so
 /// exposing the tree as thread-safe is correct as long as this crate
 /// never mutates through it (it doesn't — there is no mutating entry

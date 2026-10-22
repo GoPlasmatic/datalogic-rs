@@ -29,11 +29,14 @@ thread_local! {
 
 /// An evaluation's result paired with what it cost.
 ///
-/// Returned by [`Engine::evaluate_metered`] and
-/// [`Session::eval_metered`](crate::Session::eval_metered). `T` is
-/// whatever that entry point produces — a borrowed
-/// `&'a DataValue<'a>` from the engine, an owned value or JSON string
-/// from a session.
+/// Returned by [`Engine::evaluate_metered`],
+/// [`Engine::evaluate_metered_report`],
+/// [`Session::eval_metered`](crate::Session::eval_metered) and
+/// [`Session::eval_metered_report`](crate::Session::eval_metered_report).
+/// `T` is whatever that entry point produces — a borrowed
+/// `&'a DataValue<'a>` from the engine, an owned value from a session, or
+/// a [`Result<...>`](crate::Result) from the failure-inclusive `*_report`
+/// methods.
 ///
 /// Both fields are public, so the usual shape is a destructure:
 ///
@@ -62,11 +65,24 @@ thread_local! {
 #[cfg_attr(docsrs, doc(cfg(feature = "budget")))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Metered<T> {
-    /// The evaluation's result.
+    /// The evaluation's result (or [`Result<...>`](crate::Result) for the
+    /// failure-inclusive `*_report` methods).
     pub value: T,
     /// Operations charged. See [`Engine::evaluate_metered`] for what one
     /// operation is.
     pub ops: u64,
+}
+
+#[cfg(feature = "budget")]
+impl<T, E> Metered<std::result::Result<T, E>> {
+    /// Transpose a failure-inclusive `Metered<Result<T, E>>` into a
+    /// `Result<Metered<T>, E>`, keeping `ops` on `Ok` and propagating
+    /// `Err(e)`.
+    #[inline]
+    pub fn transpose(self) -> std::result::Result<Metered<T>, E> {
+        let Self { value, ops } = self;
+        value.map(|value| Metered { value, ops })
+    }
 }
 
 /// Restores [`DISPATCH_DEPTH`] to its prior value on drop. Used by
@@ -1057,7 +1073,8 @@ impl Engine {
     ///
     /// [`ErrorKind::BudgetExceeded`](crate::ErrorKind::BudgetExceeded)
     /// when the rule charges past `budget`, plus every error
-    /// [`Self::evaluate`] can return.
+    /// [`Self::evaluate`] can return. To observe the operations spent
+    /// even when evaluation fails, call [`Self::evaluate_metered_report`].
     #[cfg(feature = "budget")]
     #[cfg_attr(docsrs, doc(cfg(feature = "budget")))]
     pub fn evaluate_metered<'a, D: crate::EvalInput<'a>>(
@@ -1067,18 +1084,103 @@ impl Engine {
         arena: &'a bumpalo::Bump,
         budget: u64,
     ) -> Result<Metered<&'a crate::arena::DataValue<'a>>> {
-        // [`Self::evaluate`]'s straight-line body, with the budget set.
+        self.evaluate_metered_report(compiled, data, arena, budget)
+            .transpose()
+    }
+
+    /// Failure-inclusive counterpart to [`Self::evaluate_metered`]:
+    /// evaluates under `budget` and returns a [`Metered`] report whose
+    /// `ops` is populated whether evaluation succeeds (`value: Ok(...)`)
+    /// or fails (`value: Err(...)`).
+    ///
+    /// Hosts that reserve capacity from a shared parent ledger before an
+    /// expression runs can reconcile the reservation against `report.ops`
+    /// on both successful and failed evaluations, instead of either
+    /// dropping failed work or conservatively charging the entire
+    /// reservation.
+    ///
+    /// # Charge semantics on failure
+    ///
+    /// - **Ordinary runtime failures** (`Thrown`, `VariableNotFound`,
+    ///   `TypeError`, `ArithmeticError`, `Custom`, …): `report.ops` is
+    ///   the exact number of operations charged before the failing node or
+    ///   operator aborted. Because every node and operator charges
+    ///   *before* doing its work, the failing node's own dispatch charge
+    ///   (and any pre-allocation charge it made before raising) is
+    ///   included. The [`crate::Error`] in `report.value` retains its full
+    ///   [`Error::code`](crate::Error::code),
+    ///   [`Error::operator`](crate::Error::operator), and
+    ///   [`Error::node_ids`](crate::Error::node_ids) breadcrumb.
+    /// - **Budget exhaustion**
+    ///   ([`ErrorKind::BudgetExceeded { budget, spent }`](crate::ErrorKind::BudgetExceeded)):
+    ///   every charge is added to the running counter before comparing
+    ///   against `budget`, so `report.ops` equals `spent` — the attempted
+    ///   total that crossed the ceiling. Do not add `report.ops` and
+    ///   `spent` together (they are the same counter); a host debiting a
+    ///   reserved slice of size `budget` can debit `report.ops.min(budget)`
+    ///   for bounded work or `report.ops` for attempted work.
+    /// - **Pre-dispatch failures** (input adaptation / JSON parse errors
+    ///   from `data`, or exceeding `max_recursion_depth` at the boundary):
+    ///   no node is dispatched, so `report.ops == 0`.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # #[cfg(feature = "budget")] {
+    /// use bumpalo::Bump;
+    /// use datalogic_rs::{Engine, ErrorCode, Metered};
+    ///
+    /// let engine = Engine::new();
+    /// let compiled = engine.compile(r#"{"/": [1, {"var": "zero"}]}"#).unwrap();
+    /// let arena = Bump::new();
+    ///
+    /// let Metered { value, ops } = engine
+    ///     .evaluate_metered_report(&compiled, r#"{"zero": 0}"#, &arena, 100);
+    /// let err = value.unwrap_err();
+    /// assert_eq!(err.code(), ErrorCode::Thrown);
+    /// assert_eq!(err.operator(), Some("/"));
+    /// assert_eq!(ops, 2, "the `/` and the `var` were dispatched before division failed");
+    /// # }
+    /// ```
+    #[cfg(feature = "budget")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "budget")))]
+    pub fn evaluate_metered_report<'a, D: crate::EvalInput<'a>>(
+        &self,
+        compiled: &'a Logic,
+        data: D,
+        arena: &'a bumpalo::Bump,
+        budget: u64,
+    ) -> Metered<Result<&'a crate::arena::DataValue<'a>>> {
+        // [`Self::evaluate`]'s straight-line body, with the budget set and
+        // `ctx.ops_spent()` preserved on both `Ok` and `Err`.
         let compiled = compiled.for_engine(self);
-        let _depth_guard = self.enter_dispatch_boundary()?;
-        let data_ref = data.into_arena_for(compiled, self, arena)?;
+        let _depth_guard = match self.enter_dispatch_boundary() {
+            Ok(guard) => guard,
+            Err(e) => {
+                return Metered {
+                    value: Err(e),
+                    ops: 0,
+                };
+            }
+        };
+        let data_ref = match data.into_arena_for(compiled, self, arena) {
+            Ok(av) => av,
+            Err(e) => {
+                return Metered {
+                    value: Err(e),
+                    ops: 0,
+                };
+            }
+        };
         let mut ctx = self.new_context(compiled, data_ref);
         ctx.set_budget(budget);
-        match self.dispatch_node(&compiled.root, &mut ctx, arena) {
-            Ok(value) => Ok(Metered {
-                value,
-                ops: ctx.ops_spent(),
-            }),
+        let value = match self.dispatch_node(&compiled.root, &mut ctx, arena) {
+            Ok(value) => Ok(value),
             Err(e) => Err(e.decorated(ctx.take_error_path(), compiled)),
+        };
+        Metered {
+            value,
+            ops: ctx.ops_spent(),
         }
     }
 

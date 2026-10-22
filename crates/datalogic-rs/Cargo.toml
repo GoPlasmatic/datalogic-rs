@@ -1,6 +1,6 @@
 [package]
 name = "datalogic-rs"
-version = "5.8.2"
+version = "5.9.0"
 edition.workspace = true
 # 1.98, set on the workspace: see the comment on `rust-version` in the root
 # Cargo.toml for why. Requires `datavalue-rs >= 0.3.1`: 0.2.2 and earlier
@@ -157,7 +157,7 @@ chrono = { version = "0.4.45", default-features = false, features = ["std", "clo
 # `format_date` / `parse_date`. 0.10.x tracks chrono 0.4.x. Rides the
 # `datetime` feature (see the feature comment above).
 chrono-tz = { version = "0.10", default-features = false, features = ["std"], optional = true }
-datavalue = { version = "0.3.2", package = "datavalue-rs", features = ["serde"] }
+datavalue = { version = "0.3.3", package = "datavalue-rs", features = ["serde"] }
 bumpalo = { workspace = true, features = ["collections"] }
 # Number -> string rendering on the `cat` / string-coercion hot path
 # (`arena::value::strings`). Both render digits without the `core::fmt`

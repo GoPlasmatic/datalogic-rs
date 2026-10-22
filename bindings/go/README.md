@@ -27,7 +27,7 @@ implements, see the
 ## Install
 
 ```sh
-go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5@v5.8.2
+go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5@v5.9.0
 ```
 
 ```go

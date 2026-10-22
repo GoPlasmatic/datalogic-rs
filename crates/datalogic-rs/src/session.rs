@@ -306,7 +306,8 @@ impl<'engine, E: Deref<Target = Engine>> Session<'engine, E> {
     ///
     /// [`ErrorKind::BudgetExceeded`](crate::ErrorKind::BudgetExceeded)
     /// when the rule charges past `budget`, plus every error
-    /// [`Self::eval`] can return.
+    /// [`Self::eval`] can return. To observe the operations spent even
+    /// when evaluation fails, call [`Self::eval_metered_report`].
     #[cfg(feature = "budget")]
     #[cfg_attr(docsrs, doc(cfg(feature = "budget")))]
     pub fn eval_metered<'a, D>(
@@ -318,14 +319,65 @@ impl<'engine, E: Deref<Target = Engine>> Session<'engine, E> {
     where
         D: EvalInput<'a>,
     {
+        self.eval_metered_report(compiled, data, budget).transpose()
+    }
+
+    /// Failure-inclusive counterpart to [`Self::eval_metered`]: evaluates
+    /// under `budget` and returns a [`crate::Metered`] report whose `ops`
+    /// is populated whether evaluation succeeds (`value: Ok(...)`) or
+    /// fails (`value: Err(...)`).
+    ///
+    /// Session-arena counterpart to [`Engine::evaluate_metered_report`],
+    /// which documents the failure charge semantics (ordinary runtime
+    /// errors, `BudgetExceeded`, and pre-dispatch input adaptation errors).
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # #[cfg(feature = "budget")] {
+    /// use datalogic_rs::{Engine, ErrorCode, Metered};
+    ///
+    /// let engine = Engine::new();
+    /// let compiled = engine.compile(r#"{"/": [1, {"var": "zero"}]}"#).unwrap();
+    /// let mut session = engine.session();
+    ///
+    /// let Metered { value, ops } = session
+    ///     .eval_metered_report(&compiled, r#"{"zero": 0}"#, 100);
+    /// let err = value.unwrap_err();
+    /// assert_eq!(err.code(), ErrorCode::Thrown);
+    /// assert_eq!(err.operator(), Some("/"));
+    /// assert_eq!(ops, 2);
+    /// # }
+    /// ```
+    #[cfg(feature = "budget")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "budget")))]
+    pub fn eval_metered_report<'a, D>(
+        &'a mut self,
+        compiled: &Logic,
+        data: D,
+        budget: u64,
+    ) -> crate::Metered<Result<OwnedDataValue>>
+    where
+        D: EvalInput<'a>,
+    {
         let arena: &'a Bump = &self.arena;
         let compiled = compiled.for_engine(&self.engine);
-        let av = data.into_arena_for(compiled, &self.engine, arena)?;
-        let metered = self.engine.evaluate_metered(compiled, av, arena, budget)?;
-        Ok(crate::Metered {
-            value: crate::FromDataValue::from_arena(metered.value)?,
+        let av = match data.into_arena_for(compiled, &self.engine, arena) {
+            Ok(av) => av,
+            Err(e) => {
+                return crate::Metered {
+                    value: Err(e),
+                    ops: 0,
+                };
+            }
+        };
+        let metered = self
+            .engine
+            .evaluate_metered_report(compiled, av, arena, budget);
+        crate::Metered {
+            value: metered.value.and_then(crate::FromDataValue::from_arena),
             ops: metered.ops,
-        })
+        }
     }
 
     /// Evaluate and return a borrowed result tied to this session's

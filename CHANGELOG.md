@@ -8,6 +8,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Per-binding versions track the core crate's version. The repository ships
 under a single coordinated tag (`vX.Y.Z`), driven by `.github/workflows/release.yml`.
 
+## [5.9.0] - 2026-10-22
+
+### Added
+
+- **Failure-inclusive metering (`Engine::evaluate_metered_report` and
+  `Session::eval_metered_report`, #87).** Both return
+  `Metered<Result<..>>` instead of `Result<Metered<..>>`, so `ops_used`
+  and `bytes_used` are reported whether evaluation succeeds or stops with
+  an error (`OpBudgetExceeded`, `EvalMemoryExceeded`, `MaxDepthExceeded`,
+  `Thrown`, and operator errors). Hosts enforcing a shared operation or
+  arena byte budget across multiple rules in one request can deduct the
+  work a failing rule consumed before stopping. `Metered::transpose`
+  converts `Metered<Result<T>>` into `Result<Metered<T>>`, and
+  `evaluate_metered` / `eval_metered` remain unchanged.
+
+### Fixed
+
+- **Windows: `catalogue_gates_match_cargo_features` handles CRLF line
+  endings (#86).** The test split `Cargo.toml` on `"\n["`, which missed
+  section headers under `core.autocrlf=true` and swept dependency features
+  into the `[features]` set. It now scans `.lines()`.
+
+### Changed
+
+- **Dependency updates.** Core crate: `datavalue-rs` 0.3.3. All workspace
+  and binding lockfiles are refreshed, and install snippets in the book
+  and the binding READMEs pin 5.9.0.
+
 ## [5.8.2] - 2026-10-18
 
 5.8.2 changes no behaviour. It takes dependency updates.
@@ -2234,6 +2262,7 @@ section for the subsequent migration).
   optional dispatch mode in v5).
 - Hash-caching layer (see above).
 
+[5.9.0]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.8.2...v5.9.0
 [5.8.2]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.8.1...v5.8.2
 [5.8.1]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.8.0...v5.8.1
 [5.8.0]: https://github.com/GoPlasmatic/datalogic-rs/compare/v5.7.1...v5.8.0

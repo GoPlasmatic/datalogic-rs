@@ -2,7 +2,7 @@
 
 ## Adding to Your Project
 
-Pick your language. Each package carries the core crate's version number (5.8.2 for this release):
+Pick your language. Each package carries the core crate's version number (5.9.0 for this release):
 
 <div class="codetabs">
 
@@ -37,11 +37,11 @@ go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5
 <dependency>
     <groupId>io.github.goplasmatic</groupId>
     <artifactId>datalogic</artifactId>
-    <version>5.8.2</version>
+    <version>5.9.0</version>
 </dependency>
 
 // Gradle: build.gradle.kts
-implementation("io.github.goplasmatic:datalogic:5.8.2")
+implementation("io.github.goplasmatic:datalogic:5.9.0")
 ```
 
 ```csharp
@@ -109,7 +109,7 @@ operators than the build has, list the families it keeps with
 
 ## Version Selection
 
-- **v5.x** (current, 5.8.2): string-based API, opt-in `serde_json`, builder-only operator registration. v4 code has no compatibility shim in v5, so plan a single cutover.
+- **v5.x** (current, 5.9.0): string-based API, opt-in `serde_json`, builder-only operator registration. v4 code has no compatibility shim in v5, so plan a single cutover.
 - **v4.x**: `DataLogic` engine with a `serde_json::Value`-first API. No longer the active line.
 - **v3.x**: the arena-based engine that v4 replaced.
 
@@ -127,7 +127,7 @@ language:
 | JavaScript / TypeScript (WASM) | [`@goplasmatic/datalogic-wasm`](https://www.npmjs.com/package/@goplasmatic/datalogic-wasm)       | `npm i @goplasmatic/datalogic-wasm`                              | [JS / TS docs](../javascript/installation.md)        |
 | Python                         | [`datalogic-py`](https://pypi.org/project/datalogic-py/)                                         | `pip install datalogic-py`                                       | [Python docs](../python/installation.md)    |
 | Go                             | `datalogic-go`                                                                                   | `go get github.com/GoPlasmatic/datalogic-rs/bindings/go/v5`      | [Go docs](../go/installation.md)            |
-| JVM (Java, Kotlin, Scala)      | [`io.github.goplasmatic:datalogic`](https://central.sonatype.com/artifact/io.github.goplasmatic/datalogic) | `io.github.goplasmatic:datalogic:5.8.2` (Maven Central, JDK 22+) | [Java / Kotlin docs](../jvm.md)          |
+| JVM (Java, Kotlin, Scala)      | [`io.github.goplasmatic:datalogic`](https://central.sonatype.com/artifact/io.github.goplasmatic/datalogic) | `io.github.goplasmatic:datalogic:5.9.0` (Maven Central, JDK 22+) | [Java / Kotlin docs](../jvm.md)          |
 | .NET                           | [`Goplasmatic.Datalogic`](https://www.nuget.org/packages/Goplasmatic.Datalogic)                  | `dotnet add package Goplasmatic.Datalogic`                       | [.NET docs](../dotnet.md)    |
 | PHP                            | [`goplasmatic/datalogic`](https://packagist.org/packages/goplasmatic/datalogic)                  | `composer require goplasmatic/datalogic`                         | [PHP docs](../php.md)          |
 | C ABI (any FFI host)           | `datalogic-c` (in-tree, not published)                                                           | build `bindings/c` from source                                   | [C ABI docs](../c-abi.md)                                                                                       |

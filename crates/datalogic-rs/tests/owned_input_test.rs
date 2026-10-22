@@ -210,6 +210,21 @@ fn engine_evaluate_metered() {
     });
 }
 
+#[cfg(feature = "budget")]
+#[test]
+fn engine_evaluate_metered_report() {
+    let engine = Engine::new();
+    let compiled = engine.compile(RULE).unwrap();
+    assert_independent_of_leaf_size("Engine::evaluate_metered_report", two(), |data| {
+        let arena = Bump::new();
+        engine
+            .evaluate_metered_report(&compiled, data, &arena, u64::MAX)
+            .value
+            .unwrap()
+            .to_owned()
+    });
+}
+
 #[test]
 fn session_eval() {
     let engine = Engine::new();

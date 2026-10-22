@@ -241,17 +241,23 @@ fn compiled_families_are_reported_and_gated_ones_are_not() {
     }
 }
 
-/// `[features]` of this crate's manifest: feature name → its list.
-fn cargo_features() -> Vec<(String, Vec<String>)> {
-    let manifest = include_str!("../Cargo.toml");
-    let section = manifest
-        .split("\n[features]\n")
-        .nth(1)
-        .expect("Cargo.toml has a [features] table");
-    let section = section.split("\n[").next().unwrap_or(section);
+/// `[features]` of `manifest`: feature name → its list.
+///
+/// Scans line-by-line via `str::lines` (which strips both `\n` and
+/// `\r\n`) so Windows checkouts with `core.autocrlf=true` parse the same
+/// table as Unix checkouts (issue #86).
+fn parse_cargo_features(manifest: &str) -> Vec<(String, Vec<String>)> {
+    let mut lines = manifest.lines();
+    let found = lines.any(|line| line.trim() == "[features]");
+    assert!(found, "Cargo.toml has a [features] table");
+
     let mut features = Vec::new();
     let mut current: Option<(String, String)> = None;
-    for line in section.lines() {
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            break;
+        }
         let line = line.split('#').next().unwrap_or("").trim();
         if line.is_empty() {
             continue;
@@ -278,6 +284,25 @@ fn cargo_features() -> Vec<(String, Vec<String>)> {
             (name, items)
         })
         .collect()
+}
+
+/// `[features]` of this crate's manifest: feature name → its list.
+fn cargo_features() -> Vec<(String, Vec<String>)> {
+    parse_cargo_features(include_str!("../Cargo.toml"))
+}
+
+#[test]
+fn cargo_features_handles_lf_and_crlf_manifests_identically() {
+    let raw = include_str!("../Cargo.toml");
+    let lf = raw.replace("\r\n", "\n");
+    let crlf = lf.replace('\n', "\r\n");
+    let parsed_lf = parse_cargo_features(&lf);
+    let parsed_crlf = parse_cargo_features(&crlf);
+    assert_eq!(parsed_lf, parsed_crlf);
+    assert!(
+        parsed_lf.iter().any(|(f, _)| f == "all-operators"),
+        "expected `all-operators` in parsed features"
+    );
 }
 
 /// Every gated family names a real Cargo feature, and `all-operators`

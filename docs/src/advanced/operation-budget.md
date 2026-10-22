@@ -166,6 +166,13 @@ println!("{ops} operations");
 per-call `budget` argument overrides the engine-wide
 `EvaluationConfig::ops_budget` for that call.
 
+When a host reserves capacity from a shared ledger before an evaluation
+and needs the operation count even when evaluation fails with an ordinary
+error (e.g. `Thrown`, `VariableNotFound`, `TypeError`), use
+`Engine::evaluate_metered_report` or `Session::eval_metered_report`. They
+return `Metered<Result<...>>`, pairing `ops` with either `Ok(value)` or
+`Err(error)`.
+
 ## The abort is final
 
 `BudgetExceeded` is not recoverable. Once the counter is past its

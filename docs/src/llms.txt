@@ -8,7 +8,7 @@
 > database, ship them over an API, change logic without a redeploy.
 > Apache-2.0.
 
-Key facts (current release 5.8.2): rules compile once to opcode
+Key facts (current release 5.9.0): rules compile once to opcode
 programs and evaluate in a reusable memory arena (10.3 ns geomean across
 the 51-suite benchmark matrix); the core is `#![forbid(unsafe_code)]`
 with no eval, no I/O, and no scripting runtime, so user-submitted rules
@@ -28,7 +28,7 @@ Install per language: Rust `cargo add datalogic-rs` · Node.js
 `dotnet add package Goplasmatic.Datalogic` · PHP
 `composer require goplasmatic/datalogic` (PHP 8.4+, ext-ffi) · React UI
 `npm i @goplasmatic/datalogic-ui`. Cargo: `datalogic-rs = "5"`; Maven /
-Gradle: `io.github.goplasmatic:datalogic:5.8.2`.
+Gradle: `io.github.goplasmatic:datalogic:5.9.0`.
 
 API shape (the same in every language): one-shot `apply(rule, data)`;
 `Engine` → `compile(rule)` → `rule.evaluate(data)` for hot paths;
